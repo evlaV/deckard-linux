@@ -368,6 +368,7 @@ void __init bootmem_init(void)
  */
 void __init mem_init(void)
 {
+#ifdef CONFIG_SWIOTLB
 	bool swiotlb = max_pfn > PFN_DOWN(arm64_dma_phys_limit);
 
 	if (IS_ENABLED(CONFIG_DMA_BOUNCE_UNALIGNED_KMALLOC) && !swiotlb) {
@@ -382,6 +383,7 @@ void __init mem_init(void)
 	}
 
 	swiotlb_init(swiotlb, SWIOTLB_VERBOSE);
+#endif
 
 	/* this will put all unused low memory onto the freelists */
 	memblock_free_all();
