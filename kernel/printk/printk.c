@@ -509,6 +509,15 @@ static u32 log_buf_len = __LOG_BUF_LEN;
 _DEFINE_PRINTKRB(printk_rb_static, CONFIG_LOG_BUF_SHIFT - PRB_AVGBITS,
 		 PRB_AVGBITS, &__log_buf[0]);
 
+void __init printk_early_init(void)
+{
+	unsigned count = ARRAY_SIZE(_printk_rb_static_descs);
+	_printk_rb_static_descs[count - 1].state_var =
+		(atomic_long_t) ATOMIC_INIT(DESC0_SV(CONFIG_LOG_BUF_SHIFT - PRB_AVGBITS));
+	_printk_rb_static_descs[count - 1].text_blk_lpos = (struct prb_data_blk_lpos) FAILED_BLK_LPOS;
+	_printk_rb_static_infos[0].seq = -(u64)count;
+}
+
 static struct printk_ringbuffer printk_rb_dynamic;
 
 struct printk_ringbuffer *prb = &printk_rb_static;

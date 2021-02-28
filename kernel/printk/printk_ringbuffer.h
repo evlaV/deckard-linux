@@ -245,27 +245,8 @@ enum desc_state {
  *       2 ^ (descbits + avgtextbits)
  */
 #define _DEFINE_PRINTKRB(name, descbits, avgtextbits, text_buf)			\
-static struct prb_desc _##name##_descs[_DESCS_COUNT(descbits)] = {				\
-	/* the initial head and tail */								\
-	[_DESCS_COUNT(descbits) - 1] = {							\
-		/* reusable */									\
-		.state_var	= ATOMIC_INIT(DESC0_SV(descbits)),				\
-		/* no associated data block */							\
-		.text_blk_lpos	= FAILED_BLK_LPOS,						\
-	},											\
-};												\
-static struct printk_info _##name##_infos[_DESCS_COUNT(descbits)] = {				\
-	/* this will be the first record reserved by a writer */				\
-	[0] = {											\
-		/* will be incremented to 0 on the first reservation */				\
-		.seq = -(u64)_DESCS_COUNT(descbits),						\
-	},											\
-	/* the initial head and tail */								\
-	[_DESCS_COUNT(descbits) - 1] = {							\
-		/* reports the first seq value during the bootstrap phase */			\
-		.seq = 0,									\
-	},											\
-};												\
+static struct prb_desc _##name##_descs[_DESCS_COUNT(descbits)] = {}; \
+static struct printk_info _##name##_infos[_DESCS_COUNT(descbits)] = {};	\
 static struct printk_ringbuffer name = {							\
 	.desc_ring = {										\
 		.count_bits	= descbits,							\

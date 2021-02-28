@@ -878,11 +878,15 @@ static void __init print_unknown_bootoptions(void)
 	memblock_free(unknown_options, len);
 }
 
+void __init printk_early_init(void);
+
 asmlinkage __visible __init __no_sanitize_address __noreturn __no_stack_protector
 void start_kernel(void)
 {
 	char *command_line;
 	char *after_dashes;
+
+	printk_early_init();
 
 	set_task_stack_end_magic(&init_task);
 	smp_setup_processor_id();
