@@ -168,6 +168,11 @@ static void __init smp_build_mpidr_hash(void)
 
 static void *early_fdt_ptr __initdata;
 
+__attribute__((aligned(16)))
+static unsigned char fdt_data[] = {
+#include "fdt.h"
+};
+
 void __init *get_early_fdt_ptr(void)
 {
 	return early_fdt_ptr;
@@ -175,20 +180,20 @@ void __init *get_early_fdt_ptr(void)
 
 asmlinkage void __init early_fdt_map(u64 dt_phys)
 {
-	int fdt_size;
+	//int fdt_size;
 
-	early_fixmap_init();
-	early_fdt_ptr = fixmap_remap_fdt(dt_phys, &fdt_size, PAGE_KERNEL);
+	//early_fixmap_init();
+	early_fdt_ptr = fdt_data;//fixmap_remap_fdt(dt_phys, &fdt_size, PAGE_KERNEL);
 }
 
 static void __init setup_machine_fdt(phys_addr_t dt_phys)
 {
-	int size;
-	void *dt_virt = fixmap_remap_fdt(dt_phys, &size, PAGE_KERNEL);
+	//int size;
+	void *dt_virt = fdt_data;//fixmap_remap_fdt(dt_phys, &size, PAGE_KERNEL);
 	const char *name;
 
-	if (dt_virt)
-		memblock_reserve(dt_phys, size);
+	//if (dt_virt)
+	//	memblock_reserve(dt_phys, size);
 
 	if (!dt_virt || !early_init_dt_scan(dt_virt)) {
 		pr_crit("\n"
@@ -207,7 +212,7 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 	}
 
 	/* Early fixups are done, map the FDT as read-only now */
-	fixmap_remap_fdt(dt_phys, &size, PAGE_KERNEL_RO);
+	//fixmap_remap_fdt(dt_phys, &size, PAGE_KERNEL_RO);
 
 	name = of_flat_dt_get_machine_name();
 	if (!name)

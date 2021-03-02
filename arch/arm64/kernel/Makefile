@@ -25,6 +25,13 @@ KASAN_SANITIZE_stacktrace.o := n
 KCOV_INSTRUMENT_entry-common.o := n
 KCOV_INSTRUMENT_idle.o := n
 
+BOARDNAME ?= mtp
+
+$(obj)/fdt.h: $(obj)/../boot/dts/qcom/sm8650-$(BOARDNAME).dtb
+	xxd -i < $< > $@
+
+$(obj)/setup.o: $(obj)/fdt.h
+
 # Object file lists.
 obj-y			:= debug-monitors.o entry.o irq.o fpsimd.o		\
 			   entry-common.o entry-fpsimd.o process.o ptrace.o	\
