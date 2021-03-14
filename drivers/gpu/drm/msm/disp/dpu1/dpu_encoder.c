@@ -1173,6 +1173,7 @@ static void dpu_encoder_virt_atomic_mode_set(struct drm_encoder *drm_enc,
 
 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
 		struct dpu_encoder_phys *phys = dpu_enc->phys_encs[i];
+		struct dpu_hw_ctl *ctl0 = to_dpu_hw_ctl(hw_ctl[0]);
 
 		if (!dpu_enc->hw_pp[i]) {
 			DPU_ERROR_ENC(dpu_enc,
@@ -1180,14 +1181,18 @@ static void dpu_encoder_virt_atomic_mode_set(struct drm_encoder *drm_enc,
 			return;
 		}
 
-		if (!hw_ctl[i]) {
+		/* Use first (and only) CTL if active CTLs are supported */
+		if (test_bit(DPU_CTL_ACTIVE_CFG, &ctl0->caps->features))
+			phys->hw_ctl = ctl0;
+		else
+			phys->hw_ctl = to_dpu_hw_ctl(hw_ctl[i]);
+		if (!phys->hw_ctl) {
 			DPU_ERROR_ENC(dpu_enc,
 				"no ctl block assigned at idx: %d\n", i);
 			return;
 		}
 
 		phys->hw_pp = dpu_enc->hw_pp[i];
-		phys->hw_ctl = to_dpu_hw_ctl(hw_ctl[i]);
 
 		phys->cached_mode = crtc_state->adjusted_mode;
 		if (phys->ops.atomic_mode_set)
