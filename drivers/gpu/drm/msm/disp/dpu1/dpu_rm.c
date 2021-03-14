@@ -133,6 +133,8 @@ int dpu_rm_init(struct drm_device *dev,
 		rm->ctl_blks[ctl->id - CTL_0] = &hw->base;
 	}
 
+	rm->has_active_ctls = (cat->mdss_ver->core_major_ver >= 5);
+
 	for (i = 0; i < cat->dspp_count; i++) {
 		struct dpu_hw_dspp *hw;
 		const struct dpu_dspp_cfg *dspp = &cat->dspp[i];
@@ -366,10 +368,15 @@ static int _dpu_rm_reserve_ctls(
 	int i = 0, j, num_ctls;
 	bool needs_split_display;
 
-	/* each hw_intf needs its own hw_ctrl to program its control path */
-	num_ctls = top->num_intf;
+	if (rm->has_active_ctls) {
+		num_ctls = 1;
+		needs_split_display = false;
+	} else {
+		/* each hw_intf needs its own hw_ctrl to program its control path */
+		num_ctls = top->num_intf;
 
-	needs_split_display = _dpu_rm_needs_split_display(top);
+		needs_split_display = _dpu_rm_needs_split_display(top);
+	}
 
 	for (j = 0; j < ARRAY_SIZE(rm->ctl_blks); j++) {
 		const struct dpu_hw_ctl *ctl;
@@ -387,7 +394,7 @@ static int _dpu_rm_reserve_ctls(
 
 		DPU_DEBUG("ctl %d caps 0x%lX\n", j + CTL_0, features);
 
-		if (needs_split_display != has_split_display)
+		if (!rm->has_active_ctls && needs_split_display != has_split_display)
 			continue;
 
 		ctl_idx[i] = j;
