@@ -10,6 +10,7 @@
 #include <linux/platform_device.h>
 #include <linux/export.h>
 #include <linux/math.h>
+#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -247,9 +248,18 @@ static int snd_soc_dummy_probe(struct platform_device *pdev)
 	return ret;
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id soc_dummy_ids[] = {
+    { .compatible = "linux,snd-soc-dummy", },
+    { }
+};
+MODULE_DEVICE_TABLE(of, soc_dummy_ids);
+#endif
+
 static struct platform_driver soc_dummy_driver = {
 	.driver = {
 		.name = "snd-soc-dummy",
+		.of_match_table = of_match_ptr(soc_dummy_ids),
 	},
 	.probe = snd_soc_dummy_probe,
 };
