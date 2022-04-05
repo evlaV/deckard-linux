@@ -193,6 +193,9 @@ struct backlight_properties {
 	 */
 	int brightness;
 
+	// for testing
+	int pulse_offset_rows;
+
 	/**
 	 * @max_brightness: The maximum brightness value.
 	 *
