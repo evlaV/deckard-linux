@@ -287,6 +287,8 @@ struct msm_gpu {
 	/* kgsl ctx alloc */
 	u64 id_map[12]; // 768 entries (needs to fit in 32K memstore size)
 	struct spinlock id_lock;
+
+	uint32_t gpu_usage; // 0 to 10000
 };
 
 static inline struct msm_gpu *dev_to_gpu(struct device *dev)
