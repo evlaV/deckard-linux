@@ -195,6 +195,29 @@ static const struct file_operations perf_debugfs_fops = {
 	.release = perf_release,
 };
 
+static int perf_now_show(struct seq_file *m, void *v)
+{
+	struct msm_perf_state *perf = m->private;
+	struct msm_drm_private *priv = perf->dev->dev_private;
+	struct msm_gpu *gpu = priv->gpu;
+
+	seq_printf(m, "%3d.%d\n", gpu->gpu_usage / 100, gpu->gpu_usage % 100);
+
+	return 0;
+}
+
+static int perf_now_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, perf_now_show, inode->i_private);
+}
+
+static const struct file_operations perf_now_debugfs_fops = {
+	.open = perf_now_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 int msm_perf_debugfs_init(struct drm_minor *minor)
 {
 	struct msm_drm_private *priv = minor->dev->dev_private;
@@ -215,6 +238,8 @@ int msm_perf_debugfs_init(struct drm_minor *minor)
 
 	debugfs_create_file("perf", S_IFREG | S_IRUGO, minor->debugfs_root,
 			    perf, &perf_debugfs_fops);
+	debugfs_create_file("perf_now", S_IFREG | S_IRUGO, minor->debugfs_root,
+			    perf, &perf_now_debugfs_fops);
 	return 0;
 }
 
