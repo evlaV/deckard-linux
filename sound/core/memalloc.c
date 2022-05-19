@@ -2,7 +2,7 @@
 /*
  *  Copyright (c) by Jaroslav Kysela <perex@perex.cz>
  *                   Takashi Iwai <tiwai@suse.de>
- * 
+ *
  *  Generic memory allocators
  */
 
@@ -917,10 +917,30 @@ static const struct snd_malloc_ops snd_dma_noncoherent_ops = {
 
 #endif /* CONFIG_HAS_DMA */
 
+
+static void snd_dma_lpm_sync(struct snd_dma_buffer *dmab, enum snd_dma_sync_mode mode)
+{
+	// call dcache_{inval,clean}_poc directly so that it works with the LPM buffer
+	// (phys_to_virt won't work on dmab->addr)
+	unsigned long start = (unsigned long)dmab->area;
+	if (mode == SNDRV_DMA_SYNC_CPU) {
+		if (dmab->dev.dir != DMA_TO_DEVICE)
+			dcache_inval_poc(start, start + dmab->bytes);
+	} else {
+		if (dmab->dev.dir != DMA_FROM_DEVICE)
+			dcache_clean_poc(start, start + dmab->bytes);
+	}
+}
+
+static const struct snd_malloc_ops snd_dma_lpm_ops = {
+	.sync = snd_dma_lpm_sync,
+};
+
 /*
  * Entry points
  */
 static const struct snd_malloc_ops *snd_dma_ops[] = {
+	[SNDRV_DMA_TYPE_UNKNOWN] = &snd_dma_lpm_ops,
 	[SNDRV_DMA_TYPE_CONTINUOUS] = &snd_dma_continuous_ops,
 	[SNDRV_DMA_TYPE_VMALLOC] = &snd_dma_vmalloc_ops,
 #ifdef CONFIG_HAS_DMA
@@ -946,8 +966,8 @@ static const struct snd_malloc_ops *snd_dma_get_ops(struct snd_dma_buffer *dmab)
 	TRACE_BEGIN_CTX();
 	if (WARN_ON_ONCE(!dmab))
 		return NULL;
-	if (WARN_ON_ONCE(dmab->dev.type <= SNDRV_DMA_TYPE_UNKNOWN ||
-			 dmab->dev.type >= ARRAY_SIZE(snd_dma_ops)))
+	if (WARN_ON_ONCE(dmab->dev.type <= SNDRV_DMA_TYPE_UNKNOWN  ||
+		         dmab->dev.type >= ARRAY_SIZE(snd_dma_ops)))
 		return NULL;
 	return snd_dma_ops[dmab->dev.type];
 }
