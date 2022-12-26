@@ -68,8 +68,6 @@ static void a5xx_submit_in_rb(struct msm_gpu *gpu, struct msm_gem_submit *submit
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a5xx_gpu *a5xx_gpu = to_a5xx_gpu(adreno_gpu);
 	struct msm_ringbuffer *ring = submit->ring;
-	struct drm_gem_object *obj;
-	uint32_t *ptr, dwords;
 	unsigned int i;
 
 	for (i = 0; i < submit->nr_cmds; i++) {
@@ -81,31 +79,6 @@ static void a5xx_submit_in_rb(struct msm_gpu *gpu, struct msm_gem_submit *submit
 				break;
 			fallthrough;
 		case MSM_SUBMIT_CMD_BUF:
-			/* copy commands into RB: */
-			obj = submit->bos[submit->cmd[i].idx].obj;
-			dwords = submit->cmd[i].size;
-
-			ptr = msm_gem_get_vaddr(obj);
-
-			/* _get_vaddr() shouldn't fail at this point,
-			 * since we've already mapped it once in
-			 * submit_reloc()
-			 */
-			if (WARN_ON(IS_ERR_OR_NULL(ptr)))
-				return;
-
-			for (i = 0; i < dwords; i++) {
-				/* normally the OUT_PKTn() would wait
-				 * for space for the packet.  But since
-				 * we just OUT_RING() the whole thing,
-				 * need to call adreno_wait_ring()
-				 * ourself:
-				 */
-				adreno_wait_ring(ring, 1);
-				OUT_RING(ring, ptr[i]);
-			}
-
-			msm_gem_put_vaddr(obj);
 
 			break;
 		}
