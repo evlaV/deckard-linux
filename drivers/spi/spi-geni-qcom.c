@@ -645,6 +645,8 @@ static void spi_geni_release_dma_chan(struct spi_geni_master *mas)
 	}
 }
 
+void geni_load_firmware(struct geni_se *se, enum geni_se_protocol_type proto);
+
 static int spi_geni_init(struct spi_geni_master *mas)
 {
 	struct spi_controller *spi = dev_get_drvdata(mas->dev);
@@ -656,6 +658,10 @@ static int spi_geni_init(struct spi_geni_master *mas)
 	pm_runtime_get_sync(mas->dev);
 
 	proto = geni_se_read_proto(se);
+	if (proto == 0xff) {
+		geni_load_firmware(se, GENI_SE_SPI);
+		proto = geni_se_read_proto(se);
+	}
 
 	if (spi->target) {
 		if (proto != GENI_SE_SPI_SLAVE) {
@@ -1076,6 +1082,9 @@ static int spi_geni_probe(struct platform_device *pdev)
 	mas->se.wrapper = dev_get_drvdata(dev->parent);
 	mas->se.base = base;
 	mas->se.clk = clk;
+	mas->se.ibi_base = devm_platform_ioremap_resource(pdev, 1);
+	if (IS_ERR(mas->se.ibi_base))
+		mas->se.ibi_base = NULL;
 
 	ret = devm_pm_opp_set_clkname(&pdev->dev, "se");
 	if (ret)

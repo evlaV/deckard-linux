@@ -765,6 +765,8 @@ err_tx:
 	return ret;
 }
 
+void geni_load_firmware(struct geni_se *se, enum geni_se_protocol_type proto);
+
 static int geni_i2c_probe(struct platform_device *pdev)
 {
 	struct geni_i2c_dev *gi2c;
@@ -780,8 +782,11 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	gi2c->se.dev = dev;
 	gi2c->se.wrapper = dev_get_drvdata(dev->parent);
 	gi2c->se.base = devm_platform_ioremap_resource(pdev, 0);
+	gi2c->se.ibi_base = devm_platform_ioremap_resource(pdev, 1);
 	if (IS_ERR(gi2c->se.base))
 		return PTR_ERR(gi2c->se.base);
+	if (IS_ERR(gi2c->se.ibi_base))
+		gi2c->se.ibi_base = NULL;
 
 	desc = device_get_match_data(&pdev->dev);
 
@@ -862,6 +867,11 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		return ret;
 	}
 	proto = geni_se_read_proto(&gi2c->se);
+	if (proto == 0xff) {
+		geni_load_firmware(&gi2c->se, GENI_SE_I2C);
+		proto = geni_se_read_proto(&gi2c->se);
+	}
+
 	if (proto != GENI_SE_I2C) {
 		dev_err(dev, "Invalid proto %d\n", proto);
 		geni_se_resources_off(&gi2c->se);
