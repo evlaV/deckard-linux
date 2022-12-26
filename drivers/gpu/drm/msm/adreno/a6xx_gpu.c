@@ -2125,7 +2125,7 @@ static int a6xx_set_supported_hw(struct device *dev, const struct adreno_info *i
 	 * -ENOENT means that the platform doesn't support speedbin which is
 	 * fine
 	 */
-	if (ret == -ENOENT) {
+	if (ret == -ENOENT || ret == -EOPNOTSUPP) {
 		return 0;
 	} else if (ret) {
 		dev_err_probe(dev, ret,
