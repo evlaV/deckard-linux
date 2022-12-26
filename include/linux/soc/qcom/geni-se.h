@@ -55,6 +55,7 @@ struct geni_icc_path {
 /**
  * struct geni_se - GENI Serial Engine
  * @base:		Base Address of the Serial Engine's register block
+ * @ibi_base		Base Address of the IBI register block (if present)
  * @dev:		Pointer to the Serial Engine device
  * @wrapper:		Pointer to the parent QUP Wrapper core
  * @clk:		Handle to the core serial engine clock
@@ -64,6 +65,7 @@ struct geni_icc_path {
  */
 struct geni_se {
 	void __iomem *base;
+	void __iomem *ibi_base;
 	struct device *dev;
 	struct geni_wrapper *wrapper;
 	struct clk *clk;
