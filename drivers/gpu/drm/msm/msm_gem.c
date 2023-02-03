@@ -480,6 +480,7 @@ static struct msm_gem_vma *get_vma_locked(struct drm_gem_object *obj,
 		struct msm_gem_address_space *aspace,
 		u64 range_start, u64 range_end)
 {
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct msm_gem_vma *vma;
 
 	msm_gem_assert_locked(obj);
@@ -493,7 +494,7 @@ static struct msm_gem_vma *get_vma_locked(struct drm_gem_object *obj,
 		if (IS_ERR(vma))
 			return vma;
 
-		ret = msm_gem_vma_init(vma, obj->size,
+		ret = msm_gem_vma_init(vma, obj->size, (msm_obj->flags >> 20) & 0x3f,
 			range_start, range_end);
 		if (ret) {
 			del_vma(vma);
@@ -625,6 +626,9 @@ int msm_gem_get_iova(struct drm_gem_object *obj,
 {
 	struct msm_gem_vma *vma;
 	int ret = 0;
+
+	if (msm_gem_is_vbo(obj))
+		return msm_gem_vbo_get_iova(obj, aspace, iova);
 
 	msm_gem_lock(obj);
 	vma = get_vma_locked(obj, aspace, 0, U64_MAX);
