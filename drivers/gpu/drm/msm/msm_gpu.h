@@ -288,6 +288,10 @@ struct msm_gpu {
 	bool allow_relocs;
 
 	struct thermal_cooling_device *cooling;
+
+	/* kgsl ctx alloc */
+	u64 id_map[12]; // 768 entries (needs to fit in 32K memstore size)
+	struct spinlock id_lock;
 };
 
 static inline struct msm_gpu *dev_to_gpu(struct device *dev)
@@ -534,6 +538,13 @@ static inline int msm_gpu_convert_priority(struct msm_gpu *gpu, int prio,
 	return 0;
 }
 
+struct kgsl_fence {
+	struct dma_fence base;
+	spinlock_t lock;
+	struct list_head node;
+	uint32_t timestamp;
+};
+
 /**
  * struct msm_gpu_submitqueues - Userspace created context.
  *
@@ -575,6 +586,13 @@ struct msm_gpu_submitqueue {
 	atomic_t in_flight_prealloc;
 	struct kref ref;
 	struct drm_sched_entity *entity;
+
+	uint32_t timestamp;
+	uint32_t timestamp_retired;
+	struct spinlock fence_lock;
+	struct list_head fences;
+	wait_queue_head_t waitqueue;
+	struct msm_gpu *gpu; // XXX
 
 	/** @_vm_bind_entity: used for @entity pointer for VM_BIND queues */
 	struct drm_sched_entity _vm_bind_entity[0];
@@ -688,6 +706,10 @@ void msm_submitqueue_destroy(struct kref *kref);
 
 int msm_context_set_sysprof(struct msm_context *ctx, struct msm_gpu *gpu, int sysprof);
 void __msm_context_destroy(struct kref *kref);
+
+void msm_submitqueue_retire_timestamp(struct msm_gpu_submitqueue *queue, u32 timestamp);
+
+void __msm_file_private_destroy(struct kref *kref);
 
 static inline void msm_context_put(struct msm_context *ctx)
 {
