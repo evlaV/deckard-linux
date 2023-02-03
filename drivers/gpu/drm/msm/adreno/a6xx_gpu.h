@@ -97,6 +97,10 @@ struct a6xx_gpu {
 	uint64_t shadow_iova;
 	uint32_t *shadow;
 
+	struct drm_gem_object *memstore_bo;
+	uint64_t memstore_iova;
+	uint32_t *memstore;
+
 	struct drm_gem_object *pwrup_reglist_bo;
 #define PWRUP_REGLIST_SIZE (2 * PAGE_SIZE)
 	void *pwrup_reglist_ptr;
@@ -346,4 +350,8 @@ void a8xx_preempt_irq(struct msm_gpu *gpu);
 bool a8xx_progress(struct msm_gpu *gpu, struct msm_ringbuffer *ring);
 void a8xx_perfcntr_flush(struct msm_gpu *gpu);
 void a8xx_recover(struct msm_gpu *gpu);
+
+#define KGSL_MEMSTORE_SIZE SZ_32K
+#define KGLS_MEMSTORE_CTX_SIZE (40*768) // size reserved for per-context memstore
+
 #endif /* __A6XX_GPU_H__ */
