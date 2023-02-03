@@ -89,6 +89,10 @@ struct a6xx_gpu {
 	uint64_t shadow_iova;
 	uint32_t *shadow;
 
+	struct drm_gem_object *memstore_bo;
+	uint64_t memstore_iova;
+	uint32_t *memstore;
+
 	struct drm_gem_object *pwrup_reglist_bo;
 	void *pwrup_reglist_ptr;
 	uint64_t pwrup_reglist_iova;
@@ -298,5 +302,8 @@ int a6xx_gpu_state_put(struct msm_gpu_state *state);
 void a6xx_bus_clear_pending_transactions(struct adreno_gpu *adreno_gpu, bool gx_off);
 void a6xx_gpu_sw_reset(struct msm_gpu *gpu, bool assert);
 int a6xx_fenced_write(struct a6xx_gpu *gpu, u32 offset, u64 value, u32 mask, bool is_64b);
+
+#define KGSL_MEMSTORE_SIZE SZ_32K
+#define KGLS_MEMSTORE_CTX_SIZE (40*768) // size reserved for per-context memstore
 
 #endif /* __A6XX_GPU_H__ */
