@@ -743,6 +743,9 @@ static int rad_unprepare(struct drm_panel *panel)
 	if (ret < 0)
 		DRM_DEV_ERROR(ctx->dev, "power_off failed ret = %d\n", ret);
 
+	// clear out panel manufacturing info
+	memset(ctx->panel_mfg_info, 0, ARRAY_SIZE(ctx->panel_mfg_info));
+
 	ctx->prepared = false;
 	return ret;
 }
