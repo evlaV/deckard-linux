@@ -27,10 +27,10 @@ enum {
 };
 
 static struct clk_branch tcsr_pcie_0_clkref_en = {
-	.halt_reg = 0x15100,
+	.halt_reg = 0x100,
 	.halt_check = BRANCH_HALT_SKIP,
 	.clkr = {
-		.enable_reg = 0x15100,
+		.enable_reg = 0x100,
 		.enable_mask = BIT(0),
 		.hw.init = &(struct clk_init_data){
 			.name = "tcsr_pcie_0_clkref_en",
@@ -44,10 +44,10 @@ static struct clk_branch tcsr_pcie_0_clkref_en = {
 };
 
 static struct clk_branch tcsr_pcie_1_clkref_en = {
-	.halt_reg = 0x15114,
+	.halt_reg = 0x114,
 	.halt_check = BRANCH_HALT_SKIP,
 	.clkr = {
-		.enable_reg = 0x15114,
+		.enable_reg = 0x114,
 		.enable_mask = BIT(0),
 		.hw.init = &(struct clk_init_data){
 			.name = "tcsr_pcie_1_clkref_en",
@@ -61,10 +61,10 @@ static struct clk_branch tcsr_pcie_1_clkref_en = {
 };
 
 static struct clk_branch tcsr_ufs_clkref_en = {
-	.halt_reg = 0x15110,
+	.halt_reg = 0x110,
 	.halt_check = BRANCH_HALT_SKIP,
 	.clkr = {
-		.enable_reg = 0x15110,
+		.enable_reg = 0x110,
 		.enable_mask = BIT(0),
 		.hw.init = &(struct clk_init_data){
 			.name = "tcsr_ufs_clkref_en",
@@ -78,10 +78,10 @@ static struct clk_branch tcsr_ufs_clkref_en = {
 };
 
 static struct clk_branch tcsr_ufs_pad_clkref_en = {
-	.halt_reg = 0x15104,
+	.halt_reg = 0x104,
 	.halt_check = BRANCH_HALT_SKIP,
 	.clkr = {
-		.enable_reg = 0x15104,
+		.enable_reg = 0x104,
 		.enable_mask = BIT(0),
 		.hw.init = &(struct clk_init_data){
 			.name = "tcsr_ufs_pad_clkref_en",
@@ -95,10 +95,10 @@ static struct clk_branch tcsr_ufs_pad_clkref_en = {
 };
 
 static struct clk_branch tcsr_usb2_clkref_en = {
-	.halt_reg = 0x15118,
+	.halt_reg = 0x118,
 	.halt_check = BRANCH_HALT_SKIP,
 	.clkr = {
-		.enable_reg = 0x15118,
+		.enable_reg = 0x118,
 		.enable_mask = BIT(0),
 		.hw.init = &(struct clk_init_data){
 			.name = "tcsr_usb2_clkref_en",
@@ -112,10 +112,10 @@ static struct clk_branch tcsr_usb2_clkref_en = {
 };
 
 static struct clk_branch tcsr_usb3_clkref_en = {
-	.halt_reg = 0x15108,
+	.halt_reg = 0x108,
 	.halt_check = BRANCH_HALT_SKIP,
 	.clkr = {
-		.enable_reg = 0x15108,
+		.enable_reg = 0x108,
 		.enable_mask = BIT(0),
 		.hw.init = &(struct clk_init_data){
 			.name = "tcsr_usb3_clkref_en",
@@ -141,7 +141,7 @@ static const struct regmap_config tcsr_cc_sm8550_regmap_config = {
 	.reg_bits = 32,
 	.reg_stride = 4,
 	.val_bits = 32,
-	.max_register = 0x2f000,
+	.max_register = 0x1000,
 	.fast_io = true,
 };
 
@@ -152,7 +152,7 @@ static const struct qcom_cc_desc tcsr_cc_sm8550_desc = {
 };
 
 static const struct of_device_id tcsr_cc_sm8550_match_table[] = {
-	{ .compatible = "qcom,sm8550-tcsr" },
+	{ .compatible = "qcom,sm8650-tcsr" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, tcsr_cc_sm8550_match_table);
