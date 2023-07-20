@@ -23,7 +23,7 @@
 
 #define PDC_MAX_GPIO_IRQS	256
 
-#define IRQ_ENABLE_BANK		0x10
+// #define IRQ_ENABLE_BANK		0x10
 #define IRQ_i_CFG		0x110
 
 struct pdc_pin_region {
@@ -34,7 +34,6 @@ struct pdc_pin_region {
 
 #define pin_to_hwirq(r, p)	((r)->parent_base + (p) - (r)->pin_base)
 
-static DEFINE_RAW_SPINLOCK(pdc_lock);
 static void __iomem *pdc_base;
 static struct pdc_pin_region *pdc_region;
 static int pdc_region_cnt;
@@ -51,19 +50,14 @@ static u32 pdc_reg_read(int reg, u32 i)
 
 static void pdc_enable_intr(struct irq_data *d, bool on)
 {
-	int pin_out = d->hwirq;
-	unsigned long enable;
-	unsigned long flags;
-	u32 index, mask;
+	unsigned long reg;
 
-	index = pin_out / 32;
-	mask = pin_out % 32;
-
-	raw_spin_lock_irqsave(&pdc_lock, flags);
-	enable = pdc_reg_read(IRQ_ENABLE_BANK, index);
-	__assign_bit(mask, &enable, on);
-	pdc_reg_write(IRQ_ENABLE_BANK, index, enable);
-	raw_spin_unlock_irqrestore(&pdc_lock, flags);
+	reg = pdc_reg_read(IRQ_i_CFG, d->hwirq);
+	if (on)
+		reg |= BIT(3);
+	else
+		reg &= ~BIT(3);
+	pdc_reg_write(IRQ_i_CFG, d->hwirq, reg);
 }
 
 static void qcom_pdc_gic_disable(struct irq_data *d)
@@ -143,6 +137,7 @@ static int qcom_pdc_gic_set_type(struct irq_data *d, unsigned int type)
 	}
 
 	old_pdc_type = pdc_reg_read(IRQ_i_CFG, d->hwirq);
+	pdc_type |= (old_pdc_type & BIT(3)); // keep enable bit
 	pdc_reg_write(IRQ_i_CFG, d->hwirq, pdc_type);
 
 	ret = irq_chip_set_type_parent(d, type);
@@ -247,7 +242,7 @@ static const struct irq_domain_ops qcom_pdc_ops = {
 static int pdc_setup_pin_mapping(struct device_node *np)
 {
 	int ret, n, i;
-	u32 irq_index, reg_index, val;
+	u32 reg_index, val;
 
 	n = of_property_count_elems_of_size(np, "qcom,pdc-ranges", sizeof(u32));
 	if (n <= 0 || n % 3)
@@ -278,11 +273,10 @@ static int pdc_setup_pin_mapping(struct device_node *np)
 			return ret;
 
 		for (i = 0; i < pdc_region[n].cnt; i++) {
-			reg_index = (i + pdc_region[n].pin_base) >> 5;
-			irq_index = (i + pdc_region[n].pin_base) & 0x1f;
-			val = pdc_reg_read(IRQ_ENABLE_BANK, reg_index);
-			val &= ~BIT(irq_index);
-			pdc_reg_write(IRQ_ENABLE_BANK, reg_index, val);
+			reg_index = pdc_region[n].pin_base + i;
+			val = pdc_reg_read(IRQ_i_CFG, reg_index);
+			val &= ~BIT(3); // disable interrupt
+			pdc_reg_write(IRQ_i_CFG, reg_index, val);
 		}
 	}
 
