@@ -114,7 +114,7 @@ struct msm_drm_private {
 	/* DSI is shared by mdp4 and mdp5 */
 	struct msm_dsi *dsi[MSM_DSI_CONTROLLER_COUNT];
 
-	struct msm_dp *dp[MSM_DP_CONTROLLER_COUNT];
+	struct msm_dp *dp;//[MSM_DP_CONTROLLER_COUNT];
 
 	/* when we have more than one 'msm_gpu' these need to be an array: */
 	struct msm_gpu *gpu;
@@ -316,7 +316,14 @@ static inline struct drm_dsc_config *msm_dsi_get_dsc_config(struct msm_dsi *msm_
 int __init msm_dp_register(void);
 void __exit msm_dp_unregister(void);
 int msm_dp_modeset_init(struct msm_dp *dp_display, struct drm_device *dev,
-			 struct drm_encoder *encoder, bool yuv_supported);
+			 struct drm_encoder *encoder);
+int msm_dp_display_enable(struct msm_dp *dp, struct drm_encoder *encoder);
+int msm_dp_display_disable(struct msm_dp *dp, struct drm_encoder *encoder);
+int msm_dp_display_pre_disable(struct msm_dp *dp, struct drm_encoder *encoder);
+void msm_dp_display_mode_set(struct msm_dp *dp, struct drm_encoder *encoder,
+				const struct drm_display_mode *mode,
+				const struct drm_display_mode *adjusted_mode);
+
 void msm_dp_snapshot(struct msm_disp_state *disp_state, struct msm_dp *dp_display);
 bool msm_dp_is_yuv_420_enabled(const struct msm_dp *dp_display,
 			       const struct drm_display_mode *mode);

@@ -477,6 +477,7 @@ static struct rpmhpd *sm8550_rpmhpds[] = {
 	[RPMHPD_MXC] = &mxc,
 	[RPMHPD_MXC_AO] = &mxc_ao,
 	[RPMHPD_NSP] = &nsp,
+	// + nsp2.lvl for 8650
 };
 
 static const struct rpmhpd_desc sm8550_desc = {
