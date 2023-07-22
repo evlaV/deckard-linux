@@ -618,11 +618,11 @@ static struct clk_hw *sm8550_rpmh_clocks[] = {
 	[RPMH_RF_CLK1_A]	= &clk_rpmh_clk1_a1_ao.hw,
 	[RPMH_RF_CLK2]		= &clk_rpmh_clk2_a1.hw,
 	[RPMH_RF_CLK2_A]	= &clk_rpmh_clk2_a1_ao.hw,
-	[RPMH_RF_CLK3]		= &clk_rpmh_clk3_a1.hw,
-	[RPMH_RF_CLK3_A]	= &clk_rpmh_clk3_a1_ao.hw,
-	[RPMH_RF_CLK4]		= &clk_rpmh_clk4_a1.hw,
-	[RPMH_RF_CLK4_A]	= &clk_rpmh_clk4_a1_ao.hw,
-	[RPMH_IPA_CLK]		= &clk_rpmh_ipa.hw,
+	//[RPMH_RF_CLK3]		= &clk_rpmh_clk3_a1.hw,
+	//[RPMH_RF_CLK3_A]	= &clk_rpmh_clk3_a1_ao.hw,
+	//[RPMH_RF_CLK4]		= &clk_rpmh_clk4_a1.hw,
+	//[RPMH_RF_CLK4_A]	= &clk_rpmh_clk4_a1_ao.hw,
+	//[RPMH_IPA_CLK]		= &clk_rpmh_ipa.hw,
 };
 
 static const struct clk_rpmh_desc clk_rpmh_sm8550 = {
