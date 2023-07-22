@@ -873,6 +873,7 @@ struct msm_gpu *a7xx_gpu_init(struct drm_device *dev)
 	struct platform_device *pdev = priv->gpu_pdev;
 	struct a7xx_gpu *a7xx_gpu;
 	struct adreno_gpu *adreno_gpu;
+	struct icc_path *icc_path;
 	int ret;
 
 	a7xx_gpu = kzalloc(sizeof(*a7xx_gpu), GFP_KERNEL);
@@ -888,6 +889,14 @@ struct msm_gpu *a7xx_gpu_init(struct drm_device *dev)
 		a7xx_destroy(&(a7xx_gpu->base.base));
 		return ERR_PTR(ret);
 	}
+
+	icc_path = devm_of_icc_get(&pdev->dev, "gfx-mem");
+	ret = IS_ERR(icc_path);
+	if (ret)
+		return ERR_PTR(ret);
+
+	// TODO: check if this gives the fastest rate
+	icc_set_bw(icc_path, MBps_to_icc(40000), MBps_to_icc(40000));
 
 	return &adreno_gpu->base;
 }

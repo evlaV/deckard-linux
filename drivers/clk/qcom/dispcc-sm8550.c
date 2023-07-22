@@ -1615,7 +1615,7 @@ static struct gdsc mdss_gdsc = {
 		.name = "mdss_gdsc",
 	},
 	.pwrsts = PWRSTS_OFF_ON,
-	.flags = HW_CTRL | RETAIN_FF_ENABLE,
+	.flags = ALWAYS_ON,
 };
 
 static struct gdsc mdss_int2_gdsc = {
@@ -1751,21 +1751,13 @@ MODULE_DEVICE_TABLE(of, disp_cc_sm8550_match_table);
 static int disp_cc_sm8550_probe(struct platform_device *pdev)
 {
 	struct regmap *regmap;
-	int ret;
-
-	ret = devm_pm_runtime_enable(&pdev->dev);
-	if (ret)
-		return ret;
-
-	ret = pm_runtime_resume_and_get(&pdev->dev);
-	if (ret)
-		return ret;
+	static int x;
+	if (x++ < 4)
+		return -EPROBE_DEFER;
 
 	regmap = qcom_cc_map(pdev, &disp_cc_sm8550_desc);
-	if (IS_ERR(regmap)) {
-		ret = PTR_ERR(regmap);
-		goto err_put_rpm;
-	}
+	if (IS_ERR(regmap))
+		return PTR_ERR(regmap);
 
 	clk_lucid_evo_pll_configure(&disp_cc_pll0, regmap, &disp_cc_pll0_config);
 	clk_lucid_evo_pll_configure(&disp_cc_pll1, regmap, &disp_cc_pll1_config);
@@ -1779,18 +1771,7 @@ static int disp_cc_sm8550_probe(struct platform_device *pdev)
 	 */
 	regmap_update_bits(regmap, 0xe054, BIT(0), BIT(0));
 
-	ret = qcom_cc_really_probe(pdev, &disp_cc_sm8550_desc, regmap);
-	if (ret)
-		goto err_put_rpm;
-
-	pm_runtime_put(&pdev->dev);
-
-	return 0;
-
-err_put_rpm:
-	pm_runtime_put_sync(&pdev->dev);
-
-	return ret;
+	return qcom_cc_really_probe(pdev, &disp_cc_sm8550_desc, regmap);
 }
 
 static struct platform_driver disp_cc_sm8550_driver = {
