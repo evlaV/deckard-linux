@@ -454,8 +454,8 @@ static struct arm_smmu_device *qcom_smmu_create(struct arm_smmu_device *smmu,
 		return smmu;
 
 	/* Check to make sure qcom_scm has finished probing */
-	if (!qcom_scm_is_available())
-		return ERR_PTR(-EPROBE_DEFER);
+	//if (!qcom_scm_is_available())
+	//	return ERR_PTR(-EPROBE_DEFER);
 
 	qsmmu = devm_krealloc(smmu->dev, smmu, sizeof(*qsmmu), GFP_KERNEL);
 	if (!qsmmu)
