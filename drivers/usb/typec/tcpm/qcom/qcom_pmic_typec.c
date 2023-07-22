@@ -113,6 +113,48 @@ static int qcom_pmic_typec_start_toggling(struct tcpc_dev *tcpc,
 						   port_type, cc);
 }
 
+struct pmic_typec_port {
+	struct device			*dev;
+	struct tcpm_port		*tcpm_port;
+	struct regmap			*regmap;
+};
+
+static int qcom_pmic_typec_core_set_current_limit(struct tcpc_dev *tcpc,
+						 u32 max_ma, u32 mv)
+{
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+
+	dev_warn(tcpm->dev, "set_current_limit set: max_ma %d mv %d\n", max_ma, mv);
+
+#if 0
+#define SCPQ_P_USB_BASE 					0x2900
+
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_ADDR                                                                        (SCPQ_P_USB_BASE            + 0x00000050)
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_RMSK                                                                               0x7
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_USBIN_MODE_CHG_BMSK                                                                0x4
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_USBIN_MODE_CHG_SHFT                                                                0x2
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_USB51_MODE_BMSK                                                                    0x2
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_USB51_MODE_SHFT                                                                    0x1
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_CFG_USB3P0_SEL_BMSK                                                                0x1
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_CFG_USB3P0_SEL_SHFT                                                                0x0
+
+	#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ADDR                                                                       (SCPQ_P_USB_BASE            + 0x00000051)
+#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_RMSK                                                                             0x11
+#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ICL_OVERRIDE_AFTER_APSD_BMSK                                                     0x10
+#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ICL_OVERRIDE_AFTER_APSD_SHFT                                                      0x4
+#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ICL_OVERRIDE_BMSK                                                                 0x1
+#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ICL_OVERRIDE_SHFT                                                                 0x0
+
+#define PMIO_SCPQ_P_USB_USB_ICL_CFG_ADDR                                                                            (SCPQ_P_USB_BASE            + 0x00000052)
+	// 0 current limit
+	regmap_write(tcpm->pmic_typec_port->regmap, PMIO_SCPQ_P_USB_USB_ICL_CFG_ADDR, 0);
+	regmap_write(tcpm->pmic_typec_port->regmap, PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_ADDR, 1);
+	regmap_write(tcpm->pmic_typec_port->regmap, PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ADDR, 0x10);
+#endif
+
+	return 0;
+}
+
 static int qcom_pmic_typec_set_roles(struct tcpc_dev *tcpc, bool attached,
 				     enum typec_role power_role,
 				     enum typec_data_role data_role)
@@ -172,6 +214,7 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	tcpm->tcpc.get_cc = qcom_pmic_typec_get_cc;
 	tcpm->tcpc.set_polarity = qcom_pmic_typec_set_polarity;
 	tcpm->tcpc.set_vconn = qcom_pmic_typec_set_vconn;
+	tcpm->tcpc.set_current_limit = qcom_pmic_typec_core_set_current_limit;
 	tcpm->tcpc.start_toggling = qcom_pmic_typec_start_toggling;
 	tcpm->tcpc.set_pd_rx = qcom_pmic_typec_set_pd_rx;
 	tcpm->tcpc.set_roles = qcom_pmic_typec_set_roles;

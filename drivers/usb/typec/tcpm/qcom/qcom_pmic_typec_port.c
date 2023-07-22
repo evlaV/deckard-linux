@@ -149,25 +149,60 @@ int qcom_pmic_typec_port_get_vbus(struct pmic_typec_port *pmic_typec_port)
 	return !!(misc & TYPEC_VBUS_DETECT);
 }
 
+#define SCPQ_P_DCDC_BASE 0x2700
+
+#define PMIO_SCPQ_P_DCDC_BST_EN_ADDR                                                                       (SCPQ_P_DCDC_BASE            + 0x00000050)
+#define PMIO_SCPQ_P_DCDC_BST_EN_RMSK                                                                             0x1b
+#define PMIO_SCPQ_P_DCDC_BST_EN_FAST_ROLE_SWAP_CMD_BMSK                                                          0x10
+#define PMIO_SCPQ_P_DCDC_BST_EN_FAST_ROLE_SWAP_CMD_SHFT                                                           0x4
+#define PMIO_SCPQ_P_DCDC_BST_EN_FAST_ROLE_SWAP_SRC_BMSK                                                           0x8
+#define PMIO_SCPQ_P_DCDC_BST_EN_FAST_ROLE_SWAP_SRC_SHFT                                                           0x3
+#define PMIO_SCPQ_P_DCDC_BST_EN_BST_EN_WLS_BMSK                                                                   0x2
+#define PMIO_SCPQ_P_DCDC_BST_EN_BST_EN_WLS_SHFT                                                                   0x1
+#define PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_BMSK                                                                       0x1
+#define PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_SHFT                                                                       0x0
+
+#define PMIO_SCPQ_P_DCDC_BST_CFG_ADDR                                                                      (SCPQ_P_DCDC_BASE            + 0x00000056)
+#define PMIO_SCPQ_P_DCDC_BST_CFG_RMSK                                                                            0x73
+#define PMIO_SCPQ_P_DCDC_BST_CFG_FAST_ROLE_SWAP_START_OPTION_BMSK                                                0x40
+#define PMIO_SCPQ_P_DCDC_BST_CFG_FAST_ROLE_SWAP_START_OPTION_SHFT                                                 0x6
+#define PMIO_SCPQ_P_DCDC_BST_CFG_OTG_HICCUP_CNTR_RST_TIMER_SEL_BMSK                                              0x20
+#define PMIO_SCPQ_P_DCDC_BST_CFG_OTG_HICCUP_CNTR_RST_TIMER_SEL_SHFT                                               0x5
+#define PMIO_SCPQ_P_DCDC_BST_CFG_EN_SOC_BASED_OTG_UVLO_BMSK                                                      0x10
+#define PMIO_SCPQ_P_DCDC_BST_CFG_EN_SOC_BASED_OTG_UVLO_SHFT                                                       0x4
+#define PMIO_SCPQ_P_DCDC_BST_CFG_ENABLE_OTG_IN_DEBUG_MODE_BMSK                                                    0x2
+#define PMIO_SCPQ_P_DCDC_BST_CFG_ENABLE_OTG_IN_DEBUG_MODE_SHFT                                                    0x1
+#define PMIO_SCPQ_P_DCDC_BST_CFG_OTG_EN_SRC_CFG_BMSK                                                              0x1
+#define PMIO_SCPQ_P_DCDC_BST_CFG_OTG_EN_SRC_CFG_SHFT                                                              0x0
+
+#define PMIO_SCPQ_P_DCDC_ENG_CFG7_ADDR                                                                         (SCPQ_P_DCDC_BASE            + 0x000000c6)
+#define ENG_OTG_FPF_RSNS_DIV4_VARB_BMSK                                                                            0x1
+
+#define PMIO_SCPQ_P_DCDC_BST_STS_ADDR                                                                      (SCPQ_P_DCDC_BASE            + 0x0000000d)
+#define BOOST_SOFTSTART_DONE_BMSK 0x8
+
 int qcom_pmic_typec_port_set_vbus(struct pmic_typec_port *pmic_typec_port, bool on)
 {
 	u32 sm_stat;
 	u32 val;
 	int ret;
 
+	//ret = regmap_read(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_STS_ADDR, &sm_stat);
+
+	printk("qcom_pmic_typec_port_set_vbus: %d\n", on);//, sm_stat);
+
 	if (on) {
 		ret = regulator_enable(pmic_typec_port->vdd_vbus);
 		if (ret)
 			return ret;
-
-		val = TYPEC_SM_VBUS_VSAFE5V;
 	} else {
 		ret = regulator_disable(pmic_typec_port->vdd_vbus);
 		if (ret)
 			return ret;
-
-		val = TYPEC_SM_VBUS_VSAFE0V;
 	}
+
+	//regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_EN_ADDR, PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_BMSK, on);
+	val = on ? TYPEC_SM_VBUS_VSAFE5V : TYPEC_SM_VBUS_VSAFE0V;
 
 	/* Poll waiting for transition to required vSafe5V or vSafe0V */
 	ret = regmap_read_poll_timeout(pmic_typec_port->regmap,
@@ -248,7 +283,6 @@ int qcom_pmic_typec_port_get_cc(struct pmic_typec_port *pmic_typec_port,
 			val = TYPEC_CC_RP_DEF;
 			break;
 		}
-		val = TYPEC_CC_RP_DEF;
 	}
 
 	if (misc & CC_ORIENTATION)
@@ -530,6 +564,92 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 	spin_lock_init(&pmic_typec_port->lock);
 	INIT_DELAYED_WORK(&pmic_typec_port->cc_debounce_dwork,
 			  qcom_pmic_typec_port_cc_debounce);
+
+#if 0
+	{
+		u32 val = 0xff;
+		regmap_read(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_EN_ADDR, &val);
+		printk("SCPQ_P_DCDC_BST_EN=%x\n", val);
+		regmap_read(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_CFG_ADDR, &val);
+		printk("SCPQ_P_DCDC_BST_CFG=%x\n", val);
+		regmap_read(pmic_typec_port->regmap, 0x2954, &val);
+		printk("SCPQ_P_USB_USB_SUSPEND=%x\n", val);
+		regmap_read(pmic_typec_port->regmap, 0x2a82, &val);
+		printk("SCPQ_P_WLS_WLS_EN_CFG=%x\n", val);
+		regmap_read(pmic_typec_port->regmap, 0x2a10, &val);
+		printk("SCPQ_P_WLS_INT_RT_STS=%x\n", val);
+		regmap_read(pmic_typec_port->regmap, 0x2a54, &val);
+		printk("SCPQ_P_WLS_WLS_SUSPEND=%x\n", val);
+		regmap_read(pmic_typec_port->regmap, 0x27c5, &val);
+		printk("SCPQ_P_DCDC_ENG_SDCDC_CFG6=%x\n", val);
+
+#if 0
+		regmap_write(pmic_typec_port->regmap, 0x2a82, 6);
+		regmap_update_bits(pmic_typec_port->regmap, 0x2a54, 1, 1);
+
+		msleep(500);
+
+		regmap_read(pmic_typec_port->regmap, 0x2a10, &val);
+		printk("SCPQ_P_WLS_INT_RT_STS=%x\n", val);
+#endif
+	}
+#endif
+
+	regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_EN_ADDR, PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_BMSK, 0x0);
+	regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_CFG_ADDR, PMIO_SCPQ_P_DCDC_BST_CFG_OTG_EN_SRC_CFG_BMSK, 0);
+
+#if 0
+#define PMIO_SCPQ_P_DCDC_BST_VREG_SEL_ADDR                                                                 (SCPQ_P_DCDC_BASE            + 0x00000052)
+#define PMIO_SCPQ_P_DCDC_BST_VREG_SEL_RMSK                                                                        0x7
+#define PMIO_SCPQ_P_DCDC_BST_VREG_SEL_VBOOST_CFG_BMSK                                                             0x7
+#define PMIO_SCPQ_PK_DCDC_BST_VREG_SEL_VBOOST_CFG_BMSK                                                            0x7F
+#define PMIO_SCPQ_P_DCDC_BST_VREG_SEL_VBOOST_CFG_SHFT                                                             0x0
+
+#define PMIO_SCPQ_PK_DCDC_BST_ILIM_SEL_ADDR                                                                 (SCPQ_P_DCDC_BASE            + 0x00000053)
+#define PMIO_SCPQ_PK_DCDC_BST_ILIM_SEL_RMSK                                                                       0x7F
+#define PMIO_SCPQ_PK_DCDC_BST_ILIM_SEL_BOOST_IPEAK_LIMIT_THR_BMSK                                                 0x70
+#define PMIO_SCPQ_PK_DCDC_BST_ILIM_SEL_BOOST_IPEAK_LIMIT_THR_SHFT                                                 0x4
+#define PMIO_SCPQ_PK_DCDC_BST_ILIM_SEL_BOOST_IOUT_OCP_THD_BMSK                                                    0x7
+#define PMIO_SCPQ_PK_DCDC_BST_ILIM_SEL_BOOST_IOUT_OCP_THD_SHFT                                                    0x0
+	{
+	// 4800 + 100*step (5000+50*step for 1.0)
+	u32 data = 3;
+
+	regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_VREG_SEL_ADDR, PMIO_SCPQ_PK_DCDC_BST_VREG_SEL_VBOOST_CFG_BMSK, data);
+	}
+
+	{
+	u32 current_ma = 3000; // MAX_PD_SRC_OUTPUT_CURRENT
+	u32 data;
+
+#define BST_ILIM_SEL 0x6 //9A
+#define BST_IOUT_OCP_THD_MAX 0x7
+
+	current_ma -= 1000; // base 1000 ma for 2.0 (500 for 1.0)
+	/* 0 to 3 used for upto 1000mA from base value with 250mA step */
+	if (current_ma < 1000)
+	{
+		data = current_ma / 250;
+	}
+	/* 4 to 7 used for upto 2000mA from index3 value with 500mA step */
+	else
+	{
+		data = 4 + ((current_ma - 1000) / 500);
+	}
+
+	// PMICPR-12010 - Required headroom as per PBCS
+	if(data < BST_IOUT_OCP_THD_MAX)
+	{
+		data++;
+	}
+
+	 /* Kohala1.0 and 2.0 require BOOST_IPEAK_LIMIT_THR = 9A */
+	data |= BST_ILIM_SEL << PMIO_SCPQ_PK_DCDC_BST_ILIM_SEL_BOOST_IPEAK_LIMIT_THR_SHFT;
+
+	regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_PK_DCDC_BST_ILIM_SEL_ADDR, PMIO_SCPQ_PK_DCDC_BST_ILIM_SEL_BOOST_IOUT_OCP_THD_BMSK | PMIO_SCPQ_PK_DCDC_BST_ILIM_SEL_BOOST_IPEAK_LIMIT_THR_BMSK, data);
+	}
+#endif
+
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)

@@ -161,6 +161,10 @@ qcom_pmic_typec_pdphy_pd_transmit_payload(struct pmic_typec_pdphy *pmic_typec_pd
 	unsigned long flags;
 	int ret;
 
+	hdr_len = sizeof(msg->header);
+	txbuf_len = pd_header_cnt_le(msg->header) * 4;
+	txsize_len = hdr_len + txbuf_len - 1;
+
 	spin_lock_irqsave(&pmic_typec_pdphy->lock, flags);
 
 	ret = regmap_read(pmic_typec_pdphy->regmap,
@@ -179,10 +183,6 @@ qcom_pmic_typec_pdphy_pd_transmit_payload(struct pmic_typec_pdphy *pmic_typec_pd
 	ret = qcom_pmic_typec_pdphy_clear_tx_control_reg(pmic_typec_pdphy);
 	if (ret)
 		goto done;
-
-	hdr_len = sizeof(msg->header);
-	txbuf_len = pd_header_cnt_le(msg->header) * 4;
-	txsize_len = hdr_len + txbuf_len - 1;
 
 	/* Write message header sizeof(u16) to USB_PDPHY_TX_BUFFER_HDR_REG */
 	ret = regmap_bulk_write(pmic_typec_pdphy->regmap,

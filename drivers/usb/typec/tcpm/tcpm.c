@@ -1410,14 +1410,14 @@ static int tcpm_ams_start(struct tcpm_port *port, enum tcpm_ams ams)
 			break;
 		}
 	} else {
-		if (port->negotiated_rev >= PD_REV30 &&
+		/*if (port->negotiated_rev >= PD_REV30 &&
 		    !tcpm_sink_tx_ok(port) &&
 		    ams != SOFT_RESET_AMS &&
 		    ams != HARD_RESET) {
 			port->upcoming_state = INVALID_STATE;
 			tcpm_log(port, "Sink TX No Go");
 			return -EAGAIN;
-		}
+		}*/
 
 		port->ams = ams;
 
@@ -1577,6 +1577,12 @@ static void tcpm_register_partner_altmodes(struct tcpm_port *port)
 	int i;
 
 	for (i = 0; i < modep->altmodes; i++) {
+		if (port->partner_altmode[i]) {
+			dev_warn(port->dev, "parter_altmode wasn't unregistered\n");
+			typec_unregister_altmode(port->partner_altmode[i]);
+			port->partner_altmode[i] = NULL;
+		}
+
 		altmode = typec_partner_register_altmode(port->partner,
 						&modep->altmode_desc[i]);
 		if (IS_ERR(altmode)) {
@@ -6640,9 +6646,28 @@ struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 		goto out_unregister_pd;
 	}
 
-	typec_port_register_altmodes(port->typec_port,
-				     &tcpm_altmode_ops, port,
-				     port->port_altmode, ALTMODE_DISCOVERY_MAX);
+	{
+		struct typec_altmode_desc desc = {
+			.svid = 0xff01,
+			.mode = 1,
+			/* is this right? */
+			.vdo = 0x00ff0006,
+			.roles = TYPEC_PORT_DRD,
+		};
+
+		struct typec_altmode *alt;
+
+		alt = typec_port_register_altmode(port->typec_port, &desc);
+		if (IS_ERR(alt)) {
+			tcpm_log(port, "failed to register port alternate mode");
+			err = PTR_ERR(alt);
+			goto out_role_sw_put;
+		} else {
+			typec_altmode_set_drvdata(alt, port);
+			alt->ops = &tcpm_altmode_ops;
+			port->port_altmode[0] = alt;
+		}
+	}
 	port->registered = true;
 
 	mutex_lock(&port->lock);
