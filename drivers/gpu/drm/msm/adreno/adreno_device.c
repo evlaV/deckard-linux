@@ -403,6 +403,18 @@ static const struct adreno_info gpulist[] = {
 		.init = a7xx_gpu_init,
 		.zapfw = "a740_zap.mbn",
 		.hwcg = a740_hwcg,
+	}, {
+		.rev = ADRENO_REV(7, 9, 0, ANY_ID),
+		.revn = 750,
+		.name = "A750",
+		.fw = {
+			[ADRENO_FW_SQE] = "a750_sqe.fw",
+		},
+		.gmem = 3 * SZ_1M,
+		.inactive_period = 3600*1000,
+		.init = a7xx_gpu_init,
+		.zapfw = "a750_zap.mbn",
+		.hwcg = a740_hwcg,
 	},
 };
 
