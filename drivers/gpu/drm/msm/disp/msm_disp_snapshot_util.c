@@ -129,12 +129,8 @@ void msm_disp_snapshot_capture_state(struct msm_disp_state *disp_state)
 	priv = drm_dev->dev_private;
 	kms = priv->kms;
 
-	for (i = 0; i < ARRAY_SIZE(priv->dp); i++) {
-		if (!priv->dp[i])
-			continue;
-
-		msm_dp_snapshot(disp_state, priv->dp[i]);
-	}
+	//if (priv->dp)
+	//	msm_dp_snapshot(disp_state, priv->dp);
 
 	for (i = 0; i < ARRAY_SIZE(priv->dsi); i++) {
 		if (!priv->dsi[i])
