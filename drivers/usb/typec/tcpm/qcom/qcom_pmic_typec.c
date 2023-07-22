@@ -8,7 +8,7 @@
 #include <linux/kernel.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
-#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
@@ -17,9 +17,6 @@
 #include <linux/usb/role.h>
 #include <linux/usb/tcpm.h>
 #include <linux/usb/typec_mux.h>
-
-#include <drm/drm_bridge.h>
-
 #include "qcom_pmic_typec_pdphy.h"
 #include "qcom_pmic_typec_port.h"
 
@@ -36,7 +33,6 @@ struct pmic_typec {
 	struct pmic_typec_port	*pmic_typec_port;
 	bool			vbus_enabled;
 	struct mutex		lock;		/* VBUS state serialization */
-	struct drm_bridge	bridge;
 };
 
 #define tcpc_to_tcpm(_tcpc_) container_of(_tcpc_, struct pmic_typec, tcpc)
@@ -117,6 +113,48 @@ static int qcom_pmic_typec_start_toggling(struct tcpc_dev *tcpc,
 						   port_type, cc);
 }
 
+struct pmic_typec_port {
+	struct device			*dev;
+	struct tcpm_port		*tcpm_port;
+	struct regmap			*regmap;
+};
+
+static int qcom_pmic_typec_core_set_current_limit(struct tcpc_dev *tcpc,
+						 u32 max_ma, u32 mv)
+{
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+
+	dev_warn(tcpm->dev, "set_current_limit set: max_ma %d mv %d\n", max_ma, mv);
+
+#if 0
+#define SCPQ_P_USB_BASE 					0x2900
+
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_ADDR                                                                        (SCPQ_P_USB_BASE            + 0x00000050)
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_RMSK                                                                               0x7
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_USBIN_MODE_CHG_BMSK                                                                0x4
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_USBIN_MODE_CHG_SHFT                                                                0x2
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_USB51_MODE_BMSK                                                                    0x2
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_USB51_MODE_SHFT                                                                    0x1
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_CFG_USB3P0_SEL_BMSK                                                                0x1
+#define PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_CFG_USB3P0_SEL_SHFT                                                                0x0
+
+	#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ADDR                                                                       (SCPQ_P_USB_BASE            + 0x00000051)
+#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_RMSK                                                                             0x11
+#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ICL_OVERRIDE_AFTER_APSD_BMSK                                                     0x10
+#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ICL_OVERRIDE_AFTER_APSD_SHFT                                                      0x4
+#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ICL_OVERRIDE_BMSK                                                                 0x1
+#define PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ICL_OVERRIDE_SHFT                                                                 0x0
+
+#define PMIO_SCPQ_P_USB_USB_ICL_CFG_ADDR                                                                            (SCPQ_P_USB_BASE            + 0x00000052)
+	// 0 current limit
+	regmap_write(tcpm->pmic_typec_port->regmap, PMIO_SCPQ_P_USB_USB_ICL_CFG_ADDR, 0);
+	regmap_write(tcpm->pmic_typec_port->regmap, PMIO_SCPQ_P_USB_USB_ICL_OPTIONS_ADDR, 1);
+	regmap_write(tcpm->pmic_typec_port->regmap, PMIO_SCPQ_P_USB_USB_ICL_OVERRIDE_ADDR, 0x10);
+#endif
+
+	return 0;
+}
+
 static int qcom_pmic_typec_set_roles(struct tcpc_dev *tcpc, bool attached,
 				     enum typec_role power_role,
 				     enum typec_data_role data_role)
@@ -150,34 +188,7 @@ static int qcom_pmic_typec_init(struct tcpc_dev *tcpc)
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_DRM)
-static int qcom_pmic_typec_attach(struct drm_bridge *bridge,
-				     enum drm_bridge_attach_flags flags)
-{
-	return flags & DRM_BRIDGE_ATTACH_NO_CONNECTOR ? 0 : -EINVAL;
-}
-
-static const struct drm_bridge_funcs qcom_pmic_typec_bridge_funcs = {
-	.attach = qcom_pmic_typec_attach,
-};
-
-static int qcom_pmic_typec_init_drm(struct pmic_typec *tcpm)
-{
-	tcpm->bridge.funcs = &qcom_pmic_typec_bridge_funcs;
-#ifdef CONFIG_OF
-	tcpm->bridge.of_node = of_get_child_by_name(tcpm->dev->of_node, "connector");
-#endif
-	tcpm->bridge.ops = DRM_BRIDGE_OP_HPD;
-	tcpm->bridge.type = DRM_MODE_CONNECTOR_DisplayPort;
-
-	return devm_drm_bridge_add(tcpm->dev, &tcpm->bridge);
-}
-#else
-static int qcom_pmic_typec_init_drm(struct pmic_typec *tcpm)
-{
-	return 0;
-}
-#endif
+#include "qcom_pmic_charger.c"
 
 static int qcom_pmic_typec_probe(struct platform_device *pdev)
 {
@@ -205,6 +216,7 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	tcpm->tcpc.get_cc = qcom_pmic_typec_get_cc;
 	tcpm->tcpc.set_polarity = qcom_pmic_typec_set_polarity;
 	tcpm->tcpc.set_vconn = qcom_pmic_typec_set_vconn;
+	tcpm->tcpc.set_current_limit = qcom_pmic_typec_core_set_current_limit;
 	tcpm->tcpc.start_toggling = qcom_pmic_typec_start_toggling;
 	tcpm->tcpc.set_pd_rx = qcom_pmic_typec_set_pd_rx;
 	tcpm->tcpc.set_roles = qcom_pmic_typec_set_roles;
@@ -241,10 +253,6 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	mutex_init(&tcpm->lock);
 	platform_set_drvdata(pdev, tcpm);
 
-	ret = qcom_pmic_typec_init_drm(tcpm);
-	if (ret)
-		return ret;
-
 	tcpm->tcpc.fwnode = device_get_named_child_node(tcpm->dev, "connector");
 	if (!tcpm->tcpc.fwnode)
 		return -EINVAL;
@@ -264,6 +272,8 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 					  tcpm->tcpm_port);
 	if (ret)
 		goto fwnode_remove;
+
+	qcom_pmic_charger_init(regmap);
 
 	return 0;
 
