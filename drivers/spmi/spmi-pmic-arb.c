@@ -1078,8 +1078,7 @@ static int pmic_arb_read_apid_map_v5(struct spmi_pmic_arb *pmic_arb)
 		ppid = (regval >> 8) & PMIC_ARB_PPID_MASK;
 		is_irq_ee = PMIC_ARB_CHAN_IS_IRQ_OWNER(regval);
 
-		regval = readl_relaxed(pmic_arb->ver_ops->apid_owner(pmic_arb,
-								     i));
+		regval = readl_relaxed(pmic_arb->ver_ops->apid_owner(pmic_arb, i));
 		apidd->write_ee = SPMI_OWNERSHIP_PERIPH2OWNER(regval);
 
 		apidd->irq_ee = is_irq_ee ? apidd->write_ee : INVALID_EE;
@@ -1088,17 +1087,8 @@ static int pmic_arb_read_apid_map_v5(struct spmi_pmic_arb *pmic_arb)
 		apid = pmic_arb->ppid_to_apid[ppid] & ~PMIC_ARB_APID_VALID;
 		prev_apidd = &pmic_arb->apid_data[apid];
 
-		if (!valid || apidd->write_ee == pmic_arb->ee) {
-			/* First PPID mapping or one for this EE */
+		if (!valid || (apidd->write_ee == pmic_arb->ee && prev_apidd->irq_ee != pmic_arb->ee))
 			pmic_arb->ppid_to_apid[ppid] = i | PMIC_ARB_APID_VALID;
-		} else if (valid && is_irq_ee &&
-			   prev_apidd->write_ee == pmic_arb->ee) {
-			/*
-			 * Duplicate PPID mapping after the one for this EE;
-			 * override the irq owner
-			 */
-			prev_apidd->irq_ee = apidd->irq_ee;
-		}
 
 		apidd->ppid = ppid;
 		pmic_arb->last_apid = i;
