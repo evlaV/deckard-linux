@@ -6,7 +6,6 @@ config PINCTRL_MSM
 	depends on GPIOLIB
 	# OF for pinconf_generic_dt_node_to_map_group() from GENERIC_PINCONF
 	depends on OF
-	select QCOM_SCM
 	select PINMUX
 	select PINCONF
 	select GENERIC_PINCONF
