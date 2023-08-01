@@ -22,6 +22,7 @@ module_param_named(allow_vram_carveout, allow_vram_carveout, bool, 0600);
 
 static const struct adreno_info gpulist[] = {
 	{
+#if 0
 		.rev   = ADRENO_REV(2, 0, 0, 0),
 		.revn  = 200,
 		.name  = "A200",
@@ -380,6 +381,7 @@ static const struct adreno_info gpulist[] = {
 		.hwcg = a690_hwcg,
 		.address_space_size = SZ_16G,
 	}, {
+#endif
 		.rev = ADRENO_REV(7, 0, 0, ANY_ID),
 		.revn = 730,
 		.name = "A730",
