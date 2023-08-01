@@ -172,7 +172,7 @@ int adreno_zap_shader_load(struct msm_gpu *gpu, u32 pasid)
 	struct platform_device *pdev = gpu->pdev;
 
 	/* Short cut if we determine the zap shader isn't available/needed */
-	if (!zap_available)
+	if (!zap_available || !IS_ENABLED(QCOM_SCM))
 		return -ENODEV;
 
 	/* We need SCM to be able to load the firmware */
