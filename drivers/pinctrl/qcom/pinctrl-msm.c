@@ -14,7 +14,6 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
-#include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/reboot.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
@@ -45,7 +44,6 @@
  * @desc:           pin controller descriptor
  * @restart_nb:     restart notifier block.
  * @irq:            parent irq for the TLMM irq_chip.
- * @intr_target_use_scm: route irq to application cpu using scm calls
  * @lock:           Spinlock to protect register resources as well
  *                  as msm_pinctrl data structures.
  * @enabled_irqs:   Bitmap of currently enabled irqs.
@@ -66,8 +64,6 @@ struct msm_pinctrl {
 	struct notifier_block restart_nb;
 
 	int irq;
-
-	bool intr_target_use_scm;
 
 	raw_spinlock_t lock;
 
@@ -1082,25 +1078,11 @@ static int msm_gpio_irq_set_type(struct irq_data *d, unsigned int type)
 	if (g->intr_target_width)
 		intr_target_mask = GENMASK(g->intr_target_width - 1, 0);
 
-	if (pctrl->intr_target_use_scm) {
-		u32 addr = pctrl->phys_base[0] + g->intr_target_reg;
-		int ret;
 
-		qcom_scm_io_readl(addr, &val);
-		val &= ~(intr_target_mask << g->intr_target_bit);
-		val |= g->intr_target_kpss_val << g->intr_target_bit;
-
-		ret = qcom_scm_io_writel(addr, val);
-		if (ret)
-			dev_err(pctrl->dev,
-				"Failed routing %lu interrupt to Apps proc",
-				d->hwirq);
-	} else {
-		val = msm_readl_intr_target(pctrl, g);
-		val &= ~(intr_target_mask << g->intr_target_bit);
-		val |= g->intr_target_kpss_val << g->intr_target_bit;
-		msm_writel_intr_target(val, pctrl, g);
-	}
+	val = msm_readl_intr_target(pctrl, g);
+	val &= ~(intr_target_mask << g->intr_target_bit);
+	val |= g->intr_target_kpss_val << g->intr_target_bit;
+	msm_writel_intr_target(val, pctrl, g);
 
 	/* Update configuration for gpio.
 	 * RAW_STATUS_EN is left on for all gpio irqs. Due to the
@@ -1539,9 +1521,6 @@ int msm_pinctrl_probe(struct platform_device *pdev,
 	pctrl->dev = &pdev->dev;
 	pctrl->soc = soc_data;
 	pctrl->chip = msm_gpio_template;
-	pctrl->intr_target_use_scm = of_device_is_compatible(
-					pctrl->dev->of_node,
-					"qcom,ipq8064-pinctrl");
 
 	raw_spin_lock_init(&pctrl->lock);
 

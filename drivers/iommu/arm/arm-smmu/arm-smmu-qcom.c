@@ -7,7 +7,6 @@
 #include <linux/adreno-smmu-priv.h>
 #include <linux/delay.h>
 #include <linux/of_device.h>
-#include <linux/firmware/qcom/qcom_scm.h>
 
 #include "arm-smmu.h"
 #include "arm-smmu-qcom.h"
@@ -379,25 +378,6 @@ static int qcom_smmu_def_domain_type(struct device *dev)
 	return match ? IOMMU_DOMAIN_IDENTITY : 0;
 }
 
-static int qcom_sdm845_smmu500_reset(struct arm_smmu_device *smmu)
-{
-	int ret;
-
-	arm_mmu500_reset(smmu);
-
-	/*
-	 * To address performance degradation in non-real time clients,
-	 * such as USB and UFS, turn off wait-for-safe on sdm845 based boards,
-	 * such as MTP and db845, whose firmwares implement secure monitor
-	 * call handlers to turn on/off the wait-for-safe logic.
-	 */
-	ret = qcom_scm_qsmmu500_wait_safe_toggle(0);
-	if (ret)
-		dev_warn(smmu->dev, "Failed to turn off SAFE logic\n");
-
-	return ret;
-}
-
 static const struct arm_smmu_impl qcom_smmu_v2_impl = {
 	.init_context = qcom_smmu_init_context,
 	.cfg_probe = qcom_smmu_cfg_probe,
@@ -411,15 +391,6 @@ static const struct arm_smmu_impl qcom_smmu_500_impl = {
 	.cfg_probe = qcom_smmu_cfg_probe,
 	.def_domain_type = qcom_smmu_def_domain_type,
 	.reset = arm_mmu500_reset,
-	.write_s2cr = qcom_smmu_write_s2cr,
-	.tlb_sync = qcom_smmu_tlb_sync,
-};
-
-static const struct arm_smmu_impl sdm845_smmu_500_impl = {
-	.init_context = qcom_smmu_init_context,
-	.cfg_probe = qcom_smmu_cfg_probe,
-	.def_domain_type = qcom_smmu_def_domain_type,
-	.reset = qcom_sdm845_smmu500_reset,
 	.write_s2cr = qcom_smmu_write_s2cr,
 	.tlb_sync = qcom_smmu_tlb_sync,
 };
@@ -459,10 +430,6 @@ static struct arm_smmu_device *qcom_smmu_create(struct arm_smmu_device *smmu,
 	if (!impl)
 		return smmu;
 
-	/* Check to make sure qcom_scm has finished probing */
-	if (!qcom_scm_is_available())
-		return ERR_PTR(-EPROBE_DEFER);
-
 	qsmmu = devm_krealloc(smmu->dev, smmu, sizeof(*qsmmu), GFP_KERNEL);
 	if (!qsmmu)
 		return ERR_PTR(-ENOMEM);
@@ -498,15 +465,6 @@ static const struct qcom_smmu_match_data qcom_smmu_v2_data = {
 	.adreno_impl = &qcom_adreno_smmu_v2_impl,
 };
 
-static const struct qcom_smmu_match_data sdm845_smmu_500_data = {
-	.impl = &sdm845_smmu_500_impl,
-	/*
-	 * No need for adreno impl here. On sdm845 the Adreno SMMU is handled
-	 * by the separate sdm845-smmu-v2 device.
-	 */
-	/* Also no debug configuration. */
-};
-
 static const struct qcom_smmu_match_data qcom_smmu_500_impl0_data = {
 	.impl = &qcom_smmu_500_impl,
 	.adreno_impl = &qcom_adreno_smmu_500_impl,
@@ -529,7 +487,6 @@ static const struct of_device_id __maybe_unused qcom_smmu_impl_of_match[] = {
 	{ .compatible = "qcom,sc8280xp-smmu-500", .data = &qcom_smmu_500_impl0_data },
 	{ .compatible = "qcom,sdm630-smmu-v2", .data = &qcom_smmu_v2_data },
 	{ .compatible = "qcom,sdm845-smmu-v2", .data = &qcom_smmu_v2_data },
-	{ .compatible = "qcom,sdm845-smmu-500", .data = &sdm845_smmu_500_data },
 	{ .compatible = "qcom,sm6115-smmu-500", .data = &qcom_smmu_500_impl0_data},
 	{ .compatible = "qcom,sm6125-smmu-500", .data = &qcom_smmu_500_impl0_data },
 	{ .compatible = "qcom,sm6350-smmu-v2", .data = &qcom_smmu_v2_data },
