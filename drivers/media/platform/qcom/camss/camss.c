@@ -1311,6 +1311,21 @@ static int camss_register_entities(struct camss *camss)
 					ret);
 				goto err_link;
 			}
+
+			ret = media_create_pad_link(
+				&camss->csiphy[i].subdev.entity,
+				MSM_CSIPHY_PAD_SRC2,
+				&camss->csid[j].subdev.entity,
+				MSM_CSID_PAD_SINK,
+				0);
+			if (ret < 0) {
+				dev_err(camss->dev,
+					"Failed to link %s->%s entities: %d\n",
+					camss->csiphy[i].subdev.entity.name,
+					camss->csid[j].subdev.entity.name,
+					ret);
+				goto err_link;
+			}
 		}
 	}
 
@@ -1431,10 +1446,21 @@ static int camss_subdev_notifier_bound(struct v4l2_async_notifier *async,
 	struct camss_async_subdev *csd =
 		container_of(asd, struct camss_async_subdev, asd);
 	u8 id = csd->interface.csiphy_id;
-	struct csiphy_device *csiphy = &camss->csiphy[id];
 
-	csiphy->cfg.csi2 = &csd->interface.csi2;
-	subdev->host_priv = csiphy;
+	if (id < 6) {
+		struct csiphy_device *csiphy = &camss->csiphy[id];
+		csiphy->cfg.csi2 = &csd->interface.csi2;
+
+		subdev->host_priv = csiphy;
+	} else {
+		struct csiphy_device *csiphy = &camss->csiphy[id-6];
+		csiphy->cfg.csi2_sec = &csd->interface.csi2;
+		csiphy->cfg.combo_mode = 1;
+
+		subdev->host_priv = (void*) ((size_t) csiphy | 1);
+	}
+
+
 
 	return 0;
 }
@@ -1450,7 +1476,7 @@ static int camss_subdev_notifier_complete(struct v4l2_async_notifier *async)
 		if (sd->host_priv) {
 			struct media_entity *sensor = &sd->entity;
 			struct csiphy_device *csiphy =
-					(struct csiphy_device *) sd->host_priv;
+					(struct csiphy_device *) ((size_t) sd->host_priv & ~1ul);
 			struct media_entity *input = &csiphy->subdev.entity;
 			unsigned int i;
 
@@ -1465,7 +1491,7 @@ static int camss_subdev_notifier_complete(struct v4l2_async_notifier *async)
 			}
 
 			ret = media_create_pad_link(sensor, i,
-				input, MSM_CSIPHY_PAD_SINK,
+				input, ((size_t) sd->host_priv & 1) ? MSM_CSIPHY_PAD_SINK2 : MSM_CSIPHY_PAD_SINK,
 				MEDIA_LNK_FL_IMMUTABLE | MEDIA_LNK_FL_ENABLED);
 			if (ret < 0) {
 				dev_err(camss->dev,

@@ -734,6 +734,7 @@ static int csid_link_setup(struct media_entity *entity,
 		struct csid_device *csid;
 		struct csiphy_device *csiphy;
 		struct csiphy_lanes_cfg *lane_cfg;
+		const struct csiphy_csi2_cfg *cfg;
 
 		sd = media_entity_to_v4l2_subdev(entity);
 		csid = v4l2_get_subdevdata(sd);
@@ -748,12 +749,15 @@ static int csid_link_setup(struct media_entity *entity,
 
 		/* If a sensor is not linked to CSIPHY */
 		/* do no allow a link from CSIPHY to CSID */
-		if (!csiphy->cfg.csi2)
+		cfg = csiphy->cfg.csi2;
+		if (remote->index >= 2)
+			cfg = csiphy->cfg.csi2_sec;
+		if (!cfg)
 			return -EPERM;
 
 		csid->phy.csiphy_id = csiphy->id;
 
-		lane_cfg = &csiphy->cfg.csi2->lane_cfg;
+		lane_cfg = &cfg->lane_cfg;
 		csid->phy.lane_cnt = lane_cfg->num_data;
 		csid->phy.lane_assign = csid_get_lane_assign(lane_cfg);
 	}
