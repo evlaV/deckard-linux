@@ -190,6 +190,7 @@ int qcom_pmic_typec_port_set_vbus(struct pmic_typec_port *pmic_typec_port, bool 
 
 	printk("qcom_pmic_typec_port_set_vbus: %d\n", on);//, sm_stat);
 
+#if 0
 	if (on) {
 		ret = regulator_enable(pmic_typec_port->vdd_vbus);
 		if (ret)
@@ -199,8 +200,9 @@ int qcom_pmic_typec_port_set_vbus(struct pmic_typec_port *pmic_typec_port, bool 
 		if (ret)
 			return ret;
 	}
+#endif
 
-	//regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_EN_ADDR, PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_BMSK, on);
+	regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_EN_ADDR, PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_BMSK, on);
 	val = on ? TYPEC_SM_VBUS_VSAFE5V : TYPEC_SM_VBUS_VSAFE0V;
 
 	/* Poll waiting for transition to required vSafe5V or vSafe0V */
@@ -556,9 +558,11 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 	if (!irq_data)
 		return -ENOMEM;
 
+#if 0
 	pmic_typec_port->vdd_vbus = devm_regulator_get(dev, "vdd-vbus");
 	if (IS_ERR(pmic_typec_port->vdd_vbus))
 		return PTR_ERR(pmic_typec_port->vdd_vbus);
+#endif
 
 	pmic_typec_port->dev = dev;
 	pmic_typec_port->base = base;
