@@ -640,7 +640,7 @@ static int a7xx_hw_init(struct msm_gpu *gpu)
 	 * guessed wrong then access to the RBBM_SECVID_TRUST_CNTL register will
 	 * be blocked and a permissions violation will soon follow.
 	 */
-	ret = a7xx_zap_shader_init(gpu);
+	ret = -ENODEV;//a7xx_zap_shader_init(gpu);
 	if (!ret) {
 		OUT_PKT7(gpu->rb[0], CP_SET_SECURE_MODE, 1);
 		OUT_RING(gpu->rb[0], 0x00000000);
@@ -659,6 +659,12 @@ static int a7xx_hw_init(struct msm_gpu *gpu)
 			"Zap shader not enabled - using SECVID_TRUST_CNTL instead\n");
 		gpu_write(gpu, REG_A7XX_RBBM_SECVID_TRUST_CNTL, 0x0);
 		ret = 0;
+
+		/* SMMU aperture - for CP to be able to touch SMMU (for per process page tables) */
+		gpu_write(gpu, 0x60000 >> 2, 0xc0000);
+		gpu_write(gpu, 0x60004 >> 2, 0xc1000);
+		gpu_write(gpu, 0x60008 >> 2, 2);
+		gpu_write(gpu, 0x6000c >> 2, 0xc2000);
 	} else {
 		return ret;
 	}
