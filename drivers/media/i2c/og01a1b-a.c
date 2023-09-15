@@ -52,7 +52,7 @@ DEFINE_SPINLOCK(ir_spinlock);
 
 #define VIDIOC_OG01A1B_PRV_G_METADATA_VERSION _IOR('V', BASE_VIDIOC_PRIVATE + 1, u32)
 
-#define VIDIOC_OG01A1B_PRV_S_IRLED_CONTROL_ENABLED _IOW('V', BASE_VIDIOC_PRIVATE + 2, u32)
+#define VIDIOC_OG01A1B_PRV_S_IR_EMITTER_MODE _IOW('V', BASE_VIDIOC_PRIVATE + 2, u32)
 
 // 32-bit argument: sensor register address in bits [16, 0], value in bits [24, 16]
 #define VIDIOC_OG01A1B_PRV_S_REG        _IO('V', BASE_VIDIOC_PRIVATE + 3)
@@ -124,6 +124,13 @@ enum og01a1b_group_mode {
 	MODE_2GROUPS =  2
 };
 
+enum og01a1b_ir_emitter_mode {
+	IR_EMITTER_MODE_OFF = 0,
+	IR_EMITTER_MODE_GROUP_1_ONLY = 1,
+	IR_EMITTER_MODE_GROUP_0_ONLY =  2,
+	IR_EMITTER_MODE_ALL_FRAMES
+};
+
 struct og01a1b_dev {
 	struct i2c_client *i2c_client;
 	struct v4l2_subdev sd;
@@ -139,6 +146,7 @@ struct og01a1b_dev {
 	struct mutex lock;
 
 	int power_count;
+	u8 last_set_led_state;
 
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct mutex mutex;
@@ -162,7 +170,7 @@ struct og01a1b_dev {
 
 	struct group_and_registers active_group_registers;
 	bool updateGroupRegisters;
-	bool enableIREmitters;
+	enum og01a1b_ir_emitter_mode ir_emitter_mode;
 	bool emittersPresent;
 	enum og01a1b_group_mode group_mode;
 	int sensor_index;
@@ -1478,14 +1486,35 @@ void set_ir_leds(struct og01a1b_dev *sensor, int state) {
 	unsigned long flags;
 	spin_lock_irqsave(&ir_spinlock, flags);
 	for(int i = 0; i < 2; i++) {
-		if(sensor->ir_gpio[i]!=NULL && sensor->enableIREmitters) {
+		if(sensor->ir_gpio[i]!=NULL && sensor->ir_emitter_mode != IR_EMITTER_MODE_OFF) {
 			gpiod_set_value(sensor->ir_gpio[i], state);
 		}
 	}
+
+	// uncomment this to debug how long emitters were on for
+	// if(sensor->last_set_led_state == 1 && state ==0) {
+	// 	u64 ts = ktime_get_ns();
+	// 	printk("emitters were on for %lu ns\n", ts - sensor->last_emitter_on_ts);
+	// }
+	sensor->last_set_led_state = state;
 	spin_unlock_irqrestore(&ir_spinlock, flags);
 }
 
-void handle_exposure_event(struct og01a1b_dev *sensor, bool is_rising_edge) {
+bool emitter_enabled_for_group(struct og01a1b_dev *sensor, int group) {
+	//printk("sensor->ir_emitter_mode:%d group:%d",sensor->ir_emitter_mode,group);
+	if(sensor->ir_emitter_mode == IR_EMITTER_MODE_ALL_FRAMES) {
+		return true;
+	}
+	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_1_ONLY) {
+		return group == 1;
+	}
+	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_0_ONLY) {
+		return group == 0;
+	}
+	return false;
+}
+
+void handle_exposure_event(struct og01a1b_dev *sensor, bool is_gpio_event) {
 	// todo: don't turn it on if it's been turned on within a millisecond
     u64 ts = ktime_get_ns();
 	int currentGroup = -1;
@@ -1498,20 +1527,26 @@ void handle_exposure_event(struct og01a1b_dev *sensor, bool is_rising_edge) {
 				}
 			}
 		}
+		if(sensor->is_sync_sensor && sensor->group_mode == MODE_NOGROUPS) {
+			currentGroup = 0;
+		}
 
 	//int state = gpiod_get_value(sensor->strobe_gpio);
-	if(is_rising_edge) {
+	if(is_gpio_event) {
 		sensor->sensorMetaData.currentSOE = ts;
-		// only turn the emitters on if they are enabled, present and the last_emitter_on_ts is more than 2 ms ago
-		// this prevents a problem when the group 0 exposure  is long
-		if(sensor->is_sync_sensor && ((ts - sensor->last_emitter_on_ts )> 16000000)) {
-			if(currentGroup ==1) {
-				if(sensor->power_count > 0) {
+		// only turn the emitters on if they are enabled, present and the last_emitter_on_ts is more than 4 ms ago
+		// this prevents a problem when the group 0 exposure  is long and prevents a nearly 50% duty cycle for some safety
+		//if(sensor->is_sync_sensor && ((ts - sensor->last_emitter_on_ts )> 4000000)) {
+		if(sensor->is_sync_sensor) {
+			if(emitter_enabled_for_group(sensor, currentGroup)) {
+				if(sensor->power_count > 0 && sensor->last_set_led_state == 0 && ((ts - sensor->last_emitter_on_ts ) > 4000000)) {
 					set_ir_leds(sensor, 1);
 					sensor->last_emitter_on_ts = ts;
+					//printk("gpio edge on at :%lu\n", ts);
 				}
 				else {
 					set_ir_leds(sensor, 0);
+					//printk("gpio edge off at :%lu\n", ts);
 				}
 			}
 			else {
@@ -1538,6 +1573,8 @@ static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp, u64 sof_
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 	handle_exposure_event(sensor, false);
 	if(sensor->is_sync_sensor ) {
+		u64 ts = ktime_get_ns();
+		//printk("sof off at :%lu\n", ts);
 		set_ir_leds(sensor, 0);
 	}
 
@@ -1677,14 +1714,15 @@ static int og01a1b_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 	int ret = 0;
+	static char *gpionames[] = {"ira", "irb"};
 
 	mutex_lock(&sensor->lock);
 
 	if(sensor->is_sync_sensor) {
 		struct i2c_client *client = sensor->i2c_client;
-		static char *gpionames[] = {"ira", "irb"};
+		sensor->ir_emitter_mode = false;
+		sensor->last_emitter_on_ts = 0;
 		unsigned long flags;
-		sensor->enableIREmitters = false;
 		sensor->last_emitter_on_ts = 0;
 		spin_lock_irqsave(&ir_spinlock, flags);
 		if(!!on) {
@@ -1760,7 +1798,15 @@ void reset_groups(struct og01a1b_dev *sensor)
 {
 	sensor->active_group_registers.pre_group_write_timestamp = 0;
 	sensor->active_group_registers.post_group_write_timestamp = 0;
+	for(int i = 0; i < NUM_REGISTER_GROUPS; i++) {
+		sensor->active_group_registers.group_register_sets[i].num_group_reg = 0;
+		for(int j = 0; j < GROUP_REGMAP_MAX_SIZE; j++) {
+			sensor->active_group_registers.group_register_sets[i].group_reg_addresses[j] = 0x00;
+			sensor->active_group_registers.group_register_sets[i].group_reg_values[j] = 0x00;
+		}
+	}
 	sensor->active_group_registers.group_register_sets->num_group_reg = 0;
+	
 	memcpy(&sensor->sensorMetaData.group_and_reg[4], &sensor->active_group_registers,sizeof(struct group_and_registers));
 	memcpy(&sensor->sensorMetaData.group_and_reg[3], &sensor->active_group_registers,sizeof(struct group_and_registers));
 	memcpy(&sensor->sensorMetaData.group_and_reg[2], &sensor->active_group_registers,sizeof(struct group_and_registers));
@@ -1774,6 +1820,7 @@ void reset_groups(struct og01a1b_dev *sensor)
 static irqreturn_t gpio_handler(int irq, void * ident)
 {
 	struct og01a1b_dev *sensor = (struct og01a1b_dev *)ident;
+	u64 ts = ktime_get_ns();
 	handle_exposure_event(sensor, true);
 	
 	return IRQ_HANDLED;
@@ -1798,7 +1845,7 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
 	struct i2c_client *client = sensor->i2c_client;
     u32 ret = 0;
 	u32 *a = arg;
-
+	unsigned long flags;
     switch (cmd)
     {
         case VIDIOC_OG01A1B_PRV_G_METADATA_VERSION:
@@ -1806,18 +1853,17 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
             *a = ((METADATA_MAJOR_VERSION << 16) & 0xffff0000) | (METADATA_MINOR_VERSION & 0xffff);
             break;
         }
-        case VIDIOC_OG01A1B_PRV_S_IRLED_CONTROL_ENABLED:
+        case VIDIOC_OG01A1B_PRV_S_IR_EMITTER_MODE:
         {
             //only allow this to be enabled if emitters are present. Else return -1
             if(sensor->emittersPresent) {
-                unsigned long flags;
-                sensor->enableIREmitters = *a;
+                sensor->ir_emitter_mode = *a;
 
                 // Turn off IR emitters whenever this is called.
                 // This ensures that even if this GPIO is called repeatedly
                 // That it will always leave the IR leds off
                 // And if the emitters are disabled they won't be turned back on because the check
-                // for sensor->enableIREmitters is inside the section which is exclusive to ir_spinlock
+                // for sensor->ir_emitter_mode is inside the section which is exclusive to ir_spinlock
                 spin_lock_irqsave(&ir_spinlock, flags);
                 for(int i = 0; i < 2; i++) {
                     if(sensor->ir_gpio[i]!=NULL) {
@@ -2102,6 +2148,7 @@ static int og01a1b_probe(struct i2c_client *client)
 		return -ENOMEM;
 	sensor->is_streaming = false;
 	sensor->sensor_index = numSensors;
+	sensor->last_set_led_state = 0;
 	if (of_property_read_string(dev->of_node, "id", &id)) {
         dev_err(dev, "Failed to read 'id' property\n");
         return -EINVAL;
@@ -2234,7 +2281,7 @@ static int og01a1b_probe(struct i2c_client *client)
 		int err;
 		u32 core_affinity;
 
-		if((err = request_irq      (irq, gpio_handler, IRQF_SHARED | IRQF_TRIGGER_RISING, "og01a1b", sensor)) != 0)
+		if((err = request_irq      (irq, gpio_handler, IRQF_SHARED | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "og01a1b", sensor)) != 0)
 		{
 			dev_err(&client->dev, "Error %d: could not request irq: %d\n", err, gpio);
 			return err;
