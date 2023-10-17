@@ -1057,7 +1057,7 @@ static struct reg_default wsa884x_defaults[] = {
 	{ WSA884X_DEM_BYPASS_DATA2,		0x00 },
 	{ WSA884X_DEM_BYPASS_DATA3,		0x00 },
 	{ WSA884X_DRE_CTL_0,			0x70 },
-	{ WSA884X_DRE_CTL_1,			0x04 },
+	{ WSA884X_DRE_CTL_1,			0x3e }, // lowest volume
 	{ WSA884X_DRE_IDLE_DET_CTL,		0x2f },
 	{ WSA884X_GAIN_RAMPING_CTL,		0x50 },
 	{ WSA884X_GAIN_RAMPING_MIN,		0x12 },
