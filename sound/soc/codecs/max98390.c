@@ -817,11 +817,14 @@ static int max98390_dsm_init(struct snd_soc_component *component)
 		if (ret) {
 			ret = request_firmware(&fw, "dsmparam.bin",
 				component->dev);
-			if (ret)
+			if (ret) {
+				dev_err(component->dev, "Firmware Not Found!\n");
 				goto err;
+			}
 		}
 	}
 
+	dev_info(component->dev, "Loading Firmware\n");
 	dev_dbg(component->dev,
 		"max98390: param fw size %zd\n",
 		fw->size);
