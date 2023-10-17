@@ -1743,6 +1743,7 @@ static struct qcom_cc_desc disp_cc_sm8550_desc = {
 
 static const struct of_device_id disp_cc_sm8550_match_table[] = {
 	{ .compatible = "qcom,sm8550-dispcc" },
+	{ .compatible = "qcom,sm8650-dispcc" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, disp_cc_sm8550_match_table);
