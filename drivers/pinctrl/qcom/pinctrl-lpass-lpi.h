@@ -25,6 +25,7 @@ struct pinctrl_pin_desc;
 #define LPI_GPIO_FUNCTION_MASK		GENMASK(5, 2)
 #define LPI_GPIO_OUT_STRENGTH_MASK	GENMASK(8, 6)
 #define LPI_GPIO_OE_MASK		BIT(9)
+#define LPI_GPIO_SLEW_RATE_MASK		GENMASK(12, 11)
 #define LPI_GPIO_VALUE_REG		0x04
 #define LPI_GPIO_VALUE_IN_MASK		BIT(0)
 #define LPI_GPIO_VALUE_OUT_MASK		BIT(1)
@@ -43,12 +44,11 @@ struct pinctrl_pin_desc;
 		.ngroups = ARRAY_SIZE(fname##_groups),	\
 	}
 
-#define LPI_PINGROUP(id, soff, f1, f2, f3, f4)		\
+#define LPI_PINGROUP(id, f1, f2, f3, f4)		\
 	{						\
 		.group.name = "gpio" #id,			\
 		.group.pins = gpio##id##_pins,		\
 		.pin = id,				\
-		.slew_offset = soff,			\
 		.group.num_pins = ARRAY_SIZE(gpio##id##_pins),	\
 		.funcs = (int[]){			\
 			LPI_MUX_gpio,			\
@@ -63,8 +63,6 @@ struct pinctrl_pin_desc;
 struct lpi_pingroup {
 	struct group_desc group;
 	unsigned int pin;
-	/* Bit offset in slew register for SoundWire pins only */
-	int slew_offset;
 	unsigned int *funcs;
 	unsigned int nfuncs;
 };

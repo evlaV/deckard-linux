@@ -30,7 +30,6 @@ struct lpi_pinctrl {
 	struct gpio_chip chip;
 	struct pinctrl_desc desc;
 	char __iomem *tlmm_base;
-	char __iomem *slew_base;
 	struct clk_bulk_data clks[MAX_LPI_NUM_CLKS];
 	/* Protects from concurrent register updates */
 	struct mutex lock;
@@ -190,11 +189,10 @@ static int lpi_config_set(struct pinctrl_dev *pctldev, unsigned int group,
 			  unsigned long *configs, unsigned int nconfs)
 {
 	struct lpi_pinctrl *pctrl = dev_get_drvdata(pctldev->dev);
-	unsigned int param, arg, pullup = LPI_GPIO_BIAS_DISABLE, strength = 2;
+	unsigned int param, arg, pullup = LPI_GPIO_BIAS_DISABLE, strength = 2, slew_rate = 0;
 	bool value, output_enabled = false;
 	const struct lpi_pingroup *g;
-	unsigned long sval;
-	int i, slew_offset;
+	int i;
 	u32 val;
 
 	g = &pctrl->data->groups[group];
@@ -231,19 +229,7 @@ static int lpi_config_set(struct pinctrl_dev *pctldev, unsigned int group,
 					arg, group);
 				return -EINVAL;
 			}
-
-			slew_offset = g->slew_offset;
-			if (slew_offset == LPI_NO_SLEW)
-				break;
-
-			mutex_lock(&pctrl->lock);
-
-			sval = ioread32(pctrl->slew_base + LPI_SLEW_RATE_CTL_REG);
-			sval &= ~(LPI_SLEW_RATE_MASK << slew_offset);
-			sval |= arg << slew_offset;
-			iowrite32(sval, pctrl->slew_base + LPI_SLEW_RATE_CTL_REG);
-
-			mutex_unlock(&pctrl->lock);
+			slew_rate = arg;
 			break;
 		default:
 			return -EINVAL;
@@ -266,6 +252,7 @@ static int lpi_config_set(struct pinctrl_dev *pctldev, unsigned int group,
 	u32p_replace_bits(&val, LPI_GPIO_DS_TO_VAL(strength),
 			  LPI_GPIO_OUT_STRENGTH_MASK);
 	u32p_replace_bits(&val, output_enabled, LPI_GPIO_OE_MASK);
+	u32p_replace_bits(&val, slew_rate, LPI_GPIO_SLEW_RATE_MASK);
 
 	lpi_gpio_write(pctrl, group, LPI_GPIO_CFG_REG, val);
 	mutex_unlock(&pctrl->lock);
@@ -438,11 +425,6 @@ int lpi_pinctrl_probe(struct platform_device *pdev)
 	if (IS_ERR(pctrl->tlmm_base))
 		return dev_err_probe(dev, PTR_ERR(pctrl->tlmm_base),
 				     "TLMM resource not provided\n");
-
-	pctrl->slew_base = devm_platform_ioremap_resource(pdev, 1);
-	if (IS_ERR(pctrl->slew_base))
-		return dev_err_probe(dev, PTR_ERR(pctrl->slew_base),
-				     "Slew resource not provided\n");
 
 	ret = devm_clk_bulk_get_optional(dev, MAX_LPI_NUM_CLKS, pctrl->clks);
 	if (ret)
