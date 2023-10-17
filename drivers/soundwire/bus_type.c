@@ -151,7 +151,7 @@ static int sdw_drv_probe(struct device *dev)
 	 * of the current hardware status to e.g. start the initialization.
 	 * Errors are only logged as warnings to avoid failing the probe.
 	 */
-	if (drv->ops && drv->ops->update_status) {
+	if (drv->ops && drv->ops->update_status && 0) {
 		ret = drv->ops->update_status(slave, slave->status);
 		if (ret < 0)
 			dev_warn(dev, "failed to update status at probe: %d\n", ret);
