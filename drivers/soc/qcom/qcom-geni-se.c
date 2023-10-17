@@ -298,9 +298,9 @@ struct se_elf_header {
 __attribute__ ((aligned(16))) static const
 #include "qup3_proto1.h"
 __attribute__ ((aligned(16))) static const
+#include "qup3_proto2.h"
+__attribute__ ((aligned(16))) static const
 #include "qup3_proto3.h"
-//__attribute__ ((aligned(16))) static const
-//#include "qup_8450_8.h"
 
 static void
 geni_write(struct geni_se *se, u32 offset, u32 value)
@@ -315,8 +315,8 @@ void geni_load_firmware(struct geni_se *se, enum geni_se_protocol_type proto)
 	struct se_elf_header *hdr;
 	switch (proto) {
 	case GENI_SE_SPI: hdr = (void*) qup3_proto1; break;
+	case GENI_SE_UART: hdr = (void*) qup3_proto2; break;
 	case GENI_SE_I2C: hdr = (void*) qup3_proto3; break;
-	//case GENI_SE_UART: hdr = (void*) qup_uart; break;
 	default: return;
 	}
 	const u32 *fw_val_arr  = (const u32 *)((u8*) hdr + hdr->fw_offset);
