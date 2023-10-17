@@ -29,6 +29,8 @@
 
 /* Need to match the order of clocks in DT binding */
 enum {
+	DT_IFACE,
+
 	DT_BI_TCXO,
 	DT_BI_TCXO_AO,
 	DT_AHB_CLK,
@@ -1623,7 +1625,7 @@ static struct gdsc mdss_gdsc = {
 		.name = "mdss_gdsc",
 	},
 	.pwrsts = PWRSTS_OFF_ON,
-	.flags = HW_CTRL | RETAIN_FF_ENABLE,
+	.flags = ALWAYS_ON,
 };
 
 static struct gdsc mdss_int2_gdsc = {
@@ -1751,6 +1753,7 @@ static struct qcom_cc_desc disp_cc_sm8550_desc = {
 
 static const struct of_device_id disp_cc_sm8550_match_table[] = {
 	{ .compatible = "qcom,sm8550-dispcc" },
+	{ .compatible = "qcom,sm8650-dispcc" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, disp_cc_sm8550_match_table);
@@ -1758,21 +1761,15 @@ MODULE_DEVICE_TABLE(of, disp_cc_sm8550_match_table);
 static int disp_cc_sm8550_probe(struct platform_device *pdev)
 {
 	struct regmap *regmap;
-	int ret;
-
-	ret = devm_pm_runtime_enable(&pdev->dev);
-	if (ret)
-		return ret;
-
-	ret = pm_runtime_resume_and_get(&pdev->dev);
-	if (ret)
-		return ret;
+	struct clk *ahb_clk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(ahb_clk))
+		return PTR_ERR(ahb_clk);
 
 	regmap = qcom_cc_map(pdev, &disp_cc_sm8550_desc);
-	if (IS_ERR(regmap)) {
-		ret = PTR_ERR(regmap);
-		goto err_put_rpm;
-	}
+	if (IS_ERR(regmap))
+		return PTR_ERR(regmap);
+
+	clk_prepare_enable(ahb_clk);
 
 	clk_lucid_ole_pll_configure(&disp_cc_pll0, regmap, &disp_cc_pll0_config);
 	clk_lucid_ole_pll_configure(&disp_cc_pll1, regmap, &disp_cc_pll1_config);
@@ -1783,18 +1780,7 @@ static int disp_cc_sm8550_probe(struct platform_device *pdev)
 	/* Keep some clocks always-on */
 	qcom_branch_set_clk_en(regmap, 0xe054); /* DISP_CC_XO_CLK */
 
-	ret = qcom_cc_really_probe(pdev, &disp_cc_sm8550_desc, regmap);
-	if (ret)
-		goto err_put_rpm;
-
-	pm_runtime_put(&pdev->dev);
-
-	return 0;
-
-err_put_rpm:
-	pm_runtime_put_sync(&pdev->dev);
-
-	return ret;
+	return qcom_cc_really_probe(pdev, &disp_cc_sm8550_desc, regmap);
 }
 
 static struct platform_driver disp_cc_sm8550_driver = {
