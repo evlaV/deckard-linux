@@ -59,6 +59,7 @@ struct dsp {
 	struct clk_bulk_data *clks;
 	unsigned num_clks;
 	bool is_xtensa;
+	bool is_cvp;
 };
 
 struct dma_map {
@@ -190,11 +191,14 @@ xtss_boot(struct dsp *dsp)
 #define CVP_WRAPPER_DEBUG_BRIDGE_LPI_STATUS	(CVP_WRAPPER_BASE_OFFS + 0x58)
 #define CVP_WRAPPER_CORE_CLOCK_CONFIG		(CVP_WRAPPER_BASE_OFFS + 0x88)
 
-	u32 fw_size = 7 * SZ_1M;
+	u32 fw_size = 8 * SZ_1M;
 	// queue buffer
 	u32 addr = 0x80000000;
 	u32 size = SZ_1M * 3;
 	u32 mask_val, count, status;
+
+	if (dsp->is_cvp)
+		fw_size = 7 * SZ_1M;
 
 	if (atomic_xchg(&dsp->booted, 1))
 		return -EBUSY;
@@ -209,15 +213,20 @@ xtss_boot(struct dsp *dsp)
 	writel_relaxed(0, dsp->base + WRAPPER_FW_START_ADDR);
 	writel_relaxed(fw_size, dsp->base + WRAPPER_FW_END_ADDR);
 	writel(0, dsp->base + WRAPPER_CPA_START_ADDR);
-	writel(fw_size, dsp->base + WRAPPER_CPA_END_ADDR);
-	writel(fw_size, dsp->base + WRAPPER_NONPIX_START_ADDR);
-	writel(fw_size, dsp->base + WRAPPER_NONPIX_END_ADDR);
+	if (dsp->is_cvp) {
+		u32 reg;
+		writel(0x4b000000, dsp->base + WRAPPER_CPA_END_ADDR);
+		writel(0x01000000, dsp->base + WRAPPER_NONPIX_START_ADDR);
+		writel(0x26800000, dsp->base + WRAPPER_NONPIX_END_ADDR);
 
-#if 0
-	for (reg = 0xc2040; reg < 0xc2080; reg += 4)
-		writel_relaxed(0, dsp->base + reg);
-	writel_relaxed(0, dsp->base + 0xc2090);
-#endif
+		//for (reg = 0xc2040; reg < 0xc2080; reg += 4)
+		//	writel_relaxed(0, dsp->base + reg);
+		//writel_relaxed(0, dsp->base + 0xc2090);
+	} else {
+		writel(fw_size, dsp->base + WRAPPER_CPA_END_ADDR);
+		writel(fw_size, dsp->base + WRAPPER_NONPIX_START_ADDR);
+		writel(fw_size, dsp->base + WRAPPER_NONPIX_END_ADDR);
+	}
 
 	/* Bring out of reset */
 	writel(0, dsp->base + 0xc1000);
@@ -230,27 +239,29 @@ xtss_boot(struct dsp *dsp)
 	writel(size, dsp->base + CPU_CS_SCIBARG2); // UC_REGION_SIZE
 	writel(addr, dsp->base + CPU_CS_SCIACMDARG2); // QTBL_ADDR
 	writel(0x01, dsp->base + CPU_CS_SCIACMDARG1); // QTBL_INFO
-	writel((addr + size - 0x1000) | 1, dsp->base + CPU_CS_SCIBCMD);
+	writel(addr + size, dsp->base + CPU_CS_SCIBCMD);
 
-#if 0
-	// XXX firmware unhappy without DSP queues..
-	addr += size;
-	writel(addr, dsp->base + CPU_CS_VMIMSG); // DSP_QTBL_ADDR
-	writel(addr, dsp->base + CPU_CS_VMIMSGAG0); // DSP_UC_REGION_ADDR
-	writel(size, dsp->base + CPU_CS_VMIMSGAG1); // DSP_UC_REGION_SIZE
-#endif
+	if (dsp->is_cvp) {
+		// XXX firmware unhappy without DSP queues..
+		addr += size + SZ_1M;
+		writel(addr, dsp->base + CPU_CS_VMIMSG); // DSP_QTBL_ADDR
+		writel(addr, dsp->base + CPU_CS_VMIMSGAG0); // DSP_UC_REGION_ADDR
+		writel(size, dsp->base + CPU_CS_VMIMSGAG1); // DSP_UC_REGION_SIZE
+	}
 
-	writel(1, dsp->base + CPU_CS_SCIACMD);
+	writel(1 |BIT(3), dsp->base + CPU_CS_SCIACMD);
 
 	mask_val = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_MASK);
 	mask_val &= ~(8|4);//~(CVP_FATAL_INTR_BMSK | CVP_WRAPPER_INTR_MASK_A2HCPU_BMSK);
 	writel_relaxed(mask_val, dsp->base + CVP_WRAPPER_INTR_MASK);
 
+	// busybox devmem 0xab00004 32 0x000D000F
+
 	writel_relaxed(1, dsp->base + CPU_CS_SCIACMDARG3);
 	count = 1000;
 	do {
 		status = readl_relaxed(dsp->base + CPU_CS_SCIACMDARG0);
-		if (status)
+		if (status & 1)
 			break;
 		usleep_range(500, 1000);
 	} while (--count);
@@ -760,6 +771,8 @@ static int dsp_probe(struct platform_device *pdev)
 	// XXX
 	ret = clk_bulk_prepare_enable(dsp->num_clks, dsp->clks);
 	WARN_ON(ret);
+
+	dsp->is_cvp = !strcmp(dev->of_node->name, "cvp");
 
 	//if (!dsp->is_xtensa)
 	//	pll_configure(dsp->base + QDSP6SS_QDSP6V67SS_PLL, max_rate);

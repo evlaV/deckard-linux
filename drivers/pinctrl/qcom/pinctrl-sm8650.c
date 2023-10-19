@@ -778,10 +778,7 @@ enum sm8650_functions {
 	msm_mux_qup2_se5_l2,
 	msm_mux_qup2_se5_l3,
 	msm_mux_qup2_se5_l6,
-	msm_mux_qup2_se6_l0,
-	msm_mux_qup2_se6_l1,
-	msm_mux_qup2_se6_l2,
-	msm_mux_qup2_se6_l3,
+	msm_mux_qup2_se6,
 	msm_mux_qup2_se7_l0,
 	msm_mux_qup2_se7_l1,
 	msm_mux_qup2_se7_l2,
@@ -1618,17 +1615,8 @@ static const char *const qup2_se5_l3_groups[] = {
 static const char *const qup2_se5_l6_groups[] = {
 	"gpio23",
 };
-static const char *const qup2_se6_l0_groups[] = {
-	"gpio24",
-};
-static const char *const qup2_se6_l1_groups[] = {
-	"gpio25",
-};
-static const char *const qup2_se6_l2_groups[] = {
-	"gpio26",
-};
-static const char *const qup2_se6_l3_groups[] = {
-	"gpio27",
+static const char *const qup2_se6_groups[] = {
+	"gpio24", "gpio25", "gpio26", "gpio27",
 };
 static const char *const qup2_se7_l0_groups[] = {
 	"gpio28",
@@ -1983,10 +1971,7 @@ static const struct pinfunction sm8650_functions[] = {
 	MSM_PIN_FUNCTION(qup2_se5_l2),
 	MSM_PIN_FUNCTION(qup2_se5_l3),
 	MSM_PIN_FUNCTION(qup2_se5_l6),
-	MSM_PIN_FUNCTION(qup2_se6_l0),
-	MSM_PIN_FUNCTION(qup2_se6_l1),
-	MSM_PIN_FUNCTION(qup2_se6_l2),
-	MSM_PIN_FUNCTION(qup2_se6_l3),
+	MSM_PIN_FUNCTION(qup2_se6),
 	MSM_PIN_FUNCTION(qup2_se7_l0),
 	MSM_PIN_FUNCTION(qup2_se7_l1),
 	MSM_PIN_FUNCTION(qup2_se7_l2),
@@ -2056,10 +2041,10 @@ static const struct msm_pingroup sm8650_groups[] = {
 	[21] = PINGROUP(21, qup2_se5_l1, _, _, _, _, _, _, _, _),
 	[22] = PINGROUP(22, qup2_se5_l2, _, _, _, _, _, _, _, _),
 	[23] = PINGROUP(23, qup2_se5_l3, qup2_se5_l6, _, _, _, _, _, _, _),
-	[24] = PINGROUP(24, qup2_se6_l0, _, _, _, _, _, _, _, _),
-	[25] = PINGROUP(25, qup2_se6_l1, _, _, _, _, _, _, _, _),
-	[26] = PINGROUP(26, qup2_se6_l2, _, _, _, _, _, _, _, _),
-	[27] = PINGROUP(27, qup2_se6_l3, qdss_cti, _, _, _, _, _, _, _),
+	[24] = PINGROUP(24, qup2_se6, _, _, _, _, _, _, _, _),
+	[25] = PINGROUP(25, qup2_se6, _, _, _, _, _, _, _, _),
+	[26] = PINGROUP(26, qup2_se6, _, _, _, _, _, _, _, _),
+	[27] = PINGROUP(27, qup2_se6, qdss_cti, _, _, _, _, _, _, _),
 	[28] = PINGROUP(28, qup2_se7_l0, _, _, _, _, _, _, _, _),
 	[29] = PINGROUP(29, qup2_se7_l1, usb_phy, _, _, _, _, _, _, _),
 	[30] = PINGROUP(30, qup2_se7_l2, _, _, _, _, _, _, _, _),
