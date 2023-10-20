@@ -2,6 +2,10 @@
 #include <drm/drm_vblank.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_writeback.h>
+#include <drm/drm_fourcc.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_blend.h>
+#include <drm/drm_edid.h>
 
 #include "msm_drv.h"
 #include "msm_kms.h"
@@ -51,6 +55,8 @@ struct dpu_kms {
 	u32 intr_en;
 	u32 intr2_en;
 
+	const struct drm_dsc_config *dsc;
+
 	/* drm state */
 	struct dpu_plane plane[8];
 	struct dpu_crtc crtc[3];
@@ -62,6 +68,8 @@ struct dpu_kms {
 	u8 ubwc_version, hbb;
 	u64 creq_lut_linear;
 	u64 creq_lut_macrotile;
+	int qos_enable;
+	int cwb_plane_select;
 };
 #define to_dpu_kms(x) container_of(x, struct dpu_kms, base)
 

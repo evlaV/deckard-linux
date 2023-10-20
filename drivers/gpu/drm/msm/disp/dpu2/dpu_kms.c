@@ -256,6 +256,10 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		if (!priv->dsi[i])
 			continue;
 
+		// assume same DSC config for both panels
+		if (i == 0)
+			dpu->dsc = msm_dsi_get_dsc_config(priv->dsi[i]);
+
 		rc = msm_dsi_modeset_init(priv->dsi[i], dev, &dpu->encoder[0]);
 		if (rc) {
 			DRM_ERROR("modeset_init failed for dsi[%d], rc = %d\n",
@@ -271,7 +275,11 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 	}
 
 	/* only create 1/2 of the planes - some cases use 2 HW planes as 1 plane */
-	for (i = 0; i < 1; i++) { // dpu->num_sspp / 2
+#ifdef SIXPLANEMODE
+	for (i = 0; i < 8; i++) { // dpu->num_sspp / 2
+#else
+	for (i = 0; i < 2; i++) { // dpu->num_sspp / 2
+#endif
 		rc = dpu_plane_init(dpu, &dpu->plane[i].base);
 		if (rc) {
 			DRM_ERROR("plane init failed, rc = %d\n", rc);
@@ -316,7 +324,7 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 	dpu->crtc[0].ctl = 0;
 	dpu->crtc[0].intf = 1;
 	dpu->crtc[0].lm = 0;
-	dpu->crtc[0].is_dual_dsi = 0;
+	dpu->crtc[0].is_dual_dsi = true;
 
 	dpu->crtc[1].ctl = 2;
 	dpu->crtc[1].intf = 0;
