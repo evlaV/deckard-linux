@@ -9,6 +9,7 @@
 #include <linux/of.h>
 
 #include <drm/display/drm_dsc.h>
+#include <drm/display/drm_dsc_helper.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
@@ -20,6 +21,7 @@ struct visionox_vtdr6130 {
 	struct mipi_dsi_device *dsi;
 	struct gpio_desc *reset_gpio;
 	struct regulator_bulk_data supplies[3];
+	bool video_mode;
 };
 
 static inline struct visionox_vtdr6130 *to_visionox_vtdr6130(struct drm_panel *panel)
@@ -49,12 +51,18 @@ static int visionox_vtdr6130_on(struct visionox_vtdr6130 *ctx)
 	if (ret)
 		return ret;
 
+	mipi_dsi_dcs_write_seq(dsi, 0x03, 0x01);
 	mipi_dsi_dcs_write_seq(dsi, MIPI_DCS_WRITE_CONTROL_DISPLAY, 0x20);
 	mipi_dsi_dcs_write_seq(dsi, MIPI_DCS_SET_DISPLAY_BRIGHTNESS, 0x00, 0x00);
 	mipi_dsi_dcs_write_seq(dsi, 0x59, 0x09);
 	mipi_dsi_dcs_write_seq(dsi, 0x6c, 0x01);
 	mipi_dsi_dcs_write_seq(dsi, 0x6d, 0x00);
-	mipi_dsi_dcs_write_seq(dsi, 0x6f, 0x01);
+
+	if (ctx->video_mode)
+		mipi_dsi_dcs_write_seq(dsi, 0x6f, 0x01);
+	else
+		mipi_dsi_dcs_write_seq(dsi, 0x6f, 0x02);
+
 	mipi_dsi_dcs_write_seq(dsi, 0x70,
 			       0x12, 0x00, 0x00, 0xab, 0x30, 0x80, 0x09, 0x60, 0x04,
 			       0x38, 0x00, 0x28, 0x02, 0x1c, 0x02, 0x1c, 0x02, 0x00,
@@ -205,6 +213,35 @@ static const struct drm_display_mode visionox_vtdr6130_mode = {
 	.height_mm = 157,
 };
 
+static int visionox_vtdr6130_enable(struct drm_panel *panel)
+{
+	struct visionox_vtdr6130 *ctx = to_visionox_vtdr6130(panel);
+	struct mipi_dsi_device *dsi = ctx->dsi;
+	struct drm_dsc_picture_parameter_set pps;
+	int ret;
+
+	if (!dsi->dsc) {
+		dev_err(&dsi->dev, "DSC not attached to DSI\n");
+		return -ENODEV;
+	}
+
+	drm_dsc_pps_payload_pack(&pps, dsi->dsc);
+	ret = mipi_dsi_picture_parameter_set(dsi, &pps);
+	if (ret) {
+		dev_err(&dsi->dev, "Failed to set PPS\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+static int visionox_vtdr6130_disable(struct drm_panel *panel)
+{
+	struct visionox_vtdr6130 *ctx = to_visionox_vtdr6130(panel);
+
+	return 0;
+}
+
 static int visionox_vtdr6130_get_modes(struct drm_panel *panel,
 				       struct drm_connector *connector)
 {
@@ -228,6 +265,8 @@ static const struct drm_panel_funcs visionox_vtdr6130_panel_funcs = {
 	.prepare = visionox_vtdr6130_prepare,
 	.unprepare = visionox_vtdr6130_unprepare,
 	.get_modes = visionox_vtdr6130_get_modes,
+	.enable = visionox_vtdr6130_enable,
+	.disable = visionox_vtdr6130_disable,
 };
 
 static int visionox_vtdr6130_bl_update_status(struct backlight_device *bl)
@@ -256,15 +295,62 @@ visionox_vtdr6130_create_backlight(struct mipi_dsi_device *dsi)
 					      &visionox_vtdr6130_bl_ops, &props);
 }
 
+#if 1
+static int dsi_populate_dsc_params(struct drm_dsc_config *dsc)
+{
+	int ret;
+
+	dsc->simple_422 = 0;
+	dsc->convert_rgb = 1;
+	dsc->vbr_enable = 0;
+
+	drm_dsc_set_const_params(dsc);
+	drm_dsc_set_rc_buf_thresh(dsc);
+
+	/* handle only bpp = bpc = 8, pre-SCR panels */
+	ret = drm_dsc_setup_rc_params(dsc, DRM_DSC_1_1_PRE_SCR);
+
+	dsc->initial_scale_value = drm_dsc_initial_scale_value(dsc);
+	dsc->line_buf_depth = dsc->bits_per_component + 1;
+
+	return drm_dsc_compute_rc_parameters(dsc);
+}
+#endif
+
 static int visionox_vtdr6130_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
 	struct visionox_vtdr6130 *ctx;
+	struct drm_dsc_config *dsc;
 	int ret;
 
 	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
+
+	ctx->video_mode = 1;// of_property_read_bool(dev->of_node, "enforce-video-mode");
+
+	dsc = devm_kzalloc(dev, sizeof(*dsc), GFP_KERNEL);
+	if (!dsc)
+		return -ENOMEM;
+
+	/* Set DSC params */
+	dsc->dsc_version_major = 0x1;
+	dsc->dsc_version_minor = 0x2;
+
+	dsc->slice_height = 40;
+	dsc->slice_width = 540;
+	dsc->slice_count = 2;
+	dsc->bits_per_component = 8;
+	dsc->bits_per_pixel = 8 << 4;
+	dsc->block_pred_enable = true;
+
+	dsc->pic_width = 1080;
+	dsc->pic_height = 2400;
+
+	dsi->dsc = dsc;
+
+	dsi_populate_dsc_params(dsc);
 
 	ctx->supplies[0].supply = "vddio";
 	ctx->supplies[1].supply = "vci";
@@ -285,8 +371,9 @@ static int visionox_vtdr6130_probe(struct mipi_dsi_device *dsi)
 
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_NO_EOT_PACKET |
-			  MIPI_DSI_CLOCK_NON_CONTINUOUS;
+	dsi->mode_flags = MIPI_DSI_MODE_NO_EOT_PACKET | MIPI_DSI_CLOCK_NON_CONTINUOUS;
+	if (ctx->video_mode)
+		dsi->mode_flags |= MIPI_DSI_MODE_VIDEO;
 	ctx->panel.prepare_prev_first = true;
 
 	drm_panel_init(&ctx->panel, dev, &visionox_vtdr6130_panel_funcs,
