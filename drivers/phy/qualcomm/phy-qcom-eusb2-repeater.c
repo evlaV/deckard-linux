@@ -110,9 +110,11 @@ static const char * const pm8550b_vreg_l[] = {
 };
 
 static const u32 pm8550b_init_tbl[F_NUM_TUNE_FIELDS] = {
-	[F_TUNE_IUSB2] = 0x8,
+	[F_TUNE_IUSB2] = 0xd,
 	[F_TUNE_SQUELCH_U] = 0x3,
-	[F_TUNE_USB2_PREEM] = 0x5,
+	[F_TUNE_USB2_PREEM] = 0x7,
+	[F_TUNE_HSDISC] = 0x6,
+	[F_TUNE_EUSB_SLEW] = 0x0,
 };
 
 static const struct eusb2_repeater_cfg pm8550b_eusb2_cfg = {
