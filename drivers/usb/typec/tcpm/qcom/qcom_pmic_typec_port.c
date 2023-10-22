@@ -33,7 +33,7 @@ struct pmic_typec_port {
 	unsigned int			nr_irqs;
 	struct pmic_typec_port_irq_data	*irq_data;
 
-	struct regulator		*vdd_vbus;
+	//struct regulator		*vdd_vbus;
 
 	int				cc;
 	bool				debouncing_cc;
