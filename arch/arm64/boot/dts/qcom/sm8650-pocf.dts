@@ -4282,6 +4282,7 @@
 	qcom,dmic-sample-rate = <2400000>; /* or 3200000 */
 };
 
+#if 0
 &sound {
 	status = "okay";
 	codecs =
@@ -4290,6 +4291,7 @@
 		 <&lpass_wsamacro 1>,
 		 <&lpass_vamacro 0>, <&dummy_codec>, <&dummy_codec>;
 };
+#endif
 
 &pm8550_gpios {
 	sdc2_card_det_n: sdc2-card-det-state {
