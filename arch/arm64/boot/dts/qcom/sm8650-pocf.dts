@@ -24,6 +24,8 @@
 
 #include <dt-bindings/clock/qcom,lpasscorecc-sm8550.h>
 
+#include <dt-bindings/input/input.h>
+
 
 / {
 	interrupt-parent = <&intc>;
@@ -3479,6 +3481,23 @@
 		regulator-always-on; // EYE CAM TEST
 	};
 
+
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		pinctrl-0 = <&volume_up_n>;
+		pinctrl-names = "default";
+
+		key-volume-up {
+			label = "Volume Up";
+			linux,code = <KEY_VOLUMEUP>;
+			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
+			debounce-interval = <15>;
+			linux,can-disable;
+			wakeup-source;
+		};
+	};
+
 };
 
 #include "pm8010.dtsi"
@@ -4118,6 +4137,15 @@
 
 };
 
+&pon_pwrkey {
+	status = "okay";
+};
+
+&pon_resin {
+	linux,code = <KEY_VOLUMEDOWN>;
+	status = "okay";
+};
+
 &pmk8550_rtc {
 	allow-set-time;
 };
@@ -4294,6 +4322,14 @@
 #endif
 
 &pm8550_gpios {
+	volume_up_n: volume-up-n-state {
+		pins = "gpio6";
+		function = "normal";
+		power-source = <1>;
+		bias-pull-up;
+		input-enable;
+	};
+
 	sdc2_card_det_n: sdc2-card-det-state {
 		pins = "gpio12";
 		function = "normal";
