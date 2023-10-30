@@ -623,6 +623,28 @@ static int periph_interrupt(struct spmi_pmic_arb *pmic_arb, u16 apid)
 	u8 sid = (pmic_arb->apid_data[apid].ppid >> 8) & 0xF;
 	u8 per = pmic_arb->apid_data[apid].ppid & 0xFF;
 
+	// workaround for sdcard gpio interrupt
+	// for some reason, the first interrupt causes the interrupt to be disabled
+	// this probably has something to do with interrupt being enabled on boot
+	{
+	static int once;
+	if (sid == 1 && per == 0x93 && once == 0) {
+		unsigned tries = 10;
+		u8 buf[2];
+
+		do {
+			pmic_arb_read_cmd(pmic_arb->spmic, SPMI_CMD_EXT_READL, sid,
+			      (per << 8) + QPNPINT_REG_EN_SET, buf, 1);
+		} while (buf[0] && tries--);
+
+		buf[0] = 1;
+		buf[1] = 1;
+		pmic_arb_write_cmd(pmic_arb->spmic, SPMI_CMD_EXT_WRITEL, sid,
+			       (per << 8) + QPNPINT_REG_LATCHED_CLR, buf, 2);
+		once = 1;
+	}
+	}
+
 	status = readl_relaxed(pmic_arb->ver_ops->irq_status(pmic_arb, apid));
 	while (status) {
 		id = ffs(status) - 1;
