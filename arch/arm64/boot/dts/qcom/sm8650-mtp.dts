@@ -2471,6 +2471,7 @@
 #include "pm8010.dtsi"
 #include "pm8550b.dtsi"
 #include "pm8550vs.dtsi"
+#include "pm8550ve.dtsi"
 #include "pmk8550.dtsi"
 
 &apps_rsc {
