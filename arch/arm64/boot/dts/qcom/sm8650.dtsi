@@ -3230,6 +3230,7 @@
 			};
 		};
 
+#if 0
 		cci1: cci@ac16000 {
 			compatible = "qcom,sm8450-cci", "qcom,msm8996-cci";
 			reg = <0 0x0ac16000 0 0x1000>;
@@ -3271,6 +3272,7 @@
 				#size-cells = <0>;
 			};
 		};
+#endif
 
 		cci2: cci@ac17000 {
 			compatible = "qcom,sm8450-cci", "qcom,msm8996-cci";
