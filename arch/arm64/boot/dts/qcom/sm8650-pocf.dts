@@ -5402,6 +5402,12 @@
 	// DISPLAY_AVDD_EN pm8550 gpio_04
 	// DISPLAY_AVEE_EN pm8550 gpio 09
 
+	VREG_AVDD_AVEE_R: ktd2151@3e {
+		reg = <0x3e>;
+		compatible = "ktd2151";
+		regulator-always-on;//XXX
+	};
+
 #if 1
 	// MPQ3367GR3
 	// BL_DRIVE_EN_R pm8550 gpio_01
@@ -5420,6 +5426,12 @@
 
 	// second KTD2151BEUO
 	// DISPLAY_AVDD_EN/DISPLAY_AVEE_EN again
+
+	VREG_AVDD_AVEE_L: ktd2151@3e {
+		reg = <0x3e>;
+		compatible = "ktd2151";
+		regulator-always-on;//XXX
+	};
 
 #if 1
 	// second MPQ3367GR
