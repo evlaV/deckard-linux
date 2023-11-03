@@ -12,12 +12,13 @@
 struct mpq3367 {
 	struct regulator_desc desc;
 	struct regmap *regmap;
-	struct regulator *vin;
 	bool is_enabled;
 	uint8_t required_reinit;
     struct delayed_work backlight_work;
 
     struct gpio_desc *en_gpio;
+	struct gpio_desc *preboost_gpio;
+	u32	backlight_index;
 };
 
 void backlight_delayed_work_handler(struct work_struct *work)
@@ -71,11 +72,22 @@ static int reg_enable(struct regulator_dev *rdev)
 	int ret;
 	int loopctr=0;
 
-	ret = regulator_enable(mpq->vin);
-	if (ret)
-		return ret;
-
-	usleep_range(1000000, 2000000);
+	if(mpq->backlight_index == 1) {
+		//the BOOST_CYCLE_COUNT is here to help the preboost boot up faster to the target voltage
+		#define BOOST_CYCLE_COUNT 20
+		dev_err(dev, "mpq3367: starting preboost: cycle count = %d\n", BOOST_CYCLE_COUNT);
+		for(int i=0; i < BOOST_CYCLE_COUNT; i++) {
+			//these times are fairly tightly tuned 
+			//to avoid going into some high current conditions
+			gpiod_set_value(mpq->preboost_gpio, 0); usleep_range(200, 400);
+			gpiod_set_value(mpq->preboost_gpio, 1); usleep_range(1200, 1300);
+		}
+		gpiod_set_value(mpq->preboost_gpio, 1);
+	}
+	dev_err(dev, "mpq3367: preboost startup done\n");
+	//we need to delay to wait for hiccup mode to exit -- 
+	//at a minimum it is about 70ms we need to wait here...
+	usleep_range(200000, 250000);
 	
 	dev_err(dev, "mpq3367: gpio enable\n");
 	gpiod_set_value(mpq->en_gpio, 1);
@@ -113,9 +125,14 @@ static int reg_disable(struct regulator_dev *rdev)
 {
 	struct mpq3367 *mpq = rdev_get_drvdata(rdev);
 
+	printk("mpq3367: disabling backlight\n");
 	gpiod_set_value(mpq->en_gpio, 0);
 
-	regulator_disable(mpq->vin);
+	if(mpq->backlight_index == 1) {
+		printk("mpq3367: disabling preboost\n");
+		gpiod_set_value(mpq->preboost_gpio, 0);
+	}
+
 	mpq->is_enabled = false;
 	return 0;
 }
@@ -288,6 +305,7 @@ mpq3367_probe(struct i2c_client *client)
 	struct regulator_dev *rdev;
 	struct mpq3367 *mpq;
 	int ret = 0;
+	u32 val32;
 
 	mpq = devm_kzalloc(dev, sizeof(*mpq), GFP_KERNEL);
 	if (!mpq)
@@ -297,13 +315,19 @@ mpq3367_probe(struct i2c_client *client)
 	if (IS_ERR(mpq->regmap))
 		return PTR_ERR(mpq->regmap);
 
-	mpq->vin = devm_regulator_get(dev, "vin");
-	if (IS_ERR(mpq->vin))
-		return PTR_ERR(mpq->vin);
 
 	mpq->en_gpio = devm_gpiod_get(dev, "en", GPIOD_OUT_LOW);
 	if (IS_ERR(mpq->en_gpio))
 		return PTR_ERR(mpq->en_gpio);
+
+	if (of_property_read_u32(dev->of_node, "backlight-index", &val32) >= 0)
+		mpq->backlight_index = val32;
+
+	if(mpq->backlight_index == 1) {
+		mpq->preboost_gpio = devm_gpiod_get(dev, "preboost", GPIOD_OUT_LOW);
+		if (IS_ERR(mpq->preboost_gpio))
+			return PTR_ERR(mpq->preboost_gpio);
+	}
 
 	cfg.dev = dev;
 	cfg.init_data = of_get_regulator_init_data(dev, dev->of_node, &mpq->desc);

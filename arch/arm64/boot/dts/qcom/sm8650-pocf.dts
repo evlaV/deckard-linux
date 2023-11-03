@@ -4582,17 +4582,6 @@
 		regulator-always-on; // XXX
 	};
 
-#if 1
-	WLED_BOOST_14V: WLED_BOOST_14V {
-		compatible = "regulator-fixed";
-		regulator-name = "WLED_BOOST_14V";
-		regulator-min-microvolt = <5000000>;
-		regulator-max-microvolt = <5000000>;
-		gpio = <&tlmm 41 GPIO_ACTIVE_HIGH>;
-		enable-active-high;
-	};
-#endif
-
 	// XXX model these correctly:
 	DISPLAY_AVDD_EN: DISPLAY_AVDD_EN {
 		compatible = "regulator-fixed";
@@ -5419,8 +5408,9 @@
 	VREG_WLED_R: mpq3367@38 {
 		reg = <0x38>;
 		compatible = "mpq3367";
-		vin-supply = <&WLED_BOOST_14V>;
 		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+		preboost-gpios = <&tlmm 41 GPIO_ACTIVE_HIGH>;
+		backlight-index = <1>;
 	};
 #endif
 };
@@ -5437,8 +5427,8 @@
 	VREG_WLED_L: mpq3367@38 {
 		reg = <0x38>;
 		compatible = "mpq3367";
-		vin-supply = <&WLED_BOOST_14V>;
 		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+		backlight-index = <2>;
 	};
 #endif
 
