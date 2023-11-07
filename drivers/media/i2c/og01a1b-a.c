@@ -61,10 +61,15 @@ DEFINE_SPINLOCK(ir_spinlock);
  // Integer argument: ID of the group mode
 #define VIDIOC_OG01A1B_PRV_S_GROUP_MODE _IO('V', BASE_VIDIOC_PRIVATE + 5)
 
+#define VIDIOC_OG01A1B_PRV_G_DRIVER_VERSION _IOR('V', BASE_VIDIOC_PRIVATE + 6, u32)
+
 // Version 1.2 support histogram streaming.
 
 #define METADATA_MAJOR_VERSION 1
 #define METADATA_MINOR_VERSION 2
+
+#define DRIVER_MAJOR_VERSION 1
+#define DRIVER_MINOR_VERSION 0
 
 
 /* regulator supplies */
@@ -1848,6 +1853,11 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
             *a = ((METADATA_MAJOR_VERSION << 16) & 0xffff0000) | (METADATA_MINOR_VERSION & 0xffff);
             break;
         }
+		case VIDIOC_OG01A1B_PRV_G_DRIVER_VERSION:
+		{
+			*a = ((DRIVER_MAJOR_VERSION << 16) & 0xffff0000) | (DRIVER_MINOR_VERSION & 0xffff);
+			break;
+		}
         case VIDIOC_OG01A1B_PRV_S_IR_EMITTER_MODE:
         {
             //only allow this to be enabled if emitters are present. Else return -1
