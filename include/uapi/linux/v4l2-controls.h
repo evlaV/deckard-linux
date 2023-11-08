@@ -186,6 +186,12 @@ enum v4l2_colorfx {
 #define V4L2_CID_USER_ALLEGRO_BASE		(V4L2_CID_USER_BASE + 0x1170)
 
 /*
+ * The base for og01a1b driver controls.
+ * We reserve 16 controls for this driver.
+ */
+#define V4L2_CID_USER_OG01A1B_BASE		(V4L2_CID_USER_BASE + 0x1170)
+
+/*
  * The base for the isl7998x driver controls.
  * We reserve 16 controls for this driver.
  */
@@ -1223,6 +1229,9 @@ enum v4l2_jpeg_chroma_subsampling {
 #define V4L2_CID_TEST_PATTERN			(V4L2_CID_IMAGE_PROC_CLASS_BASE + 3)
 #define V4L2_CID_DEINTERLACING_MODE		(V4L2_CID_IMAGE_PROC_CLASS_BASE + 4)
 #define V4L2_CID_DIGITAL_GAIN			(V4L2_CID_IMAGE_PROC_CLASS_BASE + 5)
+#define V4L2_CID_METADATA_CB_ADDR		(V4L2_CID_IMAGE_PROC_CLASS_BASE + 6)
+#define V4L2_CID_METADATA_SIZE			(V4L2_CID_IMAGE_PROC_CLASS_BASE + 7)
+#define V4L2_CID_SENSOR_SOF_CB_ADDR		(V4L2_CID_IMAGE_PROC_CLASS_BASE + 8)
 
 /*  DV-class control IDs defined by V4L2 */
 #define V4L2_CID_DV_CLASS_BASE			(V4L2_CTRL_CLASS_DV | 0x900)

@@ -243,10 +243,8 @@ static struct clk_alpha_pll_postdiv cam_cc_pll10_out_even = {
 	},
 };
 
-#if 0
 static const struct alpha_pll_config cam_cc_pll2_config = {
 	.l = 0x32,
-	.cal_l = 0x32,
 	.alpha = 0x0,
 	.config_ctl_val = 0x10000030,
 	.config_ctl_hi_val = 0x80890263,
@@ -271,7 +269,6 @@ static struct clk_alpha_pll cam_cc_pll2 = {
 		},
 	},
 };
-#endif
 
 static const struct alpha_pll_config cam_cc_pll3_config = {
 	.l = 0x30,
@@ -694,14 +691,14 @@ static const struct clk_parent_data cam_cc_parent_data_0[] = {
 
 static const struct parent_map cam_cc_parent_map_1[] = {
 	{ P_BI_TCXO, 0 },
-	//{ P_CAM_CC_PLL2_OUT_EVEN, 3 },
-	//{ P_CAM_CC_PLL2_OUT_MAIN, 5 },
+	{ P_CAM_CC_PLL2_OUT_EVEN, 3 },
+	{ P_CAM_CC_PLL2_OUT_MAIN, 5 },
 };
 
 static const struct clk_parent_data cam_cc_parent_data_1[] = {
 	{ .index = DT_BI_TCXO },
-	//{ .hw = &cam_cc_pll2.clkr.hw },
-	//{ .hw = &cam_cc_pll2.clkr.hw },
+	{ .hw = &cam_cc_pll2.clkr.hw },
+	{ .hw = &cam_cc_pll2.clkr.hw },
 };
 
 static const struct parent_map cam_cc_parent_map_2[] = {
@@ -1283,8 +1280,8 @@ static struct clk_rcg2 cam_cc_jpeg_clk_src = {
 
 static const struct freq_tbl ftbl_cam_cc_mclk0_clk_src[] = {
 	F(19200000, P_BI_TCXO, 1, 0, 0),
-	//F(24000000, P_CAM_CC_PLL2_OUT_EVEN, 10, 1, 4),
-	//F(68571429, P_CAM_CC_PLL2_OUT_MAIN, 14, 0, 0),
+	F(24000000, P_CAM_CC_PLL2_OUT_EVEN, 10, 1, 4),
+	F(68571429, P_CAM_CC_PLL2_OUT_MAIN, 14, 0, 0),
 	{ }
 };
 
@@ -3372,7 +3369,7 @@ static struct clk_regmap *cam_cc_sm8650_clocks[] = {
 	[CAM_CC_PLL10] = &cam_cc_pll10.clkr,
 	[CAM_CC_PLL10_OUT_EVEN] = &cam_cc_pll10_out_even.clkr,
 	[CAM_CC_PLL1_OUT_EVEN] = &cam_cc_pll1_out_even.clkr,
-	// [CAM_CC_PLL2] = &cam_cc_pll2.clkr,
+	[CAM_CC_PLL2] = &cam_cc_pll2.clkr,
 	[CAM_CC_PLL3] = &cam_cc_pll3.clkr,
 	[CAM_CC_PLL3_OUT_EVEN] = &cam_cc_pll3_out_even.clkr,
 	[CAM_CC_PLL4] = &cam_cc_pll4.clkr,
@@ -3470,7 +3467,7 @@ static struct gdsc ife_0_gdsc = {
 	.pd = {
 		.name = "ife_0_gdsc",
 	},
-	.flags = POLL_CFG_GDSCR,
+	.flags = POLL_CFG_GDSCR | ALWAYS_ON, // ALWAYS_ON for testing
 	.parent = &titan_top_gdsc.pd,
 	.pwrsts = PWRSTS_OFF_ON,
 };
@@ -3480,7 +3477,7 @@ static struct gdsc ife_1_gdsc = {
 	.pd = {
 		.name = "ife_1_gdsc",
 	},
-	.flags = POLL_CFG_GDSCR,
+	.flags = POLL_CFG_GDSCR | ALWAYS_ON, // ALWAYS_ON for testing
 	.parent = &titan_top_gdsc.pd,
 	.pwrsts = PWRSTS_OFF_ON,
 };
@@ -3490,7 +3487,7 @@ static struct gdsc ife_2_gdsc = {
 	.pd = {
 		.name = "ife_2_gdsc",
 	},
-	.flags = POLL_CFG_GDSCR,
+	.flags = POLL_CFG_GDSCR | ALWAYS_ON, // ALWAYS_ON for testing
 	.parent = &titan_top_gdsc.pd,
 	.pwrsts = PWRSTS_OFF_ON,
 };
@@ -3566,9 +3563,13 @@ MODULE_DEVICE_TABLE(of, cam_cc_sm8650_match_table);
 static int cam_cc_sm8650_probe(struct platform_device *pdev)
 {
 	struct regmap *regmap;
+	static int x;
 	struct clk *ahb_clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(ahb_clk))
 		return PTR_ERR(ahb_clk);
+
+	if (x++ < 3)
+		return -EPROBE_DEFER;
 
 	regmap = qcom_cc_map(pdev, &cam_cc_sm8650_desc);
 	if (IS_ERR(regmap))
@@ -3579,7 +3580,7 @@ static int cam_cc_sm8650_probe(struct platform_device *pdev)
 	clk_lucid_ole_pll_configure(&cam_cc_pll0, regmap, &cam_cc_pll0_config);
 	clk_lucid_ole_pll_configure(&cam_cc_pll1, regmap, &cam_cc_pll1_config);
 	clk_lucid_ole_pll_configure(&cam_cc_pll10, regmap, &cam_cc_pll10_config);
-	//clk_rivian_ole_pll_configure(&cam_cc_pll2, regmap, &cam_cc_pll2_config);
+	clk_rivian_ole_pll_configure(&cam_cc_pll2, regmap, &cam_cc_pll2_config);
 	clk_lucid_ole_pll_configure(&cam_cc_pll3, regmap, &cam_cc_pll3_config);
 	clk_lucid_ole_pll_configure(&cam_cc_pll4, regmap, &cam_cc_pll4_config);
 	clk_lucid_ole_pll_configure(&cam_cc_pll5, regmap, &cam_cc_pll5_config);

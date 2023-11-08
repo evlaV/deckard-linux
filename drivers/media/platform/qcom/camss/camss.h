@@ -21,7 +21,7 @@
 #include "camss-csid.h"
 #include "camss-csiphy.h"
 #include "camss-ispif.h"
-#include "camss-vfe.h"
+// #include "camss-vfe.h"
 
 #define to_camss(ptr_module)	\
 	container_of(ptr_module, struct camss, ptr_module)
@@ -41,18 +41,19 @@
 
 #define CAMSS_RES_MAX 17
 
-struct camss_subdev_resources {
+struct resources {
 	char *regulators[CAMSS_RES_MAX];
 	char *clock[CAMSS_RES_MAX];
-	char *clock_for_reset[CAMSS_RES_MAX];
 	u32 clock_rate[CAMSS_RES_MAX][CAMSS_RES_MAX];
 	char *reg[CAMSS_RES_MAX];
 	char *interrupt[CAMSS_RES_MAX];
-	char *pd_name;
-	u8 line_num;
-	bool has_pd;
-	bool is_lite;
-	const void *ops;
+};
+
+struct resources_ispif {
+	char *clock[CAMSS_RES_MAX];
+	char *clock_for_reset[CAMSS_RES_MAX];
+	char *reg[CAMSS_RES_MAX];
+	char *interrupt;
 };
 
 struct icc_bw_tbl {
@@ -63,12 +64,6 @@ struct icc_bw_tbl {
 struct resources_icc {
 	char *name;
 	struct icc_bw_tbl icc_bw_tbl;
-};
-
-enum pm_domain {
-	PM_DOMAIN_VFE0 = 0,
-	PM_DOMAIN_VFE1 = 1,
-	PM_DOMAIN_VFELITE = 2,		/* VFELITE / TOP GDSC */
 };
 
 enum camss_version {
@@ -84,35 +79,29 @@ enum icc_count {
 	ICC_SM8250_COUNT = 4,
 };
 
-struct camss_resources {
-	enum camss_version version;
-	const char *pd_name;
-	const struct camss_subdev_resources *csiphy_res;
-	const struct camss_subdev_resources *csid_res;
-	const struct camss_subdev_resources *ispif_res;
-	const struct camss_subdev_resources *vfe_res;
-	const struct resources_icc *icc_res;
-	const unsigned int icc_path_num;
-	const unsigned int csiphy_num;
-	const unsigned int csid_num;
-	const unsigned int vfe_num;
-};
+#define IFE_FULL_COUNT 3
 
 struct camss {
+	enum camss_version version;
 	struct v4l2_device v4l2_dev;
 	struct v4l2_async_notifier notifier;
 	struct media_device media_dev;
 	struct device *dev;
+	int csiphy_num;
 	struct csiphy_device *csiphy;
+	int csid_num;
 	struct csid_device *csid;
-	struct ispif_device *ispif;
-	struct vfe_device *vfe;
+	void __iomem *csid_top;
+	// struct ispif_device *ispif;
+	//int vfe_num;
+	//int vfe_lite_num;
+	//struct vfe_device *vfe;
 	atomic_t ref_count;
 	int genpd_num;
-	struct device *genpd;
-	struct device_link *genpd_link;
+	struct device **genpd;
+	struct device_link **genpd_link;
 	struct icc_path *icc_path[ICC_SM8250_COUNT];
-	const struct camss_resources *res;
+	struct icc_bw_tbl icc_bw_tbl[ICC_SM8250_COUNT];
 };
 
 struct camss_camera_interface {

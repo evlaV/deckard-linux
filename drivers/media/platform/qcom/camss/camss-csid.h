@@ -18,6 +18,8 @@
 #include <media/v4l2-mediabus.h>
 #include <media/v4l2-subdev.h>
 
+#include "camss-video.h"
+
 #define MSM_CSID_PAD_SINK 0
 #define MSM_CSID_PAD_FIRST_SRC 1
 #define MSM_CSID_PADS_NUM 5
@@ -75,19 +77,10 @@ struct csid_format {
 	u8 spp; /* bus samples per pixel */
 };
 
-struct csid_testgen_config {
-	enum csid_testgen_mode mode;
-	const char * const*modes;
-	u8 nmodes;
-	u8 enabled;
-};
-
 struct csid_phy_config {
 	u8 csiphy_id;
 	u8 lane_cnt;
 	u32 lane_assign;
-	u32 en_vc;
-	u8 need_vc_update;
 };
 
 struct csid_device;
@@ -98,13 +91,6 @@ struct csid_hw_ops {
 	 * @csid: CSID device
 	 */
 	void (*configure_stream)(struct csid_device *csid, u8 enable);
-
-	/*
-	 * configure_testgen_pattern - Validates and configures output pattern mode
-	 * of test pattern generator
-	 * @csid: CSID device
-	 */
-	int (*configure_testgen_pattern)(struct csid_device *csid, s32 val);
 
 	/*
 	 * hw_version - Read hardware version register from hardware
@@ -120,6 +106,7 @@ struct csid_hw_ops {
 	 * Return IRQ_HANDLED on success
 	 */
 	irqreturn_t (*isr)(int irq, void *dev);
+	irqreturn_t (*ife_isr)(int irq, void *dev);
 
 	/*
 	 * reset - Trigger reset on CSID module and wait to complete
@@ -155,14 +142,14 @@ struct csid_device {
 	struct v4l2_subdev subdev;
 	struct media_pad pads[MSM_CSID_PADS_NUM];
 	void __iomem *base;
+	void __iomem *ife_base;
 	u32 irq;
+	u32 ife_irq;
 	char irq_name[30];
+	char ife_irq_name[30];
 	struct camss_clock *clock;
 	int nclocks;
-	struct regulator_bulk_data *supplies;
-	int num_supplies;
 	struct completion reset_complete;
-	struct csid_testgen_config testgen;
 	struct csid_phy_config phy;
 	struct v4l2_mbus_framefmt fmt[MSM_CSID_PADS_NUM];
 	struct v4l2_ctrl_handler ctrls;
@@ -170,9 +157,18 @@ struct csid_device {
 	const struct csid_format *formats;
 	unsigned int nformats;
 	const struct csid_hw_ops *ops;
+	struct camss_video_ops video_ops;
+	struct camss_video video_out;
+	// output buffers currently submitted to HW:
+	struct camss_buffer *out_buf[2];
+	// output buffers not yet submitted to HW:
+	struct list_head pending_bufs;
+	unsigned int sequence;
+	bool stream_on;
+	spinlock_t output_lock;
 };
 
-struct camss_subdev_resources;
+struct resources;
 
 /*
  * csid_find_code - Find a format code in an array using array index or format code
@@ -200,7 +196,7 @@ const struct csid_format *csid_get_fmt_entry(const struct csid_format *formats,
 					     u32 code);
 
 int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
-			 const struct camss_subdev_resources *res, u8 id);
+			 const struct resources *res, u8 id);
 
 int msm_csid_register_entity(struct csid_device *csid,
 			     struct v4l2_device *v4l2_dev);
@@ -215,12 +211,5 @@ extern const struct csid_hw_ops csid_ops_4_1;
 extern const struct csid_hw_ops csid_ops_4_7;
 extern const struct csid_hw_ops csid_ops_gen2;
 
-/*
- * csid_is_lite - Check if CSID is CSID lite.
- * @csid: CSID Device
- *
- * Return whether CSID is CSID lite
- */
-bool csid_is_lite(struct csid_device *csid);
 
 #endif /* QC_MSM_CAMSS_CSID_H */
