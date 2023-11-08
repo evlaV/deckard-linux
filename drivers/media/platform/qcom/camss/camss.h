@@ -21,7 +21,7 @@
 #include "camss-csid.h"
 #include "camss-csiphy.h"
 #include "camss-ispif.h"
-#include "camss-vfe.h"
+// #include "camss-vfe.h"
 
 #define to_camss(ptr_module)	\
 	container_of(ptr_module, struct camss, ptr_module)
@@ -66,12 +66,6 @@ struct resources_icc {
 	struct icc_bw_tbl icc_bw_tbl;
 };
 
-enum pm_domain {
-	PM_DOMAIN_VFE0 = 0,
-	PM_DOMAIN_VFE1 = 1,
-	PM_DOMAIN_VFELITE = 2,		/* VFELITE / TOP GDSC */
-};
-
 enum camss_version {
 	CAMSS_8x16,
 	CAMSS_8x96,
@@ -85,6 +79,8 @@ enum icc_count {
 	ICC_SM8250_COUNT = 4,
 };
 
+#define IFE_FULL_COUNT 3
+
 struct camss {
 	enum camss_version version;
 	struct v4l2_device v4l2_dev;
@@ -95,10 +91,11 @@ struct camss {
 	struct csiphy_device *csiphy;
 	int csid_num;
 	struct csid_device *csid;
-	struct ispif_device *ispif;
-	int vfe_num;
-	int vfe_lite_num;
-	struct vfe_device *vfe;
+	void __iomem *csid_top;
+	// struct ispif_device *ispif;
+	//int vfe_num;
+	//int vfe_lite_num;
+	//struct vfe_device *vfe;
 	atomic_t ref_count;
 	int genpd_num;
 	struct device **genpd;

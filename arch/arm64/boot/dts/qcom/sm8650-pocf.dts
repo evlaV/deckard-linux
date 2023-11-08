@@ -1632,6 +1632,188 @@
 			};
 		};
 
+		camss: camss@ac6a000 {
+			compatible = "qcom,sm8650-camss";
+			status = "disabled";
+
+			reg = <0 0x0ace4000 0 0x2000>,
+			      <0 0x0ace6000 0 0x2000>,
+			      <0 0x0ace8000 0 0x2000>,
+			      <0 0x0acea000 0 0x2000>,
+			      <0 0x0acec000 0 0x2000>,
+			      <0 0x0acee000 0 0x2000>,
+			      <0 0xacb6000 0 0x1000>,
+			      <0 0xacb8000 0 0x1000>,
+			      <0 0xac62000 0 0xf000>,
+			      <0 0xacba000 0 0x1000>,
+			      <0 0xac71000 0 0xf000>,
+			      <0 0xacbc000 0 0x1000>,
+			      <0 0xac80000 0 0xf000>,
+			      <0 0xacca000 0 0x3000>,
+			      <0 0xaccf000 0 0x3000>;
+			reg-names = "csiphy0",
+				    "csiphy1",
+				    "csiphy2",
+				    "csiphy3",
+				    "csiphy4",
+				    "csiphy5",
+				    "csid_top",
+				    "csid0", "vfe0",
+				    "csid1", "vfe1",
+				    "csid2", "vfe2",
+				    "vfe_lite0",
+				    "vfe_lite1";
+
+			interrupts = <GIC_SPI 477 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 478 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 479 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 448 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 122 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 89 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 601 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 602 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 603 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 604 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 431 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 688 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 605 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 606 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 376 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 377 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "csiphy0",
+					  "csiphy1",
+					  "csiphy2",
+					  "csiphy3",
+					  "csiphy4",
+					  "csiphy5",
+					  "csid0", "vfe0",
+					  "csid1", "vfe1",
+					  "csid2", "vfe2",
+					  "csid_lite0", "vfe_lite0",
+					  "csid_lite1", "vfe_lite1";
+
+			power-domains = <&camcc IFE_0_GDSC>,
+					<&camcc IFE_1_GDSC>,
+					<&camcc IFE_2_GDSC>,
+					<&camcc TITAN_TOP_GDSC>;
+
+			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
+				 <&gcc GCC_CAMERA_HF_AXI_CLK>,
+				 <&gcc GCC_CAMERA_SF_AXI_CLK>,
+				 <&camcc CAM_CC_CPAS_AHB_CLK>,
+				 <&camcc CAM_CC_CPAS_FAST_AHB_CLK>,
+				 <&camcc CAM_CC_CAMNOC_AXI_RT_CLK>,
+				 <&camcc CAM_CC_CAMNOC_AXI_NRT_CLK>,
+				 <&camcc CAM_CC_QDSS_DEBUG_XO_CLK>,
+				 <&camcc CAM_CC_CSIPHY0_CLK>,
+				 <&camcc CAM_CC_CSI0PHYTIMER_CLK>,
+				 <&camcc CAM_CC_CSIPHY1_CLK>,
+				 <&camcc CAM_CC_CSI1PHYTIMER_CLK>,
+				 <&camcc CAM_CC_CSIPHY2_CLK>,
+				 <&camcc CAM_CC_CSI2PHYTIMER_CLK>,
+				 <&camcc CAM_CC_CSIPHY3_CLK>,
+				 <&camcc CAM_CC_CSI3PHYTIMER_CLK>,
+				 <&camcc CAM_CC_CSIPHY4_CLK>,
+				 <&camcc CAM_CC_CSI4PHYTIMER_CLK>,
+				 <&camcc CAM_CC_CSIPHY5_CLK>,
+				 <&camcc CAM_CC_CSI5PHYTIMER_CLK>,
+				 <&camcc CAM_CC_CSID_CLK>,
+				 <&camcc CAM_CC_CSID_CSIPHY_RX_CLK>,
+				 <&camcc CAM_CC_IFE_0_FAST_AHB_CLK>,
+				 <&camcc CAM_CC_IFE_0_CLK>,
+				 <&camcc CAM_CC_CPAS_IFE_0_CLK>,
+				 <&camcc CAM_CC_IFE_1_FAST_AHB_CLK>,
+				 <&camcc CAM_CC_IFE_1_CLK>,
+				 <&camcc CAM_CC_CPAS_IFE_1_CLK>,
+				 <&camcc CAM_CC_IFE_2_FAST_AHB_CLK>,
+				 <&camcc CAM_CC_IFE_2_CLK>,
+				 <&camcc CAM_CC_CPAS_IFE_2_CLK>,
+				 <&camcc CAM_CC_IFE_LITE_AHB_CLK>,
+				 <&camcc CAM_CC_IFE_LITE_CSID_CLK>,
+				 <&camcc CAM_CC_IFE_LITE_CPHY_RX_CLK>,
+				 <&camcc CAM_CC_IFE_LITE_CLK>,
+				 <&camcc CAM_CC_CPAS_IFE_LITE_CLK>;
+
+			clock-names = "gcc_ahb_clk",
+				      "gcc_axi_hf",
+				      "gcc_axi_sf",
+				      "cpas_ahb",
+				      "cpas_fast_ahb",
+				      "camnoc_axi_rt",
+				      "camnoc_axi_nrt",
+				      "qdss_debug_xo",
+				      "csiphy0",
+				      "csiphy0_timer",
+				      "csiphy1",
+				      "csiphy1_timer",
+				      "csiphy2",
+				      "csiphy2_timer",
+				      "csiphy3",
+				      "csiphy3_timer",
+				      "csiphy4",
+				      "csiphy4_timer",
+				      "csiphy5",
+				      "csiphy5_timer",
+				      "csid",
+				      "csid_csiphy_rx",
+				      "vfe0_fast_ahb",
+				      "vfe0",
+				      "cpas_vfe0",
+				      "vfe1_fast_ahb",
+				      "vfe1",
+				      "cpas_vfe1",
+				      "vfe2_fast_ahb",
+				      "vfe2",
+				      "cpas_vfe2",
+				      "vfe_lite_ahb",
+				      "vfe_lite_csid",
+				      "vfe_lite_cphy_rx",
+				      "vfe_lite",
+				      "cpas_vfe_lite";
+
+			iommus = <&apps_smmu 0x800 0x20>; // IFE
+
+#if 0
+			interconnects = <&gem_noc MASTER_AMPSS_M0 0 &config_noc SLAVE_CAMERA_CFG 0>,
+					<&mmss_noc MASTER_CAMNOC_HF 0 &mc_virt SLAVE_EBI_CH0 0>,
+					<&mmss_noc MASTER_CAMNOC_SF 0 &mc_virt SLAVE_EBI_CH0 0>,
+					<&mmss_noc MASTER_CAMNOC_ICP 0 &mc_virt SLAVE_EBI_CH0 0>;
+			interconnect-names = "cam_ahb",
+					     "cam_hf_0_mnoc",
+					     "cam_sf_0_mnoc",
+					     "cam_sf_icp_mnoc";
+#endif
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+				};
+
+				port@1 {
+					reg = <1>;
+				};
+
+				port@2 {
+					reg = <2>;
+				};
+
+				port@3 {
+					reg = <3>;
+				};
+
+				port@4 {
+					reg = <4>;
+				};
+
+				port@5 {
+					reg = <5>;
+				};
+			};
+		};
+
 		camcc: clock-controller@ade0000 {
 			compatible = "qcom,sm8650-camcc";
 			reg = <0 0x0ade0000 0 0x20000>;
@@ -2905,6 +3087,7 @@
 				  <&apps_smmu 0x10e5 0x0>; // ASC bus client 1
 			//core-max-rate = <1401600000>;
 
+#if 0
 			// XXX:
 			pinctrl-names = "default";
 			pinctrl-0 = <&cam_sensor_mclk0_active &cam_sensor_mclk1_active
@@ -2913,6 +3096,7 @@
 				 &cam_sensor_mclk6_active  &cam_sensor_mclk7_active>;
 			// left is MCLK4, CCI_1, CSI2
 			// right is MCLK2, CCI_2, CSI4
+#endif
 		};
 
 		vidc: vidc@aa00000 {
@@ -4604,105 +4788,64 @@
 	};
 
 
-#if 1
-	VREG_6DOF_1V8_R: 6DOF_1V8_R {
-		compatible = "regulator-fixed";
-		regulator-name = "6DOF_1V8_R";
-		regulator-min-microvolt = <1800000>;
-		regulator-max-microvolt = <1800000>;
-		enable-active-high;
-		gpio = <&tlmm 36 GPIO_ACTIVE_HIGH>;
-		vin-supply = <&VREG_L5M_1P8>;
+	VREG_6DOF_1V8 {
+		compatible = "regulator-fixed2";
+		gpios = <&tlmm 36 GPIO_ACTIVE_HIGH>,
+			<&tlmm 33 GPIO_ACTIVE_HIGH>;
+		r-supply = <&VREG_L5M_1P8>;
+		l-supply = <&VREG_L5N_1P8>;
 
-		regulator-always-on; // XXX
+		VREG_6DOF_1V8_R: r0 {
+			regulator-name = "6DOF_1V8_R";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+		VREG_6DOF_1V8_UR: r1 {
+			regulator-name = "6DOF_1V8_UR";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+		VREG_6DOF_1V8_L: l0 {
+			regulator-name = "6DOF_1V8_L";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+		VREG_6DOF_1V8_UL: l1 {
+			regulator-name = "6DOF_1V8_UL";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
 	};
 
-	VREG_6DOF_1V8_UR: 6DOF_1V8_UR {
-		compatible = "regulator-fixed";
-		regulator-name = "6DOF_1V8_UR";
-		regulator-min-microvolt = <1800000>;
-		regulator-max-microvolt = <1800000>;
-		enable-active-high;
-		gpio = <&tlmm 33 GPIO_ACTIVE_HIGH>;
-		vin-supply = <&VREG_L5M_1P8>;
+	VREG_6DOF_1V2 {
+		compatible = "regulator-fixed2";
+		gpios = <&tlmm 37 GPIO_ACTIVE_HIGH>,
+			<&tlmm 34 GPIO_ACTIVE_HIGH>;
+		r-supply = <&VREG_L2M_1P2>;
+		l-supply = <&VREG_L2N_1P2>;
 
-		regulator-always-on; // XXX
+		VREG_6DOF_1V2_R: r0 {
+			regulator-name = "6DOF_1V2_R";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+		VREG_6DOF_1V2_UR: r1 {
+			regulator-name = "6DOF_1V2_UR";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+		VREG_6DOF_1V2_L: l0 {
+			regulator-name = "6DOF_1V2_L";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+		VREG_6DOF_1V2_UL: l1 {
+			regulator-name = "6DOF_1V2_UL";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
 	};
 
-	VREG_6DOF_1V2_R: 6DOF_1V2_R {
-		compatible = "regulator-fixed";
-		regulator-name = "6DOF_1V2_R";
-		regulator-min-microvolt = <1200000>;
-		regulator-max-microvolt = <1200000>;
-		enable-active-high;
-		gpio = <&tlmm 37 GPIO_ACTIVE_HIGH>;
-		vin-supply = <&VREG_L2M_1P2>;
-
-		regulator-always-on; // XXX
-	};
-
-	VREG_6DOF_1V2_UR: 6DOF_1V2_UR {
-		compatible = "regulator-fixed";
-		regulator-name = "6DOF_1V2_UR";
-		regulator-min-microvolt = <1200000>;
-		regulator-max-microvolt = <1200000>;
-		enable-active-high;
-		gpio = <&tlmm 34 GPIO_ACTIVE_HIGH>;
-		vin-supply = <&VREG_L2M_1P2>;
-
-		regulator-always-on; // XXX
-	};
-#endif
-
-#if 0
-	VREG_6DOF_1V8_L: 6DOF_1V8_L {
-		compatible = "regulator-fixed";
-		regulator-name = "6DOF_1V8_L";
-		regulator-min-microvolt = <1800000>;
-		regulator-max-microvolt = <1800000>;
-		enable-active-high;
-		gpio = <&tlmm 36 GPIO_ACTIVE_HIGH>;
-		vin-supply = <&VREG_L5N_1P8>;
-
-		regulator-always-on; // XXX
-	};
-
-	VREG_6DOF_1V8_UL: 6DOF_1V8_UL {
-		compatible = "regulator-fixed";
-		regulator-name = "6DOF_1V8_UL";
-		regulator-min-microvolt = <1800000>;
-		regulator-max-microvolt = <1800000>;
-		enable-active-high;
-		gpio = <&tlmm 33 GPIO_ACTIVE_HIGH>;
-		vin-supply = <&VREG_L5N_1P8>;
-
-		regulator-always-on; // XXX
-	};
-
-	VREG_6DOF_1V2_L: 6DOF_1V2_L {
-		compatible = "regulator-fixed";
-		regulator-name = "6DOF_1V2_L";
-		regulator-min-microvolt = <1200000>;
-		regulator-max-microvolt = <1200000>;
-		enable-active-high;
-		gpio = <&tlmm 37 GPIO_ACTIVE_HIGH>;
-		vin-supply = <&VREG_L2N_1P2>;
-
-		regulator-always-on; // XXX
-	};
-
-	VREG_6DOF_1V2_UL: 6DOF_1V2_UL {
-		compatible = "regulator-fixed";
-		regulator-name = "6DOF_1V2_UL";
-		regulator-min-microvolt = <1200000>;
-		regulator-max-microvolt = <1200000>;
-		enable-active-high;
-		gpio = <&tlmm 34 GPIO_ACTIVE_HIGH>;
-		vin-supply = <&VREG_L2N_1P2>;
-
-		regulator-always-on; // XXX
-	};
-#endif
 	EYETCK_DOVDD_1V8: EYETCK_DOVDD_1V8 {
 		compatible = "regulator-fixed";
 		regulator-name = "EYETCK_DOVDD_1V8";
@@ -5010,11 +5153,22 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
+		VREG_L2I_0P8: ldo2 {
+			regulator-name = "VREG_L2I_0P8";
+			regulator-min-microvolt = <880000>;
+			regulator-max-microvolt = <912000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+
+			regulator-always-on; // CSI PHY
+		};
+
 		VREG_L3I_1P2: ldo3 {
 			regulator-name = "VREG_L3I_1P2";
 			regulator-min-microvolt = <1200000>;
 			regulator-max-microvolt = <1200000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+
+			regulator-always-on; // CSI PHY
 		};
 	};
 
@@ -5630,3 +5784,163 @@
 		vdd-io-supply = <&VREG_L3C_1P2>;
 	};
 };
+
+
+&camss {
+	status = "okay";
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			csiphy0_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_6dof_l>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+			csiphy1_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_6dof_r>;
+			};
+		};
+
+		port@6 {
+			reg = <6>;
+			csiphy0_combo_ep: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&cam_6dof_ul>;
+			};
+		};
+
+		port@7 {
+			reg = <7>;
+			csiphy1_combo_ep: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&cam_6dof_ur>;
+			};
+		};
+	};
+};
+
+&cci2_i2c0 { // "CCI_4"
+	cam@60 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x60>;
+
+		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 121 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk0_active>; // <&cam_6dof_r_default>;
+
+		clocks = <&camcc CAM_CC_MCLK0_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_R>;
+		AVDD-supply = <&VREG_6DOF_2P8_R>;
+		DVDD-supply = <&VREG_6DOF_1V2_R>;
+
+		id = "slam_right";
+
+		port {
+			cam_6dof_r: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&csiphy1_ep>;
+			};
+		};
+	};
+
+	cam_u@36 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x36>;
+
+		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk5_active>; // <&cam_6dof_ur_default>;
+
+		clocks = <&camcc CAM_CC_MCLK5_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_UR>;
+		AVDD-supply = <&VREG_6DOF_2P8_UR>;
+		DVDD-supply = <&VREG_6DOF_1V2_UR>;
+
+		id = "upper_right";
+
+		port {
+			cam_6dof_ur: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&csiphy1_combo_ep>;
+			};
+		};
+	};
+};
+
+&cci2_i2c1 { // "CCI_5"
+	cam@60 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x60>;
+
+		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 123 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk1_active>; // <&cam_6dof_l_default>;
+
+		clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_L>;
+		AVDD-supply = <&VREG_6DOF_2P8_L>;
+		DVDD-supply = <&VREG_6DOF_1V2_L>;
+
+		id = "slam_left";
+
+		port {
+			cam_6dof_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&csiphy0_ep>;
+			};
+		};
+	};
+
+	cam_u@36 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x36>;
+
+		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 97 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk3_active>; // <&cam_6dof_ul_default>;
+
+		clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_UL>;
+		AVDD-supply = <&VREG_6DOF_2P8_UL>;
+		DVDD-supply = <&VREG_6DOF_1V2_UL>;
+
+		id = "upper_left";
+
+		port {
+			cam_6dof_ul: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&csiphy0_combo_ep>;
+			};
+		};
+	};
+};
+
+

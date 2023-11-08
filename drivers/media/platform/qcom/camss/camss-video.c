@@ -492,7 +492,7 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 	struct media_entity *entity;
 	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
-	int ret;
+	int ret, i;
 
 	ret = video_device_pipeline_alloc_start(vdev);
 	if (ret < 0) {
@@ -505,11 +505,8 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 		goto error;
 
 	entity = &vdev->entity;
+	pad = &entity->pads[0];
 	while (1) {
-		pad = &entity->pads[0];
-		if (!(pad->flags & MEDIA_PAD_FL_SINK))
-			break;
-
 		pad = media_pad_remote_pad_first(pad);
 		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
 			break;
@@ -520,6 +517,21 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 		ret = v4l2_subdev_call(subdev, video, s_stream, 1);
 		if (ret < 0 && ret != -ENOIOCTLCMD)
 			goto error;
+
+		/* find corresponding sink pad */
+		for (i = 0; i < entity->num_pads; i++) {
+			if (!(entity->pads[i].flags & MEDIA_PAD_FL_SINK))
+				continue;
+
+			if (entity->ops && entity->ops->has_pad_interdep &&
+			    !entity->ops->has_pad_interdep(entity, pad->index, i))
+				continue;
+
+			pad = &entity->pads[i];
+			break;
+		}
+		if (i == entity->num_pads)
+			break;
 	}
 
 	return 0;
@@ -540,14 +552,11 @@ static void video_stop_streaming(struct vb2_queue *q)
 	struct media_entity *entity;
 	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
-	int ret;
+	int ret, i;
 
 	entity = &vdev->entity;
+	pad = &entity->pads[0];
 	while (1) {
-		pad = &entity->pads[0];
-		if (!(pad->flags & MEDIA_PAD_FL_SINK))
-			break;
-
 		pad = media_pad_remote_pad_first(pad);
 		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
 			break;
@@ -557,16 +566,25 @@ static void video_stop_streaming(struct vb2_queue *q)
 
 		ret = v4l2_subdev_call(subdev, video, s_stream, 0);
 
-		if (entity->use_count > 1) {
-			/* Don't stop if other instances of the pipeline are still running */
-			dev_dbg(video->camss->dev, "Video pipeline still used, don't stop streaming.\n");
-			return;
-		}
-
 		if (ret) {
 			dev_err(video->camss->dev, "Video pipeline stop failed: %d\n", ret);
 			return;
 		}
+
+		/* find corresponding sink pad */
+		for (i = 0; i < entity->num_pads; i++) {
+			if (!(entity->pads[i].flags & MEDIA_PAD_FL_SINK))
+				continue;
+
+			if (entity->ops && entity->ops->has_pad_interdep &&
+			    !entity->ops->has_pad_interdep(entity, pad->index, i))
+				continue;
+
+			pad = &entity->pads[i];
+			break;
+		}
+		if (i == entity->num_pads)
+			break;
 	}
 
 	video_device_pipeline_stop(vdev);
