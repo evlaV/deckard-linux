@@ -247,7 +247,7 @@ static void csid_try_format(struct csid_device *csid,
 			    enum v4l2_subdev_format_whence which)
 {
 	unsigned int i;
-
+	u32 code;
 	switch (pad) {
 	case MSM_CSID_PAD_SINK:
 		/* Set format on sink pad */
@@ -271,7 +271,7 @@ static void csid_try_format(struct csid_device *csid,
 	case MSM_CSID_PAD_SRC:
 		/* Test generator is disabled, */
 		/* keep pad formats in sync */
-		u32 code = fmt->code;
+		code = fmt->code;
 
 		*fmt = *__csid_get_format(csid, sd_state,
 						MSM_CSID_PAD_SINK, which);
