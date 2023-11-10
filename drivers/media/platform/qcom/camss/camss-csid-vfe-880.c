@@ -134,6 +134,8 @@ static void vfe_write_buf(struct csid_device *csid, struct camss_buffer *buf)
 {
 	vfe_write(csid, BUS_CLIENT_ADDR_IMAGE(RDI_WM(0)), buf->addr[0] >> 8);
 	// vfe_write(csid, BUS_CLIENT_ADDR_CFG(RDI_WM(0)), 0); // byte offset
+	// RUP_RDI0 | AUP_RDI0 | MUP (which one is needed here?)
+	writel_relaxed(BIT(4) | BIT(20) | BIT(28), csid->base + CSID_RUP_AUP_CMD);
 }
 
 static const struct csid_format csid_formats[] = {
