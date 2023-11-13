@@ -823,6 +823,17 @@ config REGULATOR_MP886X
 	help
 	  This driver supports the MP8869 voltage regulator.
 
+config REGULATOR_MPQ3367
+	tristate "POCF backlight regulator"
+	depends on BACKLIGHT_CLASS_DEVICE
+	depends on I2C
+	depends on OF_GPIO
+	select REGMAP_I2C
+	help
+	  This driver supports MPQ3367 regulator on the POCF headset
+	  unit. The regulator is used to enable power to display and to control
+	  backlight.
+
 config REGULATOR_MPQ7920
 	tristate "Monolithic MPQ7920 PMIC"
 	depends on I2C && OF
