@@ -13,6 +13,7 @@
 #include <dt-bindings/iio/qcom,spmi-adc5-gen3-pm8550b.h>
 #define PM8550VE_SID	8
 #include <dt-bindings/iio/qcom,spmi-adc5-gen3-pm8550vx.h>
+#include <dt-bindings/iio/qcom,spmi-vadc.h>
 
 / {
 	reboot-mode {
@@ -161,7 +162,72 @@
 			pm8550b_vbat_sns_qbg {
 				reg = <PM8550B_ADC5_GEN3_VBAT_SNS_QBG>;
 				label = "pm8550b_vbat_sns_qbg";
+				qcom,pre-scaling = <1 6>;
+			};
+
+			pm8550b_vbat_sns_chgr {
+				reg = <PM8550B_ADC5_GEN3_VBAT_SNS_CHGR>;
+				label = "pm8550b_vbat_sns_chgr";
+				qcom,pre-scaling = <1 6>;
+			};
+
+			// NOTE That this seems correct, but is not... TGoyen
+			// qcom,scale-fn-type = <ADC_SCALE_HW_CALIB_PM5_GEN3_BATT_THERM_100K>;
+			battery_temp {
+				reg = <PM8550B_ADC5_GEN3_AMUX_THM1_BATT_THERM_100K_PU>;
+				label = "battery_temp";
+                qcom,ratiometric;
+                qcom,hw-settle-time = <200>;
+			};
+
+			pm8550b_vbat_2s_mid_qbg {
+				reg = <PM8550B_ADC5_GEN3_VBAT_2S_MID_QBG>;
+				label = "pm8550b_vbat_2s_mid_qbg";
 				qcom,pre-scaling = <1 3>;
+			};
+
+			pm8550b_vbat_2s_mid_chgr {
+				reg = <PM8550B_ADC5_GEN3_VBAT_2S_MID_CHGR>;
+				label = "pm8550b_vbat_2s_mid_chgr";
+				qcom,pre-scaling = <1 3>;
+			};
+
+			pm8550b_chg_temp {
+				reg = <PM8550B_ADC5_GEN3_CHG_TEMP>;
+				label = "pm8550b_chg_temp";
+			};
+
+			pm8550b_usb_sns_v_div_16 {
+				reg = <PM8550B_ADC5_GEN3_USB_SNS_V_16>;
+				label = "pm8550b_usb_sns_v_div_16";
+				qcom,pre-scaling = <1 16>;
+			};
+
+			pm8550b_wls_vin_div_16 {
+				reg = <PM8550B_ADC5_GEN3_VIN_DIV16_MUX>;
+				label = "pm8550b_wls_vin_div_16";
+				qcom,pre-scaling = <1 16>;
+			};
+
+			// TODO Check Scaling of these
+			pm8550b_iin_fb {
+				reg = <PM8550B_ADC5_GEN3_IIN_FB>;
+				label = "pm8550b_iin_fb";
+			};
+
+			pm8550b_iin_smb {
+				reg = <PM8550B_ADC5_GEN3_SMB_IIN>;
+				label = "pm8550b_iin_smb";
+			};
+
+			pm8550b_ichg_fb {
+				reg = <PM8550B_ADC5_GEN3_ICHG_FB>;
+				label = "pm8550b_ichg_fb";
+			};
+
+			pm8550b_ichg_smb {
+				reg = <PM8550B_ADC5_GEN3_SMB_ICHG>;
+				label = "pm8550b_ichg_smb";
 			};
 
 			/* PM8550VS_C Channel nodes */

@@ -301,6 +301,9 @@
 
 #define ADC7_SBUx				0x94
 #define ADC7_VBAT_2S_MID			0x96
+#define ADC7_VBAT_2S_MID_CHGR		0x9D
+
+
 
 /* ADC channels for PMIC5 Gen3 */
 
