@@ -17,6 +17,8 @@
 #include <linux/slab.h>
 #include <linux/spmi.h>
 
+#include "spmi-dbgfs.h"
+
 /* PMIC Arbiter configuration registers */
 #define PMIC_ARB_VERSION		0x0000
 #define PMIC_ARB_VERSION_V2_MIN		0x20010000
@@ -216,6 +218,41 @@ struct pmic_arb_ver_ops {
 	void __iomem *(*irq_clear)(struct spmi_pmic_arb *pmic_arb, u16 n);
 	u32 (*apid_map_offset)(u16 n);
 	void __iomem *(*apid_owner)(struct spmi_pmic_arb *pmic_arb, u16 n);
+};
+
+static int pmic_arb_mapping_data_show(struct seq_file *file, void *unused)
+{
+	struct spmi_pmic_arb *pmic_arb = file->private;
+	int first = pmic_arb->min_apid;
+	int last = pmic_arb->max_apid;
+	int i;
+
+	for (i = first; i <= last; ++i) {
+		if (!test_bit(i, pmic_arb->mapping_table_valid))
+			continue;
+
+		seq_printf(file, "APID 0x%.2x = PPID 0x%.3x. Enabled: UNK\n",
+			i, pmic_arb->mapping_table[i]);
+
+		// seq_printf(file, "APID 0x%.2x = PPID 0x%.3x. Enabled:%d\n",
+		// 	i, pmic_arb->mapping_table[i],
+		// 	readl_relaxed(pmic_arb->intr +
+		// 				pmic_arb->ver_ops->acc_enable(pmic_arb, i)));
+	}
+
+	return 0;
+}
+
+static int pmic_arb_mapping_data_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pmic_arb_mapping_data_show, inode->i_private);
+}
+
+static const struct file_operations pmic_arb_dfs_fops = {
+	.open		= pmic_arb_mapping_data_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= seq_release,
 };
 
 static inline void pmic_arb_base_write(struct spmi_pmic_arb *pmic_arb,
@@ -1651,6 +1688,11 @@ static int spmi_pmic_arb_probe(struct platform_device *pdev)
 	err = spmi_controller_add(ctrl);
 	if (err)
 		goto err_domain_remove;
+
+	/* Add debugfs file for mapping data */
+	if (spmi_dfs_create_file(pmic_arb->spmic, "mapping",
+					pmic_arb, &pmic_arb_dfs_fops) == NULL)
+		dev_err(&pdev->dev, "error creating 'mapping' debugfs file\n");
 
 	return 0;
 
