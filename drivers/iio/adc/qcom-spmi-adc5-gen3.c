@@ -1385,9 +1385,9 @@ static const struct adc5_channels adc5_chans_pmic[ADC5_MAX_CHANNEL] = {
 						SCALE_HW_CALIB_PM7_SMB_TEMP)
 	[ADC5_GEN3_CHG_TEMP]		= ADC5_CHAN_TEMP("chg_temp", 0,
 						SCALE_HW_CALIB_PM7_CHG_TEMP)
-	[ADC5_GEN3_USB_SNS_V_16]	= ADC5_CHAN_TEMP("usb_sns_v_div_16", 8,
+	[ADC5_GEN3_USB_SNS_V_16]	= ADC5_CHAN_VOLT("usb_sns_v_div_16", 1,
 						SCALE_HW_CALIB_DEFAULT)
-	[ADC5_GEN3_VIN_DIV16_MUX]	= ADC5_CHAN_TEMP("vin_div_16", 8,
+	[ADC5_GEN3_VIN_DIV16_MUX]	= ADC5_CHAN_VOLT("vin_div_16", 1,
 						SCALE_HW_CALIB_DEFAULT)
 	[ADC5_GEN3_IIN_FB]		= ADC5_CHAN_CUR("iin_fb", 10,
 						SCALE_HW_CALIB_CUR)
@@ -1421,6 +1421,12 @@ static const struct adc5_channels adc5_chans_pmic[ADC5_MAX_CHANNEL] = {
 						SCALE_HW_CALIB_THERM_100K_PU_PM7)
 	[ADC5_GEN3_AMUX4_GPIO_100K_PU]	= ADC5_CHAN_TEMP("amux4_gpio_pu2", 0,
 						SCALE_HW_CALIB_THERM_100K_PU_PM7)
+	[ADC5_GEN3_VBAT_SNS_CHGR]	= ADC5_CHAN_VOLT("vbat_sns_chgr", 1,
+						SCALE_HW_CALIB_DEFAULT)
+	[ADC5_GEN3_VBAT_2S_MID_QBG]	= ADC5_CHAN_VOLT("vbat_2s_sns", 1,
+						SCALE_HW_CALIB_DEFAULT)
+	[ADC5_GEN3_VBAT_2S_MID_CHGR]	= ADC5_CHAN_VOLT("vbat_2s_sns_chgr", 1,
+						SCALE_HW_CALIB_DEFAULT)
 };
 
 static int adc5_get_dt_channel_data(struct adc5_chip *adc,
