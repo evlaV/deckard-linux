@@ -17,6 +17,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/spmi.h>
 
+#include "spmi-dbgfs.h"
+
 static bool is_registered;
 static DEFINE_IDA(ctrl_ida);
 
@@ -550,6 +552,8 @@ int spmi_controller_add(struct spmi_controller *ctrl)
 
 	if (IS_ENABLED(CONFIG_OF))
 		of_spmi_register_devices(ctrl);
+
+	spmi_dfs_add_controller(ctrl);
 
 	dev_dbg(&ctrl->dev, "spmi-%d registered: dev:%p\n",
 		ctrl->nr, &ctrl->dev);
