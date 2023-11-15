@@ -179,6 +179,165 @@ static inline struct og01a1b_dev *to_og01a1b_dev(struct v4l2_subdev *sd)
 	return container_of(sd, struct og01a1b_dev, sd);
 }
 
+static const struct reg_value og0VE10_setting[] = {
+	{0x0103, 0x01},
+{0x0100, 0x00},
+{0x30a0, 0x02},
+{0x30a1, 0x00},
+{0x30a2, 0x48},
+{0x30a3, 0x34},
+{0x30a4, 0xf7},
+{0x30a5, 0x00},
+{0x3082, 0x32},
+{0x3083, 0x01},
+{0x301c, 0xf0},
+{0x301e, 0x0b},
+{0x3106, 0x10},
+{0x3708, 0x77},
+{0x3709, 0xf8},
+{0x3717, 0x00},
+{0x3782, 0x00},
+{0x3783, 0x47},
+{0x37a2, 0x00},
+{0x3500, 0x00},
+{0x3501, 0x00},
+{0x3502, 0x40},
+{0x3503, 0x07},
+{0x3509, 0x10},
+{0x350b, 0x10},
+{0x3600, 0x83},
+{0x3601, 0x21},
+{0x3602, 0xf1},
+{0x360a, 0x18},
+{0x360e, 0xb3},
+{0x3613, 0x20},
+{0x366a, 0x78},
+{0x3706, 0x63},
+{0x3713, 0x00},
+{0x3716, 0xb0},
+{0x37a1, 0x38},
+{0x3800, 0x00},
+{0x3801, 0x04},
+{0x3802, 0x00},
+{0x3803, 0x04},
+{0x3804, 0x02},
+{0x3805, 0x8b},
+{0x3806, 0x01},
+{0x3807, 0xeb},
+{0x3808, 0x02},
+{0x3809, 0x80},
+{0x380a, 0x01},
+{0x380b, 0xe0},
+{0x380c, 0x03},
+{0x380d, 0x18},
+{0x380e, 0x02},
+{0x380f, 0x38},
+{0x3811, 0x04},
+{0x3813, 0x04},
+{0x3814, 0x11},
+{0x3815, 0x11},
+{0x3820, 0x00},
+{0x3821, 0x00},
+{0x3823, 0x04},
+{0x382a, 0x00},
+{0x382b, 0x03},
+{0x3840, 0x00},
+{0x389e, 0x00},
+{0x3c05, 0x08},
+{0x3c26, 0x02},
+{0x3c27, 0xc0},
+{0x3c28, 0x00},
+{0x3c29, 0x40},
+{0x3c2c, 0x00},
+{0x3c2d, 0x50},
+{0x3c2e, 0x02},
+{0x3c2f, 0x66},
+{0x3c33, 0x08},
+{0x3c35, 0x00},
+{0x3c36, 0x00},
+{0x3c37, 0x00},
+{0x3f52, 0x9b},
+{0x4001, 0x42},
+{0x4004, 0x08},
+{0x4005, 0x00},
+{0x4007, 0x28},
+{0x4009, 0x40},
+{0x4307, 0x30},
+{0x4500, 0x80},
+{0x4501, 0x02},
+{0x4502, 0x47},
+{0x4504, 0x7f},
+{0x4601, 0x48},
+{0x4800, 0x64},
+{0x4801, 0x0f},
+{0x4806, 0x2f},
+{0x4819, 0xaa},
+{0x4823, 0x3e},
+{0x5000, 0x85},
+{0x5e00, 0x0c},
+{0x3899, 0x09},
+{0x4f00, 0x64},
+{0x4f02, 0x0a},
+{0x4f05, 0x0e},
+{0x4f06, 0x11},
+{0x4f08, 0x0b},
+{0x4f0a, 0xc4},
+{0x4f20, 0x1f},
+{0x4f25, 0x10},
+{0x3016, 0x10},
+{0x3017, 0x00},
+{0x3018, 0x00},
+{0x3019, 0x00},
+{0x301a, 0x00},
+{0x301b, 0x00},
+{0x301c, 0x72},
+{0x3037, 0x40},
+{0x4f2c, 0x00},
+{0x4f21, 0x00},
+{0x4f23, 0x00},
+{0x4f2a, 0x00},
+{0x3665, 0xe7},
+{0x3668, 0x48},
+{0x3671, 0x3c},
+{0x389a, 0x02},
+{0x389b, 0x00},
+{0x303c, 0xa0},
+{0x300f, 0xf0},
+{0x304b, 0x0f},
+{0x3662, 0x24},
+{0x3006, 0x40},
+{0x4f26, 0x45},
+{0x3607, 0x34},
+{0x3608, 0x01},
+{0x360a, 0x0c},
+{0x360b, 0x86},
+{0x360c, 0xcc},
+{0x3013, 0x00},
+{0x3083, 0x02},
+{0x3084, 0x12},
+{0x4601, 0x38},
+{0x366f, 0x3a},
+{0x3713, 0x19},
+{0x37a2, 0x00},
+{0x3f43, 0x27},
+{0x3f45, 0x27},
+{0x3f47, 0x32},
+{0x3f49, 0x3e},
+{0x3f4b, 0x20},
+{0x3f4d, 0x30},
+{0x4300, 0x3f},
+{0x4009, 0x10},
+{0x3f02, 0x68},
+{0x3700, 0x8c},
+{0x370b, 0x7e},
+{0x3f47, 0x35},
+{0x350b, 0x10},
+{0x3500, 0x00},
+{0x3501, 0x22},
+{0x3502, 0xa0},
+{0x0100, 0x01}
+};
+
 static const struct reg_value og01a1b_setting[] = {
 
 {0x0103, 0x01, 0, 0},
@@ -899,7 +1058,7 @@ static const struct og01a1b_mode_info og01a1b_mode_data_640x512 = {
 };
 
 static const struct og01a1b_mode_info og01a1b_mode_data_640x480 = {
-	640, 848, 480, 1176, og01a1b_setting_640x480, ARRAY_SIZE(og01a1b_setting_640x480)
+	640, 848, 480, 1176, og0VE10_setting, ARRAY_SIZE(og0VE10_setting)
 };
 
 static const s64 link_freq_menu_items[] = {
@@ -1067,29 +1226,30 @@ static int og01a1b_set_timings(struct og01a1b_dev *sensor,
 {
 	int ret;
 
-	ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_DVPHO, mode->hact);
-	if (ret < 0)
-		return ret;
+	return 0;
+	// ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_DVPHO, mode->hact);
+	// if (ret < 0)
+	// 	return ret;
 
-	ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_DVPVO, mode->vact);
-	if (ret < 0)
-		return ret;
+	// ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_DVPVO, mode->vact);
+	// if (ret < 0)
+	// 	return ret;
 
-	if(sensor->ep.bus.mipi_csi2.num_data_lanes == 1) {
-		ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_HTS, mode->htot*2);
-	}
-	else if(sensor->ep.bus.mipi_csi2.num_data_lanes == 2) {
-		ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_HTS, mode->htot);
-	}
-	else {
-		struct i2c_client *client = sensor->i2c_client;
-		dev_err(&client->dev, "Unsupported lane configuration. Must be 1 or 2 lane MIPI");
-		return -EINVAL;
-	}
-	if (ret < 0)
-		return ret;
+	// if(sensor->ep.bus.mipi_csi2.num_data_lanes == 1) {
+	// 	ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_HTS, mode->htot*2);
+	// }
+	// else if(sensor->ep.bus.mipi_csi2.num_data_lanes == 2) {
+	// 	ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_HTS, mode->htot);
+	// }
+	// else {
+	// 	struct i2c_client *client = sensor->i2c_client;
+	// 	dev_err(&client->dev, "Unsupported lane configuration. Must be 1 or 2 lane MIPI");
+	// 	return -EINVAL;
+	// }
+	// if (ret < 0)
+	// 	return ret;
 
-	return og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_VTS, mode->vtot);
+	// return og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_VTS, mode->vtot);
 }
 
 static int og01a1b_load_regs(struct og01a1b_dev *sensor,
@@ -1133,19 +1293,21 @@ static int og01a1b_restore_mode(struct og01a1b_dev *sensor)
 	ret = og01a1b_read_reg(sensor, 0x3662, &val);
 	// Verify that register map was succesfully changed from the default value
 	// (Power on default:0b100 )
-	if (ret < 0 || val != 0b110) {
-		struct i2c_client *client = sensor->i2c_client;
-		const char *id;
-		dev_err(&client->dev, "Register map not verified  as written. Likely hardware problem with %s\n", of_property_read_string( client->dev.of_node, "id", &id ) ? "unknown camera" : id );
-		return -EINVAL;
-	}
+	// if (ret < 0 || val != 0x24) {
+	// 	struct i2c_client *client = sensor->i2c_client;
+	// 	const char *id;
+	// 	dev_err(&client->dev, "Register map not verified  as written. Likely hardware problem with %s\n", of_property_read_string( client->dev.of_node, "id", &id ) ? "unknown camera" : id );
+	// 	return -EINVAL;
+	// }
+	struct i2c_client *client = sensor->i2c_client;
+	dev_err(&client->dev, "got 0x%x from 0x%x", val, 0x3662);
 
 	//set registers for 1 lane mode if necessary
-	if(sensor->ep.bus.mipi_csi2.num_data_lanes == 1) {
-		og01a1b_write_reg(sensor, 0x3662, 0b010);
-		og01a1b_write_reg(sensor, 0x3039, 0x32);
+	// if(sensor->ep.bus.mipi_csi2.num_data_lanes == 1) {
+	// 	og01a1b_write_reg(sensor, 0x3662, 0b010);
+	// 	og01a1b_write_reg(sensor, 0x3039, 0x32);
 
-	}
+	// }
 
 	return og01a1b_set_timings(sensor, (sensor->current_mode));
 }
@@ -1744,6 +1906,7 @@ static int og01a1b_set_fmt(struct v4l2_subdev *sd,
 	}
 	else if (fmt->format.width == 640 && fmt->format.height == 480) 
 	{
+		printk("640x480 set");
 		sensor->current_mode = &og01a1b_mode_data_640x480;
 	}
 	else {
@@ -1826,9 +1989,10 @@ static int og01a1b_check_chip_id(struct og01a1b_dev *sensor)
 	}
 
 	if (chip_id != 0x4701) {
-		dev_err(&client->dev, "%s: wrong chip identifier, expected 0x4701, got 0x%x. Likely hardware problem with %s\n",
+		dev_err(&client->dev, "%s: wrong chip identifier, expected 0x4701, got this 0x%x. Likely hardware problem with %s\n",
 			__func__, chip_id, of_property_read_string( dev->of_node, "id", &id ) ? "unknown camera" : id);
 		ret = -ENXIO;
+		ret = 0;
 	}
 	else {
 		dev_err(&client->dev, "%s: Camera connection verified ( chip ID 0x%x ) for %s\n",

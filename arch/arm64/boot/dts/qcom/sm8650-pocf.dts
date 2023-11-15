@@ -1785,9 +1785,9 @@
 		};
 	};
 
-	cam_u@36 {
+	cam_u@3e {
 		compatible = "ovti,og01a1bx";
-		reg = <0x36>;
+		reg = <0x3E>;
 
 		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
@@ -1841,9 +1841,9 @@
 		};
 	};
 
-	cam_u@36 {
+	cam_u@3e {
 		compatible = "ovti,og01a1bx";
-		reg = <0x36>;
+		reg = <0x3e>;
 
 		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 97 GPIO_ACTIVE_HIGH>;
