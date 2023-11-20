@@ -166,17 +166,6 @@
 		// XXX: needs VREG_L05B_3P1, VREG_BOB2
 	};
 
-	fan_pwr_en: fan_pwr_en {
-		compatible = "regulator-fixed";
-		regulator-name = "fan_pwr_en";
-		regulator-min-microvolt = <4000000>; // XXX: actual voltage
-		regulator-max-microvolt = <4000000>;
-		enable-active-high;
-		gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
-		// vin-supply = <&VBATT_2S>; not modeled in dts
-		regulator-always-on; // XXX
-	};
-
 	VREG_6DOF_1V8 {
 		compatible = "regulator-fixed2";
 		gpios = <&tlmm 36 GPIO_ACTIVE_HIGH>,
@@ -1024,9 +1013,20 @@
 &i2c4 {
 	status = "okay";
 
-	// fan controller
-	// FAN_PWR_EN 138
-	// FAN_PWR_BP 139
+    /* FAN_I2C */
+	slg4ax46073v@8 {
+		compatible = "silego,slg4ax46073v";
+		reg = <0x08>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		//vdd-fan-1-supply = <&VBATT_2S>; not modeled in dts
+		fan-alert-gpios = <&tlmm 174 GPIO_ACTIVE_HIGH>;
+		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
+		bp-gpio = <&tlmm 139 GPIO_ACTIVE_HIGH>;
+
+		status = "ok";
+	};
 
 	// hall sensor powered by vdd_sensor_3v0
 };
