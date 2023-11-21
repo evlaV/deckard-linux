@@ -1842,9 +1842,6 @@ static int wsa884x_mute_stream(struct snd_soc_dai *dai, int mute, int stream)
 	if (wsa884x->mute == mute)
 		return 0;
 
-	// XXX: left speaker workaround (no enable)
-	if (wsa884x->slave->dev_num == 2)
-		return 0;
 	// XXX: assuming this will only be called while sdw slave is attached
 	sdw_write_no_pm(wsa884x->slave, WSA884X_PA_FSM_EN, !mute);
 	wsa884x->mute = mute;
