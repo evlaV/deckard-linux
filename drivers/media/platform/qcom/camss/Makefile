@@ -5,6 +5,7 @@ qcom-camss-objs += \
 		camss.o \
 		camss-csid.o \
 		camss-csid-vfe-880.o \
+		camss-metadata.o \
 		camss-csiphy-2ph-1-0.o \
 		camss-csiphy-3ph-1-0.o \
 		camss-csiphy.o \
