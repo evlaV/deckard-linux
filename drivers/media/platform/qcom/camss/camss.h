@@ -22,6 +22,7 @@
 #include "camss-csiphy.h"
 #include "camss-ispif.h"
 // #include "camss-vfe.h"
+#include "camss-metadata.h"
 
 #define to_camss(ptr_module)	\
 	container_of(ptr_module, struct camss, ptr_module)
@@ -96,6 +97,8 @@ struct camss {
 	//int vfe_num;
 	//int vfe_lite_num;
 	//struct vfe_device *vfe;
+	int metadata_num;
+	struct metadata_device *metadata;
 	atomic_t ref_count;
 	int genpd_num;
 	struct device **genpd;

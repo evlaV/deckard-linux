@@ -1096,6 +1096,10 @@ static int camss_init_subdevices(struct camss *camss)
 		}
 	}
 
+	for(i = 0; i < camss->metadata_num; i++) {
+		ret = msm_metadata_subdev_init(camss, &camss->metadata[i], NULL, i);
+	}
+
 	return 0;
 }
 
@@ -1127,6 +1131,17 @@ static int camss_register_entities(struct camss *camss)
 		if (ret < 0) {
 			dev_err(camss->dev,
 				"Failed to register csid%d entity: %d\n",
+				i, ret);
+			goto err_reg_csid;
+		}
+	}
+
+	for (i = 0; i < camss->metadata_num; i++) {
+		ret = msm_metadata_register_entity(&camss->metadata[i],
+						&camss->v4l2_dev);
+		if (ret < 0) {
+			dev_err(camss->dev,
+				"Failed to register metadata%d entity: %d\n",
 				i, ret);
 			goto err_reg_csid;
 		}
@@ -1517,6 +1532,7 @@ static int camss_probe(struct platform_device *pdev)
 		camss->version = CAMSS_8250;
 		camss->csiphy_num = 6;
 		camss->csid_num = 5;
+		camss->metadata_num = 5;
 		//camss->vfe_num = 3;
 		//camss->vfe_lite_num = 2;
 	} else {
@@ -1532,6 +1548,12 @@ static int camss_probe(struct platform_device *pdev)
 				   GFP_KERNEL);
 	if (!camss->csid)
 		return -ENOMEM;
+
+	camss->metadata = devm_kcalloc(dev, camss->metadata_num, sizeof(*camss->metadata),
+				  GFP_KERNEL);
+	if (!camss->metadata) {
+		return -ENOMEM;
+	}
 
 #if 0
 	if (camss->version == CAMSS_8x16 ||
