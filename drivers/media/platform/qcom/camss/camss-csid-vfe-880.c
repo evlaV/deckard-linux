@@ -331,10 +331,17 @@ static irqreturn_t csid_isr(int irq, void *dev)
 
 			struct camss_buffer *buf = csid->out_buf[0];
 			csid->out_buf[0] = csid->out_buf[1];
-
+			
 			if (buf) {
 				buf->vb.vb2_buf.timestamp = ts;
 				buf->vb.sequence = csid->sequence++;
+
+				// HACK: Using approximate readout time to get the sof_timestamp. This will not be
+				// as precise as CSID register timestamps
+				u64 sof_timestamp = ts - 7740000;
+				u64 eof_timestamp = ts;
+				metadata_send(&csid->camss->metadata[csid->id], ts, sof_timestamp, eof_timestamp, sof_timestamp, ts,
+        			buf->vb.sequence, NULL, NULL, NULL, NULL, NULL, NULL);
 				vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 			} else {
 				dev_warn(csid->camss->dev, "buf done without a corresponding buffer\n");
@@ -343,6 +350,8 @@ static irqreturn_t csid_isr(int irq, void *dev)
 			csid->out_buf[csid->out_buf[0] != NULL] = buf = vfe_buf_get_pending(csid);
 			if (buf)
 				vfe_write_buf(csid, buf);
+
+			
 
 			spin_unlock_irqrestore(&csid->output_lock, flags);
 
