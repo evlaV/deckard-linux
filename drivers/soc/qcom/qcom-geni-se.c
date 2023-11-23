@@ -671,7 +671,7 @@ static void geni_se_clks_off(struct geni_se *se)
 {
 	struct geni_wrapper *wrapper = se->wrapper;
 
-	printk("geni_se_clks_off\n");
+	//printk("geni_se_clks_off\n");
 
 	//clk_disable_unprepare(se->clk);
 	//clk_bulk_disable_unprepare(ARRAY_SIZE(wrapper->ahb_clks),
