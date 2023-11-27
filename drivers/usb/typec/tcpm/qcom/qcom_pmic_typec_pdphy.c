@@ -75,7 +75,7 @@ static void qcom_pmic_typec_pdphy_reset_off(struct pmic_typec_pdphy *pmic_typec_
 static void qcom_pmic_typec_pdphy_sig_reset_work(struct work_struct *work)
 {
 	struct pmic_typec_pdphy *pmic_typec_pdphy = container_of(work, struct pmic_typec_pdphy,
-						     reset_work);
+							reset_work);
 	unsigned long flags;
 
 	spin_lock_irqsave(&pmic_typec_pdphy->lock, flags);
@@ -234,9 +234,9 @@ done:
 }
 
 int qcom_pmic_typec_pdphy_pd_transmit(struct pmic_typec_pdphy *pmic_typec_pdphy,
-				      enum tcpm_transmit_type type,
-				      const struct pd_message *msg,
-				      unsigned int negotiated_rev)
+					  enum tcpm_transmit_type type,
+					  const struct pd_message *msg,
+					  unsigned int negotiated_rev)
 {
 	struct device *dev = pmic_typec_pdphy->dev;
 	int ret;
@@ -247,8 +247,8 @@ int qcom_pmic_typec_pdphy_pd_transmit(struct pmic_typec_pdphy *pmic_typec_pdphy,
 								negotiated_rev);
 	} else {
 		ret = qcom_pmic_typec_pdphy_pd_transmit_signal(pmic_typec_pdphy,
-							       type,
-							       negotiated_rev);
+								   type,
+								   negotiated_rev);
 	}
 
 	if (ret)
@@ -287,8 +287,8 @@ static void qcom_pmic_typec_pdphy_pd_receive(struct pmic_typec_pdphy *pmic_typec
 		goto done;
 
 	ret = regmap_bulk_read(pmic_typec_pdphy->regmap,
-			       pmic_typec_pdphy->base + USB_PDPHY_RX_BUFFER_REG,
-			       (u8 *)&msg, size);
+				   pmic_typec_pdphy->base + USB_PDPHY_RX_BUFFER_REG,
+				   (u8 *)&msg, size);
 	if (ret)
 		goto done;
 
@@ -356,7 +356,7 @@ int qcom_pmic_typec_pdphy_set_pd_rx(struct pmic_typec_pdphy *pmic_typec_pdphy, b
 }
 
 int qcom_pmic_typec_pdphy_set_roles(struct pmic_typec_pdphy *pmic_typec_pdphy,
-				    bool data_role_host, bool power_role_src)
+					bool data_role_host, bool power_role_src)
 {
 	struct device *dev = pmic_typec_pdphy->dev;
 	unsigned long flags;
@@ -377,6 +377,62 @@ int qcom_pmic_typec_pdphy_set_roles(struct pmic_typec_pdphy *pmic_typec_pdphy,
 
 	return ret;
 }
+
+#define USBIN_BASE								0x2900
+
+#define USBIN_CURRENT_LIMIT_CFG_REG				(USBIN_BASE + 0x52)
+#define MAX_USBIN_CURRENT_MA					3000 
+#define MIN_USBIN_CURRENT_MA					0
+#define USBIN_CURRENT_STEP_MA					50
+
+int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int icl_ma)
+{
+	int val_u = icl_ma;
+	int val_raw;
+
+	if (icl_ma > MAX_USBIN_CURRENT_MA || icl_ma < MIN_USBIN_CURRENT_MA)
+		dev_err(pmic_typec_pdphy->dev, "USBIN current %d is out of range [%d, %d]\n", icl_ma, MAX_USBIN_CURRENT_MA, MIN_USBIN_CURRENT_MA);
+
+	if (val_u > MAX_USBIN_CURRENT_MA)
+		val_u = MAX_USBIN_CURRENT_MA;
+	if (val_u < MIN_USBIN_CURRENT_MA)
+		val_u = MIN_USBIN_CURRENT_MA;
+
+	val_raw = (val_u - MIN_USBIN_CURRENT_MA) / USBIN_CURRENT_STEP_MA;
+
+	return regmap_write(pmic_typec_pdphy->regmap, USBIN_CURRENT_LIMIT_CFG_REG, val_raw);
+}
+
+
+#define USBIN_ADAPTER_ALLOW_OVERRIDE_REG		(USBIN_BASE + 0x41)
+#define CONTINUOUS								BIT(3)
+#define FORCE_12V								BIT(2)
+#define FORCE_9V								BIT(1)
+#define FORCE_5V								BIT(0)
+#define FORCE_NULL								0
+
+int qcom_pmic_typec_pdphy_set_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy,
+					u32 max_ma, u32 mv)
+{
+	// 1) set the switching frequency based on the new usb input voltage
+	// How should we set this for the 8550B?
+	// pdphy_set_usb_pd_fsw(pdphy, mv*1000);
+
+	// 2) set max allowed voltage
+	if (mv == 9000) {
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_9V);
+	} else {
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_5V);
+	}
+
+	// AICL setting? TODO
+	//regmap_write(pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, 0);
+
+	// 3) set the max allowed input current
+	pdphy_set_usbin_current_limit(pmic_typec_pdphy, max_ma);
+
+	return 0;
+};
 
 static int qcom_pmic_typec_pdphy_enable(struct pmic_typec_pdphy *pmic_typec_pdphy)
 {
