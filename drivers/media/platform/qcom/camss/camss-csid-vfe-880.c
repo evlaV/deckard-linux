@@ -81,6 +81,7 @@
 #define		RDI_CFG0_VIRTUAL_CHANNEL	22
 #define		RDI_CFG0_DT_ID			27
 #define		RDI_CFG0_ENABLE			31
+#define		RDI_CFG0_TIMESTAMP_EN	6
 
 #define CSID_RDI_CTRL(rdi)			(0x504 + 0x100 * (rdi))
 #define		RDI_CTRL_HALT_CMD		0
@@ -114,6 +115,9 @@
 
 #define RDI_WM(n)			((IS_LITE ? 0 : 23) + (n))
 #define RDI_COMP_GROUP(n)		((IS_LITE ? 1 : 14) + (n))
+
+#define CAM_IFE_CSID_MUL_FACTOR                 10000
+#define CAM_IFE_CSID_DIV_FACTOR                 192
 
 static inline void vfe_write(struct csid_device *csid, u32 reg, u32 val)
 {
@@ -153,6 +157,8 @@ struct camss_buffer *vfe_buf_get_pending(struct csid_device *csid);
 
 static void csid_configure_stream(struct csid_device *csid, u8 enable)
 {
+	csid->isp_to_kernel_raw_ts_offset = ULONG_MAX;
+
 	u32 val;
 	u32 phy_sel = 0;
 	u8 lane_cnt = csid->phy.lane_cnt;
@@ -203,7 +209,7 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	if (enable) {
 		//val = 1 << RDI_CFG0_BYTE_CNTR_EN;
 		//val |= 1 << RDI_CFG0_FORMAT_MEASURE_EN;
-		//val |= 1 << RDI_CFG0_TIMESTAMP_EN;
+		val |= 1 << RDI_CFG0_TIMESTAMP_EN;
 		// val = 2 << RDI_CFG1_TIMESTAMP_STB_SEL;
 		val |= 0xf << RDI_CFG0_DECODE_FORMAT;
 		//val |= format->data_type << RDI_CFG0_DATA_TYPE;
@@ -312,9 +318,10 @@ static u32 csid_hw_version(struct csid_device *csid)
 static irqreturn_t csid_isr(int irq, void *dev)
 {
 	struct csid_device *csid = dev;
-	u32 top_status, rx_status, buf_status;
+	u32 top_status, rx_status, buf_status, rdi_status;
 	unsigned long flags;
-	u64 ts = ktime_get_ns();
+	u64 ts_monotonic_raw = ktime_get_raw_ns();
+	u64 ts_monotonic = ktime_get_ns();
 
 	top_status = readl_relaxed(csid->base + CSID_TOP_IRQ_STATUS);
 	writel_relaxed(top_status, csid->base + CSID_TOP_IRQ_CLEAR);
@@ -322,26 +329,66 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	rx_status = readl_relaxed(csid->base + CSID_CSI2_RX_IRQ_STATUS);
 	writel_relaxed(rx_status, csid->base + CSID_CSI2_RX_IRQ_CLEAR);
 
+	rdi_status = readl_relaxed(csid->base + CSID_CSI2_RDI0_IRQ_STATUS);
+	//printk("rdi_status:0x%x ts:%lu", rdi_status, ts_monotonic);
+	writel_relaxed(rdi_status, csid->base + CSID_CSI2_RDI0_IRQ_CLEAR);
+	if(rdi_status & 0b111000010001000100010000) // Find the actual mask
+	{
+		//printk("csid sof");
+		u64 kernel_ts_raw_to_monotonic_offset = ts_monotonic-ts_monotonic_raw;
+		u32 sof_timestamp_lower = readl_relaxed(csid->base + 0x594);
+		u32 sof_timestamp_upper = readl_relaxed(csid->base + 0x598);
+		u64 sof_isp_timestamp = ((u64)sof_timestamp_upper) << 32 | sof_timestamp_lower;
+
+		sof_isp_timestamp = mul_u64_u32_div(
+			sof_isp_timestamp,
+			CAM_IFE_CSID_MUL_FACTOR,
+			CAM_IFE_CSID_DIV_FACTOR);
+		//printk("ts:%lu sof_isp_timestamp:%lu",ts_monotonic, sof_isp_timestamp);
+		u64 detected_isp_to_kernel_raw_ts_offset = ts_monotonic_raw - sof_isp_timestamp;
+
+		// This works because the ISP clock does not drift from the monotonic_raw timestamps and the lower the distance
+		// between the raw timestamp and the ISP clock, the closer that offset is to the "actual offset"
+		if(csid->isp_to_kernel_raw_ts_offset > detected_isp_to_kernel_raw_ts_offset) {
+			csid->isp_to_kernel_raw_ts_offset = detected_isp_to_kernel_raw_ts_offset;
+		}
+		csid->kernel_ts_raw_to_monotonic_offset = kernel_ts_raw_to_monotonic_offset;
+		csid->cur_sof_isp_timestamp_converted = sof_isp_timestamp + csid->isp_to_kernel_raw_ts_offset + csid->kernel_ts_raw_to_monotonic_offset;
+		if(csid->do_post_sof_work != NULL) {
+			csid->do_post_sof_work(csid->capture_subdev, csid->cur_sof_isp_timestamp_converted, ts_monotonic);
+		}
+	}
+
 	if (top_status & BIT(TOP_IRQ_STATUS_BUF_DONE)) {
 		buf_status = readl_relaxed(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 		writel_relaxed(buf_status, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
 
 		if (buf_status & BIT(RDI_COMP_GROUP(0))) {
+
+			// read and print timestamp
+			//printk("comp group done ts_monotonic - csid->cur_sof_isp_timestamp_converted:%lu  \n", ts_monotonic - csid->cur_sof_isp_timestamp_converted );
+			void* sensorMetaDataBufferAddr = NULL;
+
 			spin_lock_irqsave(&csid->output_lock, flags);
 
 			struct camss_buffer *buf = csid->out_buf[0];
 			csid->out_buf[0] = csid->out_buf[1];
+
+			if(csid->get_metadata != NULL) 
+				{
+					sensorMetaDataBufferAddr = csid->get_metadata(csid->capture_subdev );
+				}
 			
 			if (buf) {
-				buf->vb.vb2_buf.timestamp = ts;
+				buf->vb.vb2_buf.timestamp = ts_monotonic;
 				buf->vb.sequence = csid->sequence++;
 
 				// HACK: Using approximate readout time to get the sof_timestamp. This will not be
 				// as precise as CSID register timestamps
-				u64 sof_timestamp = ts - 7740000;
-				u64 eof_timestamp = ts;
-				metadata_send(&csid->camss->metadata[csid->id], ts, sof_timestamp, eof_timestamp, sof_timestamp, ts,
-        			buf->vb.sequence, NULL, NULL, NULL, NULL, NULL, NULL);
+				u64 sof_timestamp = ts_monotonic - 7740000;
+				u64 eof_timestamp = ts_monotonic;
+				metadata_send(&csid->camss->metadata[csid->id], ts_monotonic, csid->cur_sof_isp_timestamp_converted, eof_timestamp, sof_timestamp, ts_monotonic,
+        			buf->vb.sequence, sensorMetaDataBufferAddr, NULL, NULL, NULL, NULL, NULL);
 				vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 			} else {
 				dev_warn(csid->camss->dev, "buf done without a corresponding buffer\n");
@@ -402,8 +449,12 @@ static int csid_reset(struct csid_device *csid)
 	writel_relaxed(1, csid->base + CSID_TOP_IRQ_MASK);
 	writel_relaxed(1, csid->base + CSID_IRQ_CMD);
 
+	// writel_relaxed(1, csid->base + CSID_CSI2_RDI0_IRQ_MASK);
+	// writel_relaxed(1, csid->base + CSID_IRQ_CMD);
+
 	writel_relaxed(0x11, csid->base + CSID_RST_CFG); // ENTIRE_CSID, IMMEDIATE
 	writel_relaxed(0x1e, csid->base + CSID_RST_CMD); // everything, except registers?
+
 
 	time = wait_for_completion_timeout(&csid->reset_complete,
 					   msecs_to_jiffies(CSID_RESET_TIMEOUT_MS));
@@ -414,6 +465,7 @@ static int csid_reset(struct csid_device *csid)
 
 	writel_relaxed(~0u, csid->base + CSID_TOP_IRQ_MASK);
 	writel_relaxed(~0u, csid->base + CSID_BUF_DONE_IRQ_MASK);
+	writel_relaxed(0x10, csid->base + CSID_CSI2_RDI0_IRQ_MASK);
 
 	return 0;
 }
@@ -490,6 +542,8 @@ int vfe_flush_buffers(struct camss_video *vid,
 	return 0;
 }
 
+
+
 static const struct camss_video_ops vfe_video_ops_880 = {
 	.queue_buffer = vfe_queue_buffer,
 	.flush_buffers = vfe_flush_buffers,
@@ -497,6 +551,9 @@ static const struct camss_video_ops vfe_video_ops_880 = {
 
 static void csid_subdev_init(struct csid_device *csid)
 {
+	csid->get_metadata = NULL;
+	csid->do_post_sof_work = NULL;
+	csid->capture_subdev = NULL;
 	csid->formats = csid_formats;
 	csid->nformats = ARRAY_SIZE(csid_formats);
 	csid->video_ops = vfe_video_ops_880;
