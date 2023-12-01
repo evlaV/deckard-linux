@@ -167,7 +167,8 @@ struct og01a1b_dev {
 	enum og01a1b_group_mode group_mode;
 	int sensor_index;
 
-	const struct og01a1b_mode_info* current_mode;	
+	const struct og01a1b_mode_info* current_mode;
+	bool is_streaming;
 };
 
 struct og01a1b_dev* sensors[4];
@@ -1536,7 +1537,6 @@ void handle_exposure_event(struct og01a1b_dev *sensor, bool is_rising_edge) {
 static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp, u64 sof_isr_timestamp) {
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 	handle_exposure_event(sensor, false);
-
 	if(sensor->is_sync_sensor ) {
 		set_ir_leds(sensor, 0);
 	}
@@ -1569,18 +1569,25 @@ static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp, u64 sof_
 			for(int i = 0; i < numSensors; i++) {
 				u64 start = sof_timestamp - 3000000;
 				u64 end = sof_timestamp + 3000000;
-				if(sensors[i]->power_count < 1 ) {
+				//printk("sensor_index:%d i:%d start: %lu, end: %lu, last_sof_ts: %lu\n", sensor->sensor_index, i, start, end, sensors[i]->last_sof_ts);
+				// if(!sensors[i]->is_streaming ) {
+				// 	continue;
+				// }
+				if(i != 0 && i != 2) {
 					continue;
 				}
 				if(sensors[i]->last_sof_ts < start || sensors[i]->last_sof_ts > end)
 				{
+					//printk("didn't do group switch because sensor:%d start:%lu sensors[i]->last_sof_ts:%lu ", i, start, sensors[i]->last_sof_ts);
 					return;
 				}
 			}
 			if(sensor->is_sync_sensor) {
+				//printk("scheduled work from sync sensor");
 				schedule_work(&sensor->work);
 			}
 			else {
+				//printk("scheduled work from non sync sensor");
 				schedule_work(&sensor->other_sensor->work);
 			}
 		}
@@ -1777,6 +1784,7 @@ static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 	sensor->updateGroupRegisters = true;
 	reset_groups(sensor);
+	sensor->is_streaming == !!enable;
 
 	og01a1b_write_reg(sensor, 0x100, !!enable);
 	return 0;
@@ -2092,7 +2100,7 @@ static int og01a1b_probe(struct i2c_client *client)
 	sensor = devm_kzalloc(dev, sizeof(*sensor), GFP_KERNEL);
 	if (!sensor)
 		return -ENOMEM;
-
+	sensor->is_streaming = false;
 	sensor->sensor_index = numSensors;
 	if (of_property_read_string(dev->of_node, "id", &id)) {
         dev_err(dev, "Failed to read 'id' property\n");

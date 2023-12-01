@@ -165,6 +165,19 @@ struct csid_device {
 	struct list_head pending_bufs;
 	unsigned int sequence;
 	bool stream_on;
+
+	struct v4l2_subdev *capture_subdev;
+	size_t metadata_size;
+	void* (*get_metadata) (struct v4l2_subdev*);
+	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp);
+	u64 last_sof_isp_timestamp_converted;
+	u64 cur_sof_isp_timestamp_converted;
+	u64 kernel_ts_raw_to_monotonic_offset;
+	u64 cur_eof_isp_timestamp_converted;
+	u64 last_sof_kernel_ts;
+	u64 last_eof_kernel_ts;
+	u64 isp_to_kernel_raw_ts_offset;
+
 	spinlock_t output_lock;
 };
 
@@ -204,6 +217,10 @@ int msm_csid_register_entity(struct csid_device *csid,
 void msm_csid_unregister_entity(struct csid_device *csid);
 
 void msm_csid_get_csid_id(struct media_entity *entity, u8 *id);
+
+int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size, struct v4l2_subdev **sd);
+int get_post_sof_cb_address(struct media_entity *entity, u64 *addr);
+static int csid_set_metadata_callbacks(struct csid_device *csid);
 
 extern const char * const csid_testgen_modes[];
 
