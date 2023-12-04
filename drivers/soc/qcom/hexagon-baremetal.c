@@ -49,6 +49,8 @@ struct dsp {
 	struct clk_bulk_data *clks;
 	unsigned num_clks;
 	bool is_xtensa;
+	u32 mem_phys;
+	u32 mem_size;
 };
 
 struct dma_map {
@@ -400,12 +402,31 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	}
 }
 
+static int dsp_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	struct dsp *dsp = file->private_data;
+	unsigned long user_count = vma_pages(vma);
+	unsigned long count = dsp->mem_size >> PAGE_SHIFT;
+	unsigned long pfn = PHYS_PFN(dsp->mem_phys);
+	unsigned long off = vma->vm_pgoff;
+
+	/* note: only used with CVP region which is a device region */
+	vma->vm_page_prot = pgprot_device(vma->vm_page_prot);
+
+	if (off >= count || user_count > count - off)
+		return -ENXIO;
+
+	return remap_pfn_range(vma, vma->vm_start, pfn + off,
+			user_count << PAGE_SHIFT, vma->vm_page_prot);
+}
+
 static const struct file_operations dsp_fops = {
 	.open = dsp_open,
 	.release = dsp_release,
 	.poll = dsp_poll,
 	.unlocked_ioctl = dsp_ioctl,
 	.compat_ioctl = dsp_ioctl,
+	.mmap = dsp_mmap,
 };
 
 static irqreturn_t ipcc_irq(int irq, void *data)
@@ -452,6 +473,12 @@ static int dsp_probe(struct platform_device *pdev)
 		ret = dma_set_mask_and_coherent(dev, 0xffffffffful);
 		if (ret)
 			return ret;
+	}
+
+	// XXX: get this from device tree instead
+	if (!strcmp(dev->of_node->name, "cvp")) {
+		dsp->mem_phys = 0x0ab00000;
+		dsp->mem_size = 0xf0000;
 	}
 
 	dsp->base = devm_platform_ioremap_resource(pdev, 0);
