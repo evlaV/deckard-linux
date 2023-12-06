@@ -78,6 +78,9 @@ struct map_direct {
 #define DSP_IOCTL_MAP_DIRECT 	_IOW('C', 5, struct map_direct)
 #define DSP_IOCTL_UNMAP 	_IO('C', 6) /* 32 bit va argument */
 
+// Dedicated ioctl for cvp boot to set registers inside kernel instead of userspace + using DSP_IOCTL_BOOT
+#define CVP_IOCTL_BOOT 	_IO('C', 7) /* argument ignored */
+
 #define write32(x, y) writel(y, x)
 
 #define PLL_MODE           0x00
@@ -147,6 +150,199 @@ clk_pll_configure_lucid_ole(void __iomem *pll_reg, u32 freq)
 	while ((readl(pll_reg + PLL_MODE) & PLL_LOCK_DET) == 0);
 
 	write32(pll_reg + PLL_MODE, PLL_RESET_N | PLL_OUTCTRL);// | OUT_MAIN_HW_CTL);
+}
+
+static int
+xtensa_boot(struct dsp *dsp)
+{
+	// Can this be called outside of booting the CVP?
+	bool is_cvp = true;
+
+#define CVP_CPU_BASE_OFFS			0x000A0000
+
+#define CPU_CS_A2HSOFTINTEN		(CVP_CPU_BASE_OFFS + 0x10)
+#define CPU_CS_A2HSOFTINTENCLR	(CVP_CPU_BASE_OFFS + 0x14)
+#define CPU_CS_A2HSOFTINT		(CVP_CPU_BASE_OFFS + 0x18)
+#define CPU_CS_A2HSOFTINTCLR	(CVP_CPU_BASE_OFFS + 0x1C)
+#define CPU_CS_VMIMSG		(CVP_CPU_BASE_OFFS + 0x34)
+#define CPU_CS_VMIMSGAG0		(CVP_CPU_BASE_OFFS + 0x38)
+#define CPU_CS_VMIMSGAG1		(CVP_CPU_BASE_OFFS + 0x3C)
+#define CPU_CS_VMIMSGAG2		(CVP_CPU_BASE_OFFS + 0x40)
+#define CPU_CS_VMIMSGAG3		(CVP_CPU_BASE_OFFS + 0x44)
+#define CPU_CS_SCIACMD			(CVP_CPU_BASE_OFFS + 0x48)
+#define CPU_CS_H2XSOFTINTEN		(CVP_CPU_BASE_OFFS + 0x148)
+
+/* CVP_CTRL_STATUS */
+#define CPU_CS_SCIACMDARG0		(CVP_CPU_BASE_OFFS + 0x4C)
+#define CPU_CS_SCIACMDARG0_BMSK	0xff
+#define CPU_CS_SCIACMDARG0_SHFT	0x0
+#define CPU_CS_SCIACMDARG0_HFI_CTRL_ERROR_STATUS_BMSK	0xfe
+#define CPU_CS_SCIACMDARG0_HFI_CTRL_ERROR_STATUS_SHFT	0x1
+#define CPU_CS_SCIACMDARG0_HFI_CTRL_INIT_STATUS_BMSK	0x1
+#define CPU_CS_SCIACMDARG0_HFI_CTRL_INIT_STATUS_SHFT	0x0
+#define CPU_CS_SCIACMDARG0_HFI_CTRL_PC_READY           0x100
+
+/* HFI_QTBL_INFO */
+#define CPU_CS_SCIACMDARG1		(CVP_CPU_BASE_OFFS + 0x50)
+
+/* HFI_QTBL_ADDR */
+#define CPU_CS_SCIACMDARG2		(CVP_CPU_BASE_OFFS + 0x54)
+
+/* HFI_VERSION_INFO */
+#define CPU_CS_SCIACMDARG3		(CVP_CPU_BASE_OFFS + 0x58)
+
+/* CVP_SFR_ADDR */
+#define CPU_CS_SCIBCMD		(CVP_CPU_BASE_OFFS + 0x5C)
+
+/* CVP_MMAP_ADDR */
+#define CPU_CS_SCIBCMDARG0		(CVP_CPU_BASE_OFFS + 0x60)
+
+/* CVP_UC_REGION_ADDR */
+#define CPU_CS_SCIBARG1		(CVP_CPU_BASE_OFFS + 0x64)
+
+/* CVP_UC_REGION_ADDR */
+#define CPU_CS_SCIBARG2		(CVP_CPU_BASE_OFFS + 0x68)
+
+#define CPU_CS_SCIBARG3		(CVP_CPU_BASE_OFFS + 0x6C)
+
+#define CPU_CS_H2ASOFTINTEN		(CVP_CPU_BASE_OFFS + 0x148)
+#define CPU_CS_H2ASOFTINTENCLR	(CVP_CPU_BASE_OFFS + 0x14c)
+#define CPU_CS_H2ASOFTINT		(CVP_CPU_BASE_OFFS + 0x150)
+#define CPU_CS_H2ASOFTINTCLR	(CVP_CPU_BASE_OFFS + 0x154)
+
+/* FAL10 Feature Control */
+#define CPU_CS_X2RPMh		(CVP_CPU_BASE_OFFS + 0x168)
+#define CPU_CS_X2RPMh_MASK0_BMSK	0x1
+#define CPU_CS_X2RPMh_MASK0_SHFT	0x0
+#define CPU_CS_X2RPMh_MASK1_BMSK	0x2
+#define CPU_CS_X2RPMh_MASK1_SHFT	0x1
+#define CPU_CS_X2RPMh_SWOVERRIDE_BMSK	0x4
+#define CPU_CS_X2RPMh_SWOVERRIDE_SHFT	0x3
+
+/* WRAPPER */
+
+#define CVP_WRAPPER_BASE_OFFS		0x000B0000
+
+#define CVP_WRAPPER_HW_VERSION		(CVP_WRAPPER_BASE_OFFS + 0x00)
+#define CVP_WRAPPER_HW_VERSION_MAJOR_VERSION_MASK  0x78000000
+#define CVP_WRAPPER_HW_VERSION_MAJOR_VERSION_SHIFT 28
+#define CVP_WRAPPER_HW_VERSION_MINOR_VERSION_MASK  0xFFF0000
+#define CVP_WRAPPER_HW_VERSION_MINOR_VERSION_SHIFT 16
+#define CVP_WRAPPER_HW_VERSION_STEP_VERSION_MASK   0xFFFF
+
+#define CVP_WRAPPER_INTR_STATUS	(CVP_WRAPPER_BASE_OFFS + 0x0C)
+#define CVP_WRAPPER_INTR_STATUS_A2HWD_BMSK	0x8
+#define CVP_WRAPPER_INTR_STATUS_A2H_BMSK	0x4
+
+#define CVP_WRAPPER_INTR_MASK		(CVP_WRAPPER_BASE_OFFS + 0x10)
+#define CVP_FATAL_INTR_BMSK	(CVP_WRAPPER_INTR_MASK_CPU_NOC_BMSK | \
+				CVP_WRAPPER_INTR_MASK_CORE_NOC_BMSK | \
+				CVP_WRAPPER_INTR_MASK_A2HWD_BMSK)
+#define CVP_WRAPPER_INTR_MASK_CPU_NOC_BMSK	0x40
+#define CVP_WRAPPER_INTR_MASK_CORE_NOC_BMSK	0x20
+#define CVP_WRAPPER_INTR_MASK_A2HWD_BMSK	0x8
+#define CVP_WRAPPER_INTR_MASK_A2HCPU_BMSK	0x4
+#define CVP_WRAPPER_INTR_MASK_A2HCPU_SHFT	0x2
+
+#define CVP_WRAPPER_INTR_CLEAR		(CVP_WRAPPER_BASE_OFFS + 0x14)
+#define CVP_WRAPPER_TZ_BASE_OFFS		0x000C0000
+#define CVP_WRAPPER_INTR_CLEAR_A2HWD_BMSK	0x10
+#define CVP_WRAPPER_INTR_CLEAR_A2HWD_SHFT	0x4
+#define CVP_WRAPPER_INTR_CLEAR_A2H_BMSK	0x4
+#define CVP_WRAPPER_INTR_CLEAR_A2H_SHFT	0x2
+#define CVP_WRAPPER_CPU_STATUS		(CVP_WRAPPER_TZ_BASE_OFFS + 0x10)
+#define CVP_WRAPPER_CPU_CGC_DIS	(CVP_WRAPPER_BASE_OFFS + 0x2010)
+
+#define CVP_WRAPPER_CPU_CLOCK_CONFIG	(CVP_WRAPPER_BASE_OFFS + 0x50)
+#define CVP_WRAPPER_DEBUG_BRIDGE_LPI_CONTROL	(CVP_WRAPPER_BASE_OFFS + 0x54)
+#define CVP_WRAPPER_DEBUG_BRIDGE_LPI_STATUS	(CVP_WRAPPER_BASE_OFFS + 0x58)
+#define CVP_WRAPPER_CORE_CLOCK_CONFIG		(CVP_WRAPPER_BASE_OFFS + 0x88)
+
+	u32 fw_size = 8 * SZ_1M;
+	// qtlb buffer
+	u32 addr = 0x80000000;
+
+	// Corresponds to SHARED_QSIZE which is 3Mb
+	u32 size = SZ_1M * 3;
+	u32 mask_val, count, status;
+
+	if (is_cvp)
+		fw_size = 7 * SZ_1M;
+
+#define WRAPPER_CPA_START_ADDR 		0xc1020
+#define WRAPPER_CPA_END_ADDR 		0xc1024
+#define WRAPPER_FW_START_ADDR 		0xc1028
+#define WRAPPER_FW_END_ADDR 		0xc102c
+#define WRAPPER_NONPIX_START_ADDR 	0xc1030
+#define WRAPPER_NONPIX_END_ADDR 	0xc1034
+
+	writel_relaxed(0, dsp->base + WRAPPER_FW_START_ADDR);
+	writel_relaxed(fw_size, dsp->base + WRAPPER_FW_END_ADDR);
+	writel(0, dsp->base + WRAPPER_CPA_START_ADDR);
+	if (is_cvp) {
+		writel(0x4b000000, dsp->base + WRAPPER_CPA_END_ADDR);
+		writel(0x01000000, dsp->base + WRAPPER_NONPIX_START_ADDR);
+		writel(0x26800000, dsp->base + WRAPPER_NONPIX_END_ADDR);
+	} else {
+		writel(fw_size, dsp->base + WRAPPER_CPA_END_ADDR);
+		writel(fw_size, dsp->base + WRAPPER_NONPIX_START_ADDR);
+		writel(fw_size, dsp->base + WRAPPER_NONPIX_END_ADDR);
+	}
+
+	writel_relaxed(0, dsp->base + 0xB0088);
+
+	writel_relaxed(0, dsp->base + CPU_CS_SCIACMDARG0);
+
+	writel(addr, dsp->base + CPU_CS_SCIBARG1); // UC_REGION_ADDR
+	writel(size, dsp->base + CPU_CS_SCIBARG2); // UC_REGION_SIZE
+	writel(addr, dsp->base + CPU_CS_SCIACMDARG2); // QTBL_ADDR
+	writel(0x01, dsp->base + CPU_CS_SCIACMDARG1); // QTBL_INFO
+	writel(addr + size, dsp->base + CPU_CS_SCIBCMD);
+
+	if (is_cvp) {
+		// XXX firmware unhappy without DSP queues..
+		addr += size + SZ_1M;
+		writel(addr, dsp->base + CPU_CS_VMIMSG); // DSP_QTBL_ADDR
+		writel(addr, dsp->base + CPU_CS_VMIMSGAG0); // DSP_UC_REGION_ADDR
+		writel(size, dsp->base + CPU_CS_VMIMSGAG1); // DSP_UC_REGION_SIZE
+	}
+
+	writel(BIT(0) | BIT(3), dsp->base + CPU_CS_SCIACMD);
+
+#define WRAPPER_INTR_MASK  0xb0010
+#define CPUSS_WD_INTR   BIT(3)
+#define CPUSS_INTR      BIT(2)
+
+
+	// mask_val = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_MASK);
+	// mask_val &= ~(8|4);//~(CVP_FATAL_INTR_BMSK | CVP_WRAPPER_INTR_MASK_A2HCPU_BMSK);
+	//writel_relaxed(mask_val, dsp->base + CVP_WRAPPER_INTR_MASK);
+
+	mask_val = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_MASK);
+	mask_val &= ~(8|4);//~(CVP_FATAL_INTR_BMSK | CVP_WRAPPER_INTR_MASK_A2HCPU_BMSK);
+	writel_relaxed(mask_val, dsp->base + CVP_WRAPPER_INTR_MASK);
+
+	//writel_relaxed(~(CPUSS_WD_INTR|CPUSS_INTR), dsp->base + CVP_WRAPPER_INTR_MASK);
+
+
+	// busybox devmem 0xab00004 32 0x000D000F
+   	// trigger FW init (fw waits for this)
+	writel_relaxed(1, dsp->base + CPU_CS_SCIACMDARG3);
+	count = 1000;
+	do {
+		status = readl_relaxed(dsp->base + CPU_CS_SCIACMDARG0);
+		if (status & BIT(0))
+			break;
+		usleep_range(500, 1000);
+	} while (--count);
+
+	//printk("Status of CPU_CS_SCIACMDARG0 after waiting: %d", status);
+
+	writel_relaxed(1, dsp->base + CPU_CS_H2XSOFTINTEN);
+	writel_relaxed(0, dsp->base + CPU_CS_X2RPMh);
+
+	writel_relaxed(0, dsp->base + CVP_WRAPPER_BASE_OFFS + 0x84); // WRAPPER_CORE_POWER_CONTROL.CORE_PWR_DISABLE=0
+	return status;
 }
 
 static int dsp_boot(struct dsp *dsp, u32 boot_addr)
@@ -385,6 +581,16 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return 0;
 		}
 		return dsp_boot(dsp, arg);
+	case CVP_IOCTL_BOOT:
+		if (atomic_xchg(&dsp->booted, 1))
+			return -EBUSY;
+
+		// Should only call this for CVP file
+		if (!dsp->is_xtensa)
+			return -EINVAL;
+
+		writel(0, dsp->base + 0xc1000);
+		return xtensa_boot(dsp);
 	case DSP_IOCTL_SHUTDOWN:
 		return dsp_shutdown(dsp);
 	case DSP_IOCTL_MAP_DMABUF:
