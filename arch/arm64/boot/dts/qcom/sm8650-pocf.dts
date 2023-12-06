@@ -232,8 +232,6 @@
 		enable-active-high;
 		gpio = <&tlmm 74 GPIO_ACTIVE_HIGH>;
 		vin-supply = <&VREG_L5M_1P8>;
-
-		regulator-always-on; // EYE CAM TEST
 	};
 
 
@@ -657,8 +655,6 @@
 			regulator-min-microvolt = <1104000>;
 			regulator-max-microvolt = <1104000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // RIGHT EYE CAM TEST
 		};
 
 		VREG_L2M_1P2: ldo2 {
@@ -666,8 +662,6 @@
 			regulator-min-microvolt = <1200000>;
 			regulator-max-microvolt = <1200000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on;  // XXX
 		};
 
 		VREG_6DOF_2P8_R: VREG_L3M_2P8: ldo3 {
@@ -675,8 +669,6 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on;  // XXX
 		};
 
 		VREG_6DOF_2P8_UR: VREG_L4M_1P8: ldo4 {
@@ -684,8 +676,6 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on;  // XXX
 		};
 
 		VREG_L5M_1P8: ldo5 {
@@ -693,8 +683,6 @@
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on;  // XXX
 		};
 
 		VREG_L6M_2P8: ldo6 {
@@ -702,8 +690,6 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // RIGHT EYE CAM TEST
 		};
 
 		VREG_L7M_3P3: ldo7 {
@@ -730,8 +716,6 @@
 			regulator-min-microvolt = <1104000>;
 			regulator-max-microvolt = <1104000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // LEFT EYE CAM TEST
 		};
 
 		VREG_L2N_1P2: ldo2 {
@@ -739,8 +723,6 @@
 			regulator-min-microvolt = <1200000>;
 			regulator-max-microvolt = <1200000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on;  // XXX
 		};
 
 		VREG_6DOF_2P8_L: VREG_L3N_2P8: ldo3 {
@@ -748,8 +730,6 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on;  // XXX
 		};
 
 		VREG_6DOF_2P8_UL: VREG_L4N_1P8: ldo4 {
@@ -757,8 +737,6 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on;  // XXX
 		};
 
 		VREG_L5N_1P8: ldo5 {
@@ -766,8 +744,6 @@
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on;  // XXX
 		};
 
 		VREG_L6N_2P8: ldo6 {
@@ -775,8 +751,6 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // RIGHT EYE CAM TEST
 		};
 	};
 };
@@ -1838,6 +1812,24 @@
 			};
 		};
 
+		port@2 {
+			reg = <2>;
+			csiphy2_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&cam_et_l>;
+			};
+		};
+
+		port@4 {
+			reg = <4>;
+			csiphy4_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&cam_et_r>;
+			};
+		};
+
 		port@6 {
 			reg = <6>;
 			csiphy0_combo_ep: endpoint {
@@ -1853,6 +1845,62 @@
 				clock-lanes = <3>;
 				data-lanes = <2>;
 				remote-endpoint = <&cam_6dof_ur>;
+			};
+		};
+	};
+};
+
+&cci0_i2c1 { // "CCI_1"
+	cam0@60 {
+		compatible = "ovti,ov6211x";
+		reg = <0x60>;
+
+		reset-gpios = <&tlmm 7 GPIO_ACTIVE_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk4_active>; // <&cam_et_l_default>;
+
+		clocks = <&camcc CAM_CC_MCLK4_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&EYETCK_DOVDD_1V8>;
+		AVDD-supply = <&VREG_L6N_2P8>;
+		DVDD-supply = <&VREG_L1N_1P1>;
+
+		id = "eyetracking_left";
+
+		port {
+			cam_et_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&csiphy2_ep>;
+			};
+		};
+	};
+};
+
+&cci1_i2c0 { // "CCI_2"
+	cam0@60 {
+		compatible = "ovti,ov6211x";
+		reg = <0x60>;
+
+		reset-gpios = <&tlmm 3 GPIO_ACTIVE_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk2_active>; // <&cam_et_r_default>;
+
+		clocks = <&camcc CAM_CC_MCLK2_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&EYETCK_DOVDD_1V8>;
+		AVDD-supply = <&VREG_L6M_2P8>;
+		DVDD-supply = <&VREG_L1M_1P1>;
+
+		id = "eyetracking_right";
+
+		port {
+			cam_et_r: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&csiphy4_ep>;
 			};
 		};
 	};
