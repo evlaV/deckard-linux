@@ -284,6 +284,17 @@
 		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
 	};
 
+	exp_vout_5v: exp_vout_5v {
+		compatible = "regulator-fixed";
+		regulator-name = "exp_vout_5v";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpio = <&pm8550vs_g_gpios 6 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		vin-supply = <&VPH_PWR>;
+		regulator-always-on;
+	};
+
 };
 
 &pmk8550_vadc {
