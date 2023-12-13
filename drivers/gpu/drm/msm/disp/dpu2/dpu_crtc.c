@@ -538,6 +538,11 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 				/* sspp state */
 				dpu_plane_update(dpu, id, &s, false);
 				ctl_flush |= CTL_FLUSH_SSPP(id);
+
+				if (id >= 4)
+					fetch_pipe_active |= BIT(id - 4);
+				else
+					fetch_pipe_active |= BIT(id + 16);
 			}
 		}
 	} else {
@@ -576,6 +581,11 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 			/* sspp state */
 			dpu_plane_update(dpu, id, &s, c->is_dual_dsi);
 			ctl_flush |= CTL_FLUSH_SSPP(id);
+
+			if (id >= 4)
+				fetch_pipe_active |= BIT(id - 4);
+			else
+				fetch_pipe_active |= BIT(id + 16);
 		}
 	}
 #else

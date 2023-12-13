@@ -77,8 +77,9 @@ static int dpu_plane_atomic_check(struct drm_plane *plane,
 		crtc_state = drm_atomic_get_new_crtc_state(state,
 							   new_plane_state->crtc);
 
-	return drm_atomic_helper_check_plane_state(new_plane_state, crtc_state, 1 << 16,
-						   1 << 16, true, true);
+	// TODO: use the actual min/max scaling instead of 0/INF
+	return drm_atomic_helper_check_plane_state(new_plane_state, crtc_state, 0,
+						   INT_MAX, true, true);
 
 }
 
@@ -155,7 +156,7 @@ enum {
 
 static void
 sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
-		uint64_t modifier, unsigned rotation)
+		uint64_t modifier, bool cac_test, unsigned rotation)
 {
 	u32 src_format, unpack_pattern, op_mode, ubwc_static_ctrl;
 	u32 cdp_cntl, danger_lut;
@@ -225,10 +226,28 @@ sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
 		dpu_write(dpu, SSPP_UBWC_STATIC_CTRL(i), ubwc_static_ctrl);
 	}
 
+#if 0
 	if (rotation & DRM_MODE_ROTATE_270) {
 		src_format |= BIT(11); /* ROT90 */
-		//op_mode |= BIT(13); /* FLIP_LR */
-		//op_mode |= BIT(14); /* FLIP_UD */
+	}
+#endif
+	if (rotation & DRM_MODE_REFLECT_X)
+		op_mode |= BIT(13); /* FLIP_LR */
+	if (rotation & DRM_MODE_REFLECT_Y)
+		op_mode |= BIT(14); /* FLIP_UD */
+
+	if (cac_test) {
+	switch (i/2) {
+	case 0: // RED
+		unpack_pattern = 0x03030302;
+		break;
+	case 1: // BLUE
+		unpack_pattern = 0x03010303;
+		break;
+	case 8: // GREEN
+		unpack_pattern = 0x03030003;
+		break;
+	}
 	}
 
 	dpu_write(dpu, SSPP_SRC_FORMAT(i), src_format);
@@ -296,8 +315,11 @@ void wb_set_framebuffer(struct dpu_kms *dpu, struct drm_framebuffer *fb)
 }
 
 void
-dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state)
+dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state, bool cac_test)
 {
+	/* convert ROTATE_180 to REFLECT_X|REFLECT_Y: */
+	unsigned rotation = drm_rotation_simplify(state->rotation,
+		 DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X |  DRM_MODE_REFLECT_Y);
 	struct drm_framebuffer *fb = state->fb;
 	if (!fb)
 		return;
@@ -306,7 +328,7 @@ dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state)
 
 	set_framebuffer(dpu, SSPP_SRC0_ADDR(i), fb);
 	sspp_set_coords(dpu, i, &state->dst, &state->src);
-	sspp_set_format(dpu, i, fb->format, fb->modifier, state->rotation);
+	sspp_set_format(dpu, i, fb->format, fb->modifier, cac_test, rotation);
 
 	dpu_write(dpu, SSPP_MULTIRECT_OPMODE(i), 0);
 	if (i < 4) { /* only VIG planes */
@@ -320,8 +342,8 @@ dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state)
 		u32 dst_w = drm_rect_width(dst);
 		u32 dst_h = drm_rect_height(dst);
 
-		if (state->rotation == DRM_MODE_ROTATE_270)
-			swap(src_w, src_h);
+		//if (state->rotation == DRM_MODE_ROTATE_270)
+		//	swap(src_w, src_h);
 
 		/* XXX: phase init for fractional src coords ? */
 		dpu_write(dpu, QSEED3_PHASE_INIT_Y_H(i), 0);
@@ -331,7 +353,12 @@ dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state)
 		dpu_write(dpu, QSEED3_PRELOAD(i), 0x3040304);
 		dpu_write(dpu, QSEED3_SRC_SIZE_Y_RGB_A(i), src_h << 16 | src_w);
 		dpu_write(dpu, QSEED3_DST_SIZE(i), dst_h << 16 | dst_w);
-		dpu_write(dpu, QSEED3_OP_MODE(i), BIT(14) | 0);//0x80034001);
+
+		// cac_test: always enable scaling
+		if (cac_test)
+			dpu_write(dpu, QSEED3_OP_MODE(i), 0x80034001);
+		else
+			dpu_write(dpu, QSEED3_OP_MODE(i), BIT(14) | 0);
 
 		dpu_write(dpu, SSPP_VIG_CSC_10_OP_MODE(i), 0);
 	}
@@ -412,7 +439,13 @@ int dpu_plane_init(struct dpu_kms *dpu, struct drm_plane *plane)
 		return ret;
 
 	drm_plane_create_zpos_property(plane, 0, 0, dpu->num_blendstages - 1);
-	drm_plane_create_rotation_property(plane, DRM_MODE_ROTATE_0, DRM_MODE_ROTATE_0 | DRM_MODE_ROTATE_270);
+	drm_plane_create_rotation_property(plane, DRM_MODE_ROTATE_0, DRM_MODE_ROTATE_0 |
+		// TODO: test and re-enable 90/270 rotation
+		// DRM_MODE_ROTATE_270 |
+		DRM_MODE_ROTATE_0 |
+		DRM_MODE_ROTATE_180 |
+		DRM_MODE_REFLECT_X |
+		DRM_MODE_REFLECT_Y);
 	drm_plane_helper_add(plane, &dpu_plane_helper_funcs);
 
 	return 0;

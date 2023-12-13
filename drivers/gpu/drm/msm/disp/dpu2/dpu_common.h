@@ -14,6 +14,8 @@
 
 #include "dpu_hw_regs.h"
 
+#define SIXPLANEMODE
+
 struct dpu_crtc {
 	struct drm_crtc base;
 
@@ -93,7 +95,7 @@ static inline void vbif_write(struct dpu_kms *dpu, u32 reg, u32 val)
 
 void dpu_toggle_start_irq(struct dpu_kms *dpu, u32 ctl, bool enable);
 
-void dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state);
+void dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state, bool cac_test);
 void dpu_complete_flip(struct dpu_kms *dpu, struct dpu_crtc *c);
 
 int dpu_crtc_init(struct dpu_kms *dpu, struct drm_crtc *crtc, struct drm_plane *plane);
