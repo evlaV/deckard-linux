@@ -332,7 +332,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	rdi_status = readl_relaxed(csid->base + CSID_CSI2_RDI0_IRQ_STATUS);
 	//printk("rdi_status:0x%x ts:%lu", rdi_status, ts_monotonic);
 	writel_relaxed(rdi_status, csid->base + CSID_CSI2_RDI0_IRQ_CLEAR);
-	if(rdi_status & 0b111000010001000100010000) // Find the actual mask
+	if(rdi_status & 0b100000010001000100010000) // Find the actual mask
 	{
 		//printk("csid sof");
 		u64 kernel_ts_raw_to_monotonic_offset = ts_monotonic-ts_monotonic_raw;
