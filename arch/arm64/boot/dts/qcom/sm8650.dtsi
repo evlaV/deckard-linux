@@ -2780,7 +2780,7 @@
 
 				assigned-clocks = <&dispcc DISP_CC_MDSS_MDP_CLK>,
 						  <&dispcc DISP_CC_MDSS_VSYNC_CLK>;
-				assigned-clock-rates = <514000000>,
+				assigned-clock-rates = <690000000>,
 						       <19200000>;
 
 				interrupt-parent = <&mdss>;
