@@ -332,7 +332,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	rdi_status = readl_relaxed(csid->base + CSID_CSI2_RDI0_IRQ_STATUS);
 	//printk("rdi_status:0x%x ts:%lu", rdi_status, ts_monotonic);
 	writel_relaxed(rdi_status, csid->base + CSID_CSI2_RDI0_IRQ_CLEAR);
-	if(rdi_status & 0b100000010001000100010000) // Find the actual mask
+	if(rdi_status & 0x1000) // Test if PATH_INFO_SOF is set
 	{
 		//printk("csid sof");
 		u64 kernel_ts_raw_to_monotonic_offset = ts_monotonic-ts_monotonic_raw;
@@ -465,7 +465,7 @@ static int csid_reset(struct csid_device *csid)
 
 	writel_relaxed(~0u, csid->base + CSID_TOP_IRQ_MASK);
 	writel_relaxed(~0u, csid->base + CSID_BUF_DONE_IRQ_MASK);
-	writel_relaxed(0x10, csid->base + CSID_CSI2_RDI0_IRQ_MASK);
+	writel_relaxed(0x1010, csid->base + CSID_CSI2_RDI0_IRQ_MASK); // PATH_INFO_SOF | CAMIF_SOF
 
 	return 0;
 }
