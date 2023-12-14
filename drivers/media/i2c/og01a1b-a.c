@@ -177,6 +177,7 @@ struct og01a1b_dev {
 
 	const struct og01a1b_mode_info* current_mode;
 	bool is_streaming;
+	bool is_og0VE10;
 };
 
 struct og01a1b_dev* sensors[4];
@@ -1577,7 +1578,6 @@ static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp, u64 sof_
 		//printk("sof off at :%lu\n", ts);
 		set_ir_leds(sensor, 0);
 	}
-
 	sensor->last_sof_ts = sof_timestamp;
 	sensor->last_sof_isr_ts = sof_isr_timestamp;
 
@@ -1607,24 +1607,18 @@ static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp, u64 sof_
 				u64 start = sof_timestamp - 3000000;
 				u64 end = sof_timestamp + 3000000;
 				//printk("sensor_index:%d i:%d start: %lu, end: %lu, last_sof_ts: %lu\n", sensor->sensor_index, i, start, end, sensors[i]->last_sof_ts);
-				// if(!sensors[i]->is_streaming ) {
-				// 	continue;
-				// }
-				if(i != 0 && i != 2) {
+				if(!sensors[i]->is_streaming ) {
 					continue;
 				}
 				if(sensors[i]->last_sof_ts < start || sensors[i]->last_sof_ts > end)
 				{
-					//printk("didn't do group switch because sensor:%d start:%lu sensors[i]->last_sof_ts:%lu ", i, start, sensors[i]->last_sof_ts);
 					return;
 				}
 			}
 			if(sensor->is_sync_sensor) {
-				//printk("scheduled work from sync sensor");
 				schedule_work(&sensor->work);
 			}
 			else {
-				//printk("scheduled work from non sync sensor");
 				schedule_work(&sensor->other_sensor->work);
 			}
 		}
@@ -1829,9 +1823,11 @@ static irqreturn_t gpio_handler(int irq, void * ident)
 static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
+	struct i2c_client *client = sensor->i2c_client;
+
 	sensor->updateGroupRegisters = true;
 	reset_groups(sensor);
-	sensor->is_streaming == !!enable;
+	sensor->is_streaming = !!enable;
 
 	og01a1b_write_reg(sensor, 0x100, !!enable);
 	return 0;
@@ -1952,7 +1948,8 @@ static int og01a1b_set_fmt(struct v4l2_subdev *sd,
 
 	if(fmt->format.width == 1280 && fmt->format.height == 1024) 
 	{
-		sensor->current_mode = &og01a1b_mode_data_1280x1024;	
+		sensor->current_mode = &og01a1b_mode_data_1280x1024;
+		sensor->is_og0VE10 = false;
 	}
 	else if (fmt->format.width == 640 && fmt->format.height == 512) 
 	{
@@ -1960,7 +1957,7 @@ static int og01a1b_set_fmt(struct v4l2_subdev *sd,
 	}
 	else if (fmt->format.width == 640 && fmt->format.height == 480) 
 	{
-		printk("640x480 set");
+		sensor->is_og0VE10 = true;
 		sensor->current_mode = &og01a1b_mode_data_640x480;
 	}
 	else {
@@ -2147,6 +2144,7 @@ static int og01a1b_probe(struct i2c_client *client)
 	if (!sensor)
 		return -ENOMEM;
 	sensor->is_streaming = false;
+	sensor->is_og0VE10 = false;
 	sensor->sensor_index = numSensors;
 	sensor->last_set_led_state = 0;
 	if (of_property_read_string(dev->of_node, "id", &id)) {

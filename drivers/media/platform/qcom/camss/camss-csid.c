@@ -803,8 +803,7 @@ int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size
 	struct media_entity *sensor;
 	struct v4l2_subdev *subdev;
 	struct v4l2_ctrl *ctrl;
-
-	sensor = camss_find_sensor(entity);
+	sensor = camss_find_sensor_from_csid(entity);
 	if (!sensor)
 		return -ENODEV;
 
@@ -848,7 +847,7 @@ int get_post_sof_cb_address(struct media_entity *entity, u64 *addr) {
 	struct v4l2_subdev *subdev;
 	struct v4l2_ctrl *ctrl;
 
-	sensor = camss_find_sensor(entity);
+	sensor = camss_find_sensor_from_csid(entity);
 	if (!sensor)
 		return -ENODEV;
 
