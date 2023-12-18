@@ -12,6 +12,7 @@
 #include <media/v4l2-mem2mem.h>
 #include <asm/div64.h>
 
+#include "../buffers.h"
 #include "core.h"
 #include "helpers.h"
 #include "hfi_helper.h"
@@ -616,6 +617,27 @@ static u32 to_hfi_raw_fmt(u32 v4l2_fmt)
 	return 0;
 }
 
+u32 to_v4l2_raw_fmt(u32 hfi_color_fmt)
+{
+	switch (hfi_color_fmt) {
+	case HFI_COLOR_FORMAT_NV12:
+		return V4L2_PIX_FMT_NV12;
+	case HFI_COLOR_FORMAT_NV21:
+		return V4L2_PIX_FMT_NV21;
+	case HFI_COLOR_FORMAT_NV12_UBWC:
+		return V4L2_PIX_FMT_QC08C;
+	case HFI_COLOR_FORMAT_YUV420_TP10_UBWC:
+		return V4L2_PIX_FMT_QC10C;
+	case HFI_COLOR_FORMAT_P010:
+		return V4L2_PIX_FMT_P010;
+	default:
+		break;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(to_v4l2_raw_fmt);
+
 static int platform_get_bufreq(struct venus_inst *inst, u32 buftype,
 			       struct hfi_buffer_requirements *req)
 {
@@ -639,20 +661,20 @@ static int platform_get_bufreq(struct venus_inst *inst, u32 buftype,
 		params.out_width = inst->out_width;
 		params.out_height = inst->out_height;
 		params.codec = inst->fmt_out->pixfmt;
-		params.hfi_color_fmt = to_hfi_raw_fmt(inst->fmt_cap->pixfmt);
+		params.color_fmt = inst->fmt_cap->pixfmt;
 		params.dec.max_mbs_per_frame = mbs_per_frame_max(inst);
 		params.dec.buffer_size_limit = 0;
 		params.dec.is_secondary_output =
 			inst->opb_buftype == HFI_BUFFER_OUTPUT2;
 		if (params.dec.is_secondary_output)
-			params.hfi_dpb_color_fmt = inst->dpb_fmt;
+			params.dpb_color_fmt = to_v4l2_raw_fmt(inst->dpb_fmt);
 		params.dec.is_interlaced =
 			inst->pic_struct != HFI_INTERLACE_FRAME_PROGRESSIVE;
 	} else {
 		params.width = inst->out_width;
 		params.height = inst->out_height;
 		params.codec = inst->fmt_cap->pixfmt;
-		params.hfi_color_fmt = to_hfi_raw_fmt(inst->fmt_out->pixfmt);
+		params.color_fmt = inst->fmt_out->pixfmt;
 		params.enc.work_mode = VIDC_WORK_MODE_2;
 		params.enc.rc_type = HFI_RATE_CONTROL_OFF;
 		if (enc_ctr->bitrate_mode == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ)
@@ -942,146 +964,10 @@ int venus_helper_set_profile_level(struct venus_inst *inst, u32 profile, u32 lev
 }
 EXPORT_SYMBOL_GPL(venus_helper_set_profile_level);
 
-static u32 get_framesize_raw_nv12(u32 width, u32 height)
-{
-	u32 y_stride, uv_stride, y_plane;
-	u32 y_sclines, uv_sclines, uv_plane;
-	u32 size;
-
-	y_stride = ALIGN(width, 128);
-	uv_stride = ALIGN(width, 128);
-	y_sclines = ALIGN(height, 32);
-	uv_sclines = ALIGN(((height + 1) >> 1), 16);
-
-	y_plane = y_stride * y_sclines;
-	uv_plane = uv_stride * uv_sclines + SZ_4K;
-	size = y_plane + uv_plane + SZ_8K;
-
-	return ALIGN(size, SZ_4K);
-}
-
-static u32 get_framesize_raw_nv12_ubwc(u32 width, u32 height)
-{
-	u32 y_meta_stride, y_meta_plane;
-	u32 y_stride, y_plane;
-	u32 uv_meta_stride, uv_meta_plane;
-	u32 uv_stride, uv_plane;
-	u32 extradata = SZ_16K;
-
-	y_meta_stride = ALIGN(DIV_ROUND_UP(width, 32), 64);
-	y_meta_plane = y_meta_stride * ALIGN(DIV_ROUND_UP(height, 8), 16);
-	y_meta_plane = ALIGN(y_meta_plane, SZ_4K);
-
-	y_stride = ALIGN(width, 128);
-	y_plane = ALIGN(y_stride * ALIGN(height, 32), SZ_4K);
-
-	uv_meta_stride = ALIGN(DIV_ROUND_UP(width / 2, 16), 64);
-	uv_meta_plane = uv_meta_stride * ALIGN(DIV_ROUND_UP(height / 2, 8), 16);
-	uv_meta_plane = ALIGN(uv_meta_plane, SZ_4K);
-
-	uv_stride = ALIGN(width, 128);
-	uv_plane = ALIGN(uv_stride * ALIGN(height / 2, 32), SZ_4K);
-
-	return ALIGN(y_meta_plane + y_plane + uv_meta_plane + uv_plane +
-		     max(extradata, y_stride * 48), SZ_4K);
-}
-
-static u32 get_framesize_raw_p010(u32 width, u32 height)
-{
-	u32 y_plane, uv_plane, y_stride, uv_stride, y_sclines, uv_sclines;
-
-	y_stride = ALIGN(width * 2, 128);
-	uv_stride = ALIGN(width * 2, 128);
-	y_sclines = ALIGN(height, 32);
-	uv_sclines = ALIGN((height + 1) >> 1, 16);
-	y_plane = y_stride * y_sclines;
-	uv_plane = uv_stride * uv_sclines;
-
-	return ALIGN((y_plane + uv_plane), SZ_4K);
-}
-
-static u32 get_framesize_raw_p010_ubwc(u32 width, u32 height)
-{
-	u32 y_stride, uv_stride, y_sclines, uv_sclines;
-	u32 y_ubwc_plane, uv_ubwc_plane;
-	u32 y_meta_stride, y_meta_scanlines;
-	u32 uv_meta_stride, uv_meta_scanlines;
-	u32 y_meta_plane, uv_meta_plane;
-	u32 size;
-
-	y_stride = ALIGN(width * 2, 256);
-	uv_stride = ALIGN(width * 2, 256);
-	y_sclines = ALIGN(height, 16);
-	uv_sclines = ALIGN((height + 1) >> 1, 16);
-
-	y_ubwc_plane = ALIGN(y_stride * y_sclines, SZ_4K);
-	uv_ubwc_plane = ALIGN(uv_stride * uv_sclines, SZ_4K);
-	y_meta_stride = ALIGN(DIV_ROUND_UP(width, 32), 64);
-	y_meta_scanlines = ALIGN(DIV_ROUND_UP(height, 4), 16);
-	y_meta_plane = ALIGN(y_meta_stride * y_meta_scanlines, SZ_4K);
-	uv_meta_stride = ALIGN(DIV_ROUND_UP((width + 1) >> 1, 16), 64);
-	uv_meta_scanlines = ALIGN(DIV_ROUND_UP((height + 1) >> 1, 4), 16);
-	uv_meta_plane = ALIGN(uv_meta_stride * uv_meta_scanlines, SZ_4K);
-
-	size = y_ubwc_plane + uv_ubwc_plane + y_meta_plane + uv_meta_plane;
-
-	return ALIGN(size, SZ_4K);
-}
-
-static u32 get_framesize_raw_yuv420_tp10_ubwc(u32 width, u32 height)
-{
-	u32 y_stride, uv_stride, y_sclines, uv_sclines;
-	u32 y_ubwc_plane, uv_ubwc_plane;
-	u32 y_meta_stride, y_meta_scanlines;
-	u32 uv_meta_stride, uv_meta_scanlines;
-	u32 y_meta_plane, uv_meta_plane;
-	u32 extradata = SZ_16K;
-	u32 size;
-
-	y_stride = ALIGN(width * 4 / 3, 256);
-	uv_stride = ALIGN(width * 4 / 3, 256);
-	y_sclines = ALIGN(height, 16);
-	uv_sclines = ALIGN((height + 1) >> 1, 16);
-
-	y_ubwc_plane = ALIGN(y_stride * y_sclines, SZ_4K);
-	uv_ubwc_plane = ALIGN(uv_stride * uv_sclines, SZ_4K);
-	y_meta_stride = ALIGN(DIV_ROUND_UP(width, 48), 64);
-	y_meta_scanlines = ALIGN(DIV_ROUND_UP(height, 4), 16);
-	y_meta_plane = ALIGN(y_meta_stride * y_meta_scanlines, SZ_4K);
-	uv_meta_stride = ALIGN(DIV_ROUND_UP((width + 1) >> 1, 24), 64);
-	uv_meta_scanlines = ALIGN(DIV_ROUND_UP((height + 1) >> 1, 4), 16);
-	uv_meta_plane = ALIGN(uv_meta_stride * uv_meta_scanlines, SZ_4K);
-
-	size = y_ubwc_plane + uv_ubwc_plane + y_meta_plane + uv_meta_plane;
-	size += max(extradata + SZ_8K, y_stride * 48);
-
-	return ALIGN(size, SZ_4K);
-}
-
-u32 venus_helper_get_framesz_raw(u32 hfi_fmt, u32 width, u32 height)
-{
-	switch (hfi_fmt) {
-	case HFI_COLOR_FORMAT_NV12:
-	case HFI_COLOR_FORMAT_NV21:
-		return get_framesize_raw_nv12(width, height);
-	case HFI_COLOR_FORMAT_NV12_UBWC:
-		return get_framesize_raw_nv12_ubwc(width, height);
-	case HFI_COLOR_FORMAT_P010:
-		return get_framesize_raw_p010(width, height);
-	case HFI_COLOR_FORMAT_P010_UBWC:
-		return get_framesize_raw_p010_ubwc(width, height);
-	case HFI_COLOR_FORMAT_YUV420_TP10_UBWC:
-		return get_framesize_raw_yuv420_tp10_ubwc(width, height);
-	default:
-		return 0;
-	}
-}
-EXPORT_SYMBOL_GPL(venus_helper_get_framesz_raw);
-
 u32 venus_helper_get_framesz(u32 v4l2_fmt, u32 width, u32 height)
 {
-	u32 hfi_fmt, sz;
 	bool compressed;
+	u32 sz;
 
 	switch (v4l2_fmt) {
 	case V4L2_PIX_FMT_MPEG:
@@ -1112,11 +998,7 @@ u32 venus_helper_get_framesz(u32 v4l2_fmt, u32 width, u32 height)
 		return ALIGN(sz, SZ_4K);
 	}
 
-	hfi_fmt = to_hfi_raw_fmt(v4l2_fmt);
-	if (!hfi_fmt)
-		return 0;
-
-	return venus_helper_get_framesz_raw(hfi_fmt, width, height);
+	return video_raw_buffer_size(v4l2_fmt, width, height);
 }
 EXPORT_SYMBOL_GPL(venus_helper_get_framesz);
 
