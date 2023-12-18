@@ -23,7 +23,8 @@
 #include <media/v4l2-ioctl.h>
 
 #include "core.h"
-#include "firmware.h"
+#include "../firmware.h"
+#include "firmware_no_tz.h"
 #include "pm_helpers.h"
 #include "hfi_venus_io.h"
 
@@ -87,6 +88,8 @@ static void venus_sys_error_handler(struct work_struct *work)
 	struct venus_core *core =
 			container_of(work, struct venus_core, work.work);
 	int ret, i, max_attempts = RPM_WAIT_FOR_IDLE_MAX_ATTEMPTS;
+	const struct venus_resources *res = core->res;
+	const char *fwpath = NULL;
 	const char *err_msg = "";
 	bool failed = false;
 
@@ -108,7 +111,10 @@ static void venus_sys_error_handler(struct work_struct *work)
 
 	mutex_lock(&core->lock);
 
-	venus_shutdown(core);
+	if (core->use_tz)
+		unload_fw(VENUS_PAS_ID);
+	else
+		unload_fw_no_tz(core);
 
 	venus_coredump(core);
 
@@ -129,10 +135,37 @@ static void venus_sys_error_handler(struct work_struct *work)
 		failed = true;
 	}
 
-	ret = venus_boot(core);
+	ret = of_property_read_string_index(core->dev->of_node, "firmware-name", 0,
+					    &fwpath);
+	if (ret)
+		fwpath = core->res->fwname;
+
+	ret = load_fw(core->dev, fwpath, &core->fw.mem_phys, &core->fw.mem_size,
+		      VENUS_PAS_ID, core->use_tz);
 	if (ret && !failed) {
-		err_msg = "boot Venus";
+		err_msg = "load FW";
 		failed = true;
+	}
+
+	if (core->use_tz)
+		ret = auth_reset_fw(VENUS_PAS_ID);
+	else
+		ret = auth_reset_fw_no_tz(core, core->fw.mem_phys, core->fw.mem_size);
+	if (ret && !failed) {
+		err_msg = "Auth and Reset";
+		failed = true;
+	}
+
+	if (core->use_tz && res->cp_size) {
+		ret = protect_secure_region(res->cp_start,
+					    res->cp_size,
+					    res->cp_nonpixel_start,
+					    res->cp_nonpixel_size,
+					    VENUS_PAS_ID);
+		if (ret && !failed) {
+			err_msg = "Protect CP Mem";
+			failed = true;
+		}
 	}
 
 	ret = hfi_core_resume(core, true);
@@ -283,7 +316,9 @@ static irqreturn_t venus_isr_thread(int irq, void *dev_id)
 
 static int venus_probe(struct platform_device *pdev)
 {
+	const struct venus_resources *res;
 	struct device *dev = &pdev->dev;
+	const char *fwpath = NULL;
 	struct venus_core *core;
 	int ret;
 
@@ -364,13 +399,41 @@ static int venus_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_runtime_disable;
 
-	ret = venus_firmware_init(core);
-	if (ret)
-		goto err_of_depopulate;
+	core->use_tz = use_tz(core->dev);
 
-	ret = venus_boot(core);
+	if (!core->use_tz) {
+		ret = init_fw_no_tz(core);
+		if (ret)
+			goto err_of_depopulate;
+	}
+
+	ret = of_property_read_string_index(dev->of_node, "firmware-name", 0,
+					    &fwpath);
+	if (ret)
+		fwpath = core->res->fwname;
+
+	ret = load_fw(core->dev, fwpath, &core->fw.mem_phys, &core->fw.mem_size,
+		      VENUS_PAS_ID, core->use_tz);
 	if (ret)
 		goto err_firmware_deinit;
+
+	if (core->use_tz)
+		ret = auth_reset_fw(VENUS_PAS_ID);
+	else
+		ret = auth_reset_fw_no_tz(core, core->fw.mem_phys, core->fw.mem_size);
+	if (ret)
+		goto err_firmware_deinit;
+
+	res = core->res;
+	if (core->use_tz && res->cp_size) {
+		ret = protect_secure_region(res->cp_start,
+					    res->cp_size,
+					    res->cp_nonpixel_start,
+					    res->cp_nonpixel_size,
+					    VENUS_PAS_ID);
+		if (ret)
+			goto err_firmware_deinit;
+	}
 
 	ret = hfi_core_resume(core, true);
 	if (ret)
@@ -401,9 +464,13 @@ static int venus_probe(struct platform_device *pdev)
 err_dev_unregister:
 	v4l2_device_unregister(&core->v4l2_dev);
 err_venus_shutdown:
-	venus_shutdown(core);
+	if (core->use_tz)
+		unload_fw(VENUS_PAS_ID);
+	else
+		unload_fw_no_tz(core);
 err_firmware_deinit:
-	venus_firmware_deinit(core);
+	if (!core->use_tz)
+		deinit_fw_no_tz(core);
 err_of_depopulate:
 	of_platform_depopulate(dev);
 err_runtime_disable:
@@ -432,10 +499,15 @@ static void venus_remove(struct platform_device *pdev)
 	ret = hfi_core_deinit(core, true);
 	WARN_ON(ret);
 
-	venus_shutdown(core);
+	if (core->use_tz)
+		unload_fw(VENUS_PAS_ID);
+	else
+		unload_fw_no_tz(core);
+
 	of_platform_depopulate(dev);
 
-	venus_firmware_deinit(core);
+	if (!core->use_tz)
+		deinit_fw_no_tz(core);
 
 	pm_runtime_put_sync(dev);
 	pm_runtime_disable(dev);
@@ -457,8 +529,12 @@ static void venus_core_shutdown(struct platform_device *pdev)
 	struct venus_core *core = platform_get_drvdata(pdev);
 
 	pm_runtime_get_sync(core->dev);
-	venus_shutdown(core);
-	venus_firmware_deinit(core);
+	if (core->use_tz) {
+		unload_fw(VENUS_PAS_ID);
+	} else {
+		unload_fw_no_tz(core);
+		deinit_fw_no_tz(core);
+	}
 	pm_runtime_put_sync(core->dev);
 }
 
