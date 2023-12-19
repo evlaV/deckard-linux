@@ -82,6 +82,7 @@
 #define		RDI_CFG0_DT_ID			27
 #define		RDI_CFG0_ENABLE			31
 #define		RDI_CFG0_TIMESTAMP_EN	6
+#define		RDI_CFG0_SOF_RETIME_DIS  BIT(5)
 
 #define CSID_RDI_CTRL(rdi)			(0x504 + 0x100 * (rdi))
 #define		RDI_CTRL_HALT_CMD		0
@@ -216,6 +217,7 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 		val |= 0x2a << RDI_CFG0_DATA_TYPE;
 		val |= 0 << RDI_CFG0_VIRTUAL_CHANNEL;
 		val |= 0 << RDI_CFG0_DT_ID;
+		val |= RDI_CFG0_SOF_RETIME_DIS; // Disable SOF RETIME?
 		writel_relaxed(val, csid->base + CSID_RDI_CFG0(0));
 
 		writel_relaxed(0, csid->base + CSID_RDI_CTRL(0));
