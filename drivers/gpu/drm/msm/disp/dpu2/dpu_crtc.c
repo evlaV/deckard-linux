@@ -589,7 +589,6 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 		}
 	}
 #else
-#if 1
 	drm_atomic_crtc_for_each_plane(plane, crtc) {
 		u32 stage = plane->state->normalized_zpos;
 
@@ -612,7 +611,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 			mixercfg_set_sspp_stage(&mixer_cfg[i], id, stage);
 
 			/* sspp state */
-			dpu_plane_update(dpu, id, &s);
+			dpu_plane_update(dpu, id, &s, false);
 			ctl_flush |= CTL_FLUSH_SSPP(id);
 
 			if (id >= 4)
@@ -621,7 +620,6 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 				fetch_pipe_active |= BIT(id + 16);
 		}
 	}
-#endif
 #endif
 
 	for (i = c->lm; i < c->lm + num_mixers; i++) {
