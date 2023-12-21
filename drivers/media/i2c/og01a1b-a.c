@@ -2039,8 +2039,8 @@ static int og01a1b_check_chip_id(struct og01a1b_dev *sensor)
 		goto power_off;
 	}
 
-	if (chip_id != 0x4701) {
-		dev_err(&client->dev, "%s: wrong chip identifier, expected 0x4701, got this 0x%x. Likely hardware problem with %s\n",
+	if (chip_id != 0x4701 && chip_id != 0xc756) {
+		dev_err(&client->dev, "%s: wrong chip identifier, expected 0x4701 or 0xc756 (upper cams), got this 0x%x. Likely hardware problem with %s\n",
 			__func__, chip_id, of_property_read_string( dev->of_node, "id", &id ) ? "unknown camera" : id);
 		ret = -ENXIO;
 		ret = 0;
