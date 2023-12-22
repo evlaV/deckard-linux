@@ -133,14 +133,69 @@ static inline void vfe_write(struct csid_device *csid, u32 reg, u32 val)
 #define BUS_CLIENT_IMAGE_CFG_1(wm)	(BUS_REG_BASE + 0x210 + 0x100 * (wm))
 #define BUS_CLIENT_IMAGE_CFG_2(wm)	(BUS_REG_BASE + 0x214 + 0x100 * (wm))
 #define BUS_CLIENT_PACKER_CFG(wm)	(BUS_REG_BASE + 0x218 + 0x100 * (wm))
+#define BUS_CLIENT_ADDR_FRAME_HEADER(wm)		(BUS_REG_BASE + 0x220 + 0x100 * (wm))
 #define BUS_CLIENT_ADDR_CFG(wm)		(BUS_REG_BASE + 0x270 + 0x100 * (wm))
+#define BUS_CLIENT_ADDR_STATUS_0(wm)		(BUS_REG_BASE + 0x278 + 0x100 * (wm))
+#define BUS_CLIENT_ADDR_STATUS_1(wm)		(BUS_REG_BASE + 0x27c + 0x100 * (wm))
+#define BUS_CLIENT_ADDR_STATUS_2(wm)		(BUS_REG_BASE + 0x280 + 0x100 * (wm))
+#define BUS_CLIENT_ADDR_STATUS_3(wm)		(BUS_REG_BASE + 0x284 + 0x100 * (wm))
+
+#define STATS_BHIST_WM 17
+#define STATS_IHIST_WM 19
+#define STATS_BHIST_COMP_GROUP 8
+#define STATS_IHIST_COMP_GROUP 10
+
+// User-provided statistics config bits
+#define STATS_CFG_FH_OUTPUT_EN BIT(0)
+#define STATS_CFG_IHIST_OUTPUT_EN BIT(1)
+#define STATS_CFG_BHIST_OUTPUT_EN BIT(2)
+// Extrabuffer memory layout (we need the start address to be aligned to 256, or we can set the byte offset when configuring the address)
+#define STATS_FH_DATA_OFFSET 0
+#define STATS_FH_DATA_SIZE ALIGN(16, 256)
+#define STATS_IHIST_FH_DATA_OFFSET (STATS_FH_DATA_OFFSET + STATS_FH_DATA_SIZE)
+#define STATS_IHIST_FH_DATA_SIZE ALIGN(16, 256)
+#define STATS_IHIST_DATA_OFFSET (STATS_IHIST_FH_DATA_OFFSET + STATS_IHIST_FH_DATA_SIZE)
+#define STATS_IHIST_DATA_SIZE ALIGN(2048, 256)
+#define STATS_BHIST_FH_DATA_OFFSET (STATS_IHIST_DATA_OFFSET + STATS_IHIST_DATA_SIZE)
+#define STATS_BHIST_FH_DATA_SIZE ALIGN(16, 256)
+#define STATS_BHIST_DATA_OFFSET (STATS_BHIST_FH_DATA_OFFSET + STATS_BHIST_FH_DATA_SIZE)
+#define STATS_BHIST_DATA_SIZE ALIGN(4096, 256)
 
 static void vfe_write_buf(struct csid_device *csid, struct camss_buffer *buf)
 {
-	vfe_write(csid, BUS_CLIENT_ADDR_IMAGE(RDI_WM(0)), buf->addr[0] >> 8);
-	// vfe_write(csid, BUS_CLIENT_ADDR_CFG(RDI_WM(0)), 0); // byte offset
-	// RUP_RDI0 | AUP_RDI0 | MUP (which one is needed here?)
-	writel_relaxed(BIT(4) | BIT(20) | BIT(28), csid->base + CSID_RUP_AUP_CMD);
+	struct v4l2_pix_format_mplane *pix = &csid->video_out.active_fmt.fmt.pix_mp;
+
+	buf->comp_done_status = 0; // reset the comp done status
+
+	if (pix->pixelformat == V4L2_PIX_FMT_NV12) {
+		vfe_write(csid, BUS_CLIENT_ADDR_IMAGE(0), buf->addr[0] >> 8);
+		vfe_write(csid, BUS_CLIENT_ADDR_IMAGE(1), buf->addr[1] >> 8);
+
+		if(csid->stats_cfg) {
+			dma_sync_single_for_device(csid->camss->dev, buf->extrabuffer_dma_addr, buf->extrabuffer_size, DMA_BIDIRECTIONAL);
+			// Enqueue the buffers address for the frameheaders and extra outputs
+			if(csid->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
+				vfe_write(csid, BUS_CLIENT_ADDR_FRAME_HEADER(0), (buf->extrabuffer_dma_addr + STATS_FH_DATA_OFFSET) >> 8);
+			}
+			if(csid->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
+				vfe_write(csid, BUS_CLIENT_ADDR_IMAGE(STATS_IHIST_WM), (buf->extrabuffer_dma_addr + STATS_IHIST_DATA_OFFSET) >> 8);
+				vfe_write(csid, BUS_CLIENT_ADDR_FRAME_HEADER(STATS_IHIST_WM), (buf->extrabuffer_dma_addr + STATS_IHIST_FH_DATA_OFFSET) >> 8);
+			}
+			if(csid->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
+				vfe_write(csid, BUS_CLIENT_ADDR_IMAGE(STATS_BHIST_WM), (buf->extrabuffer_dma_addr + STATS_BHIST_DATA_OFFSET) >> 8);
+				vfe_write(csid, BUS_CLIENT_ADDR_FRAME_HEADER(STATS_BHIST_WM), (buf->extrabuffer_dma_addr + STATS_BHIST_FH_DATA_OFFSET) >> 8);
+			}
+		}
+
+		// RUP_IPP0 | AUP_IPP0 | MUP
+		writel_relaxed(BIT(0) | BIT(16) | BIT(28), csid->base + CSID_RUP_AUP_CMD);
+	}
+	else {
+		// vfe_write(csid, BUS_CLIENT_ADDR_CFG(RDI_WM(0)), 0); // byte offset
+		vfe_write(csid, BUS_CLIENT_ADDR_IMAGE(RDI_WM(0)), buf->addr[0] >> 8);
+		// RUP_RDI0 | AUP_RDI0 | MUP (which one is needed here?)
+		writel_relaxed(BIT(4) | BIT(20) | BIT(28), csid->base + CSID_RUP_AUP_CMD);
+	}
 }
 
 static const struct csid_format csid_formats[] = {
@@ -248,17 +303,59 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	// bus client config
 	if (enable)
 	{
-		//struct v4l2_pix_format_mplane *pix =
-		//	&csid->video_out.active_fmt.fmt.pix_mp;
-		u32 mode = 1;
-		u32 wm = RDI_WM(0);
+		struct v4l2_pix_format_mplane *pix = &csid->video_out.active_fmt.fmt.pix_mp;
+		if (pix->pixelformat == V4L2_PIX_FMT_NV12) {
+			// IPP path config
+			u32 wm;
+			for(wm = 0; wm < 2; wm++) {
+				vfe_write(csid, BUS_CLIENT_IMAGE_CFG_0(wm), (pix->height >> wm) << 16 | pix->width);
+				vfe_write(csid, BUS_CLIENT_IMAGE_CFG_1(wm), 0); // X_INIT = 0
+				vfe_write(csid, BUS_CLIENT_IMAGE_CFG_2(wm), pix->plane_fmt[0].bytesperline); // stride
+				vfe_write(csid, BUS_CLIENT_PACKER_CFG(wm), 0x3);
+				vfe_write(csid, BUS_CLIENT_CFG(wm), 0x1); // EN=1 (+ all other settings to 0)
+			}
 
-		//vfe_write(csid, BUS_CLIENT_IMAGE_CFG_0(wm), pix->height << 16 | pix->width);
-		vfe_write(csid, BUS_CLIENT_IMAGE_CFG_0(wm), 0xffff); // for RDI mode
-		vfe_write(csid, BUS_CLIENT_IMAGE_CFG_1(wm), 0); // X_INIT = 0
-		vfe_write(csid, BUS_CLIENT_IMAGE_CFG_2(wm), 0xffff);//pix->plane_fmt[0].bytesperline);
-		vfe_write(csid, BUS_CLIENT_PACKER_CFG(wm), 0); // for RDI mode
-		vfe_write(csid, BUS_CLIENT_CFG(wm), 1 | mode << 16); // EN=1 (+ all other settings to 0)
+			csid->required_comp_done_mask = BIT(0); // need composite group 0 (full)
+
+			// Enable extra output paths depending on the requested statistics
+			if(csid->stats_cfg) {
+				if(csid->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
+					// Enable the frameheader for the first plane only
+					vfe_write(csid, BUS_CLIENT_CFG(0), 0x5); // FRAMEHEADER_EN | EN
+				}
+				if(csid->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
+					vfe_write(csid, BUS_CLIENT_IMAGE_CFG_0(STATS_IHIST_WM), 0);
+					vfe_write(csid, BUS_CLIENT_IMAGE_CFG_2(STATS_IHIST_WM), 1);
+					vfe_write(csid, BUS_CLIENT_PACKER_CFG(STATS_IHIST_WM), 0x8); // PACKER_FMT_PLAIN_16_16BPP
+					vfe_write(csid, BUS_CLIENT_CFG(STATS_IHIST_WM), 0x10005); // MIPI_RAW mode | FRAMEHEADER_EN | EN
+					csid->required_comp_done_mask |= BIT(STATS_IHIST_COMP_GROUP); // need composite group 10 (IHIST stats)
+				}
+				if(csid->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
+					vfe_write(csid, BUS_CLIENT_IMAGE_CFG_0(STATS_BHIST_WM), 0);
+					vfe_write(csid, BUS_CLIENT_IMAGE_CFG_2(STATS_BHIST_WM), 1);
+					vfe_write(csid, BUS_CLIENT_PACKER_CFG(STATS_BHIST_WM), 0xa); // PACKER_FMT_VER3_PLAIN_64
+					vfe_write(csid, BUS_CLIENT_CFG(STATS_BHIST_WM), 0x10005); // MIPI_RAW mode | FRAMEHEADER_EN | EN
+					csid->required_comp_done_mask |= BIT(STATS_BHIST_COMP_GROUP); // need composite group 8 (BHIST stats)
+				}
+			}
+
+		}
+		else {
+			// RDI path config
+			//struct v4l2_pix_format_mplane *pix =
+			//	&csid->video_out.active_fmt.fmt.pix_mp;
+			u32 mode = 1;
+			u32 wm = RDI_WM(0);
+
+			//vfe_write(csid, BUS_CLIENT_IMAGE_CFG_0(wm), pix->height << 16 | pix->width);
+			vfe_write(csid, BUS_CLIENT_IMAGE_CFG_0(wm), 0xffff); // for RDI mode
+			vfe_write(csid, BUS_CLIENT_IMAGE_CFG_1(wm), 0); // X_INIT = 0
+			vfe_write(csid, BUS_CLIENT_IMAGE_CFG_2(wm), 0xffff);//pix->plane_fmt[0].bytesperline);
+			vfe_write(csid, BUS_CLIENT_PACKER_CFG(wm), 0); // for RDI mode
+			vfe_write(csid, BUS_CLIENT_CFG(wm), 1 | mode << 16); // EN=1 (+ all other settings to 0)
+
+			csid->required_comp_done_mask = BIT(RDI_COMP_GROUP(0)); // need RDI0 composite group
+		}
 
 		spin_lock_irqsave(&csid->output_lock, flags);
 
@@ -310,6 +407,9 @@ static u32 csid_hw_version(struct csid_device *csid)
 	return hw_version;
 }
 
+static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status);
+static int vfe_queue_buffer_nolock(struct camss_video *vid, struct camss_buffer *buf);
+
 /*
  * csid_isr - CSID module interrupt service routine
  * @irq: Interrupt line
@@ -321,7 +421,6 @@ static irqreturn_t csid_isr(int irq, void *dev)
 {
 	struct csid_device *csid = dev;
 	u32 top_status, rx_status, buf_status, rdi_status;
-	unsigned long flags;
 	u64 ts_monotonic_raw = ktime_get_raw_ns();
 	u64 ts_monotonic = ktime_get_ns();
 
@@ -365,45 +464,9 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		buf_status = readl_relaxed(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 		writel_relaxed(buf_status, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
 
-		if (buf_status & BIT(RDI_COMP_GROUP(0))) {
-
-			// read and print timestamp
-			//printk("comp group done ts_monotonic - csid->cur_sof_isp_timestamp_converted:%lu  \n", ts_monotonic - csid->cur_sof_isp_timestamp_converted );
-			void* sensorMetaDataBufferAddr = NULL;
-
-			spin_lock_irqsave(&csid->output_lock, flags);
-
-			struct camss_buffer *buf = csid->out_buf[0];
-			csid->out_buf[0] = csid->out_buf[1];
-
-			if(csid->get_metadata != NULL) 
-				{
-					sensorMetaDataBufferAddr = csid->get_metadata(csid->capture_subdev );
-				}
-			
-			if (buf) {
-				buf->vb.vb2_buf.timestamp = ts_monotonic;
-				buf->vb.sequence = csid->sequence++;
-
-				// HACK: Using approximate readout time to get the sof_timestamp. This will not be
-				// as precise as CSID register timestamps
-				u64 sof_timestamp = ts_monotonic - 7740000;
-				u64 eof_timestamp = ts_monotonic;
-				metadata_send(&csid->camss->metadata[csid->id], ts_monotonic, csid->cur_sof_isp_timestamp_converted, eof_timestamp, sof_timestamp, ts_monotonic,
-        			buf->vb.sequence, sensorMetaDataBufferAddr, NULL, NULL, NULL, NULL, NULL);
-				vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
-			} else {
-				dev_warn(csid->camss->dev, "buf done without a corresponding buffer\n");
-			}
-
-			csid->out_buf[csid->out_buf[0] != NULL] = buf = vfe_buf_get_pending(csid);
-			if (buf)
-				vfe_write_buf(csid, buf);
-
-			
-
-			spin_unlock_irqrestore(&csid->output_lock, flags);
-
+		// Also test comp group 0 and the enabled statistics paths on non lite IFEs to support the IPP path
+		if ( (buf_status & BIT(RDI_COMP_GROUP(0))) || (!IS_LITE && (buf_status & (BIT(0) | csid->stats_comp_done_mask)))) {
+			csid_isr_wm_done(csid, buf_status);
 		}
 	}
 
@@ -432,6 +495,161 @@ static irqreturn_t vfe_isr(int irq, void *dev)
 	dev_warn(csid->camss->dev, "vfe irq status=%.8x\n", status);
 
 	return IRQ_HANDLED;
+}
+
+static void csid_update_buffer_comp_mask_from_fifo(struct csid_device *csid, u32 comp, u32 wm, u32 buff0_wm_addr, u32 buff1_wm_addr)
+{
+	u32 last_wm_done_addr = readl_relaxed(csid->ife_base + BUS_CLIENT_ADDR_STATUS_0(wm));
+	
+	buff0_wm_addr = buff0_wm_addr >> 8;
+	buff1_wm_addr = buff1_wm_addr >> 8;
+
+	if( buff0_wm_addr && (buff0_wm_addr == last_wm_done_addr))
+	{
+		csid->out_buf[0]->comp_done_status |= BIT(comp);
+	}
+	else if((buff0_wm_addr && buff1_wm_addr) && (buff1_wm_addr == last_wm_done_addr))
+	{
+		csid->out_buf[0]->comp_done_status |= BIT(comp);
+		csid->out_buf[1]->comp_done_status |= BIT(comp);
+	}
+}
+
+static void csid_update_buffer_status(struct csid_device *csid, u32 buf_done_status)
+{
+	struct v4l2_pix_format_mplane *pix = &csid->video_out.active_fmt.fmt.pix_mp;
+
+	if (pix->pixelformat == V4L2_PIX_FMT_NV12)
+	{
+		// IPP streaming path with non lite VFEs
+
+		// We check the full image composite group as well as the statistics comp group if enabled
+		if(buf_done_status & BIT(0))
+		{
+			u32 buff0_addr = csid->out_buf[0] ? csid->out_buf[0]->addr[0] : 0;
+			u32 buff1_addr = csid->out_buf[1] ? csid->out_buf[1]->addr[0] : 0;
+			csid_update_buffer_comp_mask_from_fifo(csid, 0, 0, buff0_addr, buff1_addr);
+		}
+		// BHIST statistics composite group
+		if(buf_done_status & BIT(STATS_BHIST_COMP_GROUP) && (csid->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN))
+		{
+			u32 buff0_addr = csid->out_buf[0] ? (csid->out_buf[0]->extrabuffer_dma_addr+STATS_BHIST_DATA_OFFSET) : 0;
+			u32 buff1_addr = csid->out_buf[1] ? (csid->out_buf[1]->extrabuffer_dma_addr+STATS_BHIST_DATA_OFFSET) : 0;
+			csid_update_buffer_comp_mask_from_fifo(csid, STATS_BHIST_COMP_GROUP, STATS_BHIST_WM, buff0_addr, buff1_addr);
+		}
+		// IHIST statistics composite group
+		if(buf_done_status & BIT(STATS_IHIST_COMP_GROUP) && csid->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN)
+		{
+			u32 buff0_addr = csid->out_buf[0] ? (csid->out_buf[0]->extrabuffer_dma_addr+STATS_IHIST_DATA_OFFSET) : 0;
+			u32 buff1_addr = csid->out_buf[1] ? (csid->out_buf[1]->extrabuffer_dma_addr+STATS_IHIST_DATA_OFFSET) : 0;
+			csid_update_buffer_comp_mask_from_fifo(csid, STATS_IHIST_COMP_GROUP, STATS_IHIST_WM, buff0_addr, buff1_addr);
+		}
+	}
+	else
+	{
+		// RDI streaming path (both main and lite VFEs): check only the RDI0 composite group
+		if(buf_done_status & BIT(RDI_COMP_GROUP(0)))
+		{
+			u32 buff0_addr = csid->out_buf[0] ? csid->out_buf[0]->addr[0] : 0;
+			u32 buff1_addr = csid->out_buf[1] ? csid->out_buf[1]->addr[0] : 0;
+			csid_update_buffer_comp_mask_from_fifo(csid, RDI_COMP_GROUP(0), RDI_WM(0), buff0_addr, buff1_addr);
+		}
+	}
+}
+
+static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
+{
+	struct camss_buffer *ready_buf = NULL;
+	unsigned long flags;
+	u32 index;
+	u64 ts_monotonic = ktime_get_ns();
+	// Data buffer pointers to retrieve for the metadata output planes
+	void* sensorMetaDataBufferAddr = NULL;
+	void* frameheaderDataAddr = NULL;
+	void* ihistFHDataAddr = NULL;
+	void* ihistDataAddr = NULL;
+	void* bhistFHDataAddr = NULL;
+	void* bhistDataAddr = NULL;
+
+	spin_lock_irqsave(&csid->output_lock, flags);
+
+	if(!csid->out_buf[0]) {
+		dev_warn(csid->camss->dev, "buf done without a corresponding buffer\n");
+		goto out_unlock;
+	}
+
+	// Update the buffer status with the bus status to keep track of which composite groups are done 
+	csid_update_buffer_status(csid, buf_done_status);
+
+	// If we have received anything for the buffer 1 we need to skip buffer 0
+	// We won't be able to send out buffer 0 in any case since it needs frame data stored by the sensor and
+	// CSID that are now corresponding to buffer 1
+	if(csid->out_buf[1] && (csid->out_buf[1]->comp_done_status != 0x0))
+	{
+		struct camss_buffer *buf = csid->out_buf[0];
+		csid->out_buf[0] = csid->out_buf[1];
+		csid->out_buf[1] = NULL;
+		vfe_queue_buffer_nolock(&csid->video_out, buf);
+	}
+	
+	if((csid->out_buf[0] && csid->out_buf[0]->comp_done_status != csid->required_comp_done_mask)) {
+		// Buffer is not complete so not doing anything and wait for the remaining comp done to happen
+		goto out_unlock;
+	}
+
+
+	ready_buf = csid->out_buf[0];
+	ready_buf->vb.vb2_buf.timestamp = ts_monotonic;
+	ready_buf->vb.sequence = csid->sequence++;
+
+	index = 0;
+	csid->out_buf[0] = csid->out_buf[1];
+	if (csid->out_buf[0])
+		index = 1;
+	
+	// try to get a new buffer from the pending buffers
+	// if we get one push it into the IFE FIFO
+	csid->out_buf[index] = vfe_buf_get_pending(csid);
+	if (csid->out_buf[index]) {
+		vfe_write_buf(csid, csid->out_buf[index]);
+	}
+
+
+	if(csid->get_metadata != NULL) 
+	{
+		sensorMetaDataBufferAddr = csid->get_metadata(csid->capture_subdev );
+	}
+	if(csid->stats_cfg)
+	{
+		// Make buffer changes visible to CPU
+		dma_sync_single_for_cpu(csid->camss->dev, ready_buf->extrabuffer_dma_addr, ready_buf->extrabuffer_size, DMA_BIDIRECTIONAL);
+				
+		if(csid->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
+			frameheaderDataAddr = ready_buf->extrabuffer_vaddr + STATS_FH_DATA_OFFSET;
+		}
+		if(csid->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
+			ihistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_FH_DATA_OFFSET;
+			ihistDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_DATA_OFFSET;
+		}
+		if(csid->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
+			bhistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_BHIST_FH_DATA_OFFSET;
+			bhistDataAddr = ready_buf->extrabuffer_vaddr + STATS_BHIST_DATA_OFFSET;
+		}
+	}
+
+	// HACK: Using approximate readout time to get the sof_timestamp. This will not be
+	// as precise as CSID register timestamps
+	u64 sof_timestamp = ts_monotonic - 7740000;
+	u64 eof_timestamp = ts_monotonic;
+	metadata_send(&csid->camss->metadata[csid->id], ts_monotonic, csid->cur_sof_isp_timestamp_converted, eof_timestamp, sof_timestamp, ts_monotonic,
+		ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
+
+	spin_unlock_irqrestore(&csid->output_lock, flags);
+	vb2_buffer_done(&ready_buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
+	return;
+
+out_unlock:
+	spin_unlock_irqrestore(&csid->output_lock, flags);
 }
 
 /*
@@ -499,14 +717,22 @@ static void vfe_buf_add_pending(struct csid_device *csid,
 	list_add_tail(&buffer->queue, &csid->pending_bufs);
 }
 
-static int vfe_queue_buffer(struct camss_video *vid,
+/*
+ * vfe_queue_buffer_nolock - Add empty buffer wihthout acquiring a the lock
+ * This should only be used in contexts where vfe->output_lock is already locked
+ * @vid: Video device structure
+ * @buf: Buffer to be enqueued
+ *
+ * Add an empty buffer - depending on the current number of buffers it will be
+ * put in pending buffer queue or directly given to the hardware to be filled.
+ *
+ * Return 0 on success or a negative error code otherwise
+ */
+static int vfe_queue_buffer_nolock(struct camss_video *vid,
 			    struct camss_buffer *buf)
 {
 	struct csid_device *csid = container_of(vid, struct csid_device, video_out);
-	unsigned long flags;
-
-	spin_lock_irqsave(&csid->output_lock, flags);
-
+	
 	if (csid->stream_on && !csid->out_buf[1]) {
 		// out_buf[] is a fifo list with 2 elements, insert in first position if both slots are empty
 		csid->out_buf[csid->out_buf[0] != NULL] = buf;
@@ -515,6 +741,17 @@ static int vfe_queue_buffer(struct camss_video *vid,
 		vfe_buf_add_pending(csid, buf);
 	}
 
+	return 0;
+}
+
+static int vfe_queue_buffer(struct camss_video *vid,
+			    struct camss_buffer *buf)
+{
+	struct csid_device *csid = container_of(vid, struct csid_device, video_out);
+	unsigned long flags;
+
+	spin_lock_irqsave(&csid->output_lock, flags);
+	vfe_queue_buffer_nolock(vid, buf);
 	spin_unlock_irqrestore(&csid->output_lock, flags);
 
 	return 0;
@@ -564,6 +801,157 @@ static void csid_subdev_init(struct csid_device *csid)
 	spin_lock_init(&csid->output_lock);
 }
 
+int csid_vfe_set_registers(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config)
+{
+	// Register access only supported for main CSID/VFEs
+	if(IS_LITE)
+		return -EINVAL;
+		
+	// No register specified, return 0 (this can be used to test if the feature is supported)
+	if(regs_config->count == 0)
+		return 0;
+
+	// CSID must be powered to access the registers
+	if(!csid->power_on || regs_config->regs == NULL)
+		return -EINVAL;
+
+	u32 max_csid_offset = 0x1000;
+	u32 max_vfe_offset = 0xf000;
+	struct csid_vfe_private_register reg;
+
+	for(u32 i=0; i<regs_config->count; i++)
+	{
+		void* base;
+		u32 max_offset;
+
+		// Read the register configuration from userspace memory
+		if(copy_from_user(&reg, regs_config->regs + i, sizeof(struct csid_vfe_private_register)) != 0)
+		{
+			return -EFAULT;
+		}
+
+		if(reg.type == CSID_VFE_PRV_REG_TYPE_CSID) {
+			base = csid->base;
+			max_offset = max_csid_offset;
+		}
+		else if(reg.type == CSID_VFE_PRV_REG_TYPE_VFE) {
+			base = csid->ife_base;
+			max_offset = max_vfe_offset;
+		}
+		else {
+			// Invalid register type
+			return -EINVAL;
+		}
+
+		if(reg.offset < max_offset) {
+			writel_relaxed(reg.value, base + reg.offset);
+		}
+		else {
+			// Invalid parameter, the register address requested exceeds the mapped VFE memory range
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
+
+int csid_vfe_get_registers(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config)
+{
+	// Register access only supported for main CSID/VFEs
+	if(IS_LITE)
+		return -EINVAL;
+
+	// No register specified, return 0 (this can be used to test if the feature is supported)
+	if(regs_config->count == 0)
+		return 0;
+
+	// CSID must be powered to access the registers
+	if(!csid->power_on || regs_config->regs == NULL)
+		return -EINVAL;
+
+	u32 max_csid_offset = 0x1000;
+	u32 max_vfe_offset = 0xf000;
+	struct csid_vfe_private_register reg;
+
+	for(u32 i=0; i<regs_config->count; i++)
+	{
+		void* base;
+		u32 max_offset;
+		
+		// Read the register configuration from userspace memory
+		if(copy_from_user(&reg, regs_config->regs + i, sizeof(struct csid_vfe_private_register)) != 0)
+		{
+			return -EFAULT;
+		}
+
+		if(reg.type == CSID_VFE_PRV_REG_TYPE_CSID) {
+			base = csid->base;
+			max_offset = max_csid_offset;
+		}
+		else if(reg.type == CSID_VFE_PRV_REG_TYPE_VFE) {
+			base = csid->ife_base;
+			max_offset = max_vfe_offset;
+		}
+		else {
+			// Invalid register type
+			return -EINVAL;
+		}
+
+		if(reg.offset < max_offset) {
+			// Read the value at the register address and write it back to userspace memory
+			reg.value = readl_relaxed(base + reg.offset);
+			if(copy_to_user(regs_config->regs + i, &reg,  sizeof(struct csid_vfe_private_register)) != 0)
+			{
+				return -EFAULT;
+			}
+		}
+		else {
+			// Invalid parameter, the register address requested exceeds the mapped VFE memory range
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
+
+static long csid_vfe_set_statistics_config(struct csid_device *csid, u32 stats_cfg)
+{
+	if(IS_LITE) {
+		dev_err(csid->camss->dev, "Statistics streaming is not supported for LITE CSID/VFEs\n");
+		return -EINVAL;
+	}
+
+	if(csid->stream_on) {
+		// We cannot set the config if streaming already started, otherwise the write bus
+		// won't be configured to enable the statistic output paths.
+		dev_err(csid->camss->dev, "csid_vfe_set_statistics_config called after streaming started\n");
+		return -EBUSY;
+	}
+	if(csid->video_out.vb2_q.num_buffers) {
+		// We cannot set config if we already have some buffer queued since all buffers must share the same config.
+		dev_err(csid->camss->dev, "csid_vfe_set_statistics_config called with buffers already enqueued");
+		return -EBUSY;
+	}
+
+	// Set the statistics buffer size
+	csid->stats_cfg = stats_cfg;
+	// We reserve for the extra buffer:
+	// - 16 bytes for the camera frame header
+	// - 16 + 2048 bytes for the image histogram and its header
+	// - 16 + 4096 bytes for the bayer histogram and its header
+	csid->video_out.required_extrabuffer_size = 8192;
+
+	// Setup the write bus COMP DONE mask used to test the IRQ status
+	csid->stats_comp_done_mask = 0;
+	if(csid->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
+		csid->stats_comp_done_mask |= BIT(STATS_IHIST_COMP_GROUP);
+	}
+	if(csid->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
+		csid->stats_comp_done_mask |= BIT(STATS_BHIST_COMP_GROUP);
+	}
+
+	dev_warn(csid->camss->dev, "csid/vfe(%d) statistics streaming config set to 0x%x", csid->id, csid->stats_cfg);
+	return 0;
+}
+
 const struct csid_hw_ops csid_ops_gen2 = {
 	.configure_stream = csid_configure_stream,
 	.hw_version = csid_hw_version,
@@ -572,4 +960,7 @@ const struct csid_hw_ops csid_ops_gen2 = {
 	.reset = csid_reset,
 	.src_pad_code = csid_src_pad_code,
 	.subdev_init = csid_subdev_init,
+	.set_csid_vfe_registers = csid_vfe_set_registers,
+	.get_csid_vfe_registers = csid_vfe_get_registers,
+	.set_statistics_config = csid_vfe_set_statistics_config,
 };
