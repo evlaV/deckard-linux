@@ -2147,7 +2147,7 @@
 		};
 
 		r_reset0 {
-			pins = "gpio71";
+			pins = "gpio137";
 			function = "gpio";
 			drive-strength = <2>;
 			output-low;
@@ -2204,7 +2204,7 @@
 		compatible = "hid-over-spi";
 		reg = <1>;
 		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&tlmm 71 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&tlmm 137 GPIO_ACTIVE_LOW>;
 		//vdd-supply = <&vdd_3v3_reg>;
 		input-report-header-address = <0x1000>;
 		input-report-body-address = <0x1004>;
