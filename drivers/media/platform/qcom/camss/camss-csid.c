@@ -113,6 +113,47 @@ static int csid_set_clock_rates(struct csid_device *csid)
 	return 0;
 }
 
+static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+{
+	struct csid_device *csid = v4l2_get_subdevdata(sd);
+
+	switch (cmd) {
+	case VIDIOC_CSID_VFE_PRV_S_REGS:
+		if(csid->ops->set_csid_vfe_registers) {
+			return csid->ops->set_csid_vfe_registers(csid, arg);
+		}
+		else {
+			// Operation not supported
+			return -EINVAL;
+		}
+		break;
+	case VIDIOC_CSID_VFE_PRV_G_REGS:
+   		if(csid->ops->get_csid_vfe_registers) {
+			return csid->ops->get_csid_vfe_registers(csid, arg);
+		}
+		else {
+			// Operation not supported
+ 			return -EINVAL;
+		}
+ 		break;
+	case VIDIOC_CSID_VFE_PRV_STATS_CFG:
+		if(csid->ops->set_statistics_config)
+		{
+			return csid->ops->set_statistics_config(csid, (u32)arg);
+		}
+		else
+		{
+			// Operation not supported
+			return -EINVAL;
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 /*
  * csid_set_power - Power on/off CSID module
  * @sd: CSID V4L2 subdevice
@@ -170,6 +211,7 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 
 		csid_set_metadata_callbacks(csid);
 
+		csid->power_on = true;
 	} else {
 		disable_irq(csid->ife_irq);
 		disable_irq(csid->irq);
@@ -178,6 +220,8 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 
 		if (id < IFE_FULL_COUNT)
 			device_link_del(camss->genpd_link[id]);
+
+		csid->power_on = false;
 	}
 
 	return ret;
@@ -664,6 +708,7 @@ static int csid_link_setup(struct media_entity *entity,
 }
 
 static const struct v4l2_subdev_core_ops csid_core_ops = {
+	.ioctl = csid_ioctl,
 	.s_power = csid_set_power,
 	.subscribe_event = v4l2_ctrl_subdev_subscribe_event,
 	.unsubscribe_event = v4l2_event_subdev_unsubscribe,

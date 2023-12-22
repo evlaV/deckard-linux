@@ -54,6 +54,26 @@
 
 #define CSID_RESET_TIMEOUT_MS 500
 
+// iocts needed to read/write to CSID/VFE registers
+#define VIDIOC_CSID_VFE_PRV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
+#define VIDIOC_CSID_VFE_PRV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
+#define VIDIOC_CSID_VFE_PRV_STATS_CFG _IO('V', BASE_VIDIOC_PRIVATE + 3)
+
+enum csid_vfe_private_register_type {
+	CSID_VFE_PRV_REG_TYPE_CSID = 0,
+	CSID_VFE_PRV_REG_TYPE_VFE = 1
+};
+struct csid_vfe_private_register {
+	enum csid_vfe_private_register_type type;
+	__u32 offset; // might be an offset from the csid or vfe base address depending on type
+	__u32 value;
+};
+
+struct csid_vfe_private_registers_config {
+	__u32 count;
+	struct csid_vfe_private_register __user *regs;
+};
+
 enum csid_testgen_mode {
 	CSID_PAYLOAD_MODE_DISABLED = 0,
 	CSID_PAYLOAD_MODE_INCREMENTING = 1,
@@ -134,6 +154,12 @@ struct csid_hw_ops {
 	 * @csid: CSID device
 	 */
 	void (*subdev_init)(struct csid_device *csid);
+
+	// Allow CSID and VFE registers read/write from userspace using ioctls
+	int (*set_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
+	int (*get_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
+	// Configure which of the additional ISP output (frameheader, statistics) is streamed and provided with the metadata buffers
+	long (*set_statistics_config)(struct csid_device *csid, u32 stats_cfg);
 };
 
 struct csid_device {
@@ -165,6 +191,7 @@ struct csid_device {
 	struct list_head pending_bufs;
 	unsigned int sequence;
 	bool stream_on;
+	bool power_on;
 
 	struct v4l2_subdev *capture_subdev;
 	size_t metadata_size;
@@ -177,6 +204,10 @@ struct csid_device {
 	u64 last_sof_kernel_ts;
 	u64 last_eof_kernel_ts;
 	u64 isp_to_kernel_raw_ts_offset;
+
+	u32 required_comp_done_mask; // bitfield where the index of each mandatory comp group for frames is set
+	u32 stats_cfg; // user-provided bitfield that indicates which statistics/frameheaders must be provided in the metadata buffers
+	u32 stats_comp_done_mask; // composite group mask used to configure IRQs and test IRQ statuses
 
 	spinlock_t output_lock;
 };
