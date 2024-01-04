@@ -1013,7 +1013,18 @@
 		status = "ok";
 	};
 
-	// hall sensor powered by vdd_sensor_3v0
+	/* 3D Hall Sensor I2C */
+	als31300@6c {
+		compatible = "allegro,als31300";
+		reg = <0x6c>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		//vdd-hall-supply = <&VDD_SENSOR_3V0>; // Always On
+		//hall-alert-gpios = <&tlmm 65 GPIO_ACTIVE_LOW>; // Not Used
+
+		status = "ok";
+	};
 };
 
 &i2c5 {
