@@ -4197,6 +4197,9 @@ CONFIG_LEDS_CLASS_MULTICOLOR=y
 #
 # CONFIG_LEDS_GROUP_MULTICOLOR is not set
 # CONFIG_LEDS_KTD202X is not set
+# CONFIG_LEDS_PWM_MULTICOLOR is not set
+# CONFIG_LEDS_QCOM_LPG is not set
+CONFIG_LEDS_QTI_TRI_LED=y
 
 #
 # LED Triggers
@@ -5215,7 +5218,16 @@ CONFIG_QCOM_SPMI_ADC5_GEN3=y
 # end of Temperature sensors
 
 # CONFIG_NTB is not set
-# CONFIG_PWM is not set
+CONFIG_PWM=y
+CONFIG_PWM_SYSFS=y
+# CONFIG_PWM_DEBUG is not set
+# CONFIG_PWM_ATMEL_TCB is not set
+# CONFIG_PWM_CLK is not set
+# CONFIG_PWM_DWC is not set
+# CONFIG_PWM_FSL_FTM is not set
+# CONFIG_PWM_PCA9685 is not set
+CONFIG_PWM_QTI_LPG=y
+# CONFIG_PWM_XILINX is not set
 
 #
 # IRQ chip support
@@ -5322,7 +5334,20 @@ CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"
 # CONFIG_LIBNVDIMM is not set
 CONFIG_DAX=y
 # CONFIG_DEV_DAX is not set
-# CONFIG_NVMEM is not set
+CONFIG_NVMEM=y
+CONFIG_NVMEM_SYSFS=y
+
+#
+# Layout Types
+#
+# CONFIG_NVMEM_LAYOUT_SL28_VPD is not set
+# CONFIG_NVMEM_LAYOUT_ONIE_TLV is not set
+# end of Layout Types
+
+# CONFIG_NVMEM_QCOM_QFPROM is not set
+# CONFIG_NVMEM_QCOM_SEC_QFPROM is not set
+# CONFIG_NVMEM_RMEM is not set
+CONFIG_NVMEM_SPMI_SDAM=y
 
 #
 # HW tracing support
