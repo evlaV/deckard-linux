@@ -345,7 +345,6 @@ static const struct reg_value og0VE10_setting[] = {
 {0x3500, 0x00},
 {0x3501, 0x22},
 {0x3502, 0xa0},
-{0x0100, 0x01}
 };
 
 static const struct reg_value og01a1b_setting[] = {
