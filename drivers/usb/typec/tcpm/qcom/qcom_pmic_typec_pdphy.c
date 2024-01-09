@@ -8,8 +8,6 @@
 #include <linux/kernel.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
-#include <linux/of_irq.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
@@ -75,7 +73,7 @@ static void qcom_pmic_typec_pdphy_reset_off(struct pmic_typec_pdphy *pmic_typec_
 static void qcom_pmic_typec_pdphy_sig_reset_work(struct work_struct *work)
 {
 	struct pmic_typec_pdphy *pmic_typec_pdphy = container_of(work, struct pmic_typec_pdphy,
-							reset_work);
+						     reset_work);
 	unsigned long flags;
 
 	spin_lock_irqsave(&pmic_typec_pdphy->lock, flags);
@@ -161,10 +159,6 @@ qcom_pmic_typec_pdphy_pd_transmit_payload(struct pmic_typec_pdphy *pmic_typec_pd
 	unsigned long flags;
 	int ret;
 
-	hdr_len = sizeof(msg->header);
-	txbuf_len = pd_header_cnt_le(msg->header) * 4;
-	txsize_len = hdr_len + txbuf_len - 1;
-
 	spin_lock_irqsave(&pmic_typec_pdphy->lock, flags);
 
 	ret = regmap_read(pmic_typec_pdphy->regmap,
@@ -183,6 +177,10 @@ qcom_pmic_typec_pdphy_pd_transmit_payload(struct pmic_typec_pdphy *pmic_typec_pd
 	ret = qcom_pmic_typec_pdphy_clear_tx_control_reg(pmic_typec_pdphy);
 	if (ret)
 		goto done;
+
+	hdr_len = sizeof(msg->header);
+	txbuf_len = pd_header_cnt_le(msg->header) * 4;
+	txsize_len = hdr_len + txbuf_len - 1;
 
 	/* Write message header sizeof(u16) to USB_PDPHY_TX_BUFFER_HDR_REG */
 	ret = regmap_bulk_write(pmic_typec_pdphy->regmap,
@@ -234,9 +232,9 @@ done:
 }
 
 int qcom_pmic_typec_pdphy_pd_transmit(struct pmic_typec_pdphy *pmic_typec_pdphy,
-					  enum tcpm_transmit_type type,
-					  const struct pd_message *msg,
-					  unsigned int negotiated_rev)
+				      enum tcpm_transmit_type type,
+				      const struct pd_message *msg,
+				      unsigned int negotiated_rev)
 {
 	struct device *dev = pmic_typec_pdphy->dev;
 	int ret;
@@ -247,8 +245,8 @@ int qcom_pmic_typec_pdphy_pd_transmit(struct pmic_typec_pdphy *pmic_typec_pdphy,
 								negotiated_rev);
 	} else {
 		ret = qcom_pmic_typec_pdphy_pd_transmit_signal(pmic_typec_pdphy,
-								   type,
-								   negotiated_rev);
+							       type,
+							       negotiated_rev);
 	}
 
 	if (ret)
@@ -287,8 +285,8 @@ static void qcom_pmic_typec_pdphy_pd_receive(struct pmic_typec_pdphy *pmic_typec
 		goto done;
 
 	ret = regmap_bulk_read(pmic_typec_pdphy->regmap,
-				   pmic_typec_pdphy->base + USB_PDPHY_RX_BUFFER_REG,
-				   (u8 *)&msg, size);
+			       pmic_typec_pdphy->base + USB_PDPHY_RX_BUFFER_REG,
+			       (u8 *)&msg, size);
 	if (ret)
 		goto done;
 
@@ -356,7 +354,7 @@ int qcom_pmic_typec_pdphy_set_pd_rx(struct pmic_typec_pdphy *pmic_typec_pdphy, b
 }
 
 int qcom_pmic_typec_pdphy_set_roles(struct pmic_typec_pdphy *pmic_typec_pdphy,
-					bool data_role_host, bool power_role_src)
+				    bool data_role_host, bool power_role_src)
 {
 	struct device *dev = pmic_typec_pdphy->dev;
 	unsigned long flags;
