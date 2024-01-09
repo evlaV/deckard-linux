@@ -157,6 +157,18 @@ static int qcom_pmic_typec_pd_transmit(struct tcpc_dev *tcpc,
 						 msg, negotiated_rev);
 }
 
+static bool qcom_pmic_typec_is_vbus_vsafe0v(struct tcpc_dev *tcpc)
+{
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+	bool ret;
+
+	mutex_lock(&tcpm->lock);
+	ret = qcom_pmic_typec_port_is_vbus_vsafe0v(tcpm->pmic_typec_port);
+	mutex_unlock(&tcpm->lock);
+
+	return ret;
+}
+
 static int qcom_pmic_typec_init(struct tcpc_dev *tcpc)
 {
 	return 0;
@@ -195,6 +207,7 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	tcpm->tcpc.set_pd_rx = qcom_pmic_typec_set_pd_rx;
 	tcpm->tcpc.set_roles = qcom_pmic_typec_set_roles;
 	tcpm->tcpc.pd_transmit = qcom_pmic_typec_pd_transmit;
+	tcpm->tcpc.is_vbus_vsafe0v = qcom_pmic_typec_is_vbus_vsafe0v;
 
 	regmap = dev_get_regmap(dev->parent, NULL);
 	if (!regmap) {

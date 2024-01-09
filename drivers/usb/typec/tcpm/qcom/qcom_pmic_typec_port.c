@@ -148,6 +148,26 @@ int qcom_pmic_typec_port_get_vbus(struct pmic_typec_port *pmic_typec_port)
 	return !!(misc & TYPEC_VBUS_DETECT);
 }
 
+bool qcom_pmic_typec_port_is_vbus_vsafe0v(struct pmic_typec_port *pmic_typec_port)
+{
+	unsigned int sensor_status;
+	bool safe = false;
+	int ret;
+
+	ret = regmap_read(pmic_typec_port->regmap,
+			  pmic_typec_port->base + TYPEC_SM_STATUS_REG,
+			  &sensor_status);
+	if (ret) {
+		safe = false;
+	} else {
+		safe = (sensor_status & TYPEC_SM_VBUS_VSAFE0V);
+	}
+
+	pr_warn("qcom_pmic_typec_is_vbus_vsafe0v reading 0x%08X - safe %d\n", sensor_status, safe);
+
+	return (safe);
+}
+
 int qcom_pmic_typec_port_set_vbus(struct pmic_typec_port *pmic_typec_port, bool on)
 {
 	u32 sm_stat;
