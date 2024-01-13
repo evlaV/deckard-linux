@@ -921,6 +921,10 @@
 	vdd3-supply = <&VREG_L05B_3P1>;
 };
 
+&pm8550b_vbus {
+	status = "okay";
+};
+
 &pm8550b_typec {
 	status = "okay";
 
