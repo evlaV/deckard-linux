@@ -542,8 +542,10 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 		return -ENOMEM;
 
 	pmic_typec_port->vdd_vbus = devm_regulator_get(dev, "vdd-vbus");
-	if (IS_ERR(pmic_typec_port->vdd_vbus))
+	if (IS_ERR(pmic_typec_port->vdd_vbus)) {
+		pr_warn("qcom_pmic_typec_port_probe Failed to Find USB OTG Supply\n");
 		return PTR_ERR(pmic_typec_port->vdd_vbus);
+	}
 
 	pmic_typec_port->dev = dev;
 	pmic_typec_port->base = base;
@@ -553,10 +555,6 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 	spin_lock_init(&pmic_typec_port->lock);
 	INIT_DELAYED_WORK(&pmic_typec_port->cc_debounce_dwork,
 			  qcom_pmic_typec_port_cc_debounce);
-
-	// TODO Ensure VBUS Is off
-	// regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_EN_ADDR, PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_BMSK, 0x0);
-	// regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_CFG_ADDR, PMIO_SCPQ_P_DCDC_BST_CFG_OTG_EN_SRC_CFG_BMSK, 0);
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
