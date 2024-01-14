@@ -420,7 +420,6 @@ int qcom_pmic_typec_pdphy_get_current_limit(struct pmic_typec_pdphy *pmic_typec_
 {
 	// 900 mA
 	int limit = 900;
-	unsigned int reg, val;
 
 	// TODO Add QC/BC1.2/DC1.5A Support Here
 	// Default to 900 mA for USB 3.1
@@ -435,24 +434,25 @@ int qcom_pmic_typec_pdphy_get_current_limit(struct pmic_typec_pdphy *pmic_typec_
 #define FORCE_5V								BIT(0)
 #define FORCE_NULL								0
 
+#define USBIN_CONT_AICL_THRESHOLD_REG			(USBIN_BASE + 0x62)
+#define FORCE_AICL_4P7V							0x06
+#define FORCE_AICL_4P8V							0x07
+#define FORCE_AICL_8P6V							0x1A
+#define FORCE_AICL_8P8V							0x1B
+
 int qcom_pmic_typec_pdphy_set_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy,
 					u32 max_ma, u32 mv)
 {
-	// 1) set the switching frequency based on the new usb input voltage
-	// How should we set this for the 8550B?
-	// pdphy_set_usb_pd_fsw(pdphy, mv*1000);
-
-	// 2) set max allowed voltage
+	// Set max allowed voltage and AICL
 	if (mv == 9000) {
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_9V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_8P6V);
 	} else {
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_5V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_4P7V);
 	}
 
-	// AICL setting? TODO
-	//regmap_write(pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, 0);
-
-	// 3) set the max allowed input current
+	// Set the max allowed input current
 	pdphy_set_usbin_current_limit(pmic_typec_pdphy, max_ma);
 
 	return 0;
