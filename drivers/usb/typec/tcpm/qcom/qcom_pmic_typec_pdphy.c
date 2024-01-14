@@ -401,6 +401,17 @@ int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int
 	return regmap_write(pmic_typec_pdphy->regmap, USBIN_CURRENT_LIMIT_CFG_REG, val_raw);
 }
 
+int qcom_pmic_typec_pdphy_get_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy)
+{
+	// 900 mA
+	int limit = 900;
+	unsigned int reg, val;
+
+	// TODO Add QC/BC1.2/DC1.5A Support Here
+	// Default to 900 mA for USB 3.1
+
+	return limit;
+}
 
 #define USBIN_ADAPTER_ALLOW_OVERRIDE_REG		(USBIN_BASE + 0x41)
 #define CONTINUOUS								BIT(3)

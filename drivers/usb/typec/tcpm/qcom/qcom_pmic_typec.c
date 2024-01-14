@@ -119,14 +119,20 @@ struct pmic_typec_port {
 	struct regmap			*regmap;
 };
 
+static int qcom_pmic_typec_core_get_current_limit(struct tcpc_dev *tcpc)
+{
+	// Fall Back Current Limit when PD is not available to check PMIC
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+
+	return qcom_pmic_typec_pdphy_get_current_limit(tcpm->pmic_typec_pdphy);
+}
+
 static int qcom_pmic_typec_core_set_current_limit(struct tcpc_dev *tcpc,
 						 u32 max_ma, u32 mv)
 {
 	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
 
-	dev_warn(tcpm->dev, "set_current_limit set: max_ma %d mv %d\n", max_ma, mv);
-
-	return qcom_pmic_typec_pdphy_set_current_limit(tcpm->pmic_typec_pdphy,max_ma,mv);
+	return qcom_pmic_typec_pdphy_set_current_limit(tcpm->pmic_typec_pdphy, max_ma, mv);
 }
 
 static int qcom_pmic_typec_set_roles(struct tcpc_dev *tcpc, bool attached,
@@ -202,6 +208,7 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	tcpm->tcpc.get_cc = qcom_pmic_typec_get_cc;
 	tcpm->tcpc.set_polarity = qcom_pmic_typec_set_polarity;
 	tcpm->tcpc.set_vconn = qcom_pmic_typec_set_vconn;
+	tcpm->tcpc.get_current_limit = qcom_pmic_typec_core_get_current_limit;
 	tcpm->tcpc.set_current_limit = qcom_pmic_typec_core_set_current_limit;
 	tcpm->tcpc.start_toggling = qcom_pmic_typec_start_toggling;
 	tcpm->tcpc.set_pd_rx = qcom_pmic_typec_set_pd_rx;

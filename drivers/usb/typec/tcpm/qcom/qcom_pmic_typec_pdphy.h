@@ -116,6 +116,8 @@ int qcom_pmic_typec_pdphy_pd_transmit(struct pmic_typec_pdphy *pmic_typec_pdphy,
 				      const struct pd_message *msg,
 				      unsigned int negotiated_rev);
 
+int qcom_pmic_typec_pdphy_get_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy);
+
 int qcom_pmic_typec_pdphy_set_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy,
 				    u32 max_ma, u32 mv);
 
