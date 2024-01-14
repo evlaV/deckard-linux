@@ -401,6 +401,21 @@ int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int
 	return regmap_write(pmic_typec_pdphy->regmap, USBIN_CURRENT_LIMIT_CFG_REG, val_raw);
 }
 
+#define USBIN_ADAPTER_USB_OVP_CTRL_REG		(USBIN_BASE + 0xA8)
+#define USBIN_ADAPTER_USB_OVP_CTRL_MASK		(BIT(2) | BIT(1) | BIT(0))
+#define USBIN_ADAPTER_USB_OVP_CTRL_13P5V	0x01
+
+static int qcom_pmic_typec_pdphy_set_over_voltage_protection(struct pmic_typec_pdphy *pmic_typec_pdphy)
+{
+	int ret;
+
+	// Just hardcode to 13.5 Volts for now, default is 6.9 Volts
+	ret = regmap_update_bits(pmic_typec_pdphy->regmap, USBIN_ADAPTER_USB_OVP_CTRL_REG,
+		USBIN_ADAPTER_USB_OVP_CTRL_MASK, USBIN_ADAPTER_USB_OVP_CTRL_13P5V);
+
+	return ret;
+}
+
 int qcom_pmic_typec_pdphy_get_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy)
 {
 	// 900 mA
@@ -570,6 +585,12 @@ int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
 	pmic_typec_pdphy->irq_data = irq_data;
 	spin_lock_init(&pmic_typec_pdphy->lock);
 	INIT_WORK(&pmic_typec_pdphy->reset_work, qcom_pmic_typec_pdphy_sig_reset_work);
+
+	// Set Over Voltage Protection to Allow 9 VDC USB In
+	ret = qcom_pmic_typec_pdphy_set_over_voltage_protection(pmic_typec_pdphy);
+	if (ret) {
+		dev_warn(dev, "pdphy_probe failed to set OVP: %d\n", ret);
+	}
 
 	for (i = 0; i < res->nr_irqs; i++, irq_data++) {
 		irq = platform_get_irq_byname(pdev, res->irq_params[i].irq_name);
