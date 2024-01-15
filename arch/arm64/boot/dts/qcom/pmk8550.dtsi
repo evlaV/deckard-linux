@@ -229,20 +229,24 @@
 				label = "pm8550b_iin_fb";
 			};
 
+			/* No Parallel Charger
 			pm8550b_iin_smb {
 				reg = <PM8550B_ADC5_GEN3_SMB_IIN>;
 				label = "pm8550b_iin_smb";
 			};
+			*/
 
-			pm8550b_ichg_fb {
+			pm8550b_ichg_fb: pm8550b_ichg_fb {
 				reg = <PM8550B_ADC5_GEN3_ICHG_FB>;
 				label = "pm8550b_ichg_fb";
 			};
 
+			/* No Parallel Charger
 			pm8550b_ichg_smb {
 				reg = <PM8550B_ADC5_GEN3_SMB_ICHG>;
 				label = "pm8550b_ichg_smb";
 			};
+			*/
 
 			/* PM8550VS_C Channel nodes */
 			pm8550vs_c_die_temp {
