@@ -566,6 +566,11 @@ int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
 		return ret;
 	}
 
+	ret = irq_set_affinity(csid->irq,cpumask_of(3));
+	if (ret < 0) {
+		dev_err(dev, "irq_set_affinity failed: %d\n", ret);
+	}
+
 	/* IFE interrupt */
 
 	ret = platform_get_irq_byname(pdev, res->interrupt[0]);
