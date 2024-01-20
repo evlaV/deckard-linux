@@ -93,29 +93,6 @@ struct lt9611uxc_mode {
 	u8 vrefresh;
 };
 
-/*
- * This chip supports only a fixed set of modes.
- * Enumerate them here to check whether the mode is supported.
- */
-static struct lt9611uxc_mode lt9611uxc_modes[] = {
-	{ 1920, 1080, 60 },
-	{ 1920, 1080, 30 },
-	{ 1920, 1080, 25 },
-	{ 1366, 768, 60 },
-	{ 1360, 768, 60 },
-	{ 1280, 1024, 60 },
-	{ 1280, 800, 60 },
-	{ 1280, 720, 60 },
-	{ 1280, 720, 50 },
-	{ 1280, 720, 30 },
-	{ 1152, 864, 60 },
-	{ 1024, 768, 60 },
-	{ 800, 600, 60 },
-	{ 720, 576, 50 },
-	{ 720, 480, 60 },
-	{ 640, 480, 60 },
-};
-
 static struct lt9611uxc *bridge_to_lt9611uxc(struct drm_bridge *bridge)
 {
 	return container_of(bridge, struct lt9611uxc, bridge);
@@ -231,21 +208,6 @@ static int lt9611uxc_regulator_enable(struct lt9611uxc *lt9611uxc)
 	return 0;
 }
 
-static struct lt9611uxc_mode *lt9611uxc_find_mode(const struct drm_display_mode *mode)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(lt9611uxc_modes); i++) {
-		if (lt9611uxc_modes[i].hdisplay == mode->hdisplay &&
-		    lt9611uxc_modes[i].vdisplay == mode->vdisplay &&
-		    lt9611uxc_modes[i].vrefresh == drm_mode_vrefresh(mode)) {
-			return &lt9611uxc_modes[i];
-		}
-	}
-
-	return NULL;
-}
-
 static struct mipi_dsi_device *lt9611uxc_attach_dsi(struct lt9611uxc *lt9611uxc,
 						    struct device_node *dsi_node)
 {
@@ -287,18 +249,6 @@ static int lt9611uxc_bridge_attach(struct drm_bridge *bridge,
 
 	return drm_bridge_attach(encoder, lt9611uxc->next_bridge,
 				 bridge, flags);
-}
-
-static enum drm_mode_status
-lt9611uxc_bridge_mode_valid(struct drm_bridge *bridge,
-			    const struct drm_display_info *info,
-			    const struct drm_display_mode *mode)
-{
-	struct lt9611uxc_mode *lt9611uxc_mode;
-
-	lt9611uxc_mode = lt9611uxc_find_mode(mode);
-
-	return lt9611uxc_mode ? MODE_OK : MODE_BAD;
 }
 
 static void lt9611uxc_video_setup(struct lt9611uxc *lt9611uxc,
@@ -431,7 +381,6 @@ static const struct drm_edid *lt9611uxc_bridge_edid_read(struct drm_bridge *brid
 
 static const struct drm_bridge_funcs lt9611uxc_bridge_funcs = {
 	.attach = lt9611uxc_bridge_attach,
-	.mode_valid = lt9611uxc_bridge_mode_valid,
 	.mode_set = lt9611uxc_bridge_mode_set,
 	.detect = lt9611uxc_bridge_detect,
 	.edid_read = lt9611uxc_bridge_edid_read,
