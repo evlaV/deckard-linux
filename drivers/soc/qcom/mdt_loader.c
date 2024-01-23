@@ -188,6 +188,7 @@ void *qcom_mdt_read_metadata(const struct firmware *fw, size_t *data_len,
 }
 EXPORT_SYMBOL_GPL(qcom_mdt_read_metadata);
 
+#ifdef CONFIG_QCOM_SCM
 /**
  * qcom_mdt_pas_init() - initialize PAS region for firmware loading
  * @dev:	device handle to associate resources with
@@ -261,6 +262,7 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(qcom_mdt_pas_init);
+#endif
 
 static bool qcom_mdt_bins_are_split(const struct firmware *fw, const char *fw_name)
 {
@@ -391,6 +393,7 @@ static int __qcom_mdt_load(struct device *dev, const struct firmware *fw,
 	return ret;
 }
 
+#ifdef CONFIG_QCOM_SCM
 /**
  * qcom_mdt_load() - load the firmware which header is loaded as fw
  * @dev:	device handle to associate resources with
@@ -419,6 +422,7 @@ int qcom_mdt_load(struct device *dev, const struct firmware *fw,
 			       mem_size, reloc_base, true);
 }
 EXPORT_SYMBOL_GPL(qcom_mdt_load);
+#endif
 
 /**
  * qcom_mdt_load_no_init() - load the firmware which header is loaded as fw
