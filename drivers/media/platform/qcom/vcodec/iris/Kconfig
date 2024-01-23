@@ -3,9 +3,7 @@ config VIDEO_QCOM_IRIS
         depends on VIDEO_DEV
         depends on ARCH_QCOM
         select QCOM_MDT_LOADER if ARCH_QCOM
-        select QCOM_SCM
-        select DMABUF_HEAPS
-	select DMABUF_HEAPS_SYSTEM
+        select VIDEOBUF2_DMA_CONTIG
         help
           This is a V4L2 driver for Qualcomm Iris video accelerator
           hardware. It accelerates encoding and decoding operations

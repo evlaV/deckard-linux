@@ -289,7 +289,7 @@ static int iris_pm_suspend(struct device *dev)
 		goto unlock;
 	}
 
-	ret = iris_hfi_pm_suspend(core);
+	ret = 0;// iris_hfi_pm_suspend(core);
 
 unlock:
 	mutex_unlock(&core->lock);
