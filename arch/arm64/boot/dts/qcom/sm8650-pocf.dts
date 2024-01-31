@@ -1047,6 +1047,34 @@
 	status = "okay";
 };
 
+// Master Hub required for Hub 7 and 8
+&i2c_master_hub_0 {
+	status = "okay";
+};
+
+// Custom Connector I2C
+&i2c_hub_7 {
+	status = "okay";
+};
+
+// Prox Sensor I2C
+&i2c_hub_8 {
+	status = "okay";
+
+	light-sensor@60 {
+		compatible = "vishay,vcnl4040";
+		reg = <0x60>;
+		proximity-near-level = <220>;
+		// interrupts-extended = <&tlmm 31 IRQ_TYPE_EDGE_FALLING>;
+		// driver lacks support for regulators, l8c and l11c set to always on
+
+		vin0-supply = <&VDD_SENSOR_3V3>; 
+		vin1-supply = <&VREG_L15B_1P8>; 
+
+		status = "okay";
+	};
+};
+
 &qupv3_id_2 {
 	status = "okay";
 };
