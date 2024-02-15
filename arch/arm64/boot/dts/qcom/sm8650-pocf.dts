@@ -2035,6 +2035,7 @@
 
 		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 123 GPIO_ACTIVE_HIGH>;
+		ircontrol-gpios = <&tlmm 200 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&cam_sensor_mclk1_active>; // <&cam_6dof_l_default>;
 

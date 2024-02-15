@@ -146,6 +146,7 @@ struct og01a1b_dev {
 	struct gpio_desc *reset_gpio;
 	struct gpio_desc *strobe_gpio;
 	struct gpio_desc *ir_gpio[2];
+	struct gpio_desc *ir_control_gpio;
 
 	/* lock to protect all members below */
 	struct mutex lock;
@@ -177,6 +178,7 @@ struct og01a1b_dev {
 	bool updateGroupRegisters;
 	enum og01a1b_ir_emitter_mode ir_emitter_mode;
 	bool emittersPresent;
+	bool ir_control_gpio_present;
 	enum og01a1b_group_mode group_mode;
 	int sensor_index;
 
@@ -1145,6 +1147,20 @@ static int og01a1b_add_or_set_group_reg(struct og01a1b_dev *sensor, int ctrlval)
 	return 0;
 }
 
+bool emitter_enabled_for_group(struct og01a1b_dev *sensor, int group) {
+	//printk("sensor->ir_emitter_mode:%d group:%d",sensor->ir_emitter_mode,group);
+	if(sensor->ir_emitter_mode == IR_EMITTER_MODE_ALL_FRAMES) {
+		return true;
+	}
+	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_1_ONLY) {
+		return group == 1;
+	}
+	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_0_ONLY) {
+		return group == 0;
+	}
+	return false;
+}
+
 int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
 {
 	int ret;
@@ -1161,6 +1177,21 @@ int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
 		for(int i = 0; i < sensor->active_group_registers.group_register_sets[group].num_group_reg; i++) 
 		{
 			ret = og01a1b_write_reg(sensor, sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i],sensor->active_group_registers.group_register_sets[group].group_reg_values[i]);
+			if(ret != 0) 
+			{
+				return ret;
+			}
+		}
+		if(emitter_enabled_for_group(sensor, group))
+		{
+			ret = og01a1b_write_reg(sensor, 0x3920, 0xff);
+			if(ret != 0) 
+			{
+				return ret;
+			}
+		}
+		else{
+			ret = og01a1b_write_reg(sensor, 0x3920, 0x00);
 			if(ret != 0) 
 			{
 				return ret;
@@ -1505,20 +1536,6 @@ void set_ir_leds(struct og01a1b_dev *sensor, int state) {
 	spin_unlock_irqrestore(&ir_spinlock, flags);
 }
 
-bool emitter_enabled_for_group(struct og01a1b_dev *sensor, int group) {
-	//printk("sensor->ir_emitter_mode:%d group:%d",sensor->ir_emitter_mode,group);
-	if(sensor->ir_emitter_mode == IR_EMITTER_MODE_ALL_FRAMES) {
-		return true;
-	}
-	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_1_ONLY) {
-		return group == 1;
-	}
-	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_0_ONLY) {
-		return group == 0;
-	}
-	return false;
-}
-
 void handle_exposure_event(struct og01a1b_dev *sensor, bool is_gpio_event) {
 	// todo: don't turn it on if it's been turned on within a millisecond
     u64 ts = ktime_get_ns();
@@ -1544,7 +1561,8 @@ void handle_exposure_event(struct og01a1b_dev *sensor, bool is_gpio_event) {
 		//if(sensor->is_sync_sensor && ((ts - sensor->last_emitter_on_ts )> 4000000)) {
 		if(sensor->is_sync_sensor) {
 			if(emitter_enabled_for_group(sensor, currentGroup)) {
-				if(sensor->power_count > 0 && sensor->last_set_led_state == 0 && ((ts - sensor->last_emitter_on_ts ) > 4000000)) {
+				// Only turn the sensor on when the last SOF_TS is more than 4 ms ago. This prevents another edge case
+               if(sensor->power_count > 0 && sensor->last_set_led_state == 0 && ((ts - sensor->last_emitter_on_ts ) > 4000000) ) {
 					set_ir_leds(sensor, 1);
 					sensor->last_emitter_on_ts = ts;
 					//printk("gpio edge on at :%lu\n", ts);
@@ -1739,6 +1757,18 @@ static int og01a1b_s_power(struct v4l2_subdev *sd, int on)
 					break;
 				}
 			}
+
+			sensor->ir_control_gpio = devm_gpiod_get_optional(&client->dev, "ircontrol",
+									GPIOD_OUT_LOW);
+			if(sensor->ir_control_gpio == NULL) {
+				sensor->ir_control_gpio_present = false;
+			}
+			else
+			{
+				sensor->ir_control_gpio_present = true;
+			}
+			
+
 			//if an emitter is not found make sure both gpio_desc* are NULL
 			//and return the GPIO so userspace can use it
 			if(!sensor->emittersPresent) {
@@ -1764,6 +1794,11 @@ static int og01a1b_s_power(struct v4l2_subdev *sd, int on)
 					devm_gpiod_put(&client->dev,sensor->ir_gpio[i]);
 					sensor->ir_gpio[i] = NULL;
 				}
+			}
+
+			if(sensor->ir_control_gpio_present) 
+			{
+				devm_gpiod_put(&client->dev,sensor->ir_control_gpio);
 			}
 		}
 		spin_unlock_irqrestore(&ir_spinlock, flags);	
@@ -1834,6 +1869,9 @@ static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
 	sensor->is_streaming = !!enable;
 
 	og01a1b_write_reg(sensor, 0x100, !!enable);
+	if(sensor->ir_control_gpio_present) {
+		gpiod_set_value(sensor->ir_control_gpio, 0);
+	}
 	return 0;
 }
 
@@ -1860,30 +1898,19 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
 		}
         case VIDIOC_OG01A1B_PRV_S_IR_EMITTER_MODE:
         {
-            //only allow this to be enabled if emitters are present. Else return -1
-            if(sensor->emittersPresent) {
-                sensor->ir_emitter_mode = *a;
-
-                // Turn off IR emitters whenever this is called.
-                // This ensures that even if this GPIO is called repeatedly
-                // That it will always leave the IR leds off
-                // And if the emitters are disabled they won't be turned back on because the check
-                // for sensor->ir_emitter_mode is inside the section which is exclusive to ir_spinlock
-                spin_lock_irqsave(&ir_spinlock, flags);
-                for(int i = 0; i < 2; i++) {
-                    if(sensor->ir_gpio[i]!=NULL) {
-                        gpiod_set_value(sensor->ir_gpio[i], 0);
-                    }
-                }
-                spin_unlock_irqrestore(&ir_spinlock, flags);
-            }
-            else 
-            {
-                if(sensor->is_sync_sensor) {
-                    dev_err(&client->dev, "%s: Unable to enable emitters because they were not detected as connected\n", __func__);
-                    ret = -1;
-                }
-            }
+			
+			sensor->ir_emitter_mode = *a;
+			sensor->updateGroupRegisters = true;
+			// If the ir control GPIO is on this camera, enable it if any emitters are on.
+			if(sensor->ir_control_gpio_present) {
+				if(*a != 0)
+				{
+					gpiod_set_value(sensor->ir_control_gpio, 1);
+				}
+				else {
+					gpiod_set_value(sensor->ir_control_gpio, 0);
+				}
+			}
             break;
         }
         case VIDIOC_OG01A1B_PRV_S_REG:
