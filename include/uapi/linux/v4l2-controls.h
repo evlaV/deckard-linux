@@ -180,17 +180,15 @@ enum v4l2_colorfx {
  */
 #define V4L2_CID_USER_CCS_BASE			(V4L2_CID_USER_BASE + 0x10f0)
 /*
+ * The base for og01a1b driver controls.
+ * We reserve 16 controls for this driver.
+ */
+#define V4L2_CID_USER_OG01A1B_BASE		(V4L2_CID_USER_BASE + 0x1160)
+/*
  * The base for Allegro driver controls.
  * We reserve 16 controls for this driver.
  */
 #define V4L2_CID_USER_ALLEGRO_BASE		(V4L2_CID_USER_BASE + 0x1170)
-
-/*
- * The base for og01a1b driver controls.
- * We reserve 16 controls for this driver.
- */
-#define V4L2_CID_USER_OG01A1B_BASE		(V4L2_CID_USER_BASE + 0x1170)
-
 /*
  * The base for the isl7998x driver controls.
  * We reserve 16 controls for this driver.

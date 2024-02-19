@@ -30,6 +30,7 @@
 #include <linux/platform_device.h>
 
 #define V4L2_CID_TEMPERATURE	(V4L2_CID_USER_OG01A1B_BASE + 0)
+#define V4L2_CID_READ_OG01A1B   (V4L2_CID_USER_OG01A1B_BASE + 1)
 
 #define OG01A1B_REG_CHIP_ID		0x300a
 
@@ -1143,11 +1144,13 @@ power_off:
 
 static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg);
 
+static u16 og01a1b_read_reg_addr;
 static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct og01a1b_dev *sensor =
 			container_of(ctrl->handler, struct og01a1b_dev, ctrl_handler);
 	int ret = 0;
+    u16 addr;
 
 	/* V4L2 controls values will be applied only when power is already up */
 	//if (!pm_runtime_get_if_in_use(&client->dev))
@@ -1165,7 +1168,20 @@ static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 
     // "Hack controls" that are kept for backward compatibility
 	case V4L2_CID_BRIGHTNESS:
-        ret = og01a1b_private_ioctl(&sensor->sd, VIDIOC_OG01A1B_PRV_S_REG, (void*)(uintptr_t)ctrl->val);
+		addr = ctrl->val & 0xffff;
+		if (addr == 0x0000)
+		{
+			og01a1b_read_reg_addr = ctrl->val >> 16 & 0xff;
+		}
+		else if (addr == 0x0001)
+		{
+			og01a1b_read_reg_addr = og01a1b_read_reg_addr | ( ctrl->val >> 16 & 0xff ) << 8;
+		}
+		else
+		{
+			ret = og01a1b_private_ioctl(&sensor->sd, VIDIOC_OG01A1B_PRV_S_REG, (void*)(uintptr_t)ctrl->val);
+		}
+		break;
 		break;
 	case V4L2_CID_HUE:
         ret = og01a1b_private_ioctl(&sensor->sd, VIDIOC_OG01A1B_PRV_S_GROUP_REG, (void*)(uintptr_t)ctrl->val);
@@ -1206,6 +1222,41 @@ static const struct v4l2_ctrl_config og01a1b_ctrl_temperature = {
 	.ops = &og01a1b_ctrl_read_ops,
 	.id = V4L2_CID_TEMPERATURE,
 	.name = "Temperature",
+	.type = V4L2_CTRL_TYPE_INTEGER,
+	.flags = V4L2_CTRL_FLAG_VOLATILE,
+	.min = 0,
+	.max = 0xffffffff,
+	.step = 1,
+};
+
+static int og01a1b_get_ctrl_read(struct v4l2_ctrl *ctrl)
+{
+	u8 val;
+	int ret;
+
+	struct og01a1b_dev *sensor =
+			container_of(ctrl->handler, struct og01a1b_dev, ctrl_handler);
+
+	if(og01a1b_read_reg_addr == 0)
+	{
+		og01a1b_read_reg_addr = 0x3500;
+	}
+	ret = og01a1b_read_reg(sensor, og01a1b_read_reg_addr, &val);
+	ctrl->val = val;
+	ctrl->has_changed = 1;
+	ctrl->cur.val = val;
+
+	return 0;
+}
+
+static const struct v4l2_ctrl_ops og01a1b_ctrl_read_ops_custom = {
+	.g_volatile_ctrl = og01a1b_get_ctrl_read,
+};
+
+static const struct v4l2_ctrl_config og01a1b_ctrl_read = {
+	.ops = &og01a1b_ctrl_read_ops_custom,
+	.id = V4L2_CID_READ_OG01A1B,
+	.name = "ReadReg",
 	.type = V4L2_CTRL_TYPE_INTEGER,
 	.flags = V4L2_CTRL_FLAG_VOLATILE,
 	.min = 0,
@@ -1315,6 +1366,8 @@ static int og01a1b_init_controls(struct og01a1b_dev *sensor)
 
 	//add custom control for temperature sensor
 	v4l2_ctrl_new_custom(ctrl_hdlr, &og01a1b_ctrl_temperature, NULL);
+	//add custom control for generic read
+	v4l2_ctrl_new_custom(ctrl_hdlr, &og01a1b_ctrl_read, NULL);
 
 	if (ctrl_hdlr->error)
 		return ctrl_hdlr->error;
