@@ -287,6 +287,15 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	u64 timestamp_iova;
 	unsigned long flags;
 
+	/*
+	 * note: this relies on seqno not being incremented for empty submits
+	 * (this also skips the msm_gpu_submit_flush tracepoint)
+	 */
+	if (submit->nr_cmds == 0) {
+		kthread_queue_work(gpu->worker, &gpu->retire_work);
+		return;
+	}
+
 	// note: per-ring lock used only to avoid race condition with a7xx_irq() adding commands
 	spin_lock_irqsave(&ring->preempt_lock, flags);
 

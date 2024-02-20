@@ -17,7 +17,7 @@ static struct dma_fence *msm_job_run(struct drm_sched_job *job)
 	struct msm_fence_context *fctx = submit->ring->fctx;
 	struct msm_gpu *gpu = submit->gpu;
 
-	msm_fence_init(submit->hw_fence, fctx);
+	msm_fence_init(submit->hw_fence, fctx, submit->nr_cmds == 0);
 
 	/* TODO move submit path over to using a per-ring lock.. */
 	mutex_lock(&gpu->lock);
