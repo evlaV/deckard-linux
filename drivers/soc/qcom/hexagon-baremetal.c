@@ -117,7 +117,8 @@ clk_pll_configure_lucid_ole(void __iomem *pll_reg, u32 freq)
 
    write32(pll_reg + PLL_MODE, 0x00);
 
-   write32(pll_reg + PLL_L_VAL, 0x44 << 16 | l);
+   // Add RINGOSC_CAL_L extra shift?
+   write32(pll_reg + PLL_L_VAL, 0x44 << 24 | 0x44 << 16 | l);
    write32(pll_reg + PLL_ALPHA_VAL, alpha);
    write32(pll_reg + PLL_USER_CTL, 0x00008400 | 1);
    write32(pll_reg + PLL_USER_CTL_U, 0x00000005);
@@ -350,17 +351,18 @@ static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 	if (dsp->evb_sel)
 		writel(0, dsp->evb_sel);
 
-#if 0
-	// set src to QDSP6SSPLL
-	writel(0x200, dsp->base + QDSP6SS_CORE_CFG_RCGR);
-	writel(1, dsp->base + QDSP6SS_CORE_CMD_RCGR);
+	// Only try to set src to QDSP6SSPLL for cDSP on 8650
+	if (!strcmp(dsp->miscdev.name, "cdsp"))
+	{
+		writel(0x200, dsp->base + QDSP6SS_CORE_CFG_RCGR);
+		writel(1, dsp->base + QDSP6SS_CORE_CMD_RCGR);
 
-	writel(1, dsp->base + QDSP6SS_XO_CBCR);
-	writel(1, dsp->base + QDSP6SS_SLEEP_CBCR);
-	writel(1, dsp->base + QDSP6SS_CORE_CBCR);
+		writel(1, dsp->base + QDSP6SS_XO_CBCR);
+		writel(1, dsp->base + QDSP6SS_SLEEP_CBCR);
+		writel(1, dsp->base + QDSP6SS_CORE_CBCR);
 
-	usleep_range(1000, 2000); // XXX
-#endif
+		usleep_range(1000, 2000); // XXX
+	}
 
 	writel(boot_addr >> 4, dsp->base + QDSP6SS_RST_EVB);
 	writel(1, dsp->base + QDSP6SS_BOOT_CORE_START);
