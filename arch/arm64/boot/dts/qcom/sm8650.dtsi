@@ -4827,7 +4827,7 @@
 		};
 
 		_cdsp: cdsp@32300000 {
-			compatible = "qcom,sm8550-hexagon";
+			compatible = "qcom,sm8650-hexagon";
 			reg = <0 0x32300000 0 0x50000>;
 			reg-names = "base";//, "haltreq";
 			clocks = <&gcc GCC_TURING_CFG_AHB_CLK>;
