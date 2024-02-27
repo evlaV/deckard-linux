@@ -775,7 +775,8 @@ static int dsp_probe(struct platform_device *pdev)
 		icc_set_bw(dma_path, 0, kBps_to_icc(1000*1000*50));
 
 		// TURING_QDSP6SS_PLL_PLL_CM_PLL_LUCID_OLE
-		clk_pll_configure_lucid_ole(dsp->base + 0x40000, 460800000);
+		// Set it to use TURBO_L3 frequency - 1843.2 MHz
+		clk_pll_configure_lucid_ole(dsp->base + 0x40000, 1843200000);
 	}
 
 	return 0;
