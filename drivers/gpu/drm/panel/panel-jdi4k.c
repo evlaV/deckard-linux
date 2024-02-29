@@ -81,13 +81,13 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 
 // Modeset params: terms are defined per panel.
 #define H_PIXELS           2160
-#define H_FRONT_PORCH      24
-#define H_BACK_PORCH       20
-#define H_SYNC             20
+#define H_FRONT_PORCH      64
+#define H_BACK_PORCH       64
+#define H_SYNC             32
 #define V_LINES            2160
-#define V_FRONT_PORCH_120  404
-#define V_FRONT_PORCH_90   1265
-#define V_FRONT_PORCH_80   1270
+#define V_FRONT_PORCH_120  123
+#define V_FRONT_PORCH_90   891
+#define V_FRONT_PORCH_80   1275
 #define V_BACK_PORCH       20
 #define V_SYNC             1
 #define NUM_PANELS         2
@@ -112,12 +112,12 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 
 // TODO adjust DPU overclocked settings for 90 Hz mode
 #ifdef DPUOVERCLOCKED
-	#define PANEL_VID_VS_DELAY_80  400
-	#define PANEL_VID_VS_DELAY_90  500
-	#define PANEL_VID_VS_DELAY_120 400
-	#define PIXEL_CLOCK_KHZ_80     613000
-	#define PIXEL_CLOCK_KHZ_90     690000
-	#define PIXEL_CLOCK_KHZ_120    690000
+	#define PANEL_VID_VS_DELAY_80  1112
+	#define PANEL_VID_VS_DELAY_90  1112
+	#define PANEL_VID_VS_DELAY_120 1112
+	#define PIXEL_CLOCK_KHZ_80     641433
+	#define PIXEL_CLOCK_KHZ_90     641433
+	#define PIXEL_CLOCK_KHZ_120    641433
 #else
 	#define PANEL_VID_VS_DELAY_90  315
 	#define PANEL_VID_VS_DELAY_120 315
@@ -297,17 +297,18 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	DSI_CMD(0xb0, 0x04), // mfg register unlock
 	DSI_CMD(0xd6, 0x00), // skip loading register defaults out of sleep
 	// DSI-2 Control Setting (C option): SELDL=2 (3 lane), PN2PTXR=1 (one port)
-	DSI_CMD(0xb6, 0x20, 0x6b, 0x80, 0x06, 0x33, 0x8a, 0x00, 0x1a, 0x7a), //note the 0x7a last byte is needed to avoid corruption
+	DSI_CMD(0xb6, 0x20, 0x6b, 0x80, 0x06, 0x33, 0x9a, 0x00, 0x1a, 0x7a), //note the 0x7a last byte is needed to avoid corruption
 	// Display Mode: VRM=0b010, DM=1 (FIFO mode), TE_ON_VIDEO=1 (TE follows TE_MODE setting)
 	DSI_CMD(0xb7, 0x54, 0x00, 0x00, 0x00),
 	// Generic pin output setting: GPO1_TES1=233, GPO1_TEW1=17
 	// GPO2 is routed out TE, and is set to trigger 50 lines before, and last 50 lines longer, to trigger camera capture on the panel tester
 	DSI_CMD(0xb9, BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00, 0x00, 0x00, BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET), BE16(GPO1_TEW1+CAMERA_TRIGGER_OFFSET*2));
+	// Display Timing
+	//DSI_CMD(0xc0, RTN, 0x86, VBP&0xff, VBP>>8, BE16(NL), BE16(VFP)),
+	DSI_CMD(0xc0, 0x3A, 0x86, VBP&0xff, VBP>>8, BE16(NL), BE16(VFP)),
 	// Source Setting
 	DSI_CMD(0xf1,0x1e); // set offset for next write ( 0xc6 )
 	DSI_CMD(0xc6,0x70,0x08,0xd0,0x02,0x21,0x6f,0x08,0x5a,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00); // video mode timings
-	// Display Timing
-	DSI_CMD(0xc0, RTN, 0x86, VBP&0xff, VBP>>8, BE16(NL), BE16(VFP)),
 	// Scaling Mode Setting: RTSON=0
 	DSI_CMD(0xcd, 0x00),
 	// Compression Mode Setting:
