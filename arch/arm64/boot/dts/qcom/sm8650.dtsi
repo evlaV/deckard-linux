@@ -5578,6 +5578,99 @@
 			};
 		};
 
+		icp: icp@ac00000 {
+			compatible = "qcom,sm8650-icp";
+
+			reg = <0 0x0ac00000 0 0x10000>, // ICP
+				  <0 0x0ac2c000 0 0xb000>,  // BPS
+				  <0 0x0ac42000 0 0x18000>; // IPE
+			reg-names = "icp",
+						"bps",
+						"ipe";
+
+			mboxes = <&ipcc_computel0 IPCC_CLIENT_CAM 0>;
+
+			interrupts-extended = <&intc GIC_SPI 463 IRQ_TYPE_EDGE_RISING>, 
+								  <&ipcc_computel0 IPCC_CLIENT_CAM 0 IRQ_TYPE_EDGE_RISING>;
+  			interrupt-names = "icp",
+							  "ipcc";
+
+			hwlocks = <&tcsr_mutex 10>; // synx hwspinlock
+
+			power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>,
+					<&camcc CAM_CC_BPS_GDSC>,
+					<&camcc CAM_CC_IPE_0_GDSC>;
+
+			clocks = 
+				<&gcc GCC_CAMERA_AHB_CLK>,
+				<&gcc GCC_CAMERA_HF_AXI_CLK>,
+				<&gcc GCC_CAMERA_SF_AXI_CLK>,
+				<&camcc CAM_CC_CPAS_AHB_CLK>,
+				<&camcc CAM_CC_CPAS_FAST_AHB_CLK>,
+				<&camcc CAM_CC_CAMNOC_AXI_RT_CLK>,
+				<&camcc CAM_CC_CAMNOC_AXI_NRT_CLK>,
+				<&camcc CAM_CC_QDSS_DEBUG_XO_CLK>,
+				// ICP clocks
+				<&camcc CAM_CC_ICP_AHB_CLK>,
+				<&camcc CAM_CC_ICP_CLK_SRC>,
+				<&camcc CAM_CC_ICP_CLK>,
+				// BPS clocks
+				<&camcc CAM_CC_BPS_AHB_CLK>,
+				<&camcc CAM_CC_BPS_FAST_AHB_CLK>,
+				<&camcc CAM_CC_BPS_CLK_SRC>,
+				<&camcc CAM_CC_BPS_CLK>,
+				<&camcc CAM_CC_CPAS_BPS_CLK>,
+				// IPE clocks
+				<&camcc CAM_CC_IPE_NPS_AHB_CLK>,
+				<&camcc CAM_CC_IPE_NPS_FAST_AHB_CLK>,
+				<&camcc CAM_CC_IPE_NPS_CLK_SRC>,
+				<&camcc CAM_CC_IPE_NPS_CLK>,
+				<&camcc CAM_CC_IPE_PPS_FAST_AHB_CLK>,
+				<&camcc CAM_CC_IPE_PPS_CLK>,
+				<&camcc CAM_CC_CPAS_IPE_NPS_CLK>;
+
+			clock-names =
+				"gcc_ahb_clk",
+				"gcc_axi_hf",
+				"gcc_axi_sf",
+				"cpas_ahb",
+				"cpas_fast_ahb",
+				"camnoc_axi_rt",
+				"camnoc_axi_nrt",
+				"qdss_debug_xo",
+				// ICP clocks
+				"icp_ahb",
+				"icp_src",
+				"icp",
+				// BPS clocks
+				"bps_ahb",
+				"bps_fast_ahb",
+				"bps_src",
+				"bps",
+				"cpas_bps",
+				// IPE clocks
+				"ipe_nps_ahb",
+				"ipe_nps_fast_ahb",
+				"ipe_nps_src",
+				"ipe_nps",
+				"ipe_pps_fast_ahb",
+				"ipe_pps",
+				"cpas_ipe_nps";
+
+			// 
+			iommus = <&apps_smmu 0x1800 0x00>, // IPE
+					 <&apps_smmu 0x1801 0x00>, // IPE
+					 <&apps_smmu 0x1820 0x00>, // BPS
+					 <&apps_smmu 0x1840 0x00>, // IPE CDM
+					 <&apps_smmu 0x1880 0x00>, // BPS CDM
+					 <&apps_smmu 0x18C0 0x00>; // ICP
+
+			interconnects = <&mmss_noc MASTER_CAMNOC_SF QCOM_ICC_TAG_ALWAYS &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
+							<&mmss_noc MASTER_CAMNOC_ICP QCOM_ICC_TAG_ALWAYS &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
+			interconnect-names = "cam_sf_0_mnoc",
+								 "cam_sf_icp_mnoc";
+		};
+
 		camcc: clock-controller@ade0000 {
 			compatible = "qcom,sm8650-camcc";
 			reg = <0 0x0ade0000 0 0x20000>;
