@@ -1979,6 +1979,17 @@
 			#mbox-cells = <2>;
 		};
 
+		ipcc_computel0: mailbox@443000 {
+			compatible = "qcom,sm8650-ipcc", "qcom,ipcc";
+			reg = <0 0x00443000 0 0x1000>;
+
+			interrupts = <GIC_SPI 230 IRQ_TYPE_LEVEL_HIGH 0>;
+			interrupt-controller;
+			#interrupt-cells = <3>;
+
+			#mbox-cells = <2>;
+		};
+
 		gpi_dma2: dma-controller@800000 {
 			compatible = "qcom,sm8650-gpi-dma", "qcom,sm6350-gpi-dma";
 			reg = <0 0x00800000 0 0x60000>;
@@ -5377,15 +5388,14 @@
 			};
 		};
 
-		camss: isp@acb6000 {
+		camss: isp@acb8000 {
 			compatible = "qcom,sm8650-camss";
-
-			reg = <0 0x0acb6000 0 0x1000>,
-			      <0 0x0acb8000 0 0x1000>,
+			reg = <0 0x0acb8000 0 0x1000>,
 			      <0 0x0acba000 0 0x1000>,
 			      <0 0x0acbc000 0 0x1000>,
 			      <0 0x0accb000 0 0x1000>,
 			      <0 0x0acd0000 0 0x1000>,
+			      <0 0x0acb6000 0 0x1000>,
 			      <0 0x0ace4000 0 0x2000>,
 			      <0 0x0ace6000 0 0x2000>,
 			      <0 0x0ace8000 0 0x2000>,
@@ -5397,12 +5407,12 @@
 			      <0 0x0ac80000 0 0xf000>,
 			      <0 0x0accc000 0 0x2000>,
 			      <0 0x0acd1000 0 0x2000>;
-			reg-names = "csid_wrapper",
-				    "csid0",
+			reg-names = "csid0",
 				    "csid1",
 				    "csid2",
 				    "csid_lite0",
 				    "csid_lite1",
+				    "csid_wrapper",
 				    "csiphy0",
 				    "csiphy1",
 				    "csiphy2",
@@ -5415,7 +5425,8 @@
 				    "vfe_lite0",
 				    "vfe_lite1";
 
-			clocks = <&camcc CAM_CC_CAMNOC_AXI_RT_CLK>,
+			clocks = <&camcc CAM_CC_CAMNOC_AXI_NRT_CLK>,
+				 <&camcc CAM_CC_CAMNOC_AXI_RT_CLK>,
 				 <&camcc CAM_CC_CPAS_AHB_CLK>,
 				 <&camcc CAM_CC_CPAS_FAST_AHB_CLK>,
 				 <&camcc CAM_CC_CPAS_IFE_0_CLK>,
@@ -5436,7 +5447,9 @@
 				 <&camcc CAM_CC_CSI5PHYTIMER_CLK>,
 				 <&camcc CAM_CC_CSIPHY5_CLK>,
 				 <&camcc CAM_CC_CSID_CSIPHY_RX_CLK>,
+				 <&gcc GCC_CAMERA_AHB_CLK>,
 				 <&gcc GCC_CAMERA_HF_AXI_CLK>,
+				 <&gcc GCC_CAMERA_SF_AXI_CLK>,
 				 <&camcc CAM_CC_QDSS_DEBUG_XO_CLK>,
 				 <&camcc CAM_CC_IFE_0_CLK>,
 				 <&camcc CAM_CC_IFE_0_FAST_AHB_CLK>,
@@ -5448,7 +5461,8 @@
 				 <&camcc CAM_CC_IFE_LITE_AHB_CLK>,
 				 <&camcc CAM_CC_IFE_LITE_CPHY_RX_CLK>,
 				 <&camcc CAM_CC_IFE_LITE_CSID_CLK>;
-			clock-names = "camnoc_axi",
+			clock-names = "camnoc_axi_nrt",
+				      "camnoc_axi_rt",
 				      "cpas_ahb",
 				      "cpas_fast_ahb",
 				      "cpas_vfe0",
@@ -5469,7 +5483,9 @@
 				      "csiphy5",
 				      "csiphy5_timer",
 				      "csiphy_rx",
+				      "gcc_ahb_clk",
 				      "gcc_axi_hf",
+				      "gcc_axi_sf",
 				      "qdss_debug_xo",
 				      "vfe0",
 				      "vfe0_fast_ahb",
@@ -5515,12 +5531,10 @@
 					  "vfe_lite0",
 					  "vfe_lite1";
 
-			interconnects = <&gem_noc MASTER_APPSS_PROC 0
-					 &config_noc SLAVE_CAMERA_CFG 0>,
-					<&mmss_noc MASTER_CAMNOC_HF 0
-					 &mc_virt SLAVE_EBI1 0>;
+			interconnects = <&gem_noc MASTER_APPSS_PROC 0 &config_noc SLAVE_CAMERA_CFG 0>,
+					<&mmss_noc MASTER_CAMNOC_HF 0 &mc_virt SLAVE_EBI1 0>;
 			interconnect-names = "ahb",
-					     "hf_mnoc";
+					     "hf_0_mnoc";
 
 			iommus = <&apps_smmu 0x800 0x20>,
 				 <&apps_smmu 0x18a0 0x40>,
@@ -5531,7 +5545,6 @@
 					<&camcc CAM_CC_IFE_2_GDSC>,
 					<&camcc CAM_CC_TITAN_TOP_GDSC>;
 			power-domain-names = "ife0", "ife1", "ife2", "top";
-
 			status = "disabled";
 
 			ports {
@@ -5562,6 +5575,99 @@
 					reg = <5>;
 				};
 			};
+		};
+
+		icp: icp@ac00000 {
+			compatible = "qcom,sm8650-icp";
+
+			reg = <0 0x0ac00000 0 0x10000>, // ICP
+				  <0 0x0ac2c000 0 0xb000>,  // BPS
+				  <0 0x0ac42000 0 0x18000>; // IPE
+			reg-names = "icp",
+						"bps",
+						"ipe";
+
+			mboxes = <&ipcc_computel0 IPCC_CLIENT_CAM 0>;
+
+			interrupts-extended = <&intc GIC_SPI 463 IRQ_TYPE_EDGE_RISING 0>, 
+								  <&ipcc_computel0 IPCC_CLIENT_CAM 0 IRQ_TYPE_EDGE_RISING>;
+  			interrupt-names = "icp",
+							  "ipcc";
+
+			hwlocks = <&tcsr_mutex 10>; // synx hwspinlock
+
+			power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>,
+					<&camcc CAM_CC_BPS_GDSC>,
+					<&camcc CAM_CC_IPE_0_GDSC>;
+
+			clocks = 
+				<&gcc GCC_CAMERA_AHB_CLK>,
+				<&gcc GCC_CAMERA_HF_AXI_CLK>,
+				<&gcc GCC_CAMERA_SF_AXI_CLK>,
+				<&camcc CAM_CC_CPAS_AHB_CLK>,
+				<&camcc CAM_CC_CPAS_FAST_AHB_CLK>,
+				<&camcc CAM_CC_CAMNOC_AXI_RT_CLK>,
+				<&camcc CAM_CC_CAMNOC_AXI_NRT_CLK>,
+				<&camcc CAM_CC_QDSS_DEBUG_XO_CLK>,
+				// ICP clocks
+				<&camcc CAM_CC_ICP_AHB_CLK>,
+				<&camcc CAM_CC_ICP_CLK_SRC>,
+				<&camcc CAM_CC_ICP_CLK>,
+				// BPS clocks
+				<&camcc CAM_CC_BPS_AHB_CLK>,
+				<&camcc CAM_CC_BPS_FAST_AHB_CLK>,
+				<&camcc CAM_CC_BPS_CLK_SRC>,
+				<&camcc CAM_CC_BPS_CLK>,
+				<&camcc CAM_CC_CPAS_BPS_CLK>,
+				// IPE clocks
+				<&camcc CAM_CC_IPE_NPS_AHB_CLK>,
+				<&camcc CAM_CC_IPE_NPS_FAST_AHB_CLK>,
+				<&camcc CAM_CC_IPE_NPS_CLK_SRC>,
+				<&camcc CAM_CC_IPE_NPS_CLK>,
+				<&camcc CAM_CC_IPE_PPS_FAST_AHB_CLK>,
+				<&camcc CAM_CC_IPE_PPS_CLK>,
+				<&camcc CAM_CC_CPAS_IPE_NPS_CLK>;
+
+			clock-names =
+				"gcc_ahb_clk",
+				"gcc_axi_hf",
+				"gcc_axi_sf",
+				"cpas_ahb",
+				"cpas_fast_ahb",
+				"camnoc_axi_rt",
+				"camnoc_axi_nrt",
+				"qdss_debug_xo",
+				// ICP clocks
+				"icp_ahb",
+				"icp_src",
+				"icp",
+				// BPS clocks
+				"bps_ahb",
+				"bps_fast_ahb",
+				"bps_src",
+				"bps",
+				"cpas_bps",
+				// IPE clocks
+				"ipe_nps_ahb",
+				"ipe_nps_fast_ahb",
+				"ipe_nps_src",
+				"ipe_nps",
+				"ipe_pps_fast_ahb",
+				"ipe_pps",
+				"cpas_ipe_nps";
+
+			// 
+			iommus = <&apps_smmu 0x1800 0x00>, // IPE
+					 <&apps_smmu 0x1801 0x00>, // IPE
+					 <&apps_smmu 0x1820 0x00>, // BPS
+					 <&apps_smmu 0x1840 0x00>, // IPE CDM
+					 <&apps_smmu 0x1880 0x00>, // BPS CDM
+					 <&apps_smmu 0x18C0 0x00>; // ICP
+
+			interconnects = <&mmss_noc MASTER_CAMNOC_SF QCOM_ICC_TAG_ALWAYS &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
+							<&mmss_noc MASTER_CAMNOC_ICP QCOM_ICC_TAG_ALWAYS &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
+			interconnect-names = "cam_sf_0_mnoc",
+								 "cam_sf_icp_mnoc";
 		};
 
 		camcc: clock-controller@ade0000 {
