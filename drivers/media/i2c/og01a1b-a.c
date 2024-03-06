@@ -1997,8 +1997,9 @@ static int og01a1b_set_fmt(struct v4l2_subdev *sd,
 		sensor->current_mode = &og01a1b_mode_data_640x480;
 	}
 	else {
-		mutex_unlock(&sensor->lock);
-		return -1;
+		// Use the 1280x1024 register map
+		// Note that this will only work if cropping registers are set up appropriately before streaming
+	    sensor->current_mode = &og01a1b_mode_data_1280x1024;
 	}
 
 	sensor->fmt.width = fmt->format.width;
