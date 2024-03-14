@@ -1873,7 +1873,7 @@
 				remote-endpoint = <&cam_6dof_r>;
 			};
 		};
-
+#if 0
 		port@2 {
 			reg = <2>;
 			csiphy2_ep: endpoint {
@@ -1891,7 +1891,7 @@
 				remote-endpoint = <&cam_et_r>;
 			};
 		};
-
+#endif
 		port@6 {
 			reg = <6>;
 			csiphy0_combo_ep: endpoint {
