@@ -362,18 +362,6 @@
 	};
 };
 
-// Different scaling for 2S
-// TGOYEN - I am not fully sure how this comes about.
-// It definitely doesn't match the values expected by the driver.
-// I found documentation mapping 28,848 counts = 12 Amps.
-// However, this is wrong since we use 4.22k for ICHG_FB which makes 60 mA steps
-// So the correct mapping is 28,848 * 50 / 60 = 24,040 counts = 12 Amps
-// Mapping is then 12,000,000 / 24,040
-// NOTE This scaling has to be added to qcom-vadc-common.c as well
-&pm8550b_ichg_fb {
-	qcom,pre-scaling = <24040 12000000>;
-};
-
 &apps_rsc {
 	regulators-0 {
 		compatible = "qcom,pm8550-rpmh-regulators";
