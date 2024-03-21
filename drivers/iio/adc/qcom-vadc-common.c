@@ -616,13 +616,6 @@ static const struct u32_fract adc5_prescale_ratios[] = {
 	{ .numerator = 1000, .denominator = 610370 },	/* ICHG_FB_2X */
 	{ .numerator = 1000, .denominator = 366220 },	/* ICHG_FB ADC5_GEN3 */
 	{ .numerator = 1000, .denominator = 732440 },	/* ICHG_FB_2X ADC5_GEN3 */
-	// TGOYEN - I am not fully sure how this comes about.
-	// It definitely doesn't match the values expected above.
-	// I found documentation mapping 28,848 counts = 12 Amps.
-	// However, this is wrong since we use 4.22k for ICHG_FB which makes 60 mA steps
-	// So the correct mapping is 28,848 * 50 / 60 = 24,040 counts = 12 Amps
-	// Mapping is then 12,000,000 / 24,040
-	{ .numerator = 24040, .denominator = 12000000 },	/* ICHG_FB Deckard POC-F */
 };
 
 static int qcom_vadc_scale_hw_calib_volt(
