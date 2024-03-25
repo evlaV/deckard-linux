@@ -147,6 +147,12 @@ static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 			return -EINVAL;
 		}
 		break;
+	case VIDIOC_CSID_VFE_PRV_S_BPL:
+		{
+			csid->video_out.active_fmt.fmt.pix_mp.plane_fmt[0].bytesperline = (u32)arg;
+			return 0;
+		}
+		break;
 	default:
 		return -EINVAL;
 	}
