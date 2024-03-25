@@ -58,6 +58,7 @@
 #define VIDIOC_CSID_VFE_PRV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
 #define VIDIOC_CSID_VFE_PRV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
 #define VIDIOC_CSID_VFE_PRV_STATS_CFG _IO('V', BASE_VIDIOC_PRIVATE + 3)
+#define VIDIOC_CSID_VFE_PRV_S_BPL _IO('V', BASE_VIDIOC_PRIVATE + 4)  // Set bytes per line. Must be called after set format
 
 enum csid_vfe_private_register_type {
 	CSID_VFE_PRV_REG_TYPE_CSID = 0,
