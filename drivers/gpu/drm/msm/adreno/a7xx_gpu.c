@@ -161,6 +161,16 @@ static bool a7xx_idle(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
 	return true;
 }
 
+static void get_stats_counter(struct msm_ringbuffer *ring, u32 counter, u64 iova)
+{
+	OUT_PKT7(ring, CP_REG_TO_MEM, 3);
+	OUT_RING(ring, CP_REG_TO_MEM_0_REG(counter) |
+		CP_REG_TO_MEM_0_CNT(2) |
+		CP_REG_TO_MEM_0_64B);
+	OUT_RING(ring, lower_32_bits(iova));
+	OUT_RING(ring, upper_32_bits(iova));
+}
+
 /* note: only call with preempt_lock held */
 static void a7xx_preempt(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
 {
@@ -284,6 +294,7 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a7xx_gpu *a7xx_gpu = to_a7xx_gpu(adreno_gpu);
 	struct msm_ringbuffer *ring = submit->ring;
+	unsigned int index = submit->seqno % MSM_GPU_SUBMIT_STATS_COUNT;
 	unsigned int i;
 	u64 timestamp_iova;
 	unsigned long flags;
@@ -304,6 +315,9 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 
 	OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
 	OUT_RING(ring, CP_SET_THREAD_BOTH);
+
+	get_stats_counter(ring, REG_A7XX_RBBM_PERFCTR_CP(0), rbmemptr_stats(ring, index, cpcycles_start));
+	get_stats_counter(ring, REG_A7XX_CP_ALWAYS_ON_COUNTER, rbmemptr_stats(ring, index, alwayson_start));
 
 	OUT_PKT7(ring, CP_SET_MARKER, 1);
 	OUT_RING(ring, 0x101); /* IFPC disable */
@@ -344,6 +358,10 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 		OUT_PKT7(ring, CP_SET_MARKER, 1);
 		OUT_RING(ring, 0x00e); /* IB1LIST end (disables L1/L2 preemption) */
 	}
+
+	get_stats_counter(ring, REG_A7XX_RBBM_PERFCTR_CP(0), rbmemptr_stats(ring, index, cpcycles_end));
+	get_stats_counter(ring, REG_A7XX_CP_ALWAYS_ON_COUNTER, rbmemptr_stats(ring, index, alwayson_end));
+
 	OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
 	OUT_RING(ring, CP_SET_THREAD_BR);
 
@@ -590,7 +608,8 @@ static const u32 a730_protect[] = {
 	A6XX_PROTECT_NORDWR(0x00699, 0x01e9),
 	A6XX_PROTECT_NORDWR(0x008a0, 0x0008),
 	A6XX_PROTECT_NORDWR(0x008ab, 0x0024),
-	A6XX_PROTECT_RDONLY(0x008d0, 0x0170),
+	A6XX_PROTECT_RDONLY(0x008de, 0x0001),
+	A6XX_PROTECT_RDONLY(0x008e7, 0x0159),
 	A6XX_PROTECT_NORDWR(0x00900, 0x004d),
 	A6XX_PROTECT_NORDWR(0x0098d, 0x00b2),
 	A6XX_PROTECT_NORDWR(0x00a41, 0x01be),
