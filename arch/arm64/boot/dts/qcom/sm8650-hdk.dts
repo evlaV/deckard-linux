@@ -147,11 +147,6 @@
 		clocks = <&rpmhcc RPMH_RF_CLK1>;
 		clock-names = "TCXOI";
 	};
-
-	dummy_codec: dummy_codec {
-		compatible = "linux,snd-soc-dummy";
-		#sound-dai-cells = <0>;
-	};
 };
 
 &apps_rsc {
@@ -161,7 +156,11 @@
 
 		vdd-bob1-supply = <&vph_pwr>;
 		vdd-bob2-supply = <&vph_pwr>;
+		vdd-l1-l4-l10-supply = <&vreg_s6c_1p86>;
+		vdd-l2-l13-l14-supply = <&vreg_bob1>;
 		vdd-l5-l16-supply = <&vreg_bob1>;
+		vdd-l11-supply = <&vreg_s1c_1p25>;
+		vdd-l12-supply = <&vreg_s6c_1p86>;
 		vdd-l15-supply = <&vreg_s6c_1p86>;
 		vdd-l17-supply = <&vreg_bob2>;
 
@@ -540,6 +539,7 @@
 
 &pcie0 {
 	vdda-supply = <&wlan_regulator>;
+	vddpe-3v3-supply = <&vph_pwr>; // XXX
 
 	wake-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
 	perst-gpios = <&tlmm 94 GPIO_ACTIVE_LOW>;
@@ -562,6 +562,10 @@
 	vdd3-supply = <&vreg_l05b_3p1>;
 };
 
+&pm8550b_vbus {
+	status = "okay";
+};
+
 &pm8550b_typec {
 	status = "okay";
 
@@ -576,6 +580,13 @@
 		sink-pdos = <PDO_FIXED(5000, 300, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP |
 		  PDO_FIXED_USB_COMM)>;
 		op-sink-microwatt = <15000000>;
+
+		altmodes {
+			displayport {
+				svid = /bits/ 16 <0xff01>;
+				vdo = <0x00ff0006>; // XXX check this
+			};
+		};
 
 		ports {
 			#address-cells = <1>;
@@ -605,15 +616,13 @@
 				};
 			};
 
-#if 0
-			port@1 {
-				reg = <1>;
+			port@3 {
+				reg = <3>;
 
 				pm8550b_typec_mux_out: endpoint {
 					remote-endpoint = <&usb_1_qmpphy_typec_mux_in>;
 				};
 			};
-#endif
 		};
 	};
 
@@ -720,16 +729,14 @@
 &usb_dp_qmpphy {
 	vdda-phy-supply = <&vreg_l3i_1p2>;
 	vdda-pll-supply = <&vreg_l3g_0p91>;
-	//orientation-switch;
+	orientation-switch;
 
 	status = "okay";
 };
 
-#if 0
 &usb_1_qmpphy_typec_mux_in {
 	remote-endpoint = <&pm8550b_typec_mux_out>;
 };
-#endif
 
 #if 0
 &pm8550_gpios {
@@ -758,9 +765,7 @@
 #endif
 
 &lpass_vamacro {
-	//pinctrl-0 = <&dmic03_active>;
-	//pinctrl-names = "default";
-	//vdd-micb-supply = <&vreg_l14a_1p8>;
+	vdd-micb-supply = <&vph_pwr>; // DMIC not present on HDK but driver wants valid regulator
 	qcom,dmic-sample-rate = <2400000>; /* or 3200000 */
 };
 
@@ -770,7 +775,7 @@
 	<&left_spkr>, <&right_spkr>, <&swr0 0>,
 	<&lpass_wsamacro 0>,
 		 <&lpass_wsamacro 1>,
-		 <&lpass_vamacro 0>, <&dummy_codec>, <&dummy_codec>;
+		 <&lpass_vamacro 0>;
 };
 
 &swr0 {

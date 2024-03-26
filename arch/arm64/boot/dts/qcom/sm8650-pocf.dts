@@ -143,11 +143,6 @@
 		clock-names = "TCXOI";
 	};
 
-	dummy_codec: dummy_codec {
-		compatible = "linux,snd-soc-dummy";
-		#sound-dai-cells = <0>;
-	};
-
 	sbu-mux {
 		compatible = "gpio-sbu-mux";
 
@@ -899,6 +894,7 @@
 
 &pcie0 {
 	vdda-supply = <&wlan_regulator>;
+	vddpe-3v3-supply = <&VPH_PWR>; // XXX
 
 	wake-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
 	perst-gpios = <&tlmm 94 GPIO_ACTIVE_LOW>;
@@ -940,6 +936,13 @@
                     <PDO_FIXED(9000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)>;
 		op-sink-microwatt = <15000000>;
 
+		altmodes {
+			displayport {
+				svid = /bits/ 16 <0xff01>;
+				vdo = <0x00ff0006>; // XXX check this
+			};
+		};
+
 		ports {
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -968,15 +971,13 @@
 				};
 			};
 
-#if 0
-			port@1 {
-				reg = <1>;
+			port@3 {
+				reg = <3>;
 
 				pm8550b_typec_mux_out: endpoint {
 					remote-endpoint = <&usb_1_qmpphy_typec_mux_in>;
 				};
 			};
-#endif
 		};
 	};
 
@@ -1056,8 +1057,8 @@
 		// interrupts-extended = <&tlmm 31 IRQ_TYPE_EDGE_FALLING>;
 		// driver lacks support for regulators, l8c and l11c set to always on
 
-		vin0-supply = <&VDD_SENSOR_3V3>; 
-		vin1-supply = <&VREG_L15B_1P8>; 
+		vin0-supply = <&VDD_SENSOR_3V3>;
+		vin1-supply = <&VREG_L15B_1P8>;
 
 		status = "okay";
 	};
@@ -1744,17 +1745,14 @@
 &usb_dp_qmpphy {
 	vdda-phy-supply = <&VREG_L3I_1P2>;
 	vdda-pll-supply = <&VREG_L3G_0P91>;
-	//orientation-switch;
+	orientation-switch;
 
 	status = "okay";
 };
 
-#if 0
 &usb_1_qmpphy_typec_mux_in {
 	remote-endpoint = <&pm8550b_typec_mux_out>;
 };
-#endif
-
 
 &lpass_vamacro {
 	pinctrl-0 = <&dmic01_active>;
@@ -1769,7 +1767,7 @@
 	<&left_spkr>, <&right_spkr>, <&swr0 0>,
 	<&lpass_wsamacro 0>,
 		 <&lpass_wsamacro 1>,
-		 <&lpass_vamacro 0>, <&dummy_codec>, <&dummy_codec>;
+		 <&lpass_vamacro 0>;
 };
 
 &pm8550_gpios {
@@ -2165,7 +2163,7 @@
 
 	// nRF SPI interrupt and reset pins
 
-    // expansion 
+    // expansion
 	l_spihid_default_state: l-spihid-default {
 		l_irq0 {
 			pins = "gpio69";
