@@ -1734,7 +1734,8 @@ static int og01a1b_s_power(struct v4l2_subdev *sd, int on)
 
 	mutex_lock(&sensor->lock);
 
-	if(sensor->is_sync_sensor) {
+	sensor->emittersPresent = false;
+	if(false) {
 		struct i2c_client *client = sensor->i2c_client;
 		sensor->ir_emitter_mode = false;
 		sensor->last_emitter_on_ts = 0;
