@@ -409,8 +409,16 @@ static int call_s_stream(struct v4l2_subdev *sd, int enable)
 	 * .disable_streams() operation, we can use the enabled_streams field
 	 * to store the subdev streaming state.
 	 */
-	if (WARN_ON(!!sd->enabled_streams == !!enable))
+	// if (WARN_ON(!!sd->enabled_streams == !!enable))
+	// 	return 0;
+
+	// Arcturus 2024.3.26
+	// Change this warning to be more informative and avoid confusion with other errors that actually cause problems
+	if(!!sd->enabled_streams == !!enable)
+	{
+		dev_warn(sd->dev, "Double on / off detected for device:%s enable:%d sd->enabled_streams:%d\n",sd->name, enable, sd->enabled_streams);
 		return 0;
+	}
 
 #if IS_REACHABLE(CONFIG_LEDS_CLASS)
 	if (!IS_ERR_OR_NULL(sd->privacy_led)) {
