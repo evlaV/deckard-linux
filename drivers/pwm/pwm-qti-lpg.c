@@ -2058,7 +2058,7 @@ static int qpnp_lpg_probe(struct platform_device *pdev)
 
 	dev_set_drvdata(chip->dev, chip);
 	chip->pwm_chip.dev = chip->dev;
-	chip->pwm_chip.base = -1;
+	//chip->pwm_chip.base = -1;
 	chip->pwm_chip.npwm = chip->num_lpgs;
 	chip->pwm_chip.ops = &qpnp_lpg_pwm_ops;
 
