@@ -405,7 +405,7 @@ static ssize_t power_avg_recent_show(struct device *dev, struct device_attribute
 
 	// if we have samples to average, return the recent avg power
 	if (adc->data_idx) {
-		power_avg = get_power_avg(adc, 50);
+		power_avg = get_power_avg(adc, 100);
 		return scnprintf(buf, PAGE_SIZE, "%d\n", power_avg); //mw
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "0\n");
@@ -540,12 +540,45 @@ static irqreturn_t adc5_gen3_hs_isr(int irq, void *dev_id)
 		goto handler_end;
 	}
 
-	/* Determine the last channel sampled */
+	/* Determine the last channel sampled 
+       EOC status is a bit field, where a set bit indicates
+       that channel has finished a conversion */
 	last_channel = __builtin_ctz(eoc_status);
-	if (last_channel == 0 && adc->state == ADC_STATE_SAMPLING) {
-		/* Flag Transaction complete */
-		adc->state = ADC_STATE_COMPLETE;
+    // make sure we got at least one end of conversion
+    if ( last_channel > adc->nchannels ) {
+        // check for conversion fault
+        ret = adc5_read(adc, ADC5_GEN3_STATUS1, &status, 1);
+        if (ret < 0) {
+            pr_err("adc read status1 failed with %d\n", ret);
+            goto handler_end;
+        }
 
+        if (status & ADC5_GEN3_STATUS1_CONV_FAULT) {
+            pr_err_ratelimited("Unexpected conversion fault, status:%#x, eoc_status:%#x\n", status, eoc_status);
+
+            /* Clear Active Conversion */
+            adc->state = ADC_STATE_IDLE;
+
+            val = ADC5_GEN3_CONV_ERR_CLR_REQ;
+            ret = adc5_write(adc, ADC5_GEN3_CONV_ERR_CLR, &val, 1);
+            if (ret < 0)
+                goto handler_end;
+
+            /* To indicate conversion request is only to clear a status */
+            val = 0;
+            ret = adc5_write(adc, ADC5_GEN3_PERPH_CH, &val, 1);
+            if (ret < 0)
+                goto handler_end;
+
+            val = ADC5_GEN3_CONV_REQ_REQ;
+            ret = adc5_write(adc, ADC5_GEN3_CONV_REQ, &val, 1);
+            if (ret < 0)
+                goto handler_end;
+        } else {
+            goto handler_end;
+        }
+
+    } else if ( adc->state == ADC_STATE_SAMPLING ) {
 		/* Clear EOC Status and let the PMK now conversion is complete */
 		val = 0;
 		adc5_write(adc, ADC5_GEN3_EOC_STS, &val, 1);
@@ -553,39 +586,15 @@ static irqreturn_t adc5_gen3_hs_isr(int irq, void *dev_id)
 		val = ADC5_GEN3_CONV_REQ_REQ;
 		adc5_write(adc, ADC5_GEN3_CONV_REQ, &val, 1);
 
-	} else if (adc->state == ADC_STATE_SAMPLING) {
-		/* Sample the next channel */
-		adc5_gen3_hs_sample_channel(adc, &adc->chan_props[last_channel - 1]);
-	}
-
-	ret = adc5_read(adc, ADC5_GEN3_STATUS1, &status, 1);
-	if (ret < 0) {
-		pr_err("adc read status1 failed with %d\n", ret);
-		goto handler_end;
-	}
-
-	if (status & ADC5_GEN3_STATUS1_CONV_FAULT) {
-		pr_err_ratelimited("Unexpected conversion fault, status:%#x, eoc_status:%#x\n", status, eoc_status);
-
-		/* Clear Active Conversion */
-		adc->state = ADC_STATE_IDLE;
-
-		val = ADC5_GEN3_CONV_ERR_CLR_REQ;
-		ret = adc5_write(adc, ADC5_GEN3_CONV_ERR_CLR, &val, 1);
-		if (ret < 0)
-			goto handler_end;
-
-		/* To indicate conversion request is only to clear a status */
-		val = 0;
-		ret = adc5_write(adc, ADC5_GEN3_PERPH_CH, &val, 1);
-		if (ret < 0)
-			goto handler_end;
-
-		val = ADC5_GEN3_CONV_REQ_REQ;
-		ret = adc5_write(adc, ADC5_GEN3_CONV_REQ, &val, 1);
-		if (ret < 0)
-			goto handler_end;
-	}
+        // we finished our last channel conversion
+        if ( last_channel == 0 ) {
+            /* Flag Transaction complete */
+            adc->state = ADC_STATE_COMPLETE;
+        } else {
+            /* Sample the next channel */
+		    adc5_gen3_hs_sample_channel(adc, &adc->chan_props[last_channel - 1]);
+        }
+    }
 
 	return IRQ_HANDLED;
 
@@ -957,7 +966,7 @@ static enum hrtimer_restart adc5_gen3_hs_start_sample(struct hrtimer *timer)
 	/* Flag Conversion Active */
 	adc->state = ADC_STATE_SAMPLING;
 
-	/* Queue the Conversion on the last channel */
+	/* Queue the Conversion on the last ( highest index ) channel */
 	if (adc->nchannels == 4 && (adc->include_usb || !adc->timer_state)) {
 		/* if we have 4 channels and usb is turned on or we are in slow mode,
 		 * Then Start with Current */
