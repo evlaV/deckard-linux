@@ -1982,6 +1982,9 @@ EXPORT_SYMBOL(drm_fb_helper_hotplug_event);
  */
 void drm_fb_helper_lastclose(struct drm_device *dev)
 {
+	if (drm_has_active_plane(dev))
+		return;
+
 	drm_fb_helper_restore_fbdev_mode_unlocked(dev->fb_helper);
 }
 EXPORT_SYMBOL(drm_fb_helper_lastclose);

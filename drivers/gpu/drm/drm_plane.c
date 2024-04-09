@@ -984,6 +984,27 @@ static int __setplane_check(struct drm_plane *plane,
 }
 
 /**
+ * drm_has_active_plane - check whether any planes are currently active
+ * @dev: the DRM device
+ *
+ * Return true if any planes are currently active
+ */
+bool drm_has_active_plane(struct drm_device *dev)
+{
+	struct drm_plane *plane;
+
+	drm_for_each_plane(plane, dev) {
+		if (plane->state && plane->state->crtc && plane->state->fb)
+			return true;
+		if (plane->crtc && plane->fb)
+			return true;
+	}
+
+	return false;
+}
+EXPORT_SYMBOL(drm_has_active_plane);
+
+/**
  * drm_any_plane_has_format - Check whether any plane supports this format and modifier combination
  * @dev: DRM device
  * @format: pixel format (DRM_FORMAT_*)
