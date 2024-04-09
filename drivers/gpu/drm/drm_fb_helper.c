@@ -1888,3 +1888,19 @@ bool drm_fb_helper_gem_is_fb(const struct drm_fb_helper *fb_helper,
 	return gem == obj;
 }
 EXPORT_SYMBOL_GPL(drm_fb_helper_gem_is_fb);
+
+/**
+ * drm_fb_helper_lastclose - DRM driver lastclose helper for fbdev emulation
+ * @dev: DRM device
+ *
+ * This function is obsolete. Call drm_fb_helper_restore_fbdev_mode_unlocked()
+ * instead.
+ */
+void drm_fb_helper_lastclose(struct drm_device *dev)
+{
+	if (drm_has_active_plane(dev))
+		return;
+
+	drm_fb_helper_restore_fbdev_mode_unlocked(dev->fb_helper);
+}
+EXPORT_SYMBOL(drm_fb_helper_lastclose);
