@@ -947,7 +947,9 @@ static enum hrtimer_restart adc5_gen3_hs_start_sample(struct hrtimer *timer)
 		adc->data_idx++;
 
 		if (adc->data_idx >= ARRAY_SIZE(adc->sample_data)) {
-			pr_info("battery power profile wrapping data_idx: %d\n", adc->data_idx);
+			if(!adc->wrapbuffer){
+				pr_info("battery power profile wrapping data_idx: %d\n", adc->data_idx);
+			}
 			adc->wrapbuffer = 1;
 			adc->data_idx = 0;
 		}
