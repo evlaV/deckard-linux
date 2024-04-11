@@ -61,9 +61,9 @@ struct dpu_kms {
 
 	/* drm state */
 	struct dpu_plane plane[8];
-	struct dpu_crtc crtc[3];
+	struct dpu_crtc crtc[4];
 	struct drm_encoder encoder[2];
-	struct drm_writeback_connector writeback;
+	struct drm_writeback_connector writeback[2];
 
 	/* hw parameters (derived from DPU version) */
 	u8 num_blendstages, num_sspp;
@@ -71,7 +71,6 @@ struct dpu_kms {
 	u64 creq_lut_linear;
 	u64 creq_lut_macrotile;
 	int qos_enable;
-	int cwb_plane_select;
 };
 #define to_dpu_kms(x) container_of(x, struct dpu_kms, base)
 
@@ -101,4 +100,4 @@ void dpu_complete_flip(struct dpu_kms *dpu, struct dpu_crtc *c);
 int dpu_crtc_init(struct dpu_kms *dpu, struct drm_crtc *crtc, struct drm_plane *plane);
 int dpu_plane_init(struct dpu_kms *dpu, struct drm_plane *plane);
 
-void wb_set_framebuffer(struct dpu_kms *dpu, struct drm_framebuffer *fb);
+void wb_set_framebuffer(struct dpu_kms *dpu, unsigned i, struct drm_framebuffer *fb, int cdm_mux);

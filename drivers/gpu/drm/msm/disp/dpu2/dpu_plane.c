@@ -92,6 +92,11 @@ static void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer
 	addr[0] = msm_framebuffer_iova(fb, dpu->base.aspace, 0);
 	pitch[0] = fb->pitches[0];
 
+	if (fb->format->format == DRM_FORMAT_NV12) {
+		addr[1] = msm_framebuffer_iova(fb, dpu->base.aspace, 1);
+		pitch[1] = fb->pitches[1];
+	}
+
 	if (fb->modifier == DRM_FORMAT_MOD_QCOM_COMPRESSED) {
 		/*
 		 * UBWC plane in addr[2]/pitch[2], but comes before in memory
@@ -260,26 +265,26 @@ sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
 	dpu_write(dpu, SSPP_SAFE_LUT(i), 0);
 }
 
-void wb_set_framebuffer(struct dpu_kms *dpu, struct drm_framebuffer *fb)
+void wb_set_framebuffer(struct dpu_kms *dpu, unsigned i, struct drm_framebuffer *fb, int cdm_mux)
 {
 	const struct drm_format_info *fmt = fb->format;
-	u32 src_format, unpack_pattern;
+	u32 dst_format, unpack_pattern;
 
 	switch (fmt->format >> 16) {
 	case DRM_FORMAT_ABGR8888 >> 16:
 	default:
-		src_format = SRC_FORMAT(8, 8, 8, 8);
+		dst_format = SRC_FORMAT(8, 8, 8, 8);
 		if (fmt->cpp[0] == 3)
-			src_format = SRC_FORMAT(8, 8, 8, 0);
+			dst_format = SRC_FORMAT(8, 8, 8, 0);
 		break;
 	case DRM_FORMAT_BGR565 >> 16:
-		src_format = SRC_FORMAT(5, 6, 5, 0);
+		dst_format = SRC_FORMAT(5, 6, 5, 0);
 		break;
 	case DRM_FORMAT_ABGR1555 >> 16:
-		src_format = SRC_FORMAT(5, 5, 5, 1);
+		dst_format = SRC_FORMAT(5, 5, 5, 1);
 		break;
 	case DRM_FORMAT_ABGR4444 >> 16:
-		src_format = SRC_FORMAT(4, 4, 4, 4);
+		dst_format = SRC_FORMAT(4, 4, 4, 4);
 		break;
 	}
 
@@ -305,13 +310,66 @@ void wb_set_framebuffer(struct dpu_kms *dpu, struct drm_framebuffer *fb)
 		break;
 	}
 
-	dpu_write(dpu, WB_DST_FORMAT, src_format);
-	dpu_write(dpu, WB_DST_OP_MODE, 0); // ubwc
-	dpu_write(dpu, WB_DST_PACK_PATTERN, unpack_pattern);
+	if (dst_format & BIT(12)) {
+		dst_format |= BIT(8); /* DSTC3_EN */
+		dst_format |= BIT(14); /* DST_ALPHA_X */
+	}
 
-	set_framebuffer(dpu, WB_DST0_ADDR, fb);
+	if (fmt->format == DRM_FORMAT_NV12 && i == 0) {
+		dpu_write(dpu, WB_DST_FORMAT(i), 0x192923f);
+		dpu_write(dpu, WB_DST_PACK_PATTERN(i), 0x0201);
 
-	dpu_write(dpu, WB_OUT_IMAGE_SIZE, fb->height << 16 | fb->width);
+		// CSC, settings from downstream driver, coefficients for bt 601 limited range
+		dpu_write(dpu, CDM_CSC_10_OPMODE, BIT(0) | BIT(2)); // dst format=1, src_format=0, enable=1
+		dpu_write(dpu, CDM_CSC_10_MATRIX_COEFF_0, 0x0083 | 0x0102 << 16);
+		dpu_write(dpu, CDM_CSC_10_MATRIX_COEFF_1, 0x0032 | 0x1fb5 << 16);
+		dpu_write(dpu, CDM_CSC_10_MATRIX_COEFF_2, 0x1f6c | 0x00e1 << 16);
+		dpu_write(dpu, CDM_CSC_10_MATRIX_COEFF_3, 0x00e1 | 0x1f45 << 16);
+		dpu_write(dpu, CDM_CSC_10_MATRIX_COEFF_4, 0x1fdc);
+
+		// pre-clamp: none (full 10-bit range)
+		dpu_write(dpu, CDM_CSC_10_COMP_0_PRE_CLAMP, 0x000 << 16 | 0x3ff);
+		dpu_write(dpu, CDM_CSC_10_COMP_1_PRE_CLAMP, 0x000 << 16 | 0x3ff);
+		dpu_write(dpu, CDM_CSC_10_COMP_2_PRE_CLAMP, 0x000 << 16 | 0x3ff);
+
+		// post-clamp: clamp for limited range
+		dpu_write(dpu, CDM_CSC_10_COMP_0_POST_CLAMP, 0x040 << 16 | 0x3ac);
+		dpu_write(dpu, CDM_CSC_10_COMP_1_POST_CLAMP, 0x040 << 16 | 0x3c0);
+		dpu_write(dpu, CDM_CSC_10_COMP_2_POST_CLAMP, 0x040 << 16 | 0x3c0);
+
+		// pre-bias: none
+		dpu_write(dpu, CDM_CSC_10_COMP_0_PRE_BIAS, 0);
+		dpu_write(dpu, CDM_CSC_10_COMP_1_PRE_BIAS, 0);
+		dpu_write(dpu, CDM_CSC_10_COMP_2_PRE_BIAS, 0);
+
+		// post-bias: CSC coefficients
+		dpu_write(dpu, CDM_CSC_10_COMP_0_POST_BIAS, 0x0040); // +0.625
+		dpu_write(dpu, CDM_CSC_10_COMP_1_POST_BIAS, 0x0200); // +0.5
+		dpu_write(dpu, CDM_CSC_10_COMP_2_POST_BIAS, 0x0200); // +0.5
+
+		// chroma down for NV12, using average method
+		dpu_write(dpu, CDM_CDWN2_OUT_SIZE, fb->height << 16 | fb->width);
+		dpu_write(dpu, CDM_CDWN2_OP_MODE, 0x87);//BIT(7) | BIT(1) | BIT(0) | 1 << 3 | 1 << 5);
+		dpu_write(dpu, CDM_CDWN2_CLAMP_OUT, ((0x3FF << 16) | 0x0));
+
+		dpu_write(dpu, CDM_HDMI_PACK_OP_MODE, 0); // ???
+		dpu_write(dpu, CDM_MUX, cdm_mux);
+	} else {
+		dpu_write(dpu, WB_DST_FORMAT(i), dst_format);
+		dpu_write(dpu, WB_DST_OP_MODE(i), 0); // ubwc
+		dpu_write(dpu, WB_DST_PACK_PATTERN(i), unpack_pattern);
+
+		if (i == 0) {
+			dpu_write(dpu, CDM_CDWN2_OP_MODE, 0);
+			dpu_write(dpu, CDM_CSC_10_OPMODE, 0);
+		}
+	}
+
+	set_framebuffer(dpu, WB_DST0_ADDR(i), fb);
+
+	dpu_write(dpu, WB_OUT_XY(i), 0);
+	dpu_write(dpu, WB_OUT_SIZE(i), fb->height << 16 | fb->width);
+	dpu_write(dpu, WB_OUT_IMAGE_SIZE(i), fb->height << 16 | fb->width);
 }
 
 void

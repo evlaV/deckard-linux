@@ -24,7 +24,6 @@ static void
 dpu_encoder_enable(struct drm_encoder *encoder)
 {
 	struct msm_drm_private *priv = encoder->dev->dev_private;
-	int ret;
 
 	if (encoder->encoder_type == DRM_MODE_ENCODER_VIRTUAL) {
 	} else if (encoder->encoder_type == DRM_MODE_ENCODER_TMDS) {
@@ -39,7 +38,6 @@ static void
 dpu_encoder_disable(struct drm_encoder *encoder)
 {
 	struct msm_drm_private *priv = encoder->dev->dev_private;
-	int ret;
 
 	if (encoder->encoder_type == DRM_MODE_ENCODER_VIRTUAL) {
 	} else if (encoder->encoder_type == DRM_MODE_ENCODER_TMDS) {
@@ -115,6 +113,7 @@ static const u32 writeback_formats[] = {
 	DRM_FORMAT_XBGR4444,
 	DRM_FORMAT_RGBX4444,
 	DRM_FORMAT_BGRX4444,
+	DRM_FORMAT_NV12,
 };
 
 static const struct drm_connector_funcs wb_connector_funcs = {
@@ -125,7 +124,6 @@ static const struct drm_connector_funcs wb_connector_funcs = {
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
 };
 
-#if 0
 static int wb_connector_get_modes(struct drm_connector *connector)
 {
 	struct drm_device *dev = connector->dev;
@@ -172,7 +170,6 @@ static const struct drm_connector_helper_funcs wb_conn_helper_funcs = {
 	.cleanup_writeback_job = wb_cleanup_job,
 	.atomic_commit = wb_atomic_commit,
 };
-#endif
 
 static int dpu_kms_hw_init(struct msm_kms *kms)
 {
@@ -236,16 +233,16 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		return rc;
 	}
 
-#if 0
-	drm_connector_helper_add(&dpu->writeback.base, &wb_conn_helper_funcs);
+	for (i = 0; i < 2; i++) {
+		drm_connector_helper_add(&dpu->writeback[i].base, &wb_conn_helper_funcs);
 
-	rc = drm_writeback_connector_init(dev, &dpu->writeback, &wb_connector_funcs,
-		&dpu_encoder_helper_funcs, writeback_formats, ARRAY_SIZE(writeback_formats), BIT(2));
-	if (rc) {
-		DRM_ERROR("writeback init failed, rc = %d\n", rc);
-		return rc;
+		rc = drm_writeback_connector_init(dev, &dpu->writeback[i], &wb_connector_funcs,
+			&dpu_encoder_helper_funcs, writeback_formats, ARRAY_SIZE(writeback_formats), BIT(2+i));
+		if (rc) {
+			DRM_ERROR("writeback init failed, rc = %d\n", rc);
+			return rc;
+		}
 	}
-#endif
 
 	for (i = 0; i < ARRAY_SIZE(priv->dsi); i++) {
 		if (!priv->dsi[i])
@@ -283,7 +280,7 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		dpu->plane[i].id = i;
 	}
 
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < 4; i++) {
 		rc = dpu_crtc_init(dpu, &dpu->crtc[i].base, &dpu->plane[0].base);
 		if (rc) {
 			DRM_ERROR("crtc init failed, rc = %d\n", rc);
@@ -293,16 +290,16 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 
 	dpu->encoder[0].possible_crtcs |= 1;
 	dpu->encoder[1].possible_crtcs |= 2;
-	dpu->writeback.encoder.possible_crtcs |= 4;
 
 	init_waitqueue_head(&dpu->crtc[0].pending_kickoff_wq);
 	init_waitqueue_head(&dpu->crtc[1].pending_kickoff_wq);
 	init_waitqueue_head(&dpu->crtc[2].pending_kickoff_wq);
+	init_waitqueue_head(&dpu->crtc[3].pending_kickoff_wq);
 
 	vbif_write(dpu, VBIF_OUT_AXI_AMEMTYPE_CONF0, 0x33333333);
 	vbif_write(dpu, VBIF_OUT_AXI_AMEMTYPE_CONF1, 0x33333333);
 
-	dpu->intr_en = 0;//INTF_VSYNC(0) | INTF_VSYNC(1);
+	dpu->intr_en = INTF_WB_1_DONE | INTF_WB_2_DONE;
 	dpu->intr2_en = 0;//INTR2_CTL_START(0) | INTR2_CTL_START(2);
 
 	spin_lock_init(&dpu->irq_lock);
@@ -328,11 +325,16 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 
 	dpu->crtc[2].ctl = 4;
 	dpu->crtc[2].intf = 0xff;
-	dpu->crtc[2].lm = 0;
+	dpu->crtc[2].lm = 4;
 	dpu->crtc[2].is_wb = true;
 
+	dpu->crtc[3].ctl = 5;
+	dpu->crtc[3].intf = 0xff;
+	dpu->crtc[3].lm = 5;
+	dpu->crtc[3].is_wb = true;
+
 	/* used by msm_drv.c */
-	priv->num_crtcs = 3;
+	priv->num_crtcs = 4;
 
 	//pm_runtime_put_sync(&dpu_kms->pdev->dev);
 
@@ -392,8 +394,14 @@ static irqreturn_t dpu_irq(struct msm_kms *kms)
 		dpu_vblank(dpu, &dpu->crtc[0]);
 	}
 
+	if (status1 & INTF_WB_1_DONE) {
+		//printk("WB_1 done\n");
+		drm_writeback_signal_completion(&dpu->writeback[0], 0);
+	}
+
 	if (status1 & INTF_WB_2_DONE) {
-		drm_writeback_signal_completion(&dpu->writeback, 0);
+		//printk("WB_2 done\n");
+		drm_writeback_signal_completion(&dpu->writeback[1], 0);
 	}
 
 	if (status2 & INTR2_CTL_START(0)) {
@@ -412,6 +420,12 @@ static irqreturn_t dpu_irq(struct msm_kms *kms)
 		wake_up_all(&dpu->crtc[2].pending_kickoff_wq);
 		dpu_toggle_start_irq(dpu, 4, false);
 		dpu_complete_flip(dpu, &dpu->crtc[2]);
+	}
+
+	if (status2 & INTR2_CTL_START(5)) {
+		wake_up_all(&dpu->crtc[3].pending_kickoff_wq);
+		dpu_toggle_start_irq(dpu, 5, false);
+		dpu_complete_flip(dpu, &dpu->crtc[3]);
 	}
 
 	return IRQ_HANDLED;

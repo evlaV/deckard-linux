@@ -347,7 +347,7 @@ static void
 mixer_set_blendfunc(struct dpu_kms *dpu, u32 i, u32 stage)
 {
 #ifdef SIXPLANEMODE
-	u32 alpha_const = 0xff << 16 | 0xff; /* fg_const = 0xff, bg_const = 0 */	
+	u32 alpha_const = 0xff << 16 | 0xff; /* fg_const = 0xff, bg_const = 0 */
 #else
 	u32 alpha_const = 0xff << 16 | 0; /* fg_const = 0xff, bg_const = 0 */
 #endif
@@ -446,7 +446,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 
 	if (c->is_dual_dsi && is_dsc)
 		num_mixers = 4;
-	else if (c->is_dp || c->is_dual_dsi || 1)
+	else if (c->is_dp || c->is_dual_dsi)
 		num_mixers = 2;
 	else
 		num_mixers = 1;
@@ -454,7 +454,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 	num_mixercfg = num_mixers >= 2 ? 2 : 1;
 #else
 	num_mixercfg = num_mixers;
-#endif		
+#endif
 
 	if (num_mixercfg == 4) {
 		mixer_rect[0] = (struct drm_rect) {
@@ -470,22 +470,12 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 			3240, 0, 4320, mode->vdisplay,
 		};
 	} else if (num_mixercfg == 2) {
-		if(dpu->cwb_plane_select) {
-			mixer_rect[1] = (struct drm_rect) {
-				0, 0, mode->hdisplay / 2, mode->vdisplay,
-			};
-			mixer_rect[0] = (struct drm_rect) {
-				mode->hdisplay / 2, 0, mode->hdisplay, mode->vdisplay,
-			};
-		}
-		else {
-			mixer_rect[0] = (struct drm_rect) {
-				0, 0, mode->hdisplay / 2, mode->vdisplay,
-			};
-			mixer_rect[1] = (struct drm_rect) {
-				mode->hdisplay / 2, 0, mode->hdisplay, mode->vdisplay,
-			};
-		}
+		mixer_rect[0] = (struct drm_rect) {
+			0, 0, mode->hdisplay / 2, mode->vdisplay,
+		};
+		mixer_rect[1] = (struct drm_rect) {
+			mode->hdisplay / 2, 0, mode->hdisplay, mode->vdisplay,
+		};
 	} else {
 		mixer_rect[0] = (struct drm_rect) {
 			0, 0, mode->hdisplay, mode->vdisplay,
@@ -548,7 +538,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 	} else {
 		drm_atomic_crtc_for_each_plane(plane, crtc) {
 			u32 stage = plane->state->normalized_zpos;
-			u32 mixercfg_id = dpu->cwb_plane_select;
+			u32 mixercfg_id = 0;
 			if (c->is_dual_dsi && plane->state->dst.x1 >= mixer_rect[!mixercfg_id].x1)
 				mixercfg_id = !mixercfg_id;
 
@@ -622,6 +612,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 	}
 #endif
 
+	// XXX skip this for CWB, doesn't use a mixer
 	for (i = c->lm; i < c->lm + num_mixers; i++) {
 	#ifdef SIXPLANEMODE
 		u32 cfg_index = num_mixercfg > 1 ? (i >= c->lm + num_mixers/2) : 0;
@@ -629,7 +620,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 	#else
 		u32 cfg_index = i - c->lm;//num_mixercfg > 1 ? (i >= c->lm + num_mixers/2) : 0;
 		u32 op_mode = mixer_op_mode;
-	#endif		
+	#endif
 
 		/* right mixer bit for paired mixers */
 		if ((i & 1) && (num_mixers != num_mixercfg))
@@ -659,7 +650,8 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 	}
 
 	if (c->is_wb) {
-		struct drm_connector_state *conn_state = dpu->writeback.base.state;
+		u32 i = (c == &dpu->crtc[3] ? 1 : 0);
+		struct drm_connector_state *conn_state = dpu->writeback[i].base.state;
 #ifdef SIXPLANEMODE
 		bool is_cwb = (num_planes == 0 && mode->hdisplay == 2160 && mode->vdisplay == 2160);
 #else
@@ -669,7 +661,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 		if (is_cwb) {
 			WARN_ON(!conn_state->writeback_job);
 			conn_state->writeback_job->priv = (void*) (size_t) 1; // any non-zero value
-			drm_writeback_queue_job(&dpu->writeback, conn_state);
+			drm_writeback_queue_job(&dpu->writeback[i], conn_state);
 		}
 
 		if (!conn_state->writeback_job) { // note this includes cwb case
@@ -682,39 +674,42 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 			return;
 		}
 
+
 		WARN_ON(!conn_state->writeback_job);
 
-		dpu_write(dpu, WB_DST_WRITE_CONFIG, 0); // ubwc
-		dpu_write(dpu, WB_DST_ADDR_SW_STATUS, 0); // secure
-		dpu_write(dpu, WB_ALPHA_X_VALUE, 0xff);
+		dpu_write(dpu, WB_DST_WRITE_CONFIG(i), 0); // ubwc
+		dpu_write(dpu, WB_DST_ADDR_SW_STATUS(i), 0); // secure
+		dpu_write(dpu, WB_ALPHA_X_VALUE(i), 0xff);
 
-		dpu_write(dpu, WB_DANGER_LUT, 0);
-		dpu_write(dpu, WB_SAFE_LUT, 0xffff);
-		dpu_write(dpu, WB_CREQ_LUT_0, 0);
-		dpu_write(dpu, WB_CREQ_LUT_1, 0);
-		dpu_write(dpu, WB_QOS_CTRL, 0);
+		dpu_write(dpu, WB_DANGER_LUT(i), 0);
+		dpu_write(dpu, WB_SAFE_LUT(i), 0xffff);
+		dpu_write(dpu, WB_CREQ_LUT_0(i), 0);
+		dpu_write(dpu, WB_CREQ_LUT_1(i), 0);
+		dpu_write(dpu, WB_QOS_CTRL(i), 0);
 
 		//printk("writeback %dx%d %d\n", mode->hdisplay, mode->vdisplay, !!conn_state->writeback_job->fb);
 
-		wb_set_framebuffer(dpu, conn_state->writeback_job->fb);
+		wb_set_framebuffer(dpu, i, conn_state->writeback_job->fb, c->lm);
 
-		dpu_write(dpu, WB_MUX, c->lm);
-		dpu_write(dpu, CTL_WB_ACTIVE(c->ctl), BIT(2));
-		dpu_write(dpu, CTL_WB_FLUSH(c->ctl), BIT(2));
-		dpu_write(dpu, CTL_CDM_ACTIVE(c->ctl), BIT(0));
-		dpu_write(dpu, CTL_CDM_FLUSH(c->ctl), BIT(0));
+		dpu_write(dpu, WB_MUX(i), c->lm);
+		dpu_write(dpu, CTL_WB_ACTIVE(c->ctl), BIT(1+i));
+		dpu_write(dpu, CTL_WB_FLUSH(c->ctl), BIT(1+i));
 		ctl_flush |= BIT(16); // flush WB
-		ctl_flush |= BIT(26); // flush CDM
+		if (i == 0) {
+			dpu_write(dpu, CTL_CDM_ACTIVE(c->ctl), BIT(0));
+			dpu_write(dpu, CTL_CDM_FLUSH(c->ctl), BIT(0));
+			ctl_flush |= BIT(26); // flush CDM
+		}
 
-		drm_writeback_queue_job(&dpu->writeback, conn_state);
+		drm_writeback_queue_job(&dpu->writeback[i], conn_state);
 	} else if (state->mode_changed) {
 		intf_timings(dpu, c->intf, mode, c->is_dual_dsi, c->is_dp, is_dsc);
 		/* low 4 bits idx of pp block, or 0xf disable */
-		dpu_write(dpu, INTF_MUX(c->intf),         ( dpu->cwb_plane_select ? (0xF0000 | (c->lm + num_mixers/2)) : (0xF0000 | c->lm) ) );
+		dpu_write(dpu, INTF_MUX(c->intf), 0xF0000 | c->lm);
 		intf_active = BIT(c->intf);
 		if (c->is_dual_dsi) {
 			intf_timings(dpu, c->intf + 1, mode, c->is_dual_dsi, c->is_dp, is_dsc);
-			dpu_write(dpu, INTF_MUX(c->intf + 1), ( dpu->cwb_plane_select ? (0xF0000 | c->lm) : (0xF0000 | (c->lm + num_mixers/2)) ) ); // XXX
+			dpu_write(dpu, INTF_MUX(c->intf + 1), 0xF0000 | (c->lm + num_mixers/2)); // XXX
 			intf_active |= BIT(c->intf + 1);
 		}
 		dpu_write(dpu, CTL_INTF_ACTIVE(c->ctl), intf_active);
@@ -753,6 +748,61 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 		}
 		dpu_write(dpu, CTL_MERGE_3D_ACTIVE(c->ctl), merge3d_active);
 		dpu_write(dpu, CTL_MERGE_3D_FLUSH(c->ctl), 0x7); /* bitmask of MERGE3D flushed */
+	}
+
+	for (i = 0; i < 2; i++) {
+		if (c->is_dual_dsi && !list_empty(&dpu->writeback[i].job_queue)) {
+			// check for a pending CWB job
+			struct drm_writeback_job *job = list_first_entry(&dpu->writeback[i].job_queue, struct drm_writeback_job, list_entry);
+			// non-NULL "priv" indicates CWB job
+			if (!job->priv) {
+				// also check the next entry (required not to skip frame)
+				if (list_is_last(&job->list_entry, &dpu->writeback[i].job_queue))
+					goto not_cwb;
+
+				job = list_next_entry(job, list_entry);
+				if (!job->priv)
+					goto not_cwb;
+			}
+
+			dpu_write(dpu, WB_DST_WRITE_CONFIG(i), 0); // ubwc
+			dpu_write(dpu, WB_DST_ADDR_SW_STATUS(i), 0); // secure
+			dpu_write(dpu, WB_ALPHA_X_VALUE(i), 0xff);
+
+			dpu_write(dpu, WB_DANGER_LUT(i), 0);
+			dpu_write(dpu, WB_SAFE_LUT(i), 0xffff);
+			dpu_write(dpu, WB_CREQ_LUT_0(i), 0);
+			dpu_write(dpu, WB_CREQ_LUT_1(i), 0);
+			dpu_write(dpu, WB_QOS_CTRL(i), 0);
+
+			wb_set_framebuffer(dpu, i, job->fb, i ? 0xb : 0xd);
+
+			dpu_write(dpu, WB_MUX(i), i ? 0xb : 0xd); // DCWB
+			dpu_write(dpu, CTL_WB_ACTIVE(c->ctl), BIT(1+i));
+			dpu_write(dpu, CTL_WB_FLUSH(c->ctl), BIT(1+i));
+			ctl_flush |= BIT(16); // flush WB
+			if (i == 0) {
+				dpu_write(dpu, CTL_CDM_ACTIVE(c->ctl), BIT(0));
+				dpu_write(dpu, CTL_CDM_FLUSH(c->ctl), BIT(0));
+				ctl_flush |= BIT(26); // flush CDM
+			}
+
+			dpu_write(dpu, MERGE_3D_CWB_MODE(i), 3);
+			dpu_write(dpu, MERGE_3D_CWB_MUX(i), 0);
+
+			dpu_write(dpu, CWB_MUX(i, 0), c->lm + i*2);
+			dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
+
+			dpu_write(dpu, CWB_MUX(i, 1), c->lm + i*2+1);
+			dpu_write(dpu, CWB_MODE(i, 1), 0);
+
+			dpu_write(dpu, CTL_CWB_ACTIVE(c->ctl), 3 << (i*2));
+			dpu_write(dpu, CTL_CWB_FLUSH(c->ctl), 3 << (i*2));
+			ctl_flush |= BIT(28); // flush CWB
+
+			job->priv = NULL;
+		not_cwb:;
+		}
 	}
 
 	dpu_write(dpu, CTL_FETCH_PIPE_ACTIVE(c->ctl), fetch_pipe_active);
