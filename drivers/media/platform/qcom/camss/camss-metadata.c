@@ -45,7 +45,7 @@ static int video_queue_setup(struct vb2_queue *vq,
 	*num_planes = 1;
 
 	*num_buffers = clamp_t(u32, *num_buffers, 2,
-			       8);
+			       32);
 
 	sizes[0] = sizeof(struct metdata_data_buffer);
 
@@ -139,7 +139,7 @@ static void video_stop_streaming(struct vb2_queue *q)
 	struct metadata_buffer *metada_buf;
 	unsigned int i;
 	spin_lock_irq(&metadata->lock);
-	for (i = 0; i < 8; i++) {
+	for (i = 0; i < 32; i++) {
 		if (list_empty(&metadata->metadata))
 			break;
 		metada_buf = list_first_entry(&metadata->metadata,
