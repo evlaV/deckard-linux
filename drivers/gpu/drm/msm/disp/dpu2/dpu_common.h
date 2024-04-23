@@ -14,7 +14,9 @@
 
 #include "dpu_hw_regs.h"
 
+#ifndef SIXPLANEMODE
 #define SIXPLANEMODE
+#endif
 
 struct dpu_crtc {
 	struct drm_crtc base;

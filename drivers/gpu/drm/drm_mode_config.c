@@ -34,6 +34,10 @@
 #include "drm_crtc_internal.h"
 #include "drm_internal.h"
 
+#ifndef SIXPLANEMODE
+#define SIXPLANEMODE
+#endif
+
 int drm_modeset_register_all(struct drm_device *dev)
 {
 	int ret;
@@ -667,9 +671,13 @@ void drm_mode_config_validate(struct drm_device *dev)
 			     "Bogus primary plane possible_crtcs: [PLANE:%d:%s] must be compatible with [CRTC:%d:%s]\n",
 			     crtc->primary->base.id, crtc->primary->name,
 			     crtc->base.id, crtc->name);
+#ifndef SIXPLANEMODE
+//suppress warning on setup where
+//we have multiple planes
 			WARN(primary_with_crtc & drm_plane_mask(crtc->primary),
 			     "Primary plane [PLANE:%d:%s] used for multiple CRTCs",
 			     crtc->primary->base.id, crtc->primary->name);
+#endif
 			primary_with_crtc |= drm_plane_mask(crtc->primary);
 		}
 		if (crtc->cursor) {
@@ -688,8 +696,9 @@ void drm_mode_config_validate(struct drm_device *dev)
 		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
 			num_primary++;
 	}
-
+#ifndef SIXPLANEMODE
 	WARN(num_primary != dev->mode_config.num_crtc,
 	     "Must have as many primary planes as there are CRTCs, but have %u primary planes and %u CRTCs",
 	     num_primary, dev->mode_config.num_crtc);
+#endif
 }
