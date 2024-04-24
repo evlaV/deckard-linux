@@ -402,6 +402,19 @@ config BATTERY_MAX17042
 
 	  Driver can be build as a module (max17042_battery).
 
+config BATTERY_MAX1720X
+	tristate "MAX1720X/MAX1730X/MAX17320/MAX17330/MAX17332 standalone gas-gauge"
+	depends on I2C
+	depends on OF
+	select REGMAP_I2C
+	help
+	  MAX1720x is fuel-gauge systems for lithium-ion (Li+) batteries
+	  in handheld and portable equipment. All communicate over an I2C host
+	  interface.
+	  Supported Devices: MAX1720X, MAX1730X, MAX17320, MAX17330, MAX17332
+
+	  Say Y here to enable support for the standalone battery gas-gauge.
+
 config BATTERY_MAX1721X
 	tristate "MAX17211/MAX17215 standalone gas-gauge"
 	depends on W1
