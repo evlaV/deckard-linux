@@ -458,11 +458,25 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		if(csid->do_post_sof_work != NULL) {
 			csid->do_post_sof_work(csid->capture_subdev, csid->cur_sof_isp_timestamp_converted, ts_monotonic);
 		}
+
+		csid->last_sof_kernel_ts = ts_monotonic;
 	}
 
 	if (top_status & BIT(TOP_IRQ_STATUS_BUF_DONE)) {
 		buf_status = readl_relaxed(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 		writel_relaxed(buf_status, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
+
+
+		u32 eof_timestamp_lower = readl_relaxed(csid->base + 0x5A4);
+		u32 eof_timestamp_upper = readl_relaxed(csid->base + 0x5A8);
+		u64 eof_isp_timestamp = ((u64)eof_timestamp_upper) << 32 | eof_timestamp_lower;
+
+		eof_isp_timestamp = mul_u64_u32_div(
+			eof_isp_timestamp,
+			CAM_IFE_CSID_MUL_FACTOR,
+			CAM_IFE_CSID_DIV_FACTOR);
+
+		csid->cur_eof_isp_timestamp_converted = eof_isp_timestamp + csid->isp_to_kernel_raw_ts_offset + csid->kernel_ts_raw_to_monotonic_offset;
 
 		// Also test comp group 0 and the enabled statistics paths on non lite IFEs to support the IPP path
 		if ( (buf_status & BIT(RDI_COMP_GROUP(0))) || (!IS_LITE && (buf_status & (BIT(0) | csid->stats_comp_done_mask)))) {
@@ -637,11 +651,8 @@ static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
 		}
 	}
 
-	// HACK: Using approximate readout time to get the sof_timestamp. This will not be
-	// as precise as CSID register timestamps
-	u64 sof_timestamp = ts_monotonic - 7740000;
-	u64 eof_timestamp = ts_monotonic;
-	metadata_send(&csid->camss->metadata[csid->id], ts_monotonic, csid->cur_sof_isp_timestamp_converted, eof_timestamp, sof_timestamp, ts_monotonic,
+
+	metadata_send(&csid->camss->metadata[csid->id], ts_monotonic, csid->cur_sof_isp_timestamp_converted, csid->cur_eof_isp_timestamp_converted, csid->last_sof_kernel_ts, ts_monotonic,
 		ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
 
 	spin_unlock_irqrestore(&csid->output_lock, flags);
