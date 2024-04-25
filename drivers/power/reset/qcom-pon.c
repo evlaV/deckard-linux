@@ -27,6 +27,7 @@
 #define PON_SOFT_RB_SPARE		0x8f
 #define PON_PON_REASON1		    0xc0
 
+#define PON_AOP_PON_REASON1		0x7269
 
 #define GEN1_REASON_SHIFT		2
 #define GEN2_REASON_SHIFT		1
@@ -57,13 +58,13 @@ static void pon_set_mode(struct pm8916_pon *pon, unsigned reset_type)
 	regmap_write(pon->regmap, PON_PBS_PS_HOLD_RESET_CTL2, 0);
 
 	/*
-	 * Updates of PON_PS_HOLD_ENABLE requires 3 sleep cycles between
+	 * Updates of PON_PS_HOLD_ENABLE requires 3 sleep clock cycles between
 	 * writes.
 	 */
 	usleep_range(100, 1000);
 
 	regmap_write(pon->regmap, PON_PBS_PS_HOLD_SW_CTL, reset_type);
-	regmap_write(pon->regmap, PON_PBS_PS_HOLD_RESET_CTL2, BIT(7));
+	regmap_write(pon->regmap, PON_PBS_PS_HOLD_RESET_CTL2, PON_PS_HOLD_ENABLE);
 }
 
 static void do_msm_poweroff(void)
@@ -122,7 +123,7 @@ static int pm8916_pon_probe(struct platform_device *pdev)
 {
 	struct pm8916_pon *pon;
 	int error;
-	//u32 pmic_pon_reason_regval;
+	u32 pmic_pon_reason_regval;
 	int ret;
 
 	pon = devm_kzalloc(&pdev->dev, sizeof(*pon), GFP_KERNEL);
@@ -167,9 +168,23 @@ static int pm8916_pon_probe(struct platform_device *pdev)
 
 	pm_power_off = do_msm_poweroff;
 
-	//ret = regmap_read(pon->regmap, pon->baseaddr + PON_PON_REASON1, &pmic_pon_reason_regval);
-	//dev_warn(&pdev->dev, "PON_PON_REASON1 0x%02X ret=%d\n", pmic_pon_reason_regval,ret);
-	pon->pmic_pon_reason_regval = 0;//pmic_pon_reason_regval;
+	/*
+	* 0x09 -> `reboot` w/ USB connected
+	* 0x01 -> `reboot` w/o USB
+	* 0x81 -> power button for 16 seconds HARD_RESET
+	* 0x08 -> remove battery and power on via USB insertion
+	* 0x08 -> poweroff with USB removed then USB insertion
+	* 0x80 -> poweroff then power on button with no USB connected
+	*
+	* NOTE buttonledcontrol only looks at 0x80 to start steamvr
+	*/
+
+	/* Load the PON Reason from the Always On Processor in PMK8550 SDAM3 */
+	/* NOTE The PMK8550 seems to detect USB Insertion as Wireless, 
+	 * but otherwise the codes are unchanged from XR2 */
+	ret = regmap_read(pon->regmap, PON_AOP_PON_REASON1, &pmic_pon_reason_regval);
+	dev_warn(&pdev->dev, "PON_PON_REASON1 0x%02X ret=%d\n", pmic_pon_reason_regval, ret);
+	pon->pmic_pon_reason_regval = pmic_pon_reason_regval;
 
 	return devm_of_platform_populate(&pdev->dev);
 }
