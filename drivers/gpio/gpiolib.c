@@ -123,7 +123,10 @@ static int desc_set_label(struct gpio_desc *desc, const char *label)
 	}
 
 	old = rcu_replace_pointer(desc->label, new, 1);
+#if 0
+	//hack disable this to avoid huge 4ms long hitch
 	synchronize_srcu(&desc->srcu);
+#endif
 	kfree_const(old);
 
 	return 0;
