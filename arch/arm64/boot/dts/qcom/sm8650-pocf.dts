@@ -1054,7 +1054,7 @@
 // Custom Connector I2C
 // Note this I2C point might change for EV1
 &i2c_hub_7 {
-	status = "okay";
+	status = "disabled";
 
 	max17320@36 {
 		compatible  = "maxim,max17320";
