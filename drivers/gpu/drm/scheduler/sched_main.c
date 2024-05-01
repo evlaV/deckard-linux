@@ -1281,7 +1281,8 @@ int drm_sched_init(struct drm_gpu_scheduler *sched,
 		sched->submit_wq = submit_wq;
 		sched->own_submit_wq = false;
 	} else {
-		sched->submit_wq = alloc_ordered_workqueue(name, 0);
+		// this will create: /sys/bus/workqueue/devices/ring0,ring1
+		sched->submit_wq = alloc_ordered_workqueue(name, WQ_SYSFS | __WQ_FORCE_ALLOW_SYSFS);
 		if (!sched->submit_wq)
 			return -ENOMEM;
 
