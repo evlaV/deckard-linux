@@ -292,6 +292,23 @@
 		regulator-always-on;
 	};
 
+	// TODO Keith (from Todd) This might be useful for data logging,
+	// but the sensors aren't named in hwmon and are just numbered.
+	// iio-hwmon {
+	// 	compatible = "iio-hwmon";
+	// 	io-channels = <&pmk8550_vadc PM8550_ADC5_GEN3_AMUX_THM1_100K_PU>,
+	// 				 <&pmk8550_vadc PM8550_ADC5_GEN3_AMUX_THM2_100K_PU>,
+	// 				 <&pmk8550_vadc PM8550_ADC5_GEN3_AMUX_THM3_100K_PU>,
+	// 				 <&pmk8550_vadc PM8550_ADC5_GEN3_AMUX_THM4_100K_PU>,
+	// 				 <&pmk8550_vadc PM8550_ADC5_GEN3_AMUX_THM5_100K_PU>,
+	// 				 <&pmk8550_vadc PM8550B_ADC5_GEN3_AMUX_THM4_USB_THERM_100K_PU>;
+	// 	io-channel-names = "pcba_at_fan_exhaust",
+	// 					   "pcba_at_40pin_connector",
+	// 					   "pcba_at_wifi",
+	// 					   "pcba_at_flash",
+	// 					   "pcba_at_nrf",
+	// 					   "pcba_at_heat_sink_fins";
+	// };
 };
 
 &pmk8550_vadc {
@@ -935,6 +952,10 @@
 	status = "okay";
 
 	vdd-pdphy-supply = <&VREG_L05B_3P1>;
+
+	io-channels = <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_SNS_QBG>,
+				  <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_2S_MID_QBG>;
+	io-channel-names = "vbat", "vmid";
 
 	connector {
 		power-role = "dual";
@@ -2115,13 +2136,13 @@
 	// qcom,gpios-reserved = <36 37 38 39>;
 	gpio-line-names =
 		// GPIO000 - GPIO015
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "nrf_time_sync",  "",  "",  "",  "",
 		// GPIO016 - GPIO031
 		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO032 - GPIO047
 		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO048 - GPIO063
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "qpd_fpga_qspi_cs",  "",  "",  "",  "",  "qpd_fpga_spi_cs",
+		"",  "",  "nrf_swdio",  "nrf_swclk",  "",  "",  "",  "",  "",  "",  "qpd_fpga_qspi_cs",  "",  "",  "",  "",  "qpd_fpga_spi_cs",
 		// GPIO064 - GPIO079
 		"",  "",  "",  "",  "",  "",  "",  "",  "qpd_fpga_cdone",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO080 - GPIO095
@@ -2135,7 +2156,7 @@
 		// GPIO144 - GPIO159
 		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO160 - GPIO175
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		"",  "",  "",  "",  "nrf_reset",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO176 - GPIO180
 		"",  "",  "",  "",  "", "", "", "", "", "", "", "", "", "qpd_fpga_dready";
 

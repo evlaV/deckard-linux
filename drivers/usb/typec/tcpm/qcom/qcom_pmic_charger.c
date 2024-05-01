@@ -1,3 +1,5 @@
+#include <linux/iio/consumer.h>
+
 #define CHGR_BASE 0x2600
 #define USB_BASE 0x2900
 
@@ -42,8 +44,23 @@ enum pre_charge_current {
 #define USB_USB_ICL_OVERRIDE_ADDR (USB_BASE + 0x51) // bit(0) OVERRIDE, and bit(4) for OVERRIDE_AFTER_APSD
 #define USB_USB_ICL_CFG_ADDR (USB_BASE + 0x52) // 50mA steps, max 6000mA
 
-int qcom_pmic_charger_init(struct regmap *regmap)
+struct pmic_charger {
+	struct device		*dev;
+	struct iio_channel *vmid_ch;
+	struct iio_channel *vbat_ch;
+};
+
+
+int qcom_pmic_charger_init(struct device *dev, struct regmap *regmap)
 {
+	struct pmic_charger *chg;
+	int ret;
+	int result;
+
+	chg = devm_kzalloc(dev, sizeof(*chg), GFP_KERNEL);
+	if (!chg)
+		return -ENOMEM;
+
 #if 1
 	// just print the bootloader charging settings
 	// expected: ipre=300mA, ichg=750mA, vflt=4350mV, term=300mA
@@ -56,6 +73,33 @@ int qcom_pmic_charger_init(struct regmap *regmap)
 	PRINT_REG(CHGR_CHG_EN_ADDR);
 #endif
 	// settings todd posted on slack:
+
+	chg->vmid_ch = devm_iio_channel_get(dev, "vmid");
+	if (IS_ERR(chg->vmid_ch)) {
+		pr_warn("vmid get failed");
+	} else {
+		pr_warn("vmid get success");
+	}
+
+	chg->vbat_ch = devm_iio_channel_get(dev, "vbat");
+	if (IS_ERR(chg->vbat_ch)) {
+		pr_warn("vbat get failed");
+	} else {
+		pr_warn("vbat get success");
+	}
+
+	ret = iio_read_channel_processed(chg->vbat_ch, &result);
+	if (ret < 0)
+		return ret;
+
+	pr_warn("vbat: %07d", result);
+
+	ret = iio_read_channel_processed(chg->vmid_ch, &result);
+	if (ret < 0)
+		return ret;
+
+	pr_warn("vmid: %07d", result);
+
 
 	regmap_write(regmap, CHGR_IPRE_CFG_ADDR, IPRE_250MA); // (250 mA for 2S?)
 	regmap_write(regmap, CHGR_ICHG_CFG_ADDR, 1320/60); // 1.32 A for 2S?
