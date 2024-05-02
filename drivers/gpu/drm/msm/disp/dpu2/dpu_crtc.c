@@ -790,10 +790,23 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 			dpu_write(dpu, MERGE_3D_CWB_MODE(i), 3);
 			dpu_write(dpu, MERGE_3D_CWB_MUX(i), 0);
 
+#define CWB_LEFT_DISPLAY
+#ifdef CWB_LEFT_DISPLAY
+			//left display
 			dpu_write(dpu, CWB_MUX(i, 0), c->lm + i*2);
+			
 			dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
 
 			dpu_write(dpu, CWB_MUX(i, 1), c->lm + i*2+1);
+#else
+			//right display
+			dpu_write(dpu, CWB_MUX(i, 0), c->lm + (1-i)*2);
+			
+			dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
+
+			dpu_write(dpu, CWB_MUX(i, 1), c->lm + (1-i)*2+1);
+#endif
+
 			dpu_write(dpu, CWB_MODE(i, 1), 0);
 
 			dpu_write(dpu, CTL_CWB_ACTIVE(c->ctl), 3 << (i*2));
