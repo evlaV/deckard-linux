@@ -677,7 +677,6 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 
 		WARN_ON(!conn_state->writeback_job);
 
-		dpu_write(dpu, WB_DST_WRITE_CONFIG(i), 0); // ubwc
 		dpu_write(dpu, WB_DST_ADDR_SW_STATUS(i), 0); // secure
 		dpu_write(dpu, WB_ALPHA_X_VALUE(i), 0xff);
 
@@ -765,7 +764,6 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 					goto not_cwb;
 			}
 
-			dpu_write(dpu, WB_DST_WRITE_CONFIG(i), 0); // ubwc
 			dpu_write(dpu, WB_DST_ADDR_SW_STATUS(i), 0); // secure
 			dpu_write(dpu, WB_ALPHA_X_VALUE(i), 0xff);
 

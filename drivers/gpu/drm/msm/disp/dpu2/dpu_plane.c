@@ -95,9 +95,21 @@ static void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer
 	if (fb->format->format == DRM_FORMAT_NV12) {
 		addr[1] = msm_framebuffer_iova(fb, dpu->base.aspace, 1);
 		pitch[1] = fb->pitches[1];
-	}
 
-	if (fb->modifier == DRM_FORMAT_MOD_QCOM_COMPRESSED) {
+		if (fb->modifier == DRM_FORMAT_MOD_QCOM_COMPRESSED) {
+			addr[2] = addr[0];
+			pitch[2] = ALIGN(DIV_ROUND_UP(fb->width, 32), 64);
+
+			meta_height = ALIGN(DIV_ROUND_UP(fb->height, 8), 16);
+			addr[0] += ALIGN(pitch[2] * meta_height, 4096);
+
+			addr[3] = addr[1];
+			pitch[3] = ALIGN(DIV_ROUND_UP((fb->width+1)>>1, 16), 64);
+
+			meta_height = ALIGN(DIV_ROUND_UP((fb->height+1)>>1, 8), 16);
+			addr[1] += ALIGN(pitch[3] * meta_height, 4096);
+		}
+	} else if (fb->modifier == DRM_FORMAT_MOD_QCOM_COMPRESSED) {
 		/*
 		 * UBWC plane in addr[2]/pitch[2], but comes before in memory
 		 *
@@ -268,7 +280,7 @@ sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
 void wb_set_framebuffer(struct dpu_kms *dpu, unsigned i, struct drm_framebuffer *fb, int cdm_mux)
 {
 	const struct drm_format_info *fmt = fb->format;
-	u32 dst_format, unpack_pattern;
+	u32 dst_format, unpack_pattern, opmode = 0;
 
 	switch (fmt->format >> 16) {
 	case DRM_FORMAT_ABGR8888 >> 16:
@@ -316,8 +328,8 @@ void wb_set_framebuffer(struct dpu_kms *dpu, unsigned i, struct drm_framebuffer 
 	}
 
 	if (fmt->format == DRM_FORMAT_NV12 && i == 0) {
-		dpu_write(dpu, WB_DST_FORMAT(i), 0x192923f);
-		dpu_write(dpu, WB_DST_PACK_PATTERN(i), 0x0201);
+		dst_format = 0x192923f;
+		unpack_pattern = 0x0201;
 
 		// CSC, settings from downstream driver, coefficients for bt 601 limited range
 		dpu_write(dpu, CDM_CSC_10_OPMODE, BIT(0) | BIT(2)); // dst format=1, src_format=0, enable=1
@@ -354,16 +366,20 @@ void wb_set_framebuffer(struct dpu_kms *dpu, unsigned i, struct drm_framebuffer 
 
 		dpu_write(dpu, CDM_HDMI_PACK_OP_MODE, 0); // ???
 		dpu_write(dpu, CDM_MUX, cdm_mux);
-	} else {
-		dpu_write(dpu, WB_DST_FORMAT(i), dst_format);
-		dpu_write(dpu, WB_DST_OP_MODE(i), 0); // ubwc
-		dpu_write(dpu, WB_DST_PACK_PATTERN(i), unpack_pattern);
-
-		if (i == 0) {
-			dpu_write(dpu, CDM_CDWN2_OP_MODE, 0);
-			dpu_write(dpu, CDM_CSC_10_OPMODE, 0);
-		}
+	} else if (i == 0) {
+		dpu_write(dpu, CDM_CDWN2_OP_MODE, 0);
+		dpu_write(dpu, CDM_CSC_10_OPMODE, 0);
 	}
+
+	if (fb->modifier == DRM_FORMAT_MOD_QCOM_COMPRESSED) {
+		opmode |= BIT(0);
+		dst_format |= BIT(31);
+	}
+
+	dpu_write(dpu, WB_DST_FORMAT(i), dst_format);
+	dpu_write(dpu, WB_DST_OP_MODE(i), opmode);
+	dpu_write(dpu, WB_DST_PACK_PATTERN(i), unpack_pattern);
+	// dpu_write(dpu, WB_DST_WRITE_CONFIG(i), write_config); 8650 doesn't have the bits that downstream sets here
 
 	set_framebuffer(dpu, WB_DST0_ADDR(i), fb);
 
