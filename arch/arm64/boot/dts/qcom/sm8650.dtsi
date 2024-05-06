@@ -3632,6 +3632,7 @@
 				 <0x02000000 0 0x60300000 0 0x60300000 0 0x3d00000>;
 
 			dma-coherent;
+			max-link-speed = <3>;
 
 			status = "disabled";
 
@@ -3807,6 +3808,7 @@
 			phy-names = "pciephy";
 
 			dma-coherent;
+			max-link-speed = <3>;
 
 			#address-cells = <3>;
 			#size-cells = <2>;
