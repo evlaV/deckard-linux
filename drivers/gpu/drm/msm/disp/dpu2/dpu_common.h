@@ -14,10 +14,6 @@
 
 #include "dpu_hw_regs.h"
 
-#ifndef SIXPLANEMODE
-#define SIXPLANEMODE
-#endif
-
 struct dpu_crtc {
 	struct drm_crtc base;
 
@@ -39,7 +35,6 @@ struct dpu_crtc {
 struct dpu_plane {
 	struct drm_plane base;
 	u8 id;
-
 };
 #define to_dpu_plane(x) container_of(x, struct dpu_plane, base)
 
@@ -66,6 +61,9 @@ struct dpu_kms {
 	struct dpu_crtc crtc[4];
 	struct drm_encoder encoder[2];
 	struct drm_writeback_connector writeback[2];
+
+	struct drm_property *cac_prop;
+	uint32_t cac_blob_id;
 
 	/* hw parameters (derived from DPU version) */
 	u8 num_blendstages, num_sspp;
@@ -96,10 +94,15 @@ static inline void vbif_write(struct dpu_kms *dpu, u32 reg, u32 val)
 
 void dpu_toggle_start_irq(struct dpu_kms *dpu, u32 ctl, bool enable);
 
-void dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state, bool cac_test);
+void dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state);
 void dpu_complete_flip(struct dpu_kms *dpu, struct dpu_crtc *c);
 
 int dpu_crtc_init(struct dpu_kms *dpu, struct drm_crtc *crtc, struct drm_plane *plane);
-int dpu_plane_init(struct dpu_kms *dpu, struct drm_plane *plane);
+int dpu_plane_init(struct dpu_kms *dpu, struct drm_plane *plane, uint32_t possible_crtcs);
 
 void wb_set_framebuffer(struct dpu_kms *dpu, unsigned i, struct drm_framebuffer *fb, int cdm_mux);
+
+void dpu_set_static_regs(struct dpu_kms *dpu);
+
+void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer *fb);
+void sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt, uint64_t modifier, unsigned rotation);

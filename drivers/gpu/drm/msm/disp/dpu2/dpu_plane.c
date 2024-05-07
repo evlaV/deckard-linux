@@ -83,7 +83,7 @@ static int dpu_plane_atomic_check(struct drm_plane *plane,
 
 }
 
-static void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer *fb)
+void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer *fb)
 {
 	u32 addr[4] = {};
 	u32 pitch[4] = {};
@@ -124,6 +124,14 @@ static void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer
 		addr[0] += ALIGN(pitch[2] * meta_height, 4096);
 	}
 
+	// for multirect on CAC unpack planes
+	if (reg == SSPP_SRC0_ADDR(16) || reg == SSPP_SRC0_ADDR(17)) {
+		addr[1] = addr[0];
+		addr[3] = addr[2];
+		pitch[1] = pitch[0];
+		pitch[3] = pitch[2];
+	}
+
 	dpu_write(dpu, reg + 0,  addr[0]);
 	dpu_write(dpu, reg + 4,  addr[1]);
 	dpu_write(dpu, reg + 8,  addr[2]);
@@ -133,24 +141,22 @@ static void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer
 }
 
 static void
-sspp_set_coords(struct dpu_kms *dpu, u8 i, struct drm_rect *dst, struct drm_rect *src)
+sspp_set_coords(struct dpu_kms *dpu, u8 i, struct drm_rect *dst, struct drm_rect *src, bool nv12)
 {
 	u32 src_size = (drm_rect_height(src) & 0xffff0000) | drm_rect_width(src) >> 16;
+	u32 src_size_uv = (drm_rect_height(src)/2 & 0xffff0000) | drm_rect_width(src)/2 >> 16;
 
 	dpu_write(dpu, SSPP_SRC_SIZE(i), src_size);
+	dpu_write(dpu, SSPP_SRC_SIZE(i)+4, src_size);
 	dpu_write(dpu, SSPP_SRC_XY(i), (src->y1 & 0xffff0000) | src->x1 >> 16);
 	dpu_write(dpu, SSPP_OUT_SIZE(i),
 		  drm_rect_height(dst) << 16 | drm_rect_width(dst));
 	dpu_write(dpu, SSPP_OUT_XY(i), dst->y1 << 16 | dst->x1);
-	dpu_write(dpu, SSPP_SW_PIX_EXT_C0_LR(i), 0);
-	dpu_write(dpu, SSPP_SW_PIX_EXT_C0_TB(i), 0);
+
 	dpu_write(dpu, SSPP_SW_PIX_EXT_C0_REQ_PIXELS(i), src_size);
-	dpu_write(dpu, SSPP_SW_PIX_EXT_C1C2_LR(i), 0);
-	dpu_write(dpu, SSPP_SW_PIX_EXT_C1C2_TB(i), 0);
-	dpu_write(dpu, SSPP_SW_PIX_EXT_C1C2_REQ_PIXELS(i), src_size);
-	dpu_write(dpu, SSPP_SW_PIX_EXT_C3_LR(i), 0);
-	dpu_write(dpu, SSPP_SW_PIX_EXT_C3_TB(i), 0);
+	dpu_write(dpu, SSPP_SW_PIX_EXT_C1C2_REQ_PIXELS(i), nv12 ? src_size_uv : src_size);
 	dpu_write(dpu, SSPP_SW_PIX_EXT_C3_REQ_PIXELS(i), src_size);
+
 }
 
 #define SRC_FORMAT(b, g, r, a) (BIT(17) | (a ? 3 : 2) << 12 | ((b + g + r + a) / 8 - 1) << 9 |  \
@@ -171,33 +177,29 @@ enum {
 	COLOR_ALPHA_0BIT = 0, /* for SRC_FORMAT macro only */
 };
 
-static void
-sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
-		uint64_t modifier, bool cac_test, unsigned rotation)
+static inline void
+format_info(u32 fourcc, u32 cpp0, u32 *out_format, u32 *out_unpack_pattern)
 {
-	u32 src_format, unpack_pattern, op_mode, ubwc_static_ctrl;
-	u32 cdp_cntl, danger_lut;
-	u64 creq_lut;
-
-	switch (fmt->format >> 16) {
+	u32 format, unpack_pattern;
+	switch (fourcc >> 16) {
 	case DRM_FORMAT_ABGR8888 >> 16:
 	default:
-		src_format = SRC_FORMAT(8, 8, 8, 8);
-		if (fmt->cpp[0] == 3)
-			src_format = SRC_FORMAT(8, 8, 8, 0);
+		format = SRC_FORMAT(8, 8, 8, 8);
+		if (cpp0 == 3)
+			format = SRC_FORMAT(8, 8, 8, 0);
 		break;
 	case DRM_FORMAT_BGR565 >> 16:
-		src_format = SRC_FORMAT(5, 6, 5, 0);
+		format = SRC_FORMAT(5, 6, 5, 0);
 		break;
 	case DRM_FORMAT_ABGR1555 >> 16:
-		src_format = SRC_FORMAT(5, 5, 5, 1);
+		format = SRC_FORMAT(5, 5, 5, 1);
 		break;
 	case DRM_FORMAT_ABGR4444 >> 16:
-		src_format = SRC_FORMAT(4, 4, 4, 4);
+		format = SRC_FORMAT(4, 4, 4, 4);
 		break;
 	}
 
-	switch (fmt->format & 0xffff) {
+	switch (fourcc & 0xffff) {
 	case DRM_FORMAT_ABGR8888 & 0xffff:
 	case DRM_FORMAT_XBGR8888 & 0xffff:
 	case DRM_FORMAT_BGR888   & 0xffff:
@@ -218,6 +220,25 @@ sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
 		unpack_pattern = 0x02000103;
 		break;
 	}
+	if (fourcc == DRM_FORMAT_NV12) {
+		// XXX: should bit 9 be set or not?
+		format = 0x192923f;
+		unpack_pattern = 0x0201;
+	}
+
+	*out_format = format;
+	*out_unpack_pattern = unpack_pattern;
+}
+
+void
+sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
+		uint64_t modifier, unsigned rotation)
+{
+	u32 src_format, unpack_pattern, op_mode;
+	u32 cdp_cntl, danger_lut;
+	u64 creq_lut;
+
+	format_info(fmt->format, fmt->cpp[0], &src_format, &unpack_pattern);
 
 	op_mode = MDSS_MDP_OP_PE_OVERRIDE;
 	cdp_cntl = BIT(0) | BIT(3); /* enable | preload_ahead */
@@ -231,16 +252,6 @@ sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
 		cdp_cntl |= BIT(1) | BIT(2); /* ubwc_meta | tile_amortize */
 		creq_lut = dpu->creq_lut_macrotile;
 		danger_lut = 0xffff;
-
-		if (dpu->ubwc_version == 4)
-			ubwc_static_ctrl = BIT(30);
-		else if (dpu->ubwc_version == 3)
-			ubwc_static_ctrl = BIT(30) | dpu->hbb << 4;
-		else
-			ubwc_static_ctrl = COND(fmt->has_alpha, BIT(31)) | dpu->hbb << 4;
-
-		dpu_write(dpu, SSPP_FETCH_CONFIG(i), 0x87 | dpu->hbb << 18);
-		dpu_write(dpu, SSPP_UBWC_STATIC_CTRL(i), ubwc_static_ctrl);
 	}
 
 #if 0
@@ -253,23 +264,20 @@ sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
 	if (rotation & DRM_MODE_REFLECT_Y)
 		op_mode |= BIT(14); /* FLIP_UD */
 
-	if (cac_test) {
-	switch (i/2) {
-	case 0: // RED
-		unpack_pattern = 0x03030302;
-		break;
-	case 1: // BLUE
-		unpack_pattern = 0x03010303;
-		break;
-	case 8: // GREEN
-		unpack_pattern = 0x03030003;
-		break;
-	}
-	}
-
 	dpu_write(dpu, SSPP_SRC_FORMAT(i), src_format);
 	dpu_write(dpu, SSPP_SRC_UNPACK_PATTERN(i), unpack_pattern);
 	dpu_write(dpu, SSPP_SRC_OP_MODE(i), op_mode);
+
+	if (i==16||i==17) { // for CAC unpack planes using multirect
+	dpu_write(dpu, SSPP_SRC_FORMAT_REC1(i), src_format);
+	dpu_write(dpu, SSPP_SRC_UNPACK_PATTERN_REC1(i), unpack_pattern);
+	dpu_write(dpu, SSPP_SRC_OP_MODE_REC1(i), op_mode | BIT(4));
+	dpu_write(dpu, SSPP_MULTIRECT_OPMODE(i), 3);
+	dpu_write(dpu, SSPP_CDP_CNTL_REC1(i), cdp_cntl);
+	} else {
+	dpu_write(dpu, SSPP_MULTIRECT_OPMODE(i), 0);
+	}
+
 	dpu_write(dpu, SSPP_CDP_CNTL(i), cdp_cntl);
 	dpu_write(dpu, SSPP_CREQ_LUT_0(i), creq_lut);
 	dpu_write(dpu, SSPP_CREQ_LUT_1(i), creq_lut >> 32);
@@ -282,45 +290,7 @@ void wb_set_framebuffer(struct dpu_kms *dpu, unsigned i, struct drm_framebuffer 
 	const struct drm_format_info *fmt = fb->format;
 	u32 dst_format, unpack_pattern, opmode = 0;
 
-	switch (fmt->format >> 16) {
-	case DRM_FORMAT_ABGR8888 >> 16:
-	default:
-		dst_format = SRC_FORMAT(8, 8, 8, 8);
-		if (fmt->cpp[0] == 3)
-			dst_format = SRC_FORMAT(8, 8, 8, 0);
-		break;
-	case DRM_FORMAT_BGR565 >> 16:
-		dst_format = SRC_FORMAT(5, 6, 5, 0);
-		break;
-	case DRM_FORMAT_ABGR1555 >> 16:
-		dst_format = SRC_FORMAT(5, 5, 5, 1);
-		break;
-	case DRM_FORMAT_ABGR4444 >> 16:
-		dst_format = SRC_FORMAT(4, 4, 4, 4);
-		break;
-	}
-
-	switch (fmt->format & 0xffff) {
-	case DRM_FORMAT_ABGR8888 & 0xffff:
-	case DRM_FORMAT_XBGR8888 & 0xffff:
-	case DRM_FORMAT_BGR888   & 0xffff:
-	default:
-		unpack_pattern = 0x03010002;
-		break;
-	case DRM_FORMAT_ARGB8888 & 0xffff:
-	case DRM_FORMAT_XRGB8888 & 0xffff:
-	case DRM_FORMAT_RGB888   & 0xffff:
-		unpack_pattern = 0x03020001;
-		break;
-	case DRM_FORMAT_RGBX8888 & 0xffff:
-	case DRM_FORMAT_RGBA8888 & 0xffff:
-		unpack_pattern = 0x01000203;
-		break;
-	case DRM_FORMAT_BGRX8888 & 0xffff:
-	case DRM_FORMAT_BGRA8888 & 0xffff:
-		unpack_pattern = 0x02000103;
-		break;
-	}
+	format_info(fmt->format, fmt->cpp[0], &dst_format, &unpack_pattern);
 
 	if (dst_format & BIT(12)) {
 		dst_format |= BIT(8); /* DSTC3_EN */
@@ -328,9 +298,6 @@ void wb_set_framebuffer(struct dpu_kms *dpu, unsigned i, struct drm_framebuffer 
 	}
 
 	if (fmt->format == DRM_FORMAT_NV12 && i == 0) {
-		dst_format = 0x192923f;
-		unpack_pattern = 0x0201;
-
 		// CSC, settings from downstream driver, coefficients for bt 601 limited range
 		dpu_write(dpu, CDM_CSC_10_OPMODE, BIT(0) | BIT(2)); // dst format=1, src_format=0, enable=1
 		dpu_write(dpu, CDM_CSC_10_MATRIX_COEFF_0, 0x0083 | 0x0102 << 16);
@@ -389,7 +356,7 @@ void wb_set_framebuffer(struct dpu_kms *dpu, unsigned i, struct drm_framebuffer 
 }
 
 void
-dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state, bool cac_test)
+dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state)
 {
 	/* convert ROTATE_180 to REFLECT_X|REFLECT_Y: */
 	unsigned rotation = drm_rotation_simplify(state->rotation,
@@ -401,10 +368,11 @@ dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state, bool
 	if (i >= 4) i += 12; // DMA sspp starts at 0x20000 offset instead of 0x8000
 
 	set_framebuffer(dpu, SSPP_SRC0_ADDR(i), fb);
-	sspp_set_coords(dpu, i, &state->dst, &state->src);
-	sspp_set_format(dpu, i, fb->format, fb->modifier, cac_test, rotation);
+	sspp_set_coords(dpu, i, &state->dst, &state->src, fb->format->format == DRM_FORMAT_NV12);
+	sspp_set_format(dpu, i, fb->format, fb->modifier, rotation);
 
-	dpu_write(dpu, SSPP_MULTIRECT_OPMODE(i), 0);
+	// all VIG planes being used for CAC
+#if 0
 	if (i < 4) { /* only VIG planes */
 		//dpu_write(dpu, QSEED3_OP_MODE(i), BIT(14));
 		struct drm_rect *dst = &state->dst;
@@ -429,16 +397,44 @@ dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state, bool
 		dpu_write(dpu, QSEED3_DST_SIZE(i), dst_h << 16 | dst_w);
 
 		// cac_test: always enable scaling
-		if (cac_test)
-			dpu_write(dpu, QSEED3_OP_MODE(i), 0x80034001);
+		if (fb->format->format == DRM_FORMAT_NV12) {
+			dpu_write(dpu, QSEED3_PHASE_INIT_UV_H(i), 0);
+			dpu_write(dpu, QSEED3_PHASE_INIT_UV_V(i), 0);
+			dpu_write(dpu, QSEED3_PHASE_STEP_UV_H(i), 0x100000);
+			dpu_write(dpu, QSEED3_PHASE_STEP_UV_V(i), 0x100000);
+			dpu_write(dpu, QSEED3_SRC_SIZE_UV(i), (src_h>>1) << 16 | (src_w>>1));
+			dpu_write(dpu, QSEED3_OP_MODE(i), 0x03035001);
+		} else if (cac_test)
+			dpu_write(dpu, QSEED3_OP_MODE(i), 0x00034001);
 		else
 			dpu_write(dpu, QSEED3_OP_MODE(i), BIT(14) | 0);
 
-		dpu_write(dpu, SSPP_VIG_CSC_10_OP_MODE(i), 0);
+		if (fb->format->format == DRM_FORMAT_NV12) {
+			// XXX check this
+			u32 csc_reg_off = 0x5A04 + i * 0x2000;
+			dpu_write(dpu, SSPP_VIG_CSC_10_OP_MODE(i), 0x3);
+			dpu_write(dpu, csc_reg_off + 0x00, 0x254);
+			dpu_write(dpu, csc_reg_off + 0x04, 0x2540331);
+			dpu_write(dpu, csc_reg_off + 0x08, 0x1E601F37);
+			dpu_write(dpu, csc_reg_off + 0x0c, 0x4090254);
+			dpu_write(dpu, csc_reg_off + 0x10, 0x0);
+			dpu_write(dpu, csc_reg_off + 0x14, 0x4003AC);
+			dpu_write(dpu, csc_reg_off + 0x18, 0x4003C0);
+			dpu_write(dpu, csc_reg_off + 0x1c, 0x4003C0);
+			dpu_write(dpu, csc_reg_off + 0x20, 0x3FF);
+			dpu_write(dpu, csc_reg_off + 0x24, 0x3FF);
+			dpu_write(dpu, csc_reg_off + 0x28, 0x3FF);
+			dpu_write(dpu, csc_reg_off + 0x2c, 0xFFC0);
+			dpu_write(dpu, csc_reg_off + 0x30, 0xFE00);
+			dpu_write(dpu, csc_reg_off + 0x34, 0xFE00);
+			dpu_write(dpu, csc_reg_off + 0x38, 0x0);
+			dpu_write(dpu, csc_reg_off + 0x3c, 0x0);
+			dpu_write(dpu, csc_reg_off + 0x40, 0x0);
+		} else {
+			dpu_write(dpu, SSPP_VIG_CSC_10_OP_MODE(i), 0);
+		}
 	}
-	/* clear previous UBWC error */
-	dpu_write(dpu, SSPP_UBWC_ERROR_STATUS(i), BIT(31));
-	dpu_write(dpu, SSPP_QOS_CTRL(i), 0); /* set to 0 when plane is off ? */
+#endif
 }
 
 static void
@@ -494,6 +490,7 @@ static const uint32_t plane_formats[] = {
 	DRM_FORMAT_XBGR4444,
 	DRM_FORMAT_RGBX4444,
 	DRM_FORMAT_BGRX4444,
+	DRM_FORMAT_NV12,
 };
 
 static const uint64_t supported_modifiers[] = {
@@ -502,11 +499,11 @@ static const uint64_t supported_modifiers[] = {
 	DRM_FORMAT_MOD_INVALID
 };
 
-int dpu_plane_init(struct dpu_kms *dpu, struct drm_plane *plane)
+int dpu_plane_init(struct dpu_kms *dpu, struct drm_plane *plane, uint32_t possible_crtcs)
 {
 	int ret;
 
-	ret = drm_universal_plane_init(dpu->dev, plane, 0xff, &dpu_plane_funcs,
+	ret = drm_universal_plane_init(dpu->dev, plane, possible_crtcs, &dpu_plane_funcs,
 			plane_formats, ARRAY_SIZE(plane_formats),
 			supported_modifiers, DRM_PLANE_TYPE_PRIMARY, NULL);
 	if (ret)

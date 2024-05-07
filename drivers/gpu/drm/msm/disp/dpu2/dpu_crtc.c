@@ -346,11 +346,7 @@ enum {
 static void
 mixer_set_blendfunc(struct dpu_kms *dpu, u32 i, u32 stage)
 {
-#ifdef SIXPLANEMODE
-	u32 alpha_const = 0xff << 16 | 0xff; /* fg_const = 0xff, bg_const = 0 */
-#else
 	u32 alpha_const = 0xff << 16 | 0; /* fg_const = 0xff, bg_const = 0 */
-#endif
 	u32 fg_func = ALPHA_FG_CONST; /* solid fg */
 	u32 bg_func = ALPHA_BG_CONST; /* invisible bg */
 
@@ -360,8 +356,8 @@ mixer_set_blendfunc(struct dpu_kms *dpu, u32 i, u32 stage)
 		bg_func = ALPHA_FG_PIXEL | INV_ALPHA;
 	}
 
-	dpu_write(dpu, LM_BLEND0_OP(i, stage), fg_func | bg_func << 8);
-	dpu_write(dpu, LM_BLEND0_CONST_ALPHA(i, stage), alpha_const);
+	dpu_write(dpu, LAYER_BLEND_OP(i, stage), fg_func | bg_func << 8);
+	dpu_write(dpu, LAYER_BLEND_CONST_ALPHA(i, stage), alpha_const);
 }
 
 struct mixercfg {
@@ -389,6 +385,20 @@ mixercfg_set_sspp_stage(struct mixercfg *cfg, u32 sspp, u32 stage)
 }
 
 static void
+mixercfg_set_sspp_stage_rec1(struct mixercfg *cfg, u32 sspp, u32 stage)
+{
+	/* offset to skip (0 = no stage, 1 = base stage) */
+	stage += 2;
+
+	if (sspp < 4)
+		cfg->cfg[3] |= stage << (sspp*4);
+	else if (sspp < 8)
+		cfg->cfg[2] |= stage << (sspp*4-8);
+	else
+		cfg->cfg[4] |= stage << (sspp*4-24);
+}
+
+static void
 ctl_set_mixercfg(struct dpu_kms *dpu, u32 ctl, u32 i, struct mixercfg *cfg)
 {
 	dpu_write(dpu, CTL_LAYER(ctl, i), cfg->cfg[0] | CTL_MIXER_BORDER_OUT);
@@ -410,77 +420,11 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 	unsigned long flags;
 	bool is_dsc = dpu->dsc->dsc_version_major && !c->is_dp;
 	u32 fetch_pipe_active = 0;
+	unsigned i;
 
-	struct mixercfg mixer_cfg[4] = {};
-	struct drm_rect mixer_rect[4];
 	u32 intf_active = 0;
 	u32 merge3d_active = 0;
 	u32 ctl_flush = CTL_FLUSH_MASK_CTL;
-#ifdef SIXPLANEMODE
-	u32 mixer_op_mode[2] = {};
-	u32 num_planes = 0;
-#else
-	u32 mixer_op_mode = 0;
-#endif
-
-	unsigned i, num_mixers, num_mixercfg;
-
-	/*
-	 * DSC has a max width of 2048, so for dual 2160x2160 panels with DSC,
-	 * 4 mixers are required even though mixer max width is 2560.
-	 * this is a "QUADPIPE_DSCMERGE" topology
-	 *
-	 * for this configuration, we need to use 2 HW planes per plane because
-	 * 1) plane max width is 4096, lower than 4320
-	 * 2) a single plane can only be used by one mixer pair
-	 * 3) plane can only read 1 pixel/clock, but max DPU clock is 460Mhz
-	 *
-	 * 3) is also a problem with DP (2 mixer merge3d configuration),
-	 * because for example 3840x2160@60 needs more than 460Mhz DPU clock
-	 * so 2 HW plane mechanism is used with DP too to avoid overclocking
-	 *
-	 * this 2 plane thing might result in slightly incorrect scaling when
-	 * the plane is split across two HW planes, but this driver doesn't
-	 * support scaling..
-	 */
-
-	if (c->is_dual_dsi && is_dsc)
-		num_mixers = 4;
-	else if (c->is_dp || c->is_dual_dsi)
-		num_mixers = 2;
-	else
-		num_mixers = 1;
-#ifdef SIXPLANEMODE
-	num_mixercfg = num_mixers >= 2 ? 2 : 1;
-#else
-	num_mixercfg = num_mixers;
-#endif
-
-	if (num_mixercfg == 4) {
-		mixer_rect[0] = (struct drm_rect) {
-			0, 0, 1080, mode->vdisplay,
-		};
-		mixer_rect[1] = (struct drm_rect) {
-			1080, 0, 2160, mode->vdisplay,
-		};
-		mixer_rect[2] = (struct drm_rect) {
-			2160, 0, 3240, mode->vdisplay,
-		};
-		mixer_rect[3] = (struct drm_rect) {
-			3240, 0, 4320, mode->vdisplay,
-		};
-	} else if (num_mixercfg == 2) {
-		mixer_rect[0] = (struct drm_rect) {
-			0, 0, mode->hdisplay / 2, mode->vdisplay,
-		};
-		mixer_rect[1] = (struct drm_rect) {
-			mode->hdisplay / 2, 0, mode->hdisplay, mode->vdisplay,
-		};
-	} else {
-		mixer_rect[0] = (struct drm_rect) {
-			0, 0, mode->hdisplay, mode->vdisplay,
-		};
-	}
 
 	if (!state->enable) {
 		c->event = state->event;
@@ -497,88 +441,68 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 		return;
 	}
 
+	if (c->is_dual_dsi) {
+		// most of the plane state is hardcoded or set with CAC_BLOB
+		if (state->plane_mask & BIT(0)) {
+			plane = &dpu->plane[0].base;
+			struct drm_framebuffer *fb = plane->state->fb;
+			unsigned rotation = drm_rotation_simplify(plane->state->rotation,
+				DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X |  DRM_MODE_REFLECT_Y);
 
-#ifdef SIXPLANEMODE
-	drm_atomic_crtc_for_each_plane(plane, crtc)
-		num_planes++;
+			set_framebuffer(dpu, SSPP_SRC0_ADDR(16), fb);
+			set_framebuffer(dpu, SSPP_SRC0_ADDR(17), fb);
 
-	// support "normal" single plane by faking 2 planes
-	if (num_planes == 1 && c->is_dual_dsi) {
-		drm_atomic_crtc_for_each_plane(plane, crtc) {
-			u32 stage = plane->state->normalized_zpos;
-
-			mixer_op_mode[0] |= 1 << (stage + 1); /* + 1 to skip base stage */
-			mixer_op_mode[1] |= 1 << (stage + 1); /* + 1 to skip base stage */
-
-			for (i = c->lm; i < c->lm + num_mixers; i++)
-				mixer_set_blendfunc(dpu, i, stage);
-
-			for (i = 0; i < num_mixercfg; i++) {
-				u32 id = to_dpu_plane(plane)->id + i;
-				struct drm_plane_state s = *plane->state;
-				if (!drm_rect_clip_scaled(&s.src, &s.dst, &mixer_rect[i]))
-					continue;
-
-				s.dst.x1 -= mixer_rect[i].x1;
-				s.dst.x2 -= mixer_rect[i].x1;
-
-				/* mapping sspp to mixer stages */
-				mixercfg_set_sspp_stage(&mixer_cfg[i], id, stage);
-
-				/* sspp state */
-				dpu_plane_update(dpu, id, &s, false);
-				ctl_flush |= CTL_FLUSH_SSPP(id);
-
-				if (id >= 4)
-					fetch_pipe_active |= BIT(id - 4);
-				else
-					fetch_pipe_active |= BIT(id + 16);
-			}
+			sspp_set_format(dpu, 16, fb->format, fb->modifier, rotation);
+			sspp_set_format(dpu, 17, fb->format, fb->modifier, rotation);
+		} else {
+			// enable solid fill to get black when no plane is set with minimal changes
+			// (expect that screen should be turned off when no planes anyway)
+			dpu_write(dpu, SSPP_SRC_FORMAT(16), 0x000236ff | BIT(22));
+			dpu_write(dpu, SSPP_SRC_FORMAT_REC1(16), 0x000236ff | BIT(22));
+			dpu_write(dpu, SSPP_SRC_FORMAT(17), 0x000236ff | BIT(22));
+			dpu_write(dpu, SSPP_SRC_FORMAT_REC1(17), 0x000236ff | BIT(22));
 		}
+
+		fetch_pipe_active |= 0xf000f; // VIG0-3 and DMA0-3
+
+		ctl_flush |= CTL_FLUSH_SSPP(0);
+		ctl_flush |= CTL_FLUSH_SSPP(1);
+		ctl_flush |= CTL_FLUSH_SSPP(2);
+		ctl_flush |= CTL_FLUSH_SSPP(3);
+		ctl_flush |= CTL_FLUSH_SSPP(4);
+		ctl_flush |= CTL_FLUSH_SSPP(5);
+		ctl_flush |= CTL_FLUSH_SSPP(6);
+		ctl_flush |= CTL_FLUSH_SSPP(7);
+		ctl_flush |= CTL_FLUSH_LM(0);
+		ctl_flush |= CTL_FLUSH_LM(1);
+		ctl_flush |= CTL_FLUSH_LM(2);
+		ctl_flush |= CTL_FLUSH_LM(3);
 	} else {
-		drm_atomic_crtc_for_each_plane(plane, crtc) {
-			u32 stage = plane->state->normalized_zpos;
-			u32 mixercfg_id = 0;
-			if (c->is_dual_dsi && plane->state->dst.x1 >= mixer_rect[!mixercfg_id].x1)
-				mixercfg_id = !mixercfg_id;
 
-			mixer_op_mode[mixercfg_id] |= 1 << (stage + 1); /* + 1 to skip base stage */
+	struct mixercfg mixer_cfg[2] = {};
+	struct drm_rect mixer_rect[2];
+	u32 mixer_op_mode = 0;
+	unsigned i, num_mixers, num_mixercfg;
 
-			if (c->is_dual_dsi) {
-				if (mixercfg_id) {
-					mixer_set_blendfunc(dpu, 2, stage);
-					mixer_set_blendfunc(dpu, 3, stage);
-				} else {
-					mixer_set_blendfunc(dpu, 0, stage);
-					mixer_set_blendfunc(dpu, 1, stage);
-				}
-			} else {
-				for (i = c->lm; i < c->lm + num_mixers; i++)
-					mixer_set_blendfunc(dpu, i, stage);
-			}
+	if (c->is_dp || c->is_dual_dsi)
+		num_mixers = 2;
+	else
+		num_mixers = 1;
+	num_mixercfg = num_mixers;
 
-			u32 id = to_dpu_plane(plane)->id;
-			struct drm_plane_state s = *plane->state;
-			if (!drm_rect_clip_scaled(&s.src, &s.dst, &mixer_rect[mixercfg_id]))
-				continue;
-
-			s.dst.x1 -= mixer_rect[mixercfg_id].x1;
-			s.dst.x2 -= mixer_rect[mixercfg_id].x1;
-
-			/* mapping sspp to mixer stages */
-			mixercfg_set_sspp_stage(&mixer_cfg[mixercfg_id], id, stage);
-
-			/* sspp state */
-			dpu_plane_update(dpu, id, &s, c->is_dual_dsi);
-			ctl_flush |= CTL_FLUSH_SSPP(id);
-
-			if (id >= 4)
-				fetch_pipe_active |= BIT(id - 4);
-			else
-				fetch_pipe_active |= BIT(id + 16);
-		}
+	if (num_mixercfg == 2) {
+		mixer_rect[0] = (struct drm_rect) {
+			0, 0, mode->hdisplay / 2, mode->vdisplay,
+		};
+		mixer_rect[1] = (struct drm_rect) {
+			mode->hdisplay / 2, 0, mode->hdisplay, mode->vdisplay,
+		};
+	} else {
+		mixer_rect[0] = (struct drm_rect) {
+			0, 0, mode->hdisplay, mode->vdisplay,
+		};
 	}
-#else
+
 	drm_atomic_crtc_for_each_plane(plane, crtc) {
 		u32 stage = plane->state->normalized_zpos;
 
@@ -589,7 +513,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 			mixer_set_blendfunc(dpu, i, stage);
 
 		for (i = 0; i < num_mixercfg; i++) {
-			u32 id = to_dpu_plane(plane)->id * 4 + i;
+			u32 id = to_dpu_plane(plane)->id * 8  + i;
 			struct drm_plane_state s = *plane->state;
 			if (!drm_rect_clip_scaled(&s.src, &s.dst, &mixer_rect[i]))
 				continue;
@@ -601,7 +525,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 			mixercfg_set_sspp_stage(&mixer_cfg[i], id, stage);
 
 			/* sspp state */
-			dpu_plane_update(dpu, id, &s, false);
+			dpu_plane_update(dpu, id, &s);
 			ctl_flush |= CTL_FLUSH_SSPP(id);
 
 			if (id >= 4)
@@ -610,53 +534,30 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 				fetch_pipe_active |= BIT(id + 16);
 		}
 	}
-#endif
 
 	// XXX skip this for CWB, doesn't use a mixer
 	for (i = c->lm; i < c->lm + num_mixers; i++) {
-	#ifdef SIXPLANEMODE
-		u32 cfg_index = num_mixercfg > 1 ? (i >= c->lm + num_mixers/2) : 0;
-		u32 op_mode = mixer_op_mode[cfg_index];
-	#else
 		u32 cfg_index = i - c->lm;//num_mixercfg > 1 ? (i >= c->lm + num_mixers/2) : 0;
 		u32 op_mode = mixer_op_mode;
-	#endif
 
 		/* right mixer bit for paired mixers */
 		if ((i & 1) && (num_mixers != num_mixercfg))
 			op_mode |= BIT(31);
 
-		dpu_write(dpu, LM_OUT_SIZE(i), mode->vdisplay << 16 | (mode->hdisplay / num_mixers));
-		dpu_write(dpu, LM_OP_MODE(i), op_mode);
+		dpu_write(dpu, LAYER_OUT_SIZE(i), mode->vdisplay << 16 | (mode->hdisplay / num_mixers));
+		dpu_write(dpu, LAYER_OP_MODE(i), op_mode);
 
 		ctl_set_mixercfg(dpu, c->ctl, i, &mixer_cfg[cfg_index]);
 
 		ctl_flush |= CTL_FLUSH_LM(i);
 	}
 
-	if (num_mixers == 2 && !c->is_dp && !c->is_wb) {
-		struct mixercfg cfg = {};
-		ctl_set_mixercfg(dpu, c->ctl, c->lm + 2, &cfg);
-		ctl_set_mixercfg(dpu, c->ctl, c->lm + 3, &cfg);
-
-		dpu_write(dpu, LM_OUT_SIZE(c->lm + 2), 0);
-		dpu_write(dpu, LM_OUT_SIZE(c->lm + 3), 0);
-		dpu_write(dpu, LM_OP_MODE(c->lm + 2), 0);
-		dpu_write(dpu, LM_OP_MODE(c->lm + 3), 0);
-
-		ctl_flush |= CTL_FLUSH_LM(c->lm + 2);
-		ctl_flush |= CTL_FLUSH_LM(c->lm + 3);
-
 	}
 
 	if (c->is_wb) {
 		u32 i = (c == &dpu->crtc[3] ? 1 : 0);
 		struct drm_connector_state *conn_state = dpu->writeback[i].base.state;
-#ifdef SIXPLANEMODE
-		bool is_cwb = (num_planes == 0 && mode->hdisplay == 2160 && mode->vdisplay == 2160);
-#else
-		bool is_cwb = true;
-#endif
+		bool is_cwb = (state->plane_mask == 0 && mode->hdisplay == 2160 && mode->vdisplay == 2160);
 
 		if (is_cwb) {
 			WARN_ON(!conn_state->writeback_job);
@@ -704,11 +605,9 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 	} else if (state->mode_changed) {
 		intf_timings(dpu, c->intf, mode, c->is_dual_dsi, c->is_dp, is_dsc);
 		/* low 4 bits idx of pp block, or 0xf disable */
-		dpu_write(dpu, INTF_MUX(c->intf), 0xF0000 | c->lm);
 		intf_active = BIT(c->intf);
 		if (c->is_dual_dsi) {
 			intf_timings(dpu, c->intf + 1, mode, c->is_dual_dsi, c->is_dp, is_dsc);
-			dpu_write(dpu, INTF_MUX(c->intf + 1), 0xF0000 | (c->lm + num_mixers/2)); // XXX
 			intf_active |= BIT(c->intf + 1);
 		}
 		dpu_write(dpu, CTL_INTF_ACTIVE(c->ctl), intf_active);
@@ -723,7 +622,6 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 			set_dsc_config(dpu, 1, dpu->dsc);
 			set_dsc_config(dpu, 2, dpu->dsc);
 			set_dsc_config(dpu, 3, dpu->dsc);
-
 			dpu_write(dpu, CTL_DSC_ACTIVE(c->ctl), 0xf); /* bitmask of DSC active */
 			dpu_write(dpu, CTL_DSC_FLUSH(c->ctl), 0xf); /* bitmask of DSC modified */
 			ctl_flush |= CTL_FLUSH_DSC;
@@ -739,7 +637,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 
 		/* always use merge3d for DP */
 		if (c->is_dp) {
-			dpu_write(dpu, MERGE_3D_MODE(c->lm / 2), num_mixers > 1 ? 3 : 0);
+			dpu_write(dpu, MERGE_3D_MODE(c->lm / 2), 3);
 			dpu_write(dpu, MERGE_3D_MUX(c->lm / 2), 0);
 			merge3d_active |= BIT(c->lm / 2);
 
@@ -792,14 +690,14 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 #ifdef CWB_LEFT_DISPLAY
 			//left display
 			dpu_write(dpu, CWB_MUX(i, 0), c->lm + i*2);
-			
+
 			dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
 
 			dpu_write(dpu, CWB_MUX(i, 1), c->lm + i*2+1);
 #else
 			//right display
 			dpu_write(dpu, CWB_MUX(i, 0), c->lm + (1-i)*2);
-			
+
 			dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
 
 			dpu_write(dpu, CWB_MUX(i, 1), c->lm + (1-i)*2+1);
@@ -835,6 +733,263 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 	spin_unlock_irqrestore(&dpu->dev->event_lock, flags);
 }
 
+struct CAC_BLOB {
+	struct CAC_RECT {
+		u32 xy, size;
+	} dst_r, dst_g, dst_b, src_r, src_g, src_b, src_unpack;
+	u32 phase_step_r_h;
+	u32 phase_step_r_v;
+	u32 phase_step_b_h;
+	u32 phase_step_b_v;
+	u32 phase_init_r_h;
+	u32 phase_init_r_v;
+	u32 phase_init_b_h;
+	u32 phase_init_b_v;
+};
+
+// "identity" CAC settings
+static const struct CAC_BLOB cac_default[4] = {
+	{
+	.dst_r = { 0, 0x8700438 }, .dst_g = { 0, 0x8700438 }, .dst_b = { 0, 0x8700438 },
+	.src_r = { 0, 0x8700438 }, .src_g = { 0, 0x8700438 }, .src_b = { 0, 0x8700438 },
+	.src_unpack = { 0, 0x8700438 },
+	.phase_step_r_h = 0x80000000, .phase_step_r_v = 0x80000000,
+	.phase_step_b_h = 0x80000000, .phase_step_b_v = 0x80000000,
+	}, {
+	.dst_r = { 0, 0x8700438 }, .dst_g = { 0, 0x8700438 }, .dst_b = { 0, 0x8700438 },
+	.src_r = { 0, 0x8700438 }, .src_g = { 0, 0x8700438 }, .src_b = { 0, 0x8700438 },
+	.src_unpack = { 2160, 0x8700438 },
+	.phase_step_r_h = 0x80000000, .phase_step_r_v = 0x80000000,
+	.phase_step_b_h = 0x80000000, .phase_step_b_v = 0x80000000,
+	}, {
+	.dst_r = { 1080, 0x8700438 }, .dst_g = { 1080, 0x8700438 }, .dst_b = { 1080, 0x8700438 },
+	.src_r = { 0, 0x8700438 }, .src_g = { 0, 0x8700438 }, .src_b = { 0, 0x8700438 },
+	.src_unpack = { 1080, 0x8700438 },
+	.phase_step_r_h = 0x80000000, .phase_step_r_v = 0x80000000,
+	.phase_step_b_h = 0x80000000, .phase_step_b_v = 0x80000000,
+	}, {
+	.dst_r = { 1080, 0x8700438 }, .dst_g = { 1080, 0x8700438 }, .dst_b = { 1080, 0x8700438 },
+	.src_r = { 0, 0x8700438 }, .src_g = { 0, 0x8700438 }, .src_b = { 0, 0x8700438 },
+	.src_unpack = { 3240, 0x8700438 },
+	.phase_step_r_h = 0x80000000, .phase_step_r_v = 0x80000000,
+	.phase_step_b_h = 0x80000000, .phase_step_b_v = 0x80000000,
+	},
+};
+
+static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
+{
+	int i, j;
+	// requirements:
+	// cac->src_g.size==cac->dst_g.size
+	// cac->dst_b is contained within cac->dst_r
+	// cac[i].src_unpack.size==cac[i^2].src_unpack.size
+	//
+
+	for (i = 0; i < 4; i++, cac++) {
+		dpu_write(dpu, SSPP_SRC_IMG_SIZE(i), cac->src_unpack.size);
+
+		dpu_write(dpu, SSPP_SRC_SIZE(i), cac->src_r.size);
+		dpu_write(dpu, SSPP_SRC_XY(i), cac->src_r.xy);
+		dpu_write(dpu, SSPP_OUT_SIZE(i), cac->dst_r.size);
+		dpu_write(dpu, SSPP_OUT_XY(i), cac->dst_r.xy);
+
+		dpu_write(dpu, SSPP_SRC_SIZE_REC1(i), cac->src_b.size);
+		dpu_write(dpu, SSPP_SRC_XY_REC1(i), cac->src_b.xy);
+		// note: dst rect for blue uses qseed
+
+		dpu_write(dpu, QSEED3_CAC_LE_PHASE_INIT2_Y_H(i), cac->phase_step_r_h);
+		dpu_write(dpu, QSEED3_CAC_LE_PHASE_INIT2_Y_V(i), cac->phase_step_r_v);
+		dpu_write(dpu, QSEED3_CAC_LE_PHASE_INIT2_UV_H(i), cac->phase_step_b_h);
+		dpu_write(dpu, QSEED3_CAC_LE_PHASE_INIT2_UV_V(i), cac->phase_step_b_v);
+
+		dpu_write(dpu, QSEED3_PHASE_INIT_Y_H(i), cac->phase_init_r_h);
+		dpu_write(dpu, QSEED3_PHASE_INIT_Y_V(i), cac->phase_init_r_v);
+		dpu_write(dpu, QSEED3_PHASE_INIT_UV_H(i), cac->phase_init_b_h);
+		dpu_write(dpu, QSEED3_PHASE_INIT_UV_V(i), cac->phase_init_b_v);
+
+		dpu_write(dpu, QSEED3_SRC_SIZE_Y_RGB_A(i), cac->src_r.size);
+		dpu_write(dpu, QSEED3_SRC_SIZE_UV(i), cac->src_b.size);
+		dpu_write(dpu, QSEED3_DST_SIZE(i), cac->dst_r.size);
+		dpu_write(dpu, QSEED3_DST_UV_SIZE(i), cac->dst_b.size);
+		dpu_write(dpu, QSEED3_DST_LE_OFFSET(i), cac->dst_b.xy - cac->dst_r.xy);
+
+		j = 18 + (i & 1);
+		if ((i & 2) == 0) {
+			dpu_write(dpu, SSPP_SRC_IMG_SIZE(j), cac->src_unpack.size);
+
+			dpu_write(dpu, SSPP_SRC_SIZE(j), cac->src_g.size);
+			dpu_write(dpu, SSPP_SRC_XY(j), cac->src_g.xy);
+			dpu_write(dpu, SSPP_OUT_SIZE(j), cac->dst_g.size);
+			dpu_write(dpu, SSPP_OUT_XY(j), cac->dst_g.xy);
+		} else {
+			dpu_write(dpu, SSPP_SRC_SIZE_REC1(j), cac->src_g.size);
+			dpu_write(dpu, SSPP_SRC_XY_REC1(j), cac->src_g.xy);
+			dpu_write(dpu, SSPP_OUT_SIZE_REC1(j), cac->dst_g.size);
+			dpu_write(dpu, SSPP_OUT_XY_REC1(j), cac->dst_g.xy);
+		}
+
+		j = 16 + (i & 1);
+		if ((i & 2) == 0) {
+			dpu_write(dpu, SSPP_SRC_SIZE(j), cac->src_unpack.size);
+			dpu_write(dpu, SSPP_SRC_XY(j), cac->src_unpack.xy);
+		} else {
+			dpu_write(dpu, SSPP_SRC_SIZE_REC1(j), cac->src_unpack.size);
+			dpu_write(dpu, SSPP_SRC_XY_REC1(j), cac->src_unpack.xy);
+		}
+	}
+}
+
+#define FILTER_EDGE_DIRECTED_2D		0x0
+#define FILTER_CIRCULAR_2D		0x1
+#define FILTER_SEPARABLE_1D		0x2
+#define FILTER_BILINEAR			0x3
+
+/* set static registers once on init to avoid programming on modeset */
+void dpu_set_static_regs(struct dpu_kms *dpu)
+{
+	struct mixercfg mixer_cfg[4] = {};
+	int i, j, pipe;
+	u32 filter = FILTER_BILINEAR;
+
+	for (i = 0; i < 4; i++) {
+		dpu_write(dpu, LAYER_OP_MODE(i), BIT(1) | BIT(2) | ((i & 1) ? BIT(31) : 0));
+		dpu_write(dpu, LAYER_OUT_SIZE(i), 2160 << 16 | 1080); // 1080x2160
+		/* additive blending of 2 layers for CAC (red+blue and green layer)
+		 * (src and dst alpha to constant 1.0)
+		 */
+		for (j = 0; j < 2; j++) {
+			dpu_write(dpu, LAYER_BLEND_OP(i, j), ALPHA_FG_CONST | ALPHA_BG_CONST << 8);
+			dpu_write(dpu, LAYER_BLEND_CONST_ALPHA(i, j), 0xff << 16 | 0xff);
+		}
+	}
+
+	/* layer to pipe mapping for CAC setup */
+	mixercfg_set_sspp_stage(&mixer_cfg[0], 0, 0); // red/blue for lm0
+	mixercfg_set_sspp_stage(&mixer_cfg[2], 1, 0); // red/blue for lm2
+	mixercfg_set_sspp_stage(&mixer_cfg[0], 2, 0); // red/blue for lm1
+	mixercfg_set_sspp_stage(&mixer_cfg[2], 3, 0); // red/blue for lm3
+	mixercfg_set_sspp_stage     (&mixer_cfg[0], 6, 1); // green for lm0
+	mixercfg_set_sspp_stage_rec1(&mixer_cfg[0], 6, 1); // green for lm1
+	mixercfg_set_sspp_stage     (&mixer_cfg[2], 7, 1); // green for lm2
+	mixercfg_set_sspp_stage_rec1(&mixer_cfg[2], 7, 1); // green for lm3
+
+	ctl_set_mixercfg(dpu, 0, 0, &mixer_cfg[0]);
+	ctl_set_mixercfg(dpu, 0, 1, &mixer_cfg[0]);
+	ctl_set_mixercfg(dpu, 0, 2, &mixer_cfg[2]);
+	ctl_set_mixercfg(dpu, 0, 3, &mixer_cfg[2]);
+
+	dpu_write(dpu, INTF_MUX(0), 0xf0000 | 4); // LM4 -> DP   (or LM4/5 pair)
+	dpu_write(dpu, INTF_MUX(1), 0xf0000 | 0); // LM0 -> DSI0 (LM0/1 pair with DSC merge)
+	dpu_write(dpu, INTF_MUX(2), 0xf0000 | 2); // LM2 -> DSI1 (LM2/3 pair with DSC merge)
+
+	for (pipe = 0; pipe < 10; pipe++) {
+		i = pipe + (pipe >= 4 ? 12 : 0); // index into register macros (extra offset for DMA pipes)
+
+		dpu_write(dpu, SSPP_SW_PIX_EXT_C0_REQ_PIXELS(i), 0);
+		dpu_write(dpu, SSPP_SW_PIX_EXT_C1C2_REQ_PIXELS(i), 0);
+		dpu_write(dpu, SSPP_SW_PIX_EXT_C3_REQ_PIXELS(i), 0);
+
+		dpu_write(dpu, SSPP_SW_PIX_EXT_C0_LR(i), 0);
+		dpu_write(dpu, SSPP_SW_PIX_EXT_C0_TB(i), 0);
+		dpu_write(dpu, SSPP_SW_PIX_EXT_C1C2_LR(i), 0);
+		dpu_write(dpu, SSPP_SW_PIX_EXT_C1C2_TB(i), 0);
+		dpu_write(dpu, SSPP_SW_PIX_EXT_C3_LR(i), 0);
+		dpu_write(dpu, SSPP_SW_PIX_EXT_C3_TB(i), 0);
+
+		dpu_write(dpu, SSPP_FETCH_CONFIG(i), 0x87 | dpu->hbb << 18);
+		dpu_write(dpu, SSPP_UBWC_STATIC_CTRL(i), BIT(30)); // or 0 for YUV formats
+		dpu_write(dpu, SSPP_UBWC_STATIC_CTRL_REC1(i), BIT(30)); // or 0 for YUV formats
+
+		dpu_write(dpu, SSPP_QOS_CTRL(i), 0); // XXX
+		dpu_write(dpu, SSPP_SAFE_LUT(i), 0);
+	}
+	/* CAC setup */
+	for (i = 0; i < 4; i++) {
+		// note: red should be 0x03030302 but qseed cac moves green channel into red
+		dpu_write(dpu, SSPP_SRC_FORMAT(i),      0x000236ff); // 8_8_8_8 format
+		dpu_write(dpu, SSPP_SRC_FORMAT_REC1(i), 0x000236ff);
+		dpu_write(dpu, SSPP_SRC_UNPACK_PATTERN(i),      0x03030300); // red
+		dpu_write(dpu, SSPP_SRC_UNPACK_PATTERN_REC1(i), 0x03010303); // blue
+		dpu_write(dpu, SSPP_SRC_OP_MODE(i),      SW_PIX_EXT_OVERRIDE | (i>=2 ? SRC_SPLIT_ORDER : 0));
+		dpu_write(dpu, SSPP_SRC_OP_MODE_REC1(i), SW_PIX_EXT_OVERRIDE | (i>=2 ? SRC_SPLIT_ORDER : 0));
+		dpu_write(dpu, SSPP_MULTIRECT_OPMODE(i), 3);
+		dpu_write(dpu, SSPP_CAC_CTRL(i), 0x101);
+
+		dpu_write(dpu, SSPP_CDP_CNTL(i), BIT(0) | BIT(3));
+		dpu_write(dpu, SSPP_CREQ_LUT_0(i), 0);
+		dpu_write(dpu, SSPP_CREQ_LUT_1(i), 0);
+		dpu_write(dpu, SSPP_DANGER_LUT(i), 0);
+
+		dpu_write(dpu, QSEED3_OP_MODE(i), filter << 24 | filter << 16 | 0x4003); // BIT_WIDTH=1, CAC_MODE=1, EN=1,
+		// for CAC mode, phase step is the 2nd order parameter. always 0 for now
+		dpu_write(dpu, QSEED3_PHASE_STEP_Y_H(i), 0);
+		dpu_write(dpu, QSEED3_PHASE_STEP_Y_V(i), 0);
+		dpu_write(dpu, QSEED3_PHASE_STEP_UV_H(i), 0);
+		dpu_write(dpu, QSEED3_PHASE_STEP_UV_V(i), 0);
+		dpu_write(dpu, QSEED3_PRELOAD(i), 0x2040204);
+
+		// XXX:
+	}
+	for (i = 16; i < 18; i++)
+		dpu_write(dpu, SSPP_CAC_CTRL(i), 0x100);
+
+	for (i = 18; i < 20; i++) {
+		dpu_write(dpu, SSPP_SRC_FORMAT(i),      0x000236ff); // 8_8_8_8 format
+		dpu_write(dpu, SSPP_SRC_FORMAT_REC1(i), 0x000236ff);
+		dpu_write(dpu, SSPP_SRC_UNPACK_PATTERN(i),      0x03030003); // green
+		dpu_write(dpu, SSPP_SRC_UNPACK_PATTERN_REC1(i), 0x03030003); // green
+		dpu_write(dpu, SSPP_SRC_OP_MODE(i),      SW_PIX_EXT_OVERRIDE);
+		dpu_write(dpu, SSPP_SRC_OP_MODE_REC1(i), SW_PIX_EXT_OVERRIDE | SRC_SPLIT_ORDER);
+		dpu_write(dpu, SSPP_MULTIRECT_OPMODE(i), 3);
+		dpu_write(dpu, SSPP_CAC_CTRL(i), 0x101);
+
+		dpu_write(dpu, SSPP_CDP_CNTL(i), BIT(0) | BIT(3));
+		dpu_write(dpu, SSPP_CREQ_LUT_0(i), 0);
+		dpu_write(dpu, SSPP_CREQ_LUT_1(i), 0);
+		dpu_write(dpu, SSPP_DANGER_LUT(i), 0);
+		dpu_write(dpu, SSPP_SAFE_LUT(i), 0);
+	}
+
+	set_cac_blob(dpu, cac_default);
+}
+
+static int
+crtc_atomic_set_property(struct drm_crtc *crtc, struct drm_crtc_state *state, struct drm_property *property, uint64_t val)
+{
+	struct msm_drm_private *priv = crtc->dev->dev_private;
+	struct dpu_kms *dpu = to_dpu_kms(priv->kms);
+	struct drm_property_blob *blob;
+
+	if (property != dpu->cac_prop)
+		return -ENOENT;
+
+	dpu->cac_blob_id = val;
+
+	blob = drm_property_lookup_blob(crtc->dev, (uint32_t) val);
+	if (!blob)
+		return -EINVAL;
+	if (blob->length != sizeof(struct CAC_BLOB)*4) {
+		drm_property_blob_put(blob);
+		return -EINVAL;
+	}
+	set_cac_blob(dpu, blob->data);
+	drm_property_blob_put(blob);
+	return 0;
+}
+
+static int
+crtc_atomic_get_property(struct drm_crtc *crtc, const struct drm_crtc_state *state, struct drm_property *property, uint64_t *val)
+{
+	struct msm_drm_private *priv = crtc->dev->dev_private;
+	struct dpu_kms *dpu = to_dpu_kms(priv->kms);
+
+	if (property != dpu->cac_prop)
+		return -ENOENT;
+
+	*val = dpu->cac_blob_id;
+	return 0;
+}
+
 static const struct drm_crtc_funcs dpu_crtc_funcs = {
 	.reset = drm_atomic_helper_crtc_reset,
 	.destroy = drm_crtc_cleanup,
@@ -844,6 +999,9 @@ static const struct drm_crtc_funcs dpu_crtc_funcs = {
 	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
 	.enable_vblank = msm_crtc_enable_vblank,
 	.disable_vblank = msm_crtc_disable_vblank,
+
+	.atomic_set_property = crtc_atomic_set_property,
+	.atomic_get_property = crtc_atomic_get_property,
 };
 
 static const struct drm_crtc_helper_funcs dpu_crtc_helper_funcs = {

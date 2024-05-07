@@ -266,13 +266,8 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		return rc; // XXX proper free path
 	}
 
-	/* only create 1/2 of the planes - some cases use 2 HW planes as 1 plane */
-#ifdef SIXPLANEMODE
-	for (i = 0; i < 8; i++) { // dpu->num_sspp / 2
-#else
-	for (i = 0; i < 2; i++) { // dpu->num_sspp / 2
-#endif
-		rc = dpu_plane_init(dpu, &dpu->plane[i].base);
+	for (i = 0; i < 2; i++) {
+		rc = dpu_plane_init(dpu, &dpu->plane[i].base, i ? 0xe : BIT(0));
 		if (rc) {
 			DRM_ERROR("plane init failed, rc = %d\n", rc);
 			return rc; // XXX proper free path
@@ -281,7 +276,7 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 	}
 
 	for (i = 0; i < 4; i++) {
-		rc = dpu_crtc_init(dpu, &dpu->crtc[i].base, &dpu->plane[0].base);
+		rc = dpu_crtc_init(dpu, &dpu->crtc[i].base, &dpu->plane[i ? 1 : 0].base);
 		if (rc) {
 			DRM_ERROR("crtc init failed, rc = %d\n", rc);
 			return rc;
@@ -309,6 +304,15 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 
 	dpu_write(dpu, INTR_CLEAR, ~0u);
 	dpu_write(dpu, INTR2_CLEAR, ~0u);
+
+	dpu_set_static_regs(dpu);
+
+	{
+		dpu->cac_prop = drm_property_create(dev, DRM_MODE_PROP_BLOB, "CAC_BLOB", 0);
+		WARN_ON(!dpu->cac_prop);
+		drm_object_attach_property(&dpu->crtc[0].base.base, dpu->cac_prop, -1);
+		dpu->cac_blob_id = -1;
+	}
 
 	//reset_ubwc(priv);
 
