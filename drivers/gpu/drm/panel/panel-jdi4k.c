@@ -21,7 +21,7 @@
 #include <drm/display/drm_dsc.h>
 #include <drm/display/drm_dsc_helper.h>
 
-#define DPUOVERCLOCKED
+#define PANEL_FIFO_MODE
 
 // instead of the defined pm8150 analog rails we use the
 // TPS65132 to general the analog rails.  it is used
@@ -81,13 +81,7 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 
 // Modeset params: terms are defined per panel.
 #define H_PIXELS           2160
-#define H_FRONT_PORCH      64
-#define H_BACK_PORCH       64
-#define H_SYNC             32
-#define V_LINES            2160
-#define V_FRONT_PORCH_120  123
-#define V_FRONT_PORCH_90   891
-#define V_FRONT_PORCH_80   1275
+
 #define V_BACK_PORCH       20
 #define V_SYNC             1
 #define NUM_PANELS         2
@@ -98,32 +92,87 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 #define BRIGHTNESS_MAX_90  508
 #define BRIGHTNESS_MAX_80  508
 
-// DSI DCS command related
-#define PANEL_VFP_80  1500
-#define PANEL_VFP_90  1500
-#define PANEL_VFP_120 700
-#define PANEL_VBP_80  800
-#define PANEL_VBP_90  800
-#define PANEL_VBP_120 800
-
 // Camera captuer signal on panel tester is GPIO2 routed out TE pin
 // Need 100usec of offest on either side, so we use 50 lines at 2usec / internal line time
 #define CAMERA_TRIGGER_OFFSET 50
 
-// TODO adjust DPU overclocked settings for 90 Hz mode
-#ifdef DPUOVERCLOCKED
-	#define PANEL_VID_VS_DELAY_80  1112
-	#define PANEL_VID_VS_DELAY_90  1112
-	#define PANEL_VID_VS_DELAY_120 1112
-	#define PIXEL_CLOCK_KHZ_80     641433
-	#define PIXEL_CLOCK_KHZ_90     641433
+#ifdef PANEL_FIFO_MODE
+	#define H_FRONT_PORCH      64
+	#define H_BACK_PORCH       64
+	#define H_SYNC             32
+	#define V_LINES            2160
+	#define V_FRONT_PORCH_120  123
+	#define V_FRONT_PORCH_90   891
+	#define V_FRONT_PORCH_80   1275
+	
+	// DSI DCS command related
+
+	#define PANEL_VFP_120 700
+	#define PANEL_VFP_90  1500
+	#define PANEL_VFP_80  1500
+	
+	#define PANEL_VBP_120 800
+	#define PANEL_VBP_90  800
+	#define PANEL_VBP_80  800
+
+	// TODO adjust DPU overclocked settings for 90 Hz mode
+	#define PANEL_VID_VS_DELAY_120   1112
+	#define PANEL_VID_VS_DELAY_90    1112
+	#define PANEL_VID_VS_DELAY_80    1112
 	#define PIXEL_CLOCK_KHZ_120    641433
+	#define PIXEL_CLOCK_KHZ_90     641433
+	#define PIXEL_CLOCK_KHZ_80     641433
+
+	//previously we used these with the lower DPU freq -- no longer needed -- keep for reference
+	/*
+		#define PANEL_VID_VS_DELAY_120 315
+		#define PANEL_VID_VS_DELAY_90  315
+		#define PANEL_VID_VS_DELAY_80  315
+
+		#define PIXEL_CLOCK_KHZ_120    717574
+		#define PIXEL_CLOCK_KHZ_90     717574
+		#define PIXEL_CLOCK_KHZ_80     717574
+	*/
 #else
-	#define PANEL_VID_VS_DELAY_90  315
-	#define PANEL_VID_VS_DELAY_120 315
-	#define PIXEL_CLOCK_KHZ_90     717574
-	#define PIXEL_CLOCK_KHZ_120    717574
+	#define H_FRONT_PORCH      54
+	#define H_BACK_PORCH       18
+	#define H_SYNC             2
+	#define V_LINES            2160
+	// VFP = PIXEL_CLOCK / (REFRESH_RATE * HTOTAL) - (V_LINES+VBP+VS)
+	#define V_FRONT_PORCH_120  1892
+	#define V_FRONT_PORCH_90   3250
+	#define V_FRONT_PORCH_80   3928
+	// mininum VBP is 2, but MDP needs time to prefill output (during VS+VBP)
+	// the amount needed depends on things like pixel clock, mdp clock,etc.
+	// 15 works with these settings but needs some margin to be safe, 20 is probably OK
+	
+	// DSI DCS command related
+	#define PANEL_VFP_120 50     /* max is (V_FRONT_PORCH-5) - any reason to use a lower/higher value? */
+	#define PANEL_VFP_90 50
+	#define PANEL_VFP_80 50
+	
+	#define PANEL_VBP_120 (V_BACK_PORCH+5)
+	#define PANEL_VBP_90  (V_BACK_PORCH+5)
+	#define PANEL_VBP_80  (V_BACK_PORCH+5)
+	
+	#define PANEL_VID_VS_DELAY_120 0
+	#define PANEL_VID_VS_DELAY_90 0
+	#define PANEL_VID_VS_DELAY_80 0     /* 0 for video through mode */
+
+	// pixel clock for 2.046 usec/line is (2160+HBP+HS+HFP)/(2.046us)
+	// note the real pixel/byte clock will be (2160+(HBP+HS+HFP)*3)/(2.046us) as the driver adjusts for DSC
+	#define PIXEL_CLOCK_KHZ 1091887 /* 1164.2Mhz - 1.358Gsps/lane (panel spec is max 1.30 Gsps/lane) */
+	// if HFP could be reduced to 20 then 2.046us/line would be possible with 1.30 Gsps/lane
+	// (get DSI errors when HFP<22, but HFP<54 has causes corruption on the edge of the screen - why?)
+	// (or keep using FIFO mode but with high pixel clock that corresponds to 1.30 Gsps/lane)
+	
+	#define	PIXEL_CLOCK_KHZ_120  PIXEL_CLOCK_KHZ
+	#define	PIXEL_CLOCK_KHZ_90   PIXEL_CLOCK_KHZ
+	#define	PIXEL_CLOCK_KHZ_80   PIXEL_CLOCK_KHZ
+	
 #endif
+
+
 
 // Total frame time can be calculated as
 // ( htotal*vtotal ) / PIXEL_CLOCK_KHZ
@@ -297,14 +346,23 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	DSI_CMD(0xb0, 0x04), // mfg register unlock
 	DSI_CMD(0xd6, 0x00), // skip loading register defaults out of sleep
 	// DSI-2 Control Setting (C option): SELDL=2 (3 lane), PN2PTXR=1 (one port)
+#ifdef PANEL_FIFO_MODE
 	DSI_CMD(0xb6, 0x20, 0x6b, 0x80, 0x06, 0x33, 0x9a, 0x00, 0x1a, 0x7a), //note the 0x7a last byte is needed to avoid corruption
 	// Display Mode: VRM=0b010, DM=1 (FIFO mode), TE_ON_VIDEO=1 (TE follows TE_MODE setting)
 	DSI_CMD(0xb7, 0x54, 0x00, 0x00, 0x00),
+#else	
+	// why 0x7a for the last byte? 0x70 vs 0x7a doesn't appear to change anything
+	DSI_CMD(0xb6, 0x20, 0x6b, 0x80, 0x06, 0x33, 0x8a, 0x00, 0x1a, 0x7a), //note the 0x7a last byte is needed to avoid corruption
+	// Display Mode: VRM=0b010, DM=0 (video mode), TE_ON_VIDEO=1 (TE follows TE_MODE setting)
+	DSI_CMD(0xb7, 0x52, 0x00, 0x00, 0x00),
+#endif		
 	// Generic pin output setting: GPO1_TES1=233, GPO1_TEW1=17
 	// GPO2 is routed out TE, and is set to trigger 50 lines before, and last 50 lines longer, to trigger camera capture on the panel tester
 	DSI_CMD(0xb9, BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00, 0x00, 0x00, BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET), BE16(GPO1_TEW1+CAMERA_TRIGGER_OFFSET*2));
 	// Display Timing
 	//DSI_CMD(0xc0, RTN, 0x86, VBP&0xff, VBP>>8, BE16(NL), BE16(VFP)),
+	// this was changed to 0x3a but mode_set function changes it back to 66 ?
+	// (anyway RTN doesn't seem to have any effect in video through mode?)
 	DSI_CMD(0xc0, 0x3A, 0x86, VBP&0xff, VBP>>8, BE16(NL), BE16(VFP)),
 	// Source Setting
 	DSI_CMD(0xf1,0x1e); // set offset for next write ( 0xc6 )

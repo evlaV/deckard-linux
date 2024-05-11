@@ -605,7 +605,12 @@ static const struct freq_tbl ftbl_disp_cc_mdss_mdp_clk_src[] = {
 	F(325000000, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
 	F(375000000, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
 	F(514000000, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
-	F(690000000, P_DISP_CC_PLL0_OUT_MAIN, 2, 0, 0),
+#ifdef DPUOVERCLOCKED
+	F(690000000, P_DISP_CC_PLL0_OUT_MAIN, 2, 0, 0), 
+#else
+	//540MHz is slightly overclocked, but not by much, so we no longer call it overclocked
+	F(540000000, P_DISP_CC_PLL0_OUT_MAIN, 2, 0, 0), // need 528MHz for 2160pix/2.046us (+ some margin to be safe) 
+#endif
 	{ }
 };
 

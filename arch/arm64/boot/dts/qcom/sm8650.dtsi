@@ -23,6 +23,14 @@
 #include <dt-bindings/soc/qcom,rpmh-rsc.h>
 #include <dt-bindings/thermal/thermal.h>
 
+#define DPUOVERCLOCKED 0
+#ifdef DPUOVERCLOCKED
+//overclock display scanout engine
+#define DISP_CC_MDSS_MDP_CLK_FREQ 690000000
+#else
+#define DISP_CC_MDSS_MDP_CLK_FREQ 540000000
+#endif
+
 / {
 	interrupt-parent = <&intc>;
 
@@ -2786,7 +2794,7 @@
 
 				assigned-clocks = <&dispcc DISP_CC_MDSS_MDP_CLK>,
 						  <&dispcc DISP_CC_MDSS_VSYNC_CLK>;
-				assigned-clock-rates = <514000000>,
+				assigned-clock-rates = <DISP_CC_MDSS_MDP_CLK_FREQ>,
 						       <19200000>;
 
 				interrupt-parent = <&mdss>;
