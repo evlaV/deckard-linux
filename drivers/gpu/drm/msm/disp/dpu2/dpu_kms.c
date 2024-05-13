@@ -205,6 +205,9 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 	dpu->hbb = 3; /* 2 for DDR4 */
 	dpu->ubwc_version = 4;
 	dpu->num_sspp = 8;
+	dpu->qos_enable = 0;
+	dpu->qseed_filter = 0x03; //FILTER_BILINEAR
+	dpu->cwb_plane_select = 0;
 
 	dpu->creq_lut_linear = 0x0011222222335777;
 	dpu->creq_lut_macrotile = 0x0011223344556677;
@@ -622,6 +625,129 @@ static int dpu_kms_init(struct drm_device *ddev)
 	return 0;
 }
 
+
+
+static ssize_t cwb_plane_select_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct msm_drm_private *priv = platform_get_drvdata(pdev);
+	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
+
+	if (dpu_kms) return sprintf(buf, "%d\n", dpu_kms->cwb_plane_select);
+	else         return sprintf(buf, "error\n");
+}
+
+static ssize_t cwb_plane_select_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	bool v;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct msm_drm_private *priv = platform_get_drvdata(pdev);
+	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
+
+	if (kstrtobool(buf, &v))
+		return -EINVAL;
+
+	if (dpu_kms) {
+		printk("dpu2: cwb_plane_select = %d\n",v);
+		dpu_kms->cwb_plane_select = v;
+	} 
+	else {
+		return -ENODEV;
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(cwb_plane_select);
+
+static ssize_t qos_enable_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct msm_drm_private *priv = platform_get_drvdata(pdev);
+	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
+
+	if (dpu_kms) return sprintf(buf, "%d\n", dpu_kms->qos_enable);
+	else         return sprintf(buf, "error\n");
+}
+
+static ssize_t qos_enable_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	bool v;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct msm_drm_private *priv = platform_get_drvdata(pdev);
+	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
+	int i, pipe;
+
+	if (kstrtobool(buf, &v))
+		return -EINVAL;
+
+	if (dpu_kms) {
+		printk("dpu2: qos_enable = %d\n",v);
+		dpu_kms->qos_enable = v;
+		for (pipe = 0; pipe < 10; pipe++) {
+			i = pipe + (pipe >= 4 ? 12 : 0); // index into register macros (extra offset for DMA pipes)
+			dpu_write(dpu_kms, SSPP_QOS_CTRL(i), dpu_kms->qos_enable); // XXX
+		}
+	} 
+	else {
+		return -ENODEV;
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(qos_enable);
+
+
+static ssize_t qseed_filter_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct msm_drm_private *priv = platform_get_drvdata(pdev);
+	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
+	
+	if (dpu_kms) return sprintf(buf, "%d\n", dpu_kms->qseed_filter);
+	else         return sprintf(buf, "error\n");
+}
+
+static ssize_t qseed_filter_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int v = 0;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct msm_drm_private *priv = platform_get_drvdata(pdev);
+	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
+	int i; 
+
+	if (kstrtoint(buf, 0, &v))
+		return -EINVAL;
+
+	if (dpu_kms) {
+		printk("dpu2: qseed_filter = %d\n",v);
+		dpu_kms->qseed_filter = v;
+		for (i = 0; i < 4; i++) {
+			dpu_write(dpu_kms, QSEED3_OP_MODE(i), dpu_kms->qseed_filter << 24 | dpu_kms->qseed_filter << 16 | 0x4003); // BIT_WIDTH=1, CAC_MODE=1, EN=1,
+		}
+	} 
+	else {
+		return -ENODEV;
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(qseed_filter);
+
+static struct attribute *dpu_plane_attrs[] = {
+	&dev_attr_qos_enable.attr,
+	&dev_attr_qseed_filter.attr,
+	&dev_attr_cwb_plane_select.attr,
+	NULL,
+};
+
+static const struct attribute_group dpu_plane_attr_group = {
+	.name = "dpu2",
+	.attrs = dpu_plane_attrs,
+};
+
 static int dpu_dev_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -643,6 +769,8 @@ static int dpu_dev_probe(struct platform_device *pdev)
 	dpu_kms->num_clocks = ret;
 
 	clk_bulk_prepare_enable(dpu_kms->num_clocks, dpu_kms->clocks);
+
+	ret = sysfs_create_group(&dev->kobj, &dpu_plane_attr_group);
 
 	irq = irq_of_parse_and_map(dpu_kms->pdev->dev.of_node, 0);
 	if (irq < 0) {

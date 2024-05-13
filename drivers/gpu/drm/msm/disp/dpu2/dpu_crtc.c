@@ -686,22 +686,18 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 			dpu_write(dpu, MERGE_3D_CWB_MODE(i), 3);
 			dpu_write(dpu, MERGE_3D_CWB_MUX(i), 0);
 
-#define CWB_LEFT_DISPLAY
-#ifdef CWB_LEFT_DISPLAY
-			//left display
-			dpu_write(dpu, CWB_MUX(i, 0), c->lm + i*2);
-
-			dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
-
-			dpu_write(dpu, CWB_MUX(i, 1), c->lm + i*2+1);
-#else
-			//right display
-			dpu_write(dpu, CWB_MUX(i, 0), c->lm + (1-i)*2);
-
-			dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
-
-			dpu_write(dpu, CWB_MUX(i, 1), c->lm + (1-i)*2+1);
-#endif
+			if(dpu->cwb_plane_select == 0) {
+				//left display
+				dpu_write(dpu, CWB_MUX(i, 0), c->lm + i*2);
+				dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
+				dpu_write(dpu, CWB_MUX(i, 1), c->lm + i*2+1);
+			}
+			else {
+				//right display
+				dpu_write(dpu, CWB_MUX(i, 0), c->lm + (1-i)*2);
+				dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
+				dpu_write(dpu, CWB_MUX(i, 1), c->lm + (1-i)*2+1);
+			}
 
 			dpu_write(dpu, CWB_MODE(i, 1), 0);
 
@@ -839,6 +835,7 @@ static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
 	}
 }
 
+//qseed_filter can be set to the following values to change filter behavior
 #define FILTER_EDGE_DIRECTED_2D		0x0
 #define FILTER_CIRCULAR_2D		0x1
 #define FILTER_SEPARABLE_1D		0x2
@@ -849,7 +846,7 @@ void dpu_set_static_regs(struct dpu_kms *dpu)
 {
 	struct mixercfg mixer_cfg[4] = {};
 	int i, j, pipe;
-	u32 filter = FILTER_BILINEAR;
+	u32 filter = FILTER_BILINEAR; //starting value
 
 	for (i = 0; i < 4; i++) {
 		dpu_write(dpu, LAYER_OP_MODE(i), BIT(1) | BIT(2) | ((i & 1) ? BIT(31) : 0));

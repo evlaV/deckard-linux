@@ -71,6 +71,8 @@ struct dpu_kms {
 	u64 creq_lut_linear;
 	u64 creq_lut_macrotile;
 	int qos_enable;
+	int qseed_filter;
+	int cwb_plane_select;
 };
 #define to_dpu_kms(x) container_of(x, struct dpu_kms, base)
 
