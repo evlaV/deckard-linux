@@ -506,7 +506,8 @@ static const struct clk_parent_data gpu_cc_parent_data_4[] = {
 
 static const struct freq_tbl ftbl_gpu_cc_gx_gfx3d_clk_src[] = {
 	F(19200000, P_BI_TCXO, 1, 0, 0),
-	F(36*19200000, P_GPU_CC_PLL0_OUT_MAIN, 1, 0, 0),
+	//F(36*19200000, P_GPU_CC_PLL0_OUT_MAIN, 1, 0, 0), //690MHz
+	F(47*19200000, P_GPU_CC_PLL0_OUT_MAIN, 1, 0, 0), //903MHz
 	//F(748800000, P_GPU_CC_PLL0_OUT_MAIN, 1, 0, 0),
 	{ }
 };
