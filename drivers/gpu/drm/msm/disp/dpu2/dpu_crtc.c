@@ -926,9 +926,12 @@ void dpu_set_static_regs(struct dpu_kms *dpu)
 		dpu_write(dpu, QSEED3_PHASE_STEP_Y_V(i), 0);
 		dpu_write(dpu, QSEED3_PHASE_STEP_UV_H(i), 0);
 		dpu_write(dpu, QSEED3_PHASE_STEP_UV_V(i), 0);
-		dpu_write(dpu, QSEED3_PRELOAD(i), 0x2040204);
 
-		// XXX:
+		// default preload value for 8650 is (v=2, h=4 - 0x2040204)
+		// it looks like the value needs to be exactly for CAC (v=3, h=7)
+		// otherwise the output is shifted by the difference
+		// maybe also needs a different value in certain cases?
+		dpu_write(dpu, QSEED3_PRELOAD(i), 0x3070307);
 	}
 	for (i = 16; i < 18; i++)
 		dpu_write(dpu, SSPP_CAC_CTRL(i), 0x100);
