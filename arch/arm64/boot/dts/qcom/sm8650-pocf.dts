@@ -283,14 +283,13 @@
 	};
 
 	exp_vout_5v: exp_vout_5v {
-		compatible = "regulator-fixed";
+		compatible = "regulator-valve_5v_exp";
 		regulator-name = "exp_vout_5v";
 		regulator-min-microvolt = <5000000>;
 		regulator-max-microvolt = <5000000>;
-		gpio = <&pm8550vs_g_gpios 6 GPIO_ACTIVE_HIGH>;
+		enable-gpio = <&pm8550vs_g_gpios 6 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 		vin-supply = <&VPH_PWR>;
-		regulator-always-on;
 	};
 
 	// TODO Keith (from Todd) This might be useful for data logging,
