@@ -164,9 +164,9 @@ void msm_crtc_disable_vblank(struct drm_crtc *crtc)
 	vblank_ctrl_queue_work(priv, crtc, false);
 }
 
-struct msm_gem_address_space *msm_kms_init_aspace(struct drm_device *dev)
+struct msm_gem_vm *msm_kms_init_vm(struct drm_device *dev)
 {
-	struct msm_gem_address_space *aspace;
+	struct msm_gem_vm *vm;
 	struct msm_mmu *mmu;
 	struct device *mdp_dev = dev->dev;
 	struct device *mdss_dev = mdp_dev->parent;
@@ -190,14 +190,14 @@ struct msm_gem_address_space *msm_kms_init_aspace(struct drm_device *dev)
 		return NULL;
 	}
 
-	aspace = msm_gem_address_space_create(mmu, "mdp_kms",
+	vm = msm_gem_vm_create(mmu, "mdp_kms",
 		0x1000, 0x100000000 - 0x1000);
-	if (IS_ERR(aspace)) {
-		dev_err(mdp_dev, "aspace create, error %pe\n", aspace);
+	if (IS_ERR(vm)) {
+		dev_err(mdp_dev, "vm create, error %pe\n", vm);
 		mmu->funcs->destroy(mmu);
 	}
 
-	return aspace;
+	return vm;
 }
 
 void msm_drm_kms_uninit(struct device *dev)

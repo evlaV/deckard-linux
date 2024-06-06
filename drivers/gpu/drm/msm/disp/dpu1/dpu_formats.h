@@ -50,7 +50,7 @@ int dpu_format_check_modified_format(
 /**
  * dpu_format_populate_layout - populate the given format layout based on
  *                     mmu, fb, and format found in the fb
- * @aspace:            address space pointer
+ * @vm:                address space pointer
  * @fb:                framebuffer pointer
  * @fmtl:              format layout structure to populate
  *
@@ -58,7 +58,7 @@ int dpu_format_check_modified_format(
  *         are the same as before or 0 if new addresses were populated
  */
 int dpu_format_populate_layout(
-		struct msm_gem_address_space *aspace,
+		struct msm_gem_vm *vm,
 		struct drm_framebuffer *fb,
 		struct dpu_hw_fmt_layout *fmtl);
 
