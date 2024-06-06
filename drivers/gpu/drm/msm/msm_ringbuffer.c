@@ -78,7 +78,7 @@ struct msm_ringbuffer *msm_ringbuffer_new(struct msm_gpu *gpu, int id,
 
 	ring->start = msm_gem_kernel_new(gpu->dev, MSM_GPU_RINGBUFFER_SZ,
 		check_apriv(gpu, MSM_BO_WC | MSM_BO_GPU_READONLY),
-		gpu->aspace, &ring->bo, &ring->iova);
+		gpu->vm, &ring->bo, &ring->iova);
 
 	if (IS_ERR(ring->start)) {
 		ret = PTR_ERR(ring->start);
@@ -130,7 +130,7 @@ void msm_ringbuffer_destroy(struct msm_ringbuffer *ring)
 
 	msm_fence_context_free(ring->fctx);
 
-	msm_gem_kernel_put(ring->bo, ring->gpu->aspace);
+	msm_gem_kernel_put(ring->bo, ring->gpu->vm);
 
 	kfree(ring);
 }
