@@ -314,7 +314,7 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 		if (ret)
 			break;
 
-		submit->bos[i].iova = vma->iova;
+		submit->bos[i].iova = vma->base.va.addr;
 	}
 
 	for (i = 0; i < submit->nr_bos; i++) {

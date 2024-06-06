@@ -548,7 +548,7 @@ struct msm_gem_vbo_entry {
 struct msm_gem_vbo {
 	struct list_head entries;
 	struct drm_mm_node mm_node;
-	struct msm_gem_address_space *aspace;
+	struct drm_gpuvm *vm;
 	struct drm_gem_object base;
 	u32 flags;
 };
@@ -558,19 +558,21 @@ static void msm_gem_free_vbo(struct drm_gem_object *obj)
 {
 	struct msm_gem_vbo *vbo = to_msm_vbo(obj);
 	struct msm_gem_vbo_entry *entry, *tmp;
+	struct msm_gem_vm *vm = to_msm_vm(vbo->vm);
 
-	msm_iommu_pagetable_unmap(vbo->aspace->mmu, vbo->mm_node.start, vbo->mm_node.size);
+	msm_iommu_pagetable_unmap(vm->mmu, vbo->mm_node.start, vbo->mm_node.size);
 
 	list_for_each_entry_safe(entry, tmp, &vbo->entries, node) {
 		drm_gem_object_put(entry->obj);
 		kfree(entry);
 	}
 
-	spin_lock(&vbo->aspace->lock);
+	spin_lock(&vm->mm_lock);
 	drm_mm_remove_node(&vbo->mm_node);
-	spin_unlock(&vbo->aspace->lock);
+	spin_unlock(&vm->mm_lock);
 
-	msm_gem_address_space_put(vbo->aspace);
+	// TODO remove onj from vm?
+	//msm_gem_address_space_put(vbo->aspace);
 	drm_gem_object_release(obj);
 	kfree(vbo);
 }
@@ -580,9 +582,10 @@ static const struct drm_gem_object_funcs msm_gem_vbo_funcs = {
 };
 
 struct drm_gem_object *msm_gem_vbo_new(struct drm_device *dev, u64 size, u32 flags,
-		struct msm_gem_address_space *aspace)
+		struct drm_gpuvm *_vm)
 {
 	struct msm_gem_vbo *vbo;
+	struct msm_gem_vm *vm = to_msm_vm(_vm);
 	int ret;
 
 	vbo = kzalloc(sizeof(*vbo), GFP_KERNEL);
@@ -590,16 +593,16 @@ struct drm_gem_object *msm_gem_vbo_new(struct drm_device *dev, u64 size, u32 fla
 		return ERR_PTR(-ENOMEM);
 
 	INIT_LIST_HEAD(&vbo->entries);
-	vbo->aspace = aspace;
+	vbo->vm = _vm;
 	vbo->flags = flags;
 	vbo->base.funcs = &msm_gem_vbo_funcs;
 	drm_gem_private_object_init(dev, &vbo->base, size);
 
-	spin_lock(&aspace->lock);
-	ret = drm_mm_insert_node_in_range(&aspace->mm, &vbo->mm_node,
+	spin_lock(&vm->mm_lock);
+	ret = drm_mm_insert_node_in_range(&vm->mm, &vbo->mm_node,
 					  size, 1ull << ((flags >> 20) & 0x3f), 0,
 					  0, U64_MAX, 0);
-	spin_unlock(&aspace->lock);
+	spin_unlock(&vm->mm_lock);
 
 	if (ret) {
 		kfree(vbo);
@@ -609,9 +612,10 @@ struct drm_gem_object *msm_gem_vbo_new(struct drm_device *dev, u64 size, u32 fla
 	//printk("vbo addr: %llx size %llx\n", vbo->mm_node.start, vbo->mm_node.size);
 	// don't ignore MSM_VBO_NO_MAP_ZERO ?
 
-	kref_get(&aspace->kref);
+	// TODO add obj to the vm?
+	//kref_get(&aspace->kref);
 
-	ret = msm_iommu_pagetable_map_zero(aspace->mmu, vbo->mm_node.start, size);
+	ret = msm_iommu_pagetable_map_zero(vm->mmu, vbo->mm_node.start, size);
 	WARN_ON(ret);
 
 	return &vbo->base;
@@ -623,10 +627,10 @@ int msm_gem_is_vbo(struct drm_gem_object *obj)
 }
 
 int msm_gem_vbo_get_iova(struct drm_gem_object *obj,
-		struct msm_gem_address_space *aspace, uint64_t *iova)
+		struct drm_gpuvm *vm, uint64_t *iova)
 {
 	struct msm_gem_vbo *vbo = to_msm_vbo(obj);
-	if (aspace != vbo->aspace)
+	if (vm != vbo->vm)
 		return -EINVAL;
 	*iova = vbo->mm_node.start;
 	return 0;
@@ -636,6 +640,7 @@ void msm_gem_vbo_bind(struct drm_gem_object *_vbo, struct drm_gem_object *obj,
 		u64 src_offset, u64 dst_offset, u64 length)
 {
 	struct msm_gem_vbo *vbo = to_msm_vbo(_vbo);
+	struct msm_gem_vm *vm = to_msm_vm(vbo->vm);
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct msm_gem_vbo_entry *entry = kzalloc(sizeof(*entry), GFP_KERNEL);
 	int prot = IOMMU_READ;
@@ -657,8 +662,8 @@ void msm_gem_vbo_bind(struct drm_gem_object *_vbo, struct drm_gem_object *obj,
 	msm_gem_unlock(obj);
 
 	// TODO: switch atomically (instead of unmapping first)
-	msm_iommu_pagetable_unmap(vbo->aspace->mmu, vbo->mm_node.start + dst_offset, length);
-	ret = msm_iommu_pagetable_map2(vbo->aspace->mmu, vbo->mm_node.start + dst_offset,
+	msm_iommu_pagetable_unmap(vm->mmu, vbo->mm_node.start + dst_offset, length);
+	ret = msm_iommu_pagetable_map2(vm->mmu, vbo->mm_node.start + dst_offset,
 			msm_obj->sgt, src_offset, length, prot);
 	if (ret) {
 		WARN_ON(1);
@@ -677,6 +682,7 @@ void msm_gem_vbo_bind(struct drm_gem_object *_vbo, struct drm_gem_object *obj,
 void msm_gem_vbo_unbind(struct drm_gem_object *_vbo, struct drm_gem_object *obj, u64 offset, u64 length)
 {
 	struct msm_gem_vbo *vbo = to_msm_vbo(_vbo);
+	struct msm_gem_vm *vm = to_msm_vm(vbo->vm);
 	struct msm_gem_vbo_entry *entry, *tmp;
 
 	//printk("msm_gem_vbo_unbind: %lld %lld\n", offset, length);
@@ -689,8 +695,8 @@ void msm_gem_vbo_unbind(struct drm_gem_object *_vbo, struct drm_gem_object *obj,
 			continue;
 
 		// TODO: switch atomically (instead of unmapping first)
-		msm_iommu_pagetable_unmap(vbo->aspace->mmu, vbo->mm_node.start + entry->offset, entry->length);
-		msm_iommu_pagetable_map_zero(vbo->aspace->mmu, vbo->mm_node.start + entry->offset, entry->length);
+		msm_iommu_pagetable_unmap(vm->mmu, vbo->mm_node.start + entry->offset, entry->length);
+		msm_iommu_pagetable_map_zero(vm->mmu, vbo->mm_node.start + entry->offset, entry->length);
 
 		drm_gem_object_put(entry->obj);
 		list_del(&entry->node);

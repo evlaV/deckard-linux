@@ -1004,7 +1004,7 @@ static int a6xx_ucode_load(struct msm_gpu *gpu)
 		a6xx_gpu->memstore = msm_gem_kernel_new(gpu->dev,
 						      KGSL_MEMSTORE_SIZE,
 						      MSM_BO_WC | MSM_BO_MAP_PRIV,
-						      gpu->aspace, &a6xx_gpu->memstore_bo,
+						      gpu->vm, &a6xx_gpu->memstore_bo,
 						      &a6xx_gpu->memstore_iova);
 
 		if (IS_ERR(a6xx_gpu->shadow))
@@ -2313,9 +2313,8 @@ a6xx_create_private_vm(struct msm_gpu *gpu)
 	if (IS_ERR(mmu))
 		return ERR_CAST(mmu);
 
-	return msm_gem_vm_create(mmu,
-		"gpu", 0x100000000ULL,
-		adreno_private_vm_size(gpu));
+	return msm_gem_vm_create(gpu->dev, mmu, "gpu", 0x100000000ULL,
+				 adreno_private_vm_size(gpu), true);
 }
 
 static uint32_t a6xx_get_rptr(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
