@@ -218,8 +218,6 @@ static ssize_t measurement_mode_store(struct device *dev,
 
 	data->config = new_cfg;
 
-	pr_err("New Config %x\n", data->config);
-
 	err = i2c_smbus_write_byte(data->client, MAX34417_REG_UPDATE);
 	if (err)
 		goto error;
@@ -260,8 +258,6 @@ static ssize_t park_mode_store(struct device *dev,
 
 	data->config = new_cfg;
 
-	pr_debug("New Config %x\n", data->config);
-
 	err = i2c_smbus_write_byte(data->client, MAX34417_REG_UPDATE);
 	if (err)
 		goto error;
@@ -290,8 +286,6 @@ static ssize_t perr_verr_store(struct device *dev,
 	}
 
 	data->perr_verr = (u8)mode;
-
-	pr_debug("Perr_Verr: %s\n", perr_verr_modes[mode]);
 
 	mutex_unlock(&data->update_lock);
 	return count;
@@ -326,8 +320,6 @@ static ssize_t park_value_store(struct device *dev,
 		goto error;
 
 	data->config = new_cfg;
-
-	pr_debug("New Config %x\n", data->config);
 
 	err = i2c_smbus_write_byte(data->client, MAX34417_REG_UPDATE);
 	if (err)
@@ -596,8 +588,6 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 					voltage_adj = (voltage_raw / 4) - voltage_err;
 
 					power = (current_fs * voltage_adj) * acc_count;
-
-					pr_debug("Perr_Verr correction applied\n");
 				}
 			}
 
