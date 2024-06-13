@@ -58,7 +58,7 @@ int dpu_format_check_modified_format(
  *         are the same as before or 0 if new addresses were populated
  */
 int dpu_format_populate_layout(
-		struct msm_gem_vm *vm,
+		struct drm_gpuvm *vm,
 		struct drm_framebuffer *fb,
 		struct dpu_hw_fmt_layout *fmtl);
 

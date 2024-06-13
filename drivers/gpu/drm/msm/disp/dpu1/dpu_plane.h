@@ -31,7 +31,7 @@
  */
 struct dpu_plane_state {
 	struct drm_plane_state base;
-	struct msm_gem_vm *vm;
+	struct drm_gpuvm *vm;
 	struct dpu_sw_pipe pipe[PIPES_PER_PLANE];
 	struct dpu_sw_pipe_cfg pipe_cfg[PIPES_PER_PLANE];
 	enum dpu_stage stage;
