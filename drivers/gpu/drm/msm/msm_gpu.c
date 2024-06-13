@@ -285,7 +285,7 @@ static void msm_gpu_crashstate_capture(struct msm_gpu *gpu,
 
 		if (state->fault_info.ttbr0) {
 			struct msm_gpu_fault_info *info = &state->fault_info;
-			struct msm_mmu *mmu = submit->vm->mmu;
+			struct msm_mmu *mmu = to_msm_vm(submit->vm)->mmu;
 
 			msm_iommu_pagetable_params(mmu, &info->pgtbl_ttbr0,
 						   &info->asid);
@@ -390,7 +390,7 @@ static void recover_worker(struct kthread_work *work)
 	/* Increment the fault counts */
 	submit->queue->faults++;
 	if (submit->vm)
-		submit->vm->faults++;
+		to_msm_vm(submit->vm)->faults++;
 
 	get_comm_cmdline(submit, &comm, &cmd);
 
@@ -465,6 +465,7 @@ out_unlock:
 void msm_gpu_fault_crashstate_capture(struct msm_gpu *gpu, struct msm_gpu_fault_info *fault_info)
 {
 	struct msm_gem_submit *submit;
+	struct msm_mmu *mmu = to_msm_vm(gpu->vm)->mmu;
 	struct msm_ringbuffer *cur_ring = gpu->funcs->active_ring(gpu);
 	char *comm = NULL, *cmd = NULL;
 
@@ -830,10 +831,11 @@ static int get_clocks(struct platform_device *pdev, struct msm_gpu *gpu)
 }
 
 /* Return a new address space for a msm_drm_private instance */
-struct msm_gem_vm *
+struct drm_gpuvm *
 msm_gpu_create_private_vm(struct msm_gpu *gpu, struct task_struct *task)
 {
-	struct msm_gem_vm *vm = NULL;
+	struct drm_gpuvm *vm = NULL;
+
 	if (!gpu)
 		return NULL;
 
@@ -844,11 +846,11 @@ msm_gpu_create_private_vm(struct msm_gpu *gpu, struct task_struct *task)
 	if (gpu->funcs->create_private_vm) {
 		vm = gpu->funcs->create_private_vm(gpu);
 		if (!IS_ERR(vm))
-			vm->pid = get_pid(task_pid(task));
+			to_msm_vm(vm)->pid = get_pid(task_pid(task));
 	}
 
 	if (IS_ERR_OR_NULL(vm))
-		vm = msm_gem_vm_get(gpu->vm);
+		vm = drm_gpuvm_get(gpu->vm);
 
 	return vm;
 }
@@ -1016,8 +1018,9 @@ void msm_gpu_cleanup(struct msm_gpu *gpu)
 	msm_gem_kernel_put(gpu->memptrs_bo, gpu->vm);
 
 	if (!IS_ERR_OR_NULL(gpu->vm)) {
-		gpu->vm->mmu->funcs->detach(gpu->vm->mmu);
-		msm_gem_vm_put(gpu->vm);
+		struct msm_mmu *mmu = to_msm_vm(gpu->vm)->mmu;
+		mmu->funcs->detach(mmu);
+		drm_gpuvm_put(gpu->vm);
 	}
 
 	if (gpu->worker) {
