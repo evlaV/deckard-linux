@@ -191,21 +191,21 @@ int adreno_zap_shader_load(struct msm_gpu *gpu, u32 pasid)
 	return zap_shader_load_mdt(gpu, adreno_gpu->info->zapfw, pasid);
 }
 
-struct msm_gem_vm *
+struct drm_gpuvm *
 adreno_create_vm(struct msm_gpu *gpu,
 		 struct platform_device *pdev)
 {
 	return adreno_iommu_create_vm(gpu, pdev, 0);
 }
 
-struct msm_gem_vm *
+struct drm_gpuvm *
 adreno_iommu_create_vm(struct msm_gpu *gpu,
 		       struct platform_device *pdev,
 		       unsigned long quirks)
 {
 	struct iommu_domain_geometry *geometry;
 	struct msm_mmu *mmu;
-	struct msm_gem_vm *vm;
+	struct drm_gpuvm *vm;
 	u64 start, size;
 
 	mmu = msm_iommu_gpu_new(&pdev->dev, gpu, quirks);
@@ -262,7 +262,9 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 	 * it now.
 	 */
 	if (!do_devcoredump) {
-		gpu->vm->mmu->funcs->resume_translation(gpu->vm->mmu);
+		struct msm_mmu *mmu = to_msm_vm(gpu->vm)->mmu;
+
+		mmu->funcs->resume_translation(mmu);
 	}
 
 	/*
@@ -357,7 +359,7 @@ int adreno_get_param(struct msm_gpu *gpu, struct msm_context *ctx,
 		return 0;
 	case MSM_PARAM_FAULTS:
 		if (ctx->vm)
-			*value = gpu->global_faults + ctx->vm->faults;
+			*value = gpu->global_faults + to_msm_vm(ctx->vm)->faults;
 		else
 			*value = gpu->global_faults;
 		return 0;
@@ -367,12 +369,12 @@ int adreno_get_param(struct msm_gpu *gpu, struct msm_context *ctx,
 	case MSM_PARAM_VA_START:
 		if (ctx->vm == gpu->vm)
 			return UERR(EINVAL, drm, "requires per-process pgtables");
-		*value = ctx->vm->base.mm_start;
+		*value = ctx->vm->mm_start;
 		return 0;
 	case MSM_PARAM_VA_SIZE:
 		if (ctx->vm == gpu->vm)
 			return UERR(EINVAL, drm, "requires per-process pgtables");
-		*value = ctx->vm->base.mm_range;
+		*value = ctx->vm->mm_range;
 		return 0;
 	case MSM_PARAM_HIGHEST_BANK_BIT:
 		*value = adreno_gpu->ubwc_config.highest_bank_bit;
