@@ -1423,7 +1423,7 @@ static void dpu_plane_sspp_atomic_update(struct drm_plane *plane)
 	const struct msm_format *fmt =
 		msm_framebuffer_format(fb);
 	struct dpu_kms *kms = _dpu_plane_get_kms(&pdpu->base);
-	struct msm_gem_vm *vm= kms->base.vm;
+	struct drm_gpuvm *vm= kms->base.vm;
 	struct dpu_hw_fmt_layout layout;
 	bool layout_valid = false;
 	int ret, i;

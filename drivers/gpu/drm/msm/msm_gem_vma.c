@@ -20,52 +20,38 @@ msm_gem_vm_free(struct drm_gpuvm *gpuvm)
 	kfree(vm);
 }
 
-
-void msm_gem_vm_put(struct msm_gem_vm *vm)
-{
-	if (vm)
-		drm_gpuvm_put(&vm->base);
-}
-
-struct msm_gem_vm *
-msm_gem_vm_get(struct msm_gem_vm *vm)
-{
-	if (!IS_ERR_OR_NULL(vm))
-		drm_gpuvm_get(&vm->base);
-
-	return vm;
-}
-
 /* Actually unmap memory for the vma */
-void msm_gem_vma_purge(struct msm_gem_vma *vma)
+void msm_gem_vma_purge(struct drm_gpuva *vma)
 {
-	struct msm_gem_vm *vm = to_msm_vm(vma->base.vm);
-	unsigned size = vma->base.va.range;
+	struct msm_gem_vma *msm_vma = to_msm_vma(vma);
+	struct msm_gem_vm *vm = to_msm_vm(vma->vm);
+	unsigned size = vma->va.range;
 
 	/* Don't do anything if the memory isn't mapped */
-	if (!vma->mapped)
+	if (!msm_vma->mapped)
 		return;
 
-	vm->mmu->funcs->unmap(vm->mmu, vma->base.va.addr, size);
+	vm->mmu->funcs->unmap(vm->mmu, vma->va.addr, size);
 
-	vma->mapped = false;
+	msm_vma->mapped = false;
 }
 
 /* Map and pin vma: */
 int
-msm_gem_vma_map(struct msm_gem_vma *vma, int prot,
+msm_gem_vma_map(struct drm_gpuva *vma, int prot,
 		struct sg_table *sgt, int size)
 {
-	struct msm_gem_vm *vm = to_msm_vm(vma->base.vm);
+	struct msm_gem_vma *msm_vma = to_msm_vma(vma);
+	struct msm_gem_vm *vm = to_msm_vm(vma->vm);
 	int ret;
 
-	if (GEM_WARN_ON(!vma->base.va.addr))
+	if (GEM_WARN_ON(!vma->va.addr))
 		return -EINVAL;
 
-	if (vma->mapped)
+	if (msm_vma->mapped)
 		return 0;
 
-	vma->mapped = true;
+	msm_vma->mapped = true;
 
 	/*
 	 * NOTE: iommu/io-pgtable can allocate pages, so we cannot hold
@@ -76,40 +62,44 @@ msm_gem_vma_map(struct msm_gem_vma *vma, int prot,
 	 * Revisit this if we can come up with a scheme to pre-alloc pages
 	 * for the pgtable in map/unmap ops.
 	 */
-	ret = vm->mmu->funcs->map(vm->mmu, vma->base.va.addr, sgt, size, prot);
+	ret = vm->mmu->funcs->map(vm->mmu, vma->va.addr, sgt, size, prot);
 
 	if (ret) {
-		vma->mapped = false;
+		msm_vma->mapped = false;
 	}
 
 	return ret;
 }
 
 /* Close an iova.  Warn if it is still in use */
-void msm_gem_vma_close(struct msm_gem_vma *vma)
+void msm_gem_vma_close(struct drm_gpuva *vma)
 {
-	struct msm_gem_vm *vm = to_msm_vm(vma->base.vm);
+	struct msm_gem_vm *vm = to_msm_vm(vma->vm);
+	struct msm_gem_vma *msm_vma = to_msm_vma(vma);
 
-	GEM_WARN_ON(vma->mapped);
+	GEM_WARN_ON(msm_vma->mapped);
 
 	spin_lock(&vm->mm_lock);
-	if (vma->base.va.addr)
-		drm_mm_remove_node(&vma->node);
+	if (vma->va.addr && vm->managed)
+		drm_mm_remove_node(&msm_vma->node);
 	spin_unlock(&vm->mm_lock);
 
+	dma_resv_lock(drm_gpuvm_resv(vma->vm), NULL);
 	mutex_lock(&vm->vm_lock);
-	drm_gpuva_remove(&vma->base);
-	drm_gpuva_unlink(&vma->base);
+	drm_gpuva_remove(vma);
+	drm_gpuva_unlink(vma);
 	mutex_unlock(&vm->vm_lock);
+	dma_resv_unlock(drm_gpuvm_resv(vma->vm));
 
 	kfree(vma);
 }
 
 /* Create a new vma and allocate an iova for it */
-struct msm_gem_vma *
-msm_gem_vma_new(struct msm_gem_vm *vm, struct drm_gem_object *obj, uint32_t align,
+struct drm_gpuva *
+msm_gem_vma_new(struct drm_gpuvm *_vm, struct drm_gem_object *obj, uint32_t align,
 		u64 range_start, u64 range_end)
 {
+	struct msm_gem_vm *vm = to_msm_vm(_vm);
 	struct drm_gpuvm_bo *vm_bo;
 	struct msm_gem_vma *vma;
 	int ret;
@@ -154,7 +144,7 @@ msm_gem_vma_new(struct msm_gem_vm *vm, struct drm_gem_object *obj, uint32_t alig
 	mutex_unlock(&vm->vm_lock);
 	GEM_WARN_ON(drm_gpuvm_bo_put(vm_bo));
 
-	return vma;
+	return &vma->base;
 
 err_va_remove:
 	mutex_lock(&vm->vm_lock);
@@ -186,7 +176,7 @@ static const struct drm_gpuvm_ops msm_gpuvm_ops = {
  * handles virtual address allocation, and both async and sync operations
  * are supported.
  */
-struct msm_gem_vm *
+struct drm_gpuvm *
 msm_gem_vm_create(struct drm_device *drm, struct msm_mmu *mmu, const char *name,
 		  u64 va_start, u64 va_size, bool managed)
 {
@@ -219,7 +209,7 @@ msm_gem_vm_create(struct drm_device *drm, struct msm_mmu *mmu, const char *name,
 
 	drm_mm_init(&vm->mm, va_start, va_size);
 
-	return vm;
+	return &vm->base;
 
 err_free_vm:
 	kfree(vm);
