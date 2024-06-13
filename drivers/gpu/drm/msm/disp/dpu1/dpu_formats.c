@@ -268,7 +268,7 @@ static int dpu_format_get_plane_sizes(
 }
 
 static int _dpu_format_populate_addrs_ubwc(
-		struct msm_gem_vm *vm,
+		struct drm_gpuvm *vm,
 		struct drm_framebuffer *fb,
 		struct dpu_hw_fmt_layout *layout)
 {
@@ -359,7 +359,7 @@ static int _dpu_format_populate_addrs_ubwc(
 }
 
 static int _dpu_format_populate_addrs_linear(
-		struct msm_gem_vm *vm,
+		struct drm_gpuvm *vm,
 		struct drm_framebuffer *fb,
 		struct dpu_hw_fmt_layout *layout)
 {
@@ -389,7 +389,7 @@ static int _dpu_format_populate_addrs_linear(
 }
 
 int dpu_format_populate_layout(
-		struct msm_gem_vm *vm,
+		struct drm_gpuvm *vm,
 		struct drm_framebuffer *fb,
 		struct dpu_hw_fmt_layout *layout)
 {
