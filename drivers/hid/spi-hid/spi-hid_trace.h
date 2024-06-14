@@ -30,7 +30,7 @@ DECLARE_EVENT_CLASS(spi_hid_transfer,
 
 	TP_fast_assign(
 		__entry->bus_num = shid->spi->controller->bus_num;
-		__entry->chip_select = shid->spi->chip_select;
+		__entry->chip_select = shid->spi->chip_select[0]; //this is an array, so need to decide what we want to trace here, default to 0
 		__entry->len = rx_len + tx_len;
 		__entry->ret = ret;
 
@@ -88,7 +88,7 @@ DECLARE_EVENT_CLASS(spi_hid_irq,
 
 	TP_fast_assign(
 		__entry->bus_num = shid->spi->controller->bus_num;
-		__entry->chip_select = shid->spi->chip_select;
+		__entry->chip_select = shid->spi->chip_select[0]; //this is an array, so need to decide what we want to trace here, default to 0
 		__entry->irq = irq;
 	),
 
@@ -123,7 +123,7 @@ DECLARE_EVENT_CLASS(spi_hid,
 
 	TP_fast_assign(
 		__entry->bus_num = shid->spi->controller->bus_num;
-		__entry->chip_select = shid->spi->chip_select;
+		__entry->chip_select = shid->spi->chip_select[0]; //this is an array, so need to decide what we want to trace here, default to 0
 		__entry->power_state = shid->power_state;
 		__entry->ready = shid->ready;
 
