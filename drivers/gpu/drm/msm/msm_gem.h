@@ -55,6 +55,13 @@ struct msm_gem_vm {
 	struct drm_gpuvm base;
 
 	/**
+	 * @sched: Scheduler used for asynchronous VM_BIND request.
+	 *
+	 * Unused for kernel managed VMs (where all operations are synchronous).
+	 */
+	struct drm_gpu_scheduler sched;
+
+	/**
 	 * @mm: Memory management for kernel managed VA allocations
 	 *
 	 * Only used for kernel managed VMs, unused for user managed VMs.
@@ -106,6 +113,8 @@ struct msm_gem_vm {
 struct drm_gpuvm *
 msm_gem_vm_create(struct drm_device *drm, struct msm_mmu *mmu, const char *name,
 		  u64 va_start, u64 va_size, bool managed);
+
+void msm_gem_vm_close(struct drm_gpuvm *gpuvm);
 
 struct msm_fence_context;
 
@@ -196,6 +205,7 @@ int msm_gem_get_and_pin_iova(struct drm_gem_object *obj, struct drm_gpuvm *vm,
 			     uint64_t *iova);
 void msm_gem_unpin_iova(struct drm_gem_object *obj, struct drm_gpuvm *vm);
 void msm_gem_pin_obj_locked(struct drm_gem_object *obj);
+struct page **msm_gem_get_pages_locked(struct drm_gem_object *obj, unsigned madv);
 struct page **msm_gem_pin_pages_locked(struct drm_gem_object *obj);
 void msm_gem_unpin_pages_locked(struct drm_gem_object *obj);
 int msm_gem_dumb_create(struct drm_file *file, struct drm_device *dev,
