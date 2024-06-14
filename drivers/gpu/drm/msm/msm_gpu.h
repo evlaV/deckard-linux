@@ -576,6 +576,9 @@ struct msm_gpu_submitqueue {
 	struct list_head fences;
 	wait_queue_head_t waitqueue;
 	struct msm_gpu *gpu; // XXX
+
+	/** @_vm_bind_entity: used for @entity pointer for VM_BIND queues */
+	struct drm_sched_entity _vm_bind_entity[0];
 };
 
 struct msm_gpu_state_bo {
