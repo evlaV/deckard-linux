@@ -47,7 +47,12 @@ static void put_iova_spaces(struct drm_gem_object *obj, struct drm_gpuvm *vm, bo
 
 static void msm_gem_close(struct drm_gem_object *obj, struct drm_file *file)
 {
+	struct msm_context *ctx = file->driver_priv;
+
 	update_ctx_mem(file, -obj->size);
+
+	if (msm_context_is_vmbind(ctx))
+		return;
 
 	/*
 	 * TODO we might need to kick this to a queue to avoid blocking
