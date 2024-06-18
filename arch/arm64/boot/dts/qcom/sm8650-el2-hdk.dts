@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) 2024, Linaro Limited
+ */
+
+#include "sm8650-hdk.dts"
+#include "sm8650-el2.dtsi"
+
+/ {
+	/delete-node/ pmic-glink;
+	/delete-node/ sound;
+	/delete-node/ leds;
+};
+
+&wcd_usbss_sbu_mux {
+	/delete-property/ remote-endpoint;
+};
+
+&wcd_usbss {
+	status = "disabled";
+};
+
+&wcd939x {
+	status = "disabled";
+};
+
+&lpass_tlmm {
+	status = "disabled";
+};
+
+&mdss_dp0_out {
+	/delete-property/ data-lanes;
+	/delete-property/ remote-endpoint;
+};
+
+&mdss_dp0 {
+	status = "disabled";
+};
+
+&usb_1_dwc3_hs {
+	/delete-property/ remote-endpoint;
+};
+
+&usb_1_dwc3_ss {
+	/delete-property/ remote-endpoint;
+};
+
+&usb_dp_qmpphy_dp_in {
+	/delete-property/ remote-endpoint;
+};
+
+&usb_dp_qmpphy_out {
+	/delete-property/ remote-endpoint;
+};
+
+&usb_dp_qmpphy_usb_ss_in {
+	/delete-property/ remote-endpoint;
+};
