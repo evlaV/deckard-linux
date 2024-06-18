@@ -1,0 +1,225 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) 2023, Linaro Limited
+ */
+
+/*
+ * Remove:
+ * - SCPI power management nodes
+ * - Remove DSP & LPASS nodes until DSP can be enabled without TZ
+ * Disable:
+ * - LPASS & Audio nodes, could be re-enabled with lpass-cpu implementation
+ * TODO:
+ * - fix cDSP & aDSP to boot without SCM
+ */
+
+/ {
+	cpus {
+		/delete-node/ idle-states;
+		/delete-node/ domain-idle-states;
+	};
+
+	/delete-node/ firmware;
+	/delete-node/ reserved-memory;
+
+	reserved-memory {
+		ranges;
+
+		#address-cells = <2>;
+		#size-cells = <2>;
+
+		aop_mem: aop@81c00000 {
+			no-map;
+			reg = <0x0 0x81c00000 0x0 0x60000>;
+		};
+
+		aop_cmd_db_mem: aop-cmd-db@81c60000 {
+			compatible = "qcom,cmd-db";
+			reg = <0x0 0x81c60000 0x0 0x20000>;
+			no-map;
+		};
+
+		/* merged aop_config, tme_crash_dump, tme_log */
+		aop_config_merged_mem: aop-config-merged-region@81c80000 {
+			reg = <0x0 0x81c80000 0x0 0x64000>;
+			no-map;
+		};
+
+		smem: smem@81d00000 {
+			compatible = "qcom,smem";
+			reg = <0x0 0x81d00000 0x0 0x200000>;
+			hwlocks = <&tcsr_mutex 3>;
+			no-map;
+		};
+
+		cpucp_fw_mem: cpucp-fw@d8040000 {
+			reg = <0x0 0xd8040000 0x0 0x1b2000>;
+			no-map;
+		};
+
+		video_mem: video@9bb00000 {
+			reg = <0 0x9bb00000 0 0x800000>;
+			no-map;
+		};
+	};
+
+	psci {
+		/delete-node/ power-domain-cpu0;
+		/delete-node/ power-domain-cpu1;
+		/delete-node/ power-domain-cpu2;
+		/delete-node/ power-domain-cpu3;
+		/delete-node/ power-domain-cpu4;
+		/delete-node/ power-domain-cpu5;
+		/delete-node/ power-domain-cpu6;
+		/delete-node/ power-domain-cpu7;
+		/delete-node/ power-domain-cluster;
+	};
+
+	/delete-node/ smp2p-adsp;
+	/delete-node/ smp2p-cdsp;
+	/delete-node/ smp2p-modem;
+
+	soc@0 {
+		/delete-node/ timer@17420000;
+
+		restart@c264000 {
+			compatible = "qcom,pshold";
+			reg = <0 0x0c264000 0 0x4>;
+		};
+	};
+};
+
+&apps_rsc {
+	/delete-property/ power-domains;
+};
+
+&cpu0 {
+	/delete-property/ power-domains;
+	/delete-property/ power-domain-names;
+};
+
+&cpu1 {
+	/delete-property/ power-domains;
+	/delete-property/ power-domain-names;
+};
+
+&cpu2 {
+	/delete-property/ power-domains;
+	/delete-property/ power-domain-names;
+};
+
+&cpu3 {
+	/delete-property/ power-domains;
+	/delete-property/ power-domain-names;
+};
+
+&cpu4 {
+	/delete-property/ power-domains;
+	/delete-property/ power-domain-names;
+};
+
+&cpu5 {
+	/delete-property/ power-domains;
+	/delete-property/ power-domain-names;
+};
+
+&cpu6 {
+	/delete-property/ power-domains;
+	/delete-property/ power-domain-names;
+};
+
+&cpu7 {
+	/delete-property/ power-domains;
+	/delete-property/ power-domain-names;
+};
+
+/delete-node/ &ipa;
+
+&lpass_wsa2macro {
+	/delete-property/ clocks;
+	status = "disabled";
+};
+
+&lpass_rxmacro {
+	/delete-property/ clocks;
+	status = "disabled";
+};
+
+&lpass_txmacro {
+	/delete-property/ clocks;
+	status = "disabled";
+};
+
+&lpass_wsamacro {
+	/delete-property/ clocks;
+	status = "disabled";
+};
+
+&lpass_vamacro {
+	/delete-property/ clocks;
+	status = "disabled";
+};
+
+&lpass_tlmm {
+	/delete-property/ clocks;
+	status = "disabled";
+};
+
+&iris {
+	video-firmware {
+		iommus = <&apps_smmu 0x1942 0x0000>;
+	};
+};
+
+&swr0 {
+	status = "disabled";
+};
+
+&swr1 {
+	status = "disabled";
+};
+
+&swr2 {
+	status = "disabled";
+};
+
+/delete-node/ &remoteproc_adsp;
+/delete-node/ &remoteproc_cdsp;
+/delete-node/ &remoteproc_mpss;
+
+&gpu {
+	/* Take in account SMMU aperture registers */
+	reg = <0x0 0x03d00000 0x0 0x61000>,
+	      <0x0 0x03d9e000 0x0 0x2000>,
+	      <0x0 0x03d61000 0x0 0x800>;
+
+	/delete-node/ zap-shader;
+};
+
+/* Specify QUP/GPI firmware file */
+
+&gpi_dma1 {
+	firmware-name = "qcom/sm8650/qupv3fw.elf";
+};
+
+&gpi_dma2 {
+	firmware-name = "qcom/sm8650/qupv3fw.elf";
+};
+
+&qupv3_id_0 {
+	firmware-name = "qcom/sm8650/qupv3fw.elf";
+};
+
+&qupv3_id_1 {
+	firmware-name = "qcom/sm8650/qupv3fw.elf";
+};
+
+&i2c_master_hub_0 {
+	firmware-name = "qcom/sm8650/qupv3fw.elf";
+};
+
+/* PON PBS reboot mode */
+
+&pmk8550_pon {
+	compatible = "qcom,pmk8350-el2-pon", "qcom,pmk8350-pon";
+};
