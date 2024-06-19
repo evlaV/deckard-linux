@@ -633,7 +633,8 @@ static struct arm_smmu_device *qcom_smmu_create(struct arm_smmu_device *smmu,
 		return smmu;
 
 	/* Check to make sure qcom_scm has finished probing */
-	if (!qcom_scm_is_available())
+	if (np && of_device_is_compatible(np, "qcom,sdm845-smmu-500") &&
+	    !qcom_scm_is_available())
 		return ERR_PTR(dev_err_probe(smmu->dev, -EPROBE_DEFER,
 			"qcom_scm not ready\n"));
 
