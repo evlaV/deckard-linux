@@ -1081,7 +1081,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		goto err_resources;
 	}
 
-	if (desc && desc->no_dma_support) {
+	if (1) {
 		fifo_disable = false;
 		gi2c->no_dma = true;
 	} else {
