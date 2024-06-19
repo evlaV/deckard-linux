@@ -653,6 +653,8 @@ err_tx:
 	return ret;
 }
 
+void geni_load_firmware(struct geni_se *se, enum geni_se_protocol_type proto);
+
 static int spi_geni_init(struct spi_geni_master *mas)
 {
 	struct spi_controller *spi = dev_get_drvdata(mas->dev);
@@ -664,6 +666,10 @@ static int spi_geni_init(struct spi_geni_master *mas)
 	pm_runtime_get_sync(mas->dev);
 
 	proto = geni_se_read_proto(se);
+	if (proto == 0xff) {
+		geni_load_firmware(se, GENI_SE_SPI);
+		proto = geni_se_read_proto(se);
+	}
 
 	if (spi->target) {
 		if (proto != GENI_SE_SPI_SLAVE) {
