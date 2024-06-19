@@ -668,6 +668,7 @@ int adreno_hw_init(struct msm_gpu *gpu)
 	VERB("%s", gpu->name);
 
 	if (adreno_gpu->info->family >= ADRENO_6XX_GEN1 &&
+	    qcom_scm_is_available() &&
 	    qcom_scm_set_gpu_smmu_aperture_is_available()) {
 		/* We currently always use context bank 0, so hard code this */
 		ret = qcom_scm_set_gpu_smmu_aperture(0);
