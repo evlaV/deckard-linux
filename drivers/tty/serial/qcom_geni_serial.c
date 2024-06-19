@@ -1700,10 +1700,10 @@ static const struct uart_ops qcom_geni_console_pops = {
 
 static const struct uart_ops qcom_geni_uart_pops = {
 	.tx_empty = qcom_geni_serial_tx_empty,
-	.stop_tx = qcom_geni_serial_stop_tx_dma,
-	.start_tx = qcom_geni_serial_start_tx_dma,
-	.start_rx = qcom_geni_serial_start_rx_dma,
-	.stop_rx = qcom_geni_serial_stop_rx_dma,
+	.stop_tx = qcom_geni_serial_stop_tx_fifo,
+	.start_tx = qcom_geni_serial_start_tx_fifo,
+	.stop_rx = qcom_geni_serial_stop_rx_fifo,
+	.start_rx = qcom_geni_serial_start_rx_fifo,
 	.set_termios = qcom_geni_serial_set_termios,
 	.startup = qcom_geni_serial_startup,
 	.request_port = qcom_geni_serial_request_port,
@@ -1885,7 +1885,7 @@ static const struct qcom_geni_device_data qcom_geni_console_data = {
 
 static const struct qcom_geni_device_data qcom_geni_uart_data = {
 	.console = false,
-	.mode = GENI_SE_DMA,
+	.mode = GENI_SE_FIFO,
 };
 
 static const struct dev_pm_ops qcom_geni_serial_pm_ops = {
