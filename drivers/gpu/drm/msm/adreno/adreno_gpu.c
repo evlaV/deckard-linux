@@ -184,8 +184,8 @@ int adreno_zap_shader_load(struct msm_gpu *gpu, u32 pasid)
 
 	/* We need SCM to be able to load the firmware */
 	if (!qcom_scm_is_available()) {
-		DRM_DEV_ERROR(&pdev->dev, "SCM is not available\n");
-		return -EPROBE_DEFER;
+		DRM_DEV_INFO(&pdev->dev, "SCM is not available\n");
+		return -ENODEV;
 	}
 
 	return zap_shader_load_mdt(gpu, adreno_gpu->info->zapfw, pasid);
