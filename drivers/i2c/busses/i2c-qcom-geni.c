@@ -1058,7 +1058,7 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
 		goto err;
 	}
 
-	if (gi2c->dev_data->no_dma_support) {
+	if (1) {
 		fifo_disable = false;
 		gi2c->no_dma = true;
 	} else {
