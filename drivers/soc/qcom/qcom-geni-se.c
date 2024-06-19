@@ -119,6 +119,7 @@ static const char * const icc_path_names[] = {"qup-core", "qup-config",
 #define GENI_CGC_CTRL			0x28
 #define GENI_CLK_CTRL_RO		0x60
 #define GENI_FW_S_REVISION_RO		0x6c
+#define GENI_DFS_IF_CFG			0x80
 #define SE_GENI_BYTE_GRAN		0x254
 #define SE_GENI_TX_PACKING_CFG0		0x260
 #define SE_GENI_TX_PACKING_CFG1		0x264
@@ -154,7 +155,7 @@ static const char * const icc_path_names[] = {"qup-core", "qup-config",
 
 /* GENI_CGC_CTRL fields */
 #define CFG_AHB_CLK_CGC_ON		BIT(0)
-#define CFG_AHB_WR_ACLK_CGC_ON		BIT(1)
+#define CFG_AHB_WR_CLK_CGC_ON		BIT(1)
 #define DATA_AHB_CLK_CGC_ON		BIT(2)
 #define SCLK_CGC_ON			BIT(3)
 #define TX_CLK_CGC_ON			BIT(4)
@@ -185,6 +186,12 @@ static const char * const icc_path_names[] = {"qup-core", "qup-config",
 #define RX_DMA_ZERO_PADDING_EN		BIT(5)
 #define RX_DMA_IRQ_DELAY_MSK		GENMASK(8, 6)
 #define RX_DMA_IRQ_DELAY_SHFT		6
+
+#define GENI_SE_DMA_DONE_EN BIT(0)
+#define GENI_SE_DMA_EOT_EN BIT(1)
+#define GENI_SE_DMA_AHB_ERR_EN BIT(2)
+
+#define GENI_SE_DMA_EOT_BUF BIT(0)
 
 /**
  * geni_se_get_qup_hw_version() - Read the QUP wrapper Hardware version
@@ -272,6 +279,137 @@ void geni_se_init(struct geni_se *se, u32 rx_wm, u32 rx_rfr)
 	writel_relaxed(val, se->base + SE_GENI_S_IRQ_EN);
 }
 EXPORT_SYMBOL_GPL(geni_se_init);
+
+__attribute__ ((packed))
+struct se_elf_header {
+	u32 magic;
+	u32 version;
+	u32 core_version;
+	u16 serial_protocol;
+	u16 fw_version;
+	u16 cfg_version;
+	u16 fw_size_in_items;
+	u16 fw_offset;
+	u16 cfg_size_in_items;
+	u16 cfg_idx_offset;
+	u16 cfg_val_offset;
+};
+
+__attribute__ ((aligned(16))) static const
+#include "qup3_proto1.h"
+__attribute__ ((aligned(16))) static const
+#include "qup3_proto2.h"
+__attribute__ ((aligned(16))) static const
+#include "qup3_proto3.h"
+
+static void
+geni_write(struct geni_se *se, u32 offset, u32 value)
+{
+	writel(value, se->base + offset);
+}
+
+/* for unitialized QUP */
+void geni_load_firmware(struct geni_se *se, enum geni_se_protocol_type proto)
+{
+	struct se_elf_header *hdr;
+	switch (proto) {
+	case GENI_SE_SPI: hdr = (void*) qup3_proto1; break;
+	case GENI_SE_UART: hdr = (void*) qup3_proto2; break;
+	case GENI_SE_I2C: hdr = (void*) qup3_proto3; break;
+	default: return;
+	}
+	const u32 *fw_val_arr  = (const u32 *)((u8*) hdr + hdr->fw_offset);
+	const u8  *cfg_idx_arr = (const u8  *)          hdr + hdr->cfg_idx_offset;
+	const u32 *cfg_val_arr = (const u32 *)((u8*) hdr + hdr->cfg_val_offset);
+	u32 cgc_ctrl = readl_relaxed(se->base + GENI_CGC_CTRL);
+	u32 dfs_if_cfg = readl_relaxed(se->base + GENI_DFS_IF_CFG);
+	u32 i;
+
+#define DFS_IF_EN BIT(0)
+	geni_write(se, GENI_OUTPUT_CTRL, 0x00);
+	geni_write(se, GENI_DFS_IF_CFG, dfs_if_cfg & ~DFS_IF_EN);
+
+	geni_write(se, GENI_CGC_CTRL, cgc_ctrl | PROG_RAM_HCLK_OFF | PROG_RAM_SCLK_OFF);
+	geni_write(se, 0x2000, 0); /* GENI_CLK_CTRL.SER_CLK_SEL = 0 */
+	geni_write(se, GENI_CGC_CTRL, cgc_ctrl);
+
+	/* GENI_FW_REVISION / GENI_S_FW_REVISION */
+	geni_write(se, 0x1000, (hdr->serial_protocol & 0xff) << 8 | (hdr->fw_version & 0xff));
+	geni_write(se, 0x1004, (hdr->serial_protocol & 0xff) << 8 | (hdr->fw_version & 0xff));
+
+	/* GENI_CFG_RAM */
+	for (i = 0; i < hdr->fw_size_in_items; i++)
+		writel(fw_val_arr[i], se->base + 0x1010 + i * 4);
+
+	geni_write(se, GENI_INIT_CFG_REVISION, hdr->cfg_version);
+	geni_write(se, GENI_S_INIT_CFG_REVISION, hdr->cfg_version);
+
+	for (i = 0; i < hdr->cfg_size_in_items; i++)
+		geni_write(se, 0x100 + cfg_idx_arr[i] * 4, cfg_val_arr[i]); /* GENI_CFG_REG0[i] */
+
+	geni_write(se, SE_GENI_RX_RFR_WATERMARK_REG,
+		((readl_relaxed(se->base + SE_HW_PARAM_1) & RX_FIFO_DEPTH_MSK) >> RX_FIFO_DEPTH_SHFT) - 2);
+
+	geni_write(se, GENI_FORCE_DEFAULT_REG, 1);
+	geni_write(se, GENI_OUTPUT_CTRL, 0x7f);
+
+	cgc_ctrl |= EXT_CLK_CGC_ON | RX_CLK_CGC_ON | TX_CLK_CGC_ON | SCLK_CGC_ON |
+		DATA_AHB_CLK_CGC_ON | CFG_AHB_WR_CLK_CGC_ON | CFG_AHB_CLK_CGC_ON;
+
+	geni_write(se, SE_DMA_GENERAL_CFG, AHB_SEC_SLV_CLK_CGC_ON |
+			DMA_AHB_SLV_CFG_ON | DMA_TX_CLK_CGC_ON | DMA_RX_CLK_CGC_ON);
+	geni_write(se, GENI_CGC_CTRL, cgc_ctrl);
+
+	geni_write(se, SE_GENI_DMA_MODE_EN, 0x00); /* GENI_DMA_MODE_EN for CPU DMA enable */
+	geni_write(se, SE_IRQ_EN, 0xf);
+	geni_write(se, SE_GSI_EVENT_EN, 0);
+
+	geni_write(se, SE_GENI_M_IRQ_EN,
+		M_CMD_OVERRUN_EN |
+		M_ILLEGAL_CMD_EN |
+		M_CMD_FAILURE_EN |
+		M_CMD_CANCEL_EN |
+		M_CMD_ABORT_EN |
+		M_TIMESTAMP_EN |
+		M_IO_DATA_ASSERT_EN |
+		M_IO_DATA_DEASSERT_EN |
+		M_RX_FIFO_WR_ERR_EN |
+		M_RX_FIFO_RD_ERR_EN |
+		M_TX_FIFO_WR_ERR_EN |
+		M_TX_FIFO_RD_ERR_EN);
+	// I3C add M_GP_SYNC_IRQ_0_EN
+
+	geni_write(se, SE_GENI_S_IRQ_EN,
+		S_CMD_OVERRUN_EN |
+		S_ILLEGAL_CMD_EN |
+		S_CMD_CANCEL_EN |
+		S_CMD_ABORT_EN |
+		S_GP_IRQ_0_EN |
+		S_GP_IRQ_1_EN |
+		S_GP_IRQ_2_EN |
+		S_GP_IRQ_3_EN |
+		S_RX_FIFO_WR_ERR_EN |
+		S_RX_FIFO_RD_ERR_EN);
+
+#define RESET_DONE_EN_SET BIT(3)
+#define FLUSH_DONE_EN_SET BIT(4)
+	// skip for i2c hub
+	geni_write(se, SE_DMA_TX_IRQ_EN_SET,
+		RESET_DONE_EN_SET | GENI_SE_DMA_AHB_ERR_EN | GENI_SE_DMA_DONE_EN);
+	geni_write(se, SE_DMA_RX_IRQ_EN_SET, FLUSH_DONE_EN_SET |
+		RESET_DONE_EN_SET | GENI_SE_DMA_AHB_ERR_EN | GENI_SE_DMA_DONE_EN);
+
+	geni_write(se, GENI_FORCE_DEFAULT_REG, 1);
+	// skip for i2c hub
+	geni_write(se, GENI_CGC_CTRL, cgc_ctrl | PROG_RAM_HCLK_OFF | PROG_RAM_SCLK_OFF);
+	geni_write(se, 0x2000, BIT(0)); /* GENI_CLK_CTRL.SER_CLK_SEL = 1 */
+	geni_write(se, GENI_CGC_CTRL, cgc_ctrl);
+
+	geni_write(se, 0x2004, 0x01); /* DMA_IF_EN */
+	geni_write(se, 0x2008, 0x00); /* FIFO_IF_DISABLE */
+}
+
+#define GENI_DMA_MODE_EN		BIT(0)
 
 static void geni_se_select_fifo_mode(struct geni_se *se)
 {
