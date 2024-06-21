@@ -1,3 +1,6 @@
+#ifndef __DPU_COMMON_H__
+#define __DPU_COMMON_H__
+
 #include <drm/drm_drv.h>
 #include <drm/drm_vblank.h>
 #include <drm/drm_gem_framebuffer_helper.h>
@@ -108,3 +111,4 @@ void dpu_set_static_regs(struct dpu_kms *dpu);
 
 void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer *fb);
 void sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt, uint64_t modifier, unsigned rotation);
+#endif
