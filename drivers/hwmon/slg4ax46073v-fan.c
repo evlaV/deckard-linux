@@ -134,18 +134,18 @@ static const struct regmap_config slg4ax46073v_regmap_config = {
 	.cache_type = REGCACHE_NONE,
 };
 
-int slg4ax46073v_read_reg(struct slg4ax46073v *slg4ax46073v, unsigned int reg_addr, unsigned int *val)
+static int slg4ax46073v_read_reg(struct slg4ax46073v *slg4ax46073v, unsigned int reg_addr, unsigned int *val)
 {
 	return regmap_read(slg4ax46073v->regmap, reg_addr, val);
 }
 
-int slg4ax46073v_write_reg(struct slg4ax46073v *slg4ax46073v, unsigned int reg_addr, unsigned int val)
+static int slg4ax46073v_write_reg(struct slg4ax46073v *slg4ax46073v, unsigned int reg_addr, unsigned int val)
 {
 	return regmap_write(slg4ax46073v->regmap, reg_addr, val);
 }
 
 // curves based on plot of datasheet values ds.10
-unsigned int slg4ax46073v_pwm_duty_cycle_to_reg_value(struct slg4ax46073v *slg4ax46073v, unsigned int requested_pwm_dc)
+static unsigned int slg4ax46073v_pwm_duty_cycle_to_reg_value(struct slg4ax46073v *slg4ax46073v, unsigned int requested_pwm_dc)
 {
     unsigned int pwm_dc = requested_pwm_dc;
 
@@ -168,7 +168,7 @@ unsigned int slg4ax46073v_pwm_duty_cycle_to_reg_value(struct slg4ax46073v *slg4a
     }
 }
 
-unsigned int slg4ax46073v_pwm_reg_value_to_duty_cycle(struct slg4ax46073v *slg4ax46073v, unsigned int reg_value)
+static unsigned int slg4ax46073v_pwm_reg_value_to_duty_cycle(struct slg4ax46073v *slg4ax46073v, unsigned int reg_value)
 {
     if ( slg4ax46073v-> version >= VERSION_7 ) {
         unsigned int pwd_period;
@@ -189,7 +189,7 @@ static uint16_t slg4ax46073v_rpm_from_tach( struct slg4ax46073v *slg4ax46073v, u
     }      
 }
 
-int slg4ax46073v_arm_tach(struct slg4ax46073v *slg4ax46073v)
+static int slg4ax46073v_arm_tach(struct slg4ax46073v *slg4ax46073v)
 {
     unsigned int virtual_in;
     unsigned int reg_val;
@@ -204,7 +204,7 @@ int slg4ax46073v_arm_tach(struct slg4ax46073v *slg4ax46073v)
     }
 }
 
-int slg4ax46073v_disarm_wdt(struct slg4ax46073v *slg4ax46073v)
+static int slg4ax46073v_disarm_wdt(struct slg4ax46073v *slg4ax46073v)
 {
     unsigned int virtual_in;
     if ( slg4ax46073v_read_reg( slg4ax46073v, SLG4AX46073V_REG_VIRTUAL_INPUT, &virtual_in) ) {
@@ -215,7 +215,7 @@ int slg4ax46073v_disarm_wdt(struct slg4ax46073v *slg4ax46073v)
     return slg4ax46073v_write_reg( slg4ax46073v, SLG4AX46073V_REG_VIRTUAL_INPUT, virtual_in);
 }
 
-int slg4ax46073v_arm_wdt(struct slg4ax46073v *slg4ax46073v)
+static int slg4ax46073v_arm_wdt(struct slg4ax46073v *slg4ax46073v)
 {
     unsigned int virtual_in;
     if ( slg4ax46073v_read_reg( slg4ax46073v, SLG4AX46073V_REG_VIRTUAL_INPUT, &virtual_in) ) {
@@ -226,7 +226,7 @@ int slg4ax46073v_arm_wdt(struct slg4ax46073v *slg4ax46073v)
     return slg4ax46073v_write_reg( slg4ax46073v, SLG4AX46073V_REG_VIRTUAL_INPUT, virtual_in);
 }
 
-int slg4ax46073v_pet_wdt(struct slg4ax46073v *slg4ax46073v)
+static int slg4ax46073v_pet_wdt(struct slg4ax46073v *slg4ax46073v)
 {
     unsigned int virtual_in;
     if ( slg4ax46073v_read_reg( slg4ax46073v, SLG4AX46073V_REG_VIRTUAL_INPUT, &virtual_in) ) {
@@ -237,7 +237,7 @@ int slg4ax46073v_pet_wdt(struct slg4ax46073v *slg4ax46073v)
     return slg4ax46073v_write_reg( slg4ax46073v, SLG4AX46073V_REG_VIRTUAL_INPUT, virtual_in);
 }
 
-int slg4ax46073v_get_version(struct slg4ax46073v *slg4ax46073v, unsigned int * version)
+static int slg4ax46073v_get_version(struct slg4ax46073v *slg4ax46073v, unsigned int * version)
 {
     int ret = regmap_bulk_read( slg4ax46073v->regmap, SLG4AX46073V_REG_VERSION, version, 2);
     if ( !ret ) {
@@ -246,7 +246,7 @@ int slg4ax46073v_get_version(struct slg4ax46073v *slg4ax46073v, unsigned int * v
     return ret;
 }
 
-int slg4ax46073v_reset_wdt( struct slg4ax46073v *slg4ax46073v )
+static int slg4ax46073v_reset_wdt( struct slg4ax46073v *slg4ax46073v )
 {
     int ret = 0;
     ret |= slg4ax46073v_disarm_wdt( slg4ax46073v );
@@ -257,11 +257,27 @@ int slg4ax46073v_reset_wdt( struct slg4ax46073v *slg4ax46073v )
     return ret;
 }
 
-bool slg4ax46073v_wdt_fired( struct slg4ax46073v *slg4ax46073v )
+static bool slg4ax46073v_wdt_fired( struct slg4ax46073v *slg4ax46073v )
 {
     unsigned int wdt_status;
     slg4ax46073v_read_reg( slg4ax46073v, SLG4AX46073V_REG_WDT_STATUS, &wdt_status);
     return ( ( wdt_status & SLG4AX46073V_WDT_OK ) != SLG4AX46073V_WDT_OK );
+}
+
+static void slg4ax46073v_reset(struct slg4ax46073v *slg4ax46073v)
+{
+    pr_err("slg4a_fan: resetting fan controller\n");
+    // power cycle fan controller
+    gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 0);
+    usleep_range(10000,15000);
+    gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 1);
+    usleep_range(10000,15000);
+
+    // reset fan speed to 50% default TODO adjust default fan speed
+    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC, slg4ax46073v_pwm_duty_cycle_to_reg_value(slg4ax46073v,50));
+
+    // re arm tach
+    slg4ax46073v_arm_tach(slg4ax46073v);
 }
 
 static irqreturn_t fan_alert_irq_handler_top(int irq, void *dev_id)
@@ -294,7 +310,7 @@ static irqreturn_t fan_alert_irq_handler(int irq, void *dev_id)
     return IRQ_HANDLED;
 }
 
-void slg4ax46073v_delayed_work_handler(struct work_struct *work)
+static void slg4ax46073v_delayed_work_handler(struct work_struct *work)
 {
     unsigned int tach_reg;
 	unsigned int reg_val;
@@ -302,9 +318,13 @@ void slg4ax46073v_delayed_work_handler(struct work_struct *work)
 
 	struct slg4ax46073v *slg4ax46073v = container_of((struct delayed_work *)work,struct slg4ax46073v, wdt_work);
 
-    if ( slg4ax46073v->version >= VERSION_7 ) {
+    // first check i2c communiction to the device.  if i2c fails try a hardware reset
+    if ( slg4ax46073v_get_version(slg4ax46073v, &reg_val) < 0 ) {
+        pr_err("slg4a_fan: i2c comms failed, attempt hardware reset\n");
+        slg4ax46073v_reset(slg4ax46073v);
+    } else if ( slg4ax46073v->version >= VERSION_7 ) {
         if ( slg4ax46073v_wdt_fired( slg4ax46073v ) ) {
-            pr_info( "slg4ax46073v: wdt fired, restting in work handler\n" );
+            pr_err( "slg4ax46073v: wdt fired, resetting in work handler\n" );
             slg4ax46073v_reset_wdt( slg4ax46073v );
         }
         slg4ax46073v_pet_wdt( slg4ax46073v );
@@ -521,7 +541,9 @@ static int slg4ax46073v_write_pwm(struct device *dev, u32 attr, int channel,
 		regval = slg4ax46073v_pwm_duty_cycle_to_reg_value(slg4ax46073v,(unsigned int)val);
 		return regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC,regval);
 	case hwmon_pwm_enable:
-        // Just do nothing here.  The module is enabled on probe and left enabled
+        if ( val ) {
+            slg4ax46073v_reset(slg4ax46073v);
+        }
         break;
 	case hwmon_pwm_freq: // TODO fix out of range checks based on slg4 roll over bounds
         if (val < SLG4AX46073V_PWM_PERIOD_MIN)
@@ -652,21 +674,22 @@ static int slg4ax46073v_probe(struct i2c_client *client)
     // Set PWM to half-power for start up ( only required for early versions )
     slg4ax46073v_write_reg(slg4ax46073v, SLG4AX46073V_REG_PWM_DC, 0x28);
 
-	// setup fan alert irq
-    slg4ax46073v->fan_alert = devm_gpiod_get(dev, "fan-alert", GPIOD_IN);
-	if (IS_ERR(slg4ax46073v->fan_alert)) {
-		dev_err(dev, "cannot get fan alert gpio %ld\n",
-				PTR_ERR(slg4ax46073v->fan_alert));
-		return PTR_ERR(slg4ax46073v->fan_alert);
-	}
-
-	if ((err = gpiod_direction_input(slg4ax46073v->fan_alert)) !=0) {
-		gpiod_put(slg4ax46073v->fan_alert);
-		dev_err(dev, "cannot set fan alert gpio to input %ld\n", PTR_ERR(slg4ax46073v->fan_alert));
-		return PTR_ERR(slg4ax46073v->fan_alert);
-	}
-
     if ( slg4ax46073v->version <= VERSION_7 ) {
+
+        // setup fan alert irq
+        slg4ax46073v->fan_alert = devm_gpiod_get(dev, "fan-alert", GPIOD_IN);
+        if (IS_ERR(slg4ax46073v->fan_alert)) {
+            dev_err(dev, "cannot get fan alert gpio %ld\n",
+                    PTR_ERR(slg4ax46073v->fan_alert));
+            return PTR_ERR(slg4ax46073v->fan_alert);
+        }
+
+        if ((err = gpiod_direction_input(slg4ax46073v->fan_alert)) !=0) {
+            gpiod_put(slg4ax46073v->fan_alert);
+            dev_err(dev, "cannot set fan alert gpio to input %ld\n", PTR_ERR(slg4ax46073v->fan_alert));
+            return PTR_ERR(slg4ax46073v->fan_alert);
+        }
+
         slg4ax46073v->fan_alert_gpio_irq = gpiod_to_irq(slg4ax46073v->fan_alert);
         if ( slg4ax46073v->version >= VERSION_7 ) {
             err = devm_request_threaded_irq(dev, slg4ax46073v->fan_alert_gpio_irq, fan_alert_irq_handler_top, fan_alert_irq_handler,
