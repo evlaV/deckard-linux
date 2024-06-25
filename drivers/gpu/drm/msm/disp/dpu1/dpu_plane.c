@@ -1475,7 +1475,7 @@ static void _dpu_plane_atomic_disable(struct drm_plane *plane)
 		trace_dpu_plane_disable(DRMID(plane), false,
 					pstate->pipe[i].multirect_mode);
 
-		if (pipe->sspp && i == 1) {
+		if (pipe->sspp && pipe->multirect_index == DPU_SSPP_RECT_1) {
 			pipe->multirect_index = DPU_SSPP_RECT_SOLO;
 			pipe->multirect_mode = DPU_SSPP_MULTIRECT_NONE;
 
