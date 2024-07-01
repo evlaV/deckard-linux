@@ -1,0 +1,125 @@
+/dts-v1/;
+
+#include "sm8650-deckard.dtsi"
+
+/ {
+	model = "SM8650 POC-F rev1 4slam 2et";
+	compatible = "qcom,sm8650-deckard-pocf", "qcom,sm8650";
+};
+
+&i2c4 {
+	/* slg4ax46073v@8 */
+};
+
+&pm8550ve_gpios {
+	gpio-line-names =
+		// GPIO01 - GPIO08
+		"",  "",  "",  "",  "qpd_fpga_crst",  "",  "qpd_fpga_rst",  "";
+};
+
+&tlmm {
+	gpio-line-names =
+		// GPIO000 - GPIO015
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO016 - GPIO031
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO032 - GPIO047
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO048 - GPIO063
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "qpd_fpga_qspi_cs",  "",  "",  "",  "",  "qpd_fpga_spi_cs",
+		// GPIO064 - GPIO079
+		"",  "",  "",  "",  "",  "",  "",  "",  "qpd_fpga_cdone",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO080 - GPIO095
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO096 - GPIO111
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO112 - GPIO127
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO128 - GPIO143
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO144 - GPIO159
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO160 - GPIO175
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO176 - GPIO180
+		"",  "",  "",  "",  "", "", "", "", "", "", "", "", "", "qpd_fpga_dready";
+
+	// nRF SPI interrupt and reset pins
+
+    	// expansion 
+	l_spihid_default_state: l-spihid-default {
+		irq0-pins {
+			pins = "gpio69";
+			function = "gpio";
+			bias-pull-up;
+		};
+
+		reset0-pins {
+			pins = "gpio70";
+			function = "gpio";
+			drive-strength = <2>;
+			output-low;
+			bias-pull-down;
+		};
+	};
+
+	// host/mainboard
+	r_spihid_default_state: r-spihid-default {
+		irq0-pins {
+			pins = "gpio66";
+			function = "gpio";
+			bias-pull-up;
+		};
+
+		reset0-pins {
+			pins = "gpio137";
+			function = "gpio";
+			drive-strength = <2>;
+			output-low;
+			bias-pull-down;
+		};
+	};
+};
+
+// nRF SPI HID
+&spi10 {
+	status = "okay";
+
+	// L, on QUP2 SE2 L3 CS
+	// expansion, CS_2=gpio_15
+	hid@2 {
+		compatible = "hid-over-spi";
+		reg = <2>;
+		interrupts-extended = <&tlmm 69 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 70 GPIO_ACTIVE_LOW>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&l_spihid_default_state>;
+	};
+
+	// R, on QUP2 SE2 L6 CS
+	// mainboard, CS_1=gpio_13
+	hid@1 {
+		compatible = "hid-over-spi";
+		reg = <1>;
+		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 137 GPIO_ACTIVE_LOW>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&r_spihid_default_state>;
+	};
+};
