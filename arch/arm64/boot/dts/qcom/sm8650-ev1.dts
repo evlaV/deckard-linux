@@ -1,0 +1,142 @@
+/dts-v1/;
+
+#include "sm8650-deckard.dtsi"
+
+/ {
+	model = "SM8650 EV1 rev1 4slam 2et";
+	compatible = "qcom,sm8650-deckard-ev1", "qcom,sm8650";
+};
+
+&apps_rsc {
+	regulators-6 {
+		vdd-l6-supply = <&vreg_bob2>;
+	};
+
+	regulators-7 {
+		vdd-l6-supply = <&vreg_bob2>;
+	};
+};
+
+&i2c2 {
+	status = "okay";
+
+	/* max17320@36 */
+
+	// PADDLE EEPROM
+	eeprom@50 {
+		compatible = "atmel,24c32";
+		reg = <0x50>;
+		label = "strap_eeprom";
+		vcc-supply  = <&vreg_l15b_1p8>;
+	};
+};
+
+&i2c4 {
+	/* slg4ax46073v@8 */
+};
+
+&i2c5 {
+	status = "okay";
+
+	/* max34417@1a */
+
+	// BOOT EEPROM
+	eeprom@50 {
+		compatible  = "atmel,24c32";
+		reg = <0x50>;
+		wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+		label = "core_eeprom";
+	};
+};
+
+&pcie1 {
+	wake-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
+	perst-gpios = <&tlmm 97 GPIO_ACTIVE_LOW>;
+
+	pinctrl-0 = <&pcie1_default_state>;
+	pinctrl-names = "default";
+
+	status = "okay";
+};
+
+&pcie1_phy {
+	vdda-phy-supply = <&vreg_l3e_0p9>;
+	vdda-pll-supply = <&vreg_l3i_1p2>;
+	vdda-qref-supply = <&vreg_l1i_0p88>;
+
+	status = "okay";
+};
+
+&pm8550ve_gpios {
+	gpio-line-names =
+		// GPIO01 - GPIO08
+		"",  "",  "",  "",  "",  "",  "",  "";
+};
+
+&tlmm {
+	gpio-line-names =
+		// GPIO000 - GPIO015
+		"",  "",  "",  "",  "",  "",  "",  "qpd_fpga_rst",  "",  "",  "",  "nrf_time_sync",  "",  "",  "",  "",
+		// GPIO016 - GPIO031
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO032 - GPIO047
+		"",  "",  "",  "",  "",  "",  "",  "qpd_fpga_crst",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO048 - GPIO063
+		"",  "",  "nrf_swdio",  "nrf_swclk",  "",  "",  "",  "",  "fpga_cam0_strobe",  "fpga_cam1_strobe",  "",  "",  "",  "",  "",  "",
+		// GPIO064 - GPIO079
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO080 - GPIO095
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO096 - GPIO111
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cam1_frame_sync",  "",
+		// GPIO112 - GPIO127
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cam0_frame_sync",  "",  "",  "",
+		// GPIO128 - GPIO143
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO144 - GPIO159
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "qpd_fpga_cdone",  "",  "",  "qpd_fpga_dready",  "",
+		// GPIO160 - GPIO175
+		"",  "",  "",  "",  "nrf_reset",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO176 - GPIO189
+		"",  "",  "",  "",  "", "", "", "", "", "", "", "", "", "";
+
+	// nRF SPI interrupt and reset pins
+
+	host_spihid_default_state: host-spihid-default {
+		irq0-pins {
+			pins = "gpio66";
+			function = "gpio";
+			bias-pull-up;
+		};
+
+		reset0-pins {
+			pins = "gpio164";
+			function = "gpio";
+			drive-strength = <2>;
+			output-low;
+			bias-pull-down;
+		};
+	};
+};
+
+// nRF SPI HID
+&spi10 {
+	status = "okay";
+
+	hid@1 {
+		compatible = "hid-over-spi";
+		reg = <1>;
+		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 164 GPIO_ACTIVE_LOW>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&host_spihid_default_state>;
+	};
+};
