@@ -32,7 +32,7 @@
 #define DPU_MAX_PLANES			4
 #endif
 
-#define PIPES_PER_PLANE			2
+#define PIPES_PER_PLANE			4
 #define PIPES_PER_LM_PAIR		2
 #ifndef DPU_MAX_DE_CURVES
 #define DPU_MAX_DE_CURVES		3
