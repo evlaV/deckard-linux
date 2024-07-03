@@ -947,6 +947,27 @@
 	status = "okay";
 };
 
+&pcie1 {
+	vdda-supply = <&VPH_PWR>;
+	vddpe-3v3-supply = <&VPH_PWR>; // XXX
+
+	wake-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
+	perst-gpios = <&tlmm 97 GPIO_ACTIVE_LOW>;
+
+	pinctrl-0 = <&pcie1_default_state>;
+	pinctrl-names = "default";
+
+	status = "okay";
+};
+
+&pcie1_phy {
+	vdda-phy-supply = <&VREG_L3E_0P9>;
+	vdda-pll-supply = <&VREG_L3I_1P2>;
+	vdda-qref-supply = <&VREG_L1I_0P88>;
+
+	status = "okay";
+};
+
 &pm8550b_eusb2_repeater {
 	vdd18-supply = <&VREG_L15B_1P8>;
 	vdd3-supply = <&VREG_L05B_3P1>;
