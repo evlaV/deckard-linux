@@ -1,0 +1,7 @@
+/dts-v1/;
+
+#include "sm8650-deckard.dtsi"
+
+/ {
+    model = "SM8650 Deckard Base";
+};
