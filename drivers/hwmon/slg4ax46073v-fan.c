@@ -643,7 +643,9 @@ static int slg4ax46073v_probe(struct i2c_client *client)
 
 	// Enable FAN1 VDD power
 	slg4ax46073v->bp_gpiod = devm_gpiod_get_optional(dev, "bp", GPIOD_OUT_LOW);
-	gpiod_set_value_cansleep(slg4ax46073v->bp_gpiod, 1);
+    if ( slg4ax46073v->bp_gpiod ) {
+        gpiod_set_value_cansleep(slg4ax46073v->bp_gpiod, 1);
+    }
 	slg4ax46073v->en_gpiod = devm_gpiod_get_optional(dev, "en", GPIOD_OUT_LOW);
 	gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 1);
 
