@@ -72,6 +72,37 @@
 			regulator-max-microvolt = <1200000>;
 		};
 	};
+
+	FPGA_clk: FPGA_clk {
+		compatible = "fpga-clock";
+		#clock-cells = <0>;
+		clock-output-names = "fpga_clk";
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&FPGA_clk_default>;
+
+		clocks = <&gcc GCC_GP3_CLK>;
+		clock-frequency = <24000000>;
+		clock-names = "pinclk";
+	};
+
+	fpga: fpga {
+		compatible = "valve,fpga";
+
+		clocks = <&FPGA_clk>;
+		clock-names = "fpga_clk";
+		v1v1-supply = <&VREG_L2G_1P1>;
+		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&fpga {
+	// Setup FPGA Userspace Pin States
+	pinctrl-0 = <&fpga_cready>, <&fpga_cs>, <&fpga_crst>, <&fpga_cdone>, <&fpga_rst>;
+	pinctrl-names = "default";
+
+	status = "okay";
 };
 
 &apps_rsc {
@@ -183,16 +214,40 @@
 		"",  "",  "",  "",  "",  "",  "",  "";
 };
 
+// FPGA SPI and Pin setup
+// Disable SPI7 from base POCF config
+&spi7 {
+	status = "disabled";
+};
+/*
+&spi2 {
+	status = "disabled";
+};
+*/
+&spi0 {
+	status = "okay";
+
+	// Remove Hardware Chip Select
+	pinctrl-0 = <&qup_spi0_data_clk>;
+
+	cspi@0 {
+		status = "okay";
+		compatible = "linux,spidev";
+		spi-max-frequency = <8000000>;
+		reg = <0>;
+	};
+};
+
 &tlmm {
 	// TODO verify reserved pins for 8650
 	// qcom,gpios-reserved = <36 37 38 39>;
 	gpio-line-names =
 		// GPIO000 - GPIO015
-		"",  "",  "",  "",  "",  "",  "",  "qpd_fpga_rst",  "",  "",  "",  "nrf_time_sync",  "",  "",  "",  "",
+		"",  "",  "",  "",  "",  "",  "",  "fpga_rst",  "",  "",  "",  "nrf_time_sync",  "",  "",  "",  "",
 		// GPIO016 - GPIO031
 		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO032 - GPIO047
-		"",  "",  "",  "",  "",  "",  "",  "qpd_fpga_crst",  "",  "",  "",  "",  "",  "",  "",  "",
+		"",  "",  "",  "fpga_spi_cs",  "",  "",  "",  "fpga_crst",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO048 - GPIO063
 		"",  "",  "nrf_swdio",  "nrf_swclk",  "",  "",  "",  "",  "fpga_cam0_strobe",  "fpga_cam1_strobe",  "",  "",  "",  "",  "",  "",
 		// GPIO064 - GPIO079
@@ -206,11 +261,84 @@
 		// GPIO128 - GPIO143
 		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO144 - GPIO159
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "qpd_fpga_cdone",  "",  "",  "qpd_fpga_dready",  "",
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cdone",  "",  "",  "fpga_cready",  "",
 		// GPIO160 - GPIO175
 		"",  "",  "",  "",  "nrf_reset",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO176 - GPIO189
 		"",  "",  "",  "",  "", "", "", "", "", "", "", "", "", "";
+};
+
+&tlmm {
+	status = "ok";
+
+	// FPGA Pins
+	fpga_rst: fpga_rst {
+		mux {
+			pins = "gpio7";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio7";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};
+
+	fpga_cs: fpga_cs {
+		mux {
+			pins = "gpio35";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio35";
+			bias-disable = <0>;
+			drive-strength = <2>;
+			output-enable;
+			// active-low;
+			output-high;
+		};
+	};
+
+	fpga_crst: fpga_crst {
+		mux {
+			pins = "gpio39";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio39";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};
+
+	fpga_cdone: fpga_cdone {
+		mux {
+			pins = "gpio155";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio155";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};	
+
+	fpga_cready: fpga_cready {
+		mux {
+			pins = "gpio158";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio158";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};
 };
 
 // nRF Pins
@@ -265,22 +393,6 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&host_spihid_default_state>;
     };
-};
-
-// FPGA SPI and Pin setup
-// Disable SPI7 from base POCF config
-&spi7 {
-	status = "disabled";
-};
-
-&spi0 {
-	status = "okay";
-	cspi@0 {
-		status = "okay";
-		compatible = "linux,spidev";
-		spi-max-frequency = <8000000>;
-		reg = <0>;
-	};
 };
 
 #if 0

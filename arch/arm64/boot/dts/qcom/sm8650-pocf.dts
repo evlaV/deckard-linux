@@ -4,6 +4,29 @@
 
 / {
     model = "SM8650 POC-F rev1 4slam 2et";
+
+	FPGA_clk: FPGA_clk {
+		compatible = "fpga-clock";
+		#clock-cells = <0>;
+		clock-output-names = "fpga_clk";
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&FPGA_clk_default>;
+
+		clocks = <&gcc GCC_GP3_CLK>;
+		clock-frequency = <33333333>;
+		clock-names = "pinclk";
+	};
+
+	fpga: fpga {
+		compatible = "efinix,t8f81c2";
+
+		clocks = <&FPGA_clk>;
+		clock-names = "fpga_clk";
+		v1v1-supply = <&VREG_L2G_1P1>;
+		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 // nRF Pins
