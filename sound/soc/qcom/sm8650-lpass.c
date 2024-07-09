@@ -138,6 +138,7 @@ enum {
 	AIF_HDMI,
 	AIF_MI2S,
 	AIF_WSA2,
+	AIF_SPKR_I2S,
 	AIF_COUNT,
 };
 
@@ -152,7 +153,7 @@ static inline void __iomem* reg_dma_base(struct lpaif *aif)
 {
 	if (aif->id == AIF_WSA2)
 		return aif->base + REG_RDDMA + 0x1000;
-	if (aif->id == AIF_WSA)
+	if (aif->id == AIF_WSA || aif->id == AIF_SPKR_I2S)
 		return aif->base + REG_RDDMA;
 	else if (aif->id == AIF_VA || aif->id == AIF_MI2S)
 		return aif->base + REG_WRDMA;
@@ -166,7 +167,7 @@ struct lpass {
 	struct snd_soc_dai_link_component codecs[6];
 	struct snd_soc_dai_link_component platform;
 
-	struct clk_bulk_data clks[5];
+	struct clk_bulk_data clks[6];
 
 	struct sdw_stream_runtime *sruntime; /* for WSA */
 	bool stream_prepared;
@@ -381,6 +382,19 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 				RDDMA_CTL_DYNAMIC_CLOCK);
 			aif_write(REG_DMA_CODEC_INTF(aif, 0), codec_intf);
 			break;
+		case AIF_SPKR_I2S:
+			aif_write(aif->base + REG_I2S_CTL(0), I2S_CTL_RESET);
+			aif_write(aif->base + REG_I2S_CTL(0),
+				I2S_CTL_BIT_WIDTH(0) |
+				// I2S_CTL_WS_SRC |
+				//I2S_CTL_SPKR_MONO |
+				I2S_CTL_SPKR_MODE(1) | // note: 1 is "SD0 only - stereo or mono"
+				I2S_CTL_SPKR_EN |
+				I2S_CTL_LONG_RATE(0xf));
+			aif_write(REG_DMA_CTL(aif, 0), DMA_CTL_ENABLE | DMA_CTL_FIFO_WATERMARK(0x7) |
+				DMA_CTL_AUDIO_INTF(1) | RDDMA_CTL_WPSCNT(0) | RDDMA_CTL_BURST_EN |
+				RDDMA_CTL_DYNAMIC_CLOCK);
+			break;
 		case AIF_WSA2:
 			aif_write(REG_DMA_CTL(aif, 0), DMA_CTL_ENABLE | DMA_CTL_FIFO_WATERMARK(0x7) |
 				DMA_CTL_AUDIO_INTF(0) | RDDMA_CTL_WPSCNT(0) | RDDMA_CTL_BURST_EN |
@@ -431,15 +445,15 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 			aif_write(aif->base + REG_I2S_CTL(2),
 				I2S_CTL_BIT_WIDTH(0) |
 				// I2S_CTL_WS_SRC |
-				//I2S_CTL_MIC_MONO |
-				I2S_CTL_MIC_MODE(1) |
-				I2S_CTL_MIC_EN |
+				//I2S_CTL_SPKR_MONO |
+				I2S_CTL_SPKR_MODE(1) | // note: 1 is "SD0 only - stereo or mono"
+				I2S_CTL_SPKR_EN |
 				I2S_CTL_LONG_RATE(0xf));
 #endif
-			aif_write(REG_IRQ_EN(aif), IRQ_WR_PER(0) | IRQ_WR_XRUN(0) | IRQ_WR_ERR(0));
+			aif_write(REG_IRQ_EN(aif), IRQ_RD_PER(0) | IRQ_RD_XRUN(0) | IRQ_RD_ERR(0));
 			aif_write(REG_DMA_CTL(aif, 0), DMA_CTL_ENABLE | DMA_CTL_FIFO_WATERMARK(0x7) |
-				DMA_CTL_AUDIO_INTF(3) | WRDMA_CTL_WPSCNT(0) | WRDMA_CTL_BURST_EN |
-				WRDMA_CTL_DYNAMIC_CLOCK);
+				DMA_CTL_AUDIO_INTF(3) | RDDMA_CTL_WPSCNT(0) | RDDMA_CTL_BURST_EN |
+				RDDMA_CTL_DYNAMIC_CLOCK);
 			break;
 		case AIF_HDMI:
 			writel(0x0005a00f, aif->base + 0x3000);
@@ -464,7 +478,7 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 		}
 
 		writel(0, REG_DMA_CTL(aif, 0));
-		if (aif->id != AIF_MI2S) {
+		if (aif->id != AIF_MI2S && aif->id != AIF_SPKR_I2S) {
 			writel(codec_intf | DMA_CODEC_INTF_CODEC_RESET, REG_DMA_CODEC_INTF(aif, 0));
 			// also write again with DMA_CODEC_INTF_CODEC_INTF cleared?
 		}
@@ -520,6 +534,9 @@ static irqreturn_t lpass_wsa_irq(int irq, void *data)
 	if ((irqs & IRQ_RD_PER(0)) && lp->aif[AIF_WSA].substream)
 		snd_pcm_period_elapsed(lp->aif[AIF_WSA].substream);
 
+	if ((irqs & IRQ_RD_PER(0)) && lp->aif[AIF_SPKR_I2S].substream)
+		snd_pcm_period_elapsed(lp->aif[AIF_SPKR_I2S].substream);
+
 	if ((irqs & IRQ_RD_PER(1)) && lp->aif[AIF_WSA2].substream)
 		snd_pcm_period_elapsed(lp->aif[AIF_WSA2].substream);
 
@@ -568,10 +585,10 @@ static irqreturn_t lpass_mi2s_irq(int irq, void *data)
 	struct lpass *lp = data;
 	u32 irqs = readl(REG_IRQ_STAT(&lp->aif[AIF_MI2S]));
 
-	if ((irqs & IRQ_WR_PER(0)) && lp->aif[AIF_MI2S].substream)
+	if ((irqs & IRQ_RD_PER(0)) && lp->aif[AIF_MI2S].substream)
 		snd_pcm_period_elapsed(lp->aif[AIF_MI2S].substream);
 
-	if (irqs & ~IRQ_WR_PER(0))
+	if (irqs & ~IRQ_RD_PER(0))
 		printk("MI2S AIF unexpected irqs=%.8x\n", irqs);
 
 	writel(irqs, REG_IRQ_CLEAR(&lp->aif[AIF_MI2S]));
@@ -590,6 +607,8 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 	struct lpass *lpass;
 	struct lpaif *aif;
 	int ret, i, irq;
+	bool enable_wsa, enable_i2s, enable_hdmi;
+	int codec_count;
 
 	lpass = devm_kzalloc(dev, sizeof(*lpass), GFP_KERNEL);
 	if (!lpass)
@@ -600,6 +619,7 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 	lpass->clks[2].id = "wsa-mclk";
 	lpass->clks[3].id = "va-mclk";
 	lpass->clks[4].id = "mi2s-ter-ibit";
+	lpass->clks[5].id = "mi2s-sen-ibit";
 
 	ret = devm_clk_bulk_get(dev, ARRAY_SIZE(lpass->clks), lpass->clks);
 	if (ret) {
@@ -608,6 +628,7 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 	}
 
 	clk_set_rate(lpass->clks[4].clk, 24576000);
+	clk_set_rate(lpass->clks[5].clk, 48000*32);
 
 	ret = clk_bulk_prepare_enable(ARRAY_SIZE(lpass->clks), lpass->clks);
 	if (ret) {
@@ -632,13 +653,13 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 			aif->lpm_size = lpass->aif[i - 1].lpm_size;
 		} else {
 
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name_lpm[i]);
-		aif->lpm_base = devm_ioremap_resource_wc(dev, res);
-		if (IS_ERR(aif->lpm_base))
-			return PTR_ERR(aif->lpm_base);
+			res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name_lpm[i]);
+			aif->lpm_base = devm_ioremap_resource_wc(dev, res);
+			if (IS_ERR(aif->lpm_base))
+				return PTR_ERR(aif->lpm_base);
 
-		aif->lpm_phys = res->start;
-		aif->lpm_size = resource_size(res);
+			aif->lpm_phys = res->start;
+			aif->lpm_size = resource_size(res);
 
 		}
 
@@ -661,6 +682,14 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 	aif->lpm_size = lpass->aif[AIF_WSA].lpm_size;
 	aif->id = AIF_WSA2;
 
+	/* SPKR I2S and WSA SWR share the same resources, do not use at the same time */
+	aif = &lpass->aif[AIF_SPKR_I2S];
+	aif->base = lpass->aif[AIF_WSA].base;
+	aif->lpm_base = lpass->aif[AIF_WSA].lpm_base;
+	aif->lpm_phys = lpass->aif[AIF_WSA].lpm_phys;
+	aif->lpm_size = lpass->aif[AIF_WSA].lpm_size;
+	aif->id = AIF_SPKR_I2S;
+
 	writel(~0u, REG_IRQ_EN(&lpass->aif[AIF_WSA]));
 	//writel(~0u, REG_IRQ_EN(&lpass->aif[AIF_VA]));
 
@@ -678,7 +707,19 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 
 	lpass->platform.of_node = dev->of_node;
 
-	for (i = 0; i < ARRAY_SIZE(lpass->codecs); i++) {
+	enable_wsa = of_property_read_bool(dev->of_node, "enable-wsa");
+	enable_i2s = of_property_read_bool(dev->of_node, "enable-i2s");
+	enable_hdmi = of_property_read_bool(dev->of_node, "enable-hdmi");
+	if (!enable_wsa && !enable_i2s)
+		enable_wsa = true;
+	if (enable_wsa && enable_i2s)
+		enable_i2s = false;
+	if (enable_wsa)
+		codec_count = ARRAY_SIZE(lpass->codecs);
+	else
+		codec_count = 3; // for spkr_i2s
+
+	for (i = 0; i < codec_count; i++) {
 		ret = of_parse_phandle_with_args(dev->of_node, "codecs",
 				"#sound-dai-cells", i, &args);
 		if (ret)
@@ -689,71 +730,116 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 		if (ret) {
 			printk("snd_soc_get_dai_name %d %d\n", i, ret);
 			return ret;
+		} else {
+        		printk("snd_soc_get_dai_name success %s\n", lpass->codecs[i].dai_name);
+        	}
+	}
+
+	if (enable_wsa) {
+		lpass->links[0] = (struct snd_soc_dai_link) {
+			.name = "WSA Playback",
+			.stream_name = "WSA Playback",
+			.playback_only = true,
+			.cpus = (void*) 1, // XXX see snd_soc_fill_dummy_dai
+			.platforms = &lpass->platform,
+			.num_platforms = 1,
+			.codecs = &lpass->codecs[0],
+			.num_codecs = 4,
+			.be_hw_params_fixup = sm8250_be_hw_params_fixup,
+			.ops = &sm8250_wsa_be_ops,
+			.id = AIF_WSA,
+		};
+		lpass->links[1] = (struct snd_soc_dai_link) {
+			.name = "VA Capture",
+			.stream_name = "VA Capture",
+			.capture_only = true,
+			.cpus = (void*) 1, // XXX
+			.platforms = &lpass->platform,
+			.num_platforms = 1,
+			.codecs = &lpass->codecs[5],
+			.num_codecs = 1,
+			.be_hw_params_fixup = sm8250_be_hw_params_fixup,
+			.id = AIF_VA,
+		};
+		lpass->links[2] = (struct snd_soc_dai_link) {
+			.name = "HDMI Playback",
+			.stream_name = "HDMI Playback",
+			.playback_only = true,
+			.cpus = (void*) 1, // XXX
+			.platforms = &lpass->platform,
+			.num_platforms = 1,
+			.codecs = (void*) 1, // XXX
+			.be_hw_params_fixup = sm8250_be_hw_params_fixup,
+			.id = AIF_HDMI,
+		};
+		lpass->links[3] = (struct snd_soc_dai_link) {
+			.name = "WSA Playback2",
+			.stream_name = "WSA Playback2",
+			.playback_only = true,
+			.cpus = (void*) 1, // XXX
+			.platforms = &lpass->platform,
+			.num_platforms = 1,
+			.codecs = &lpass->codecs[4],
+			.num_codecs = 1,
+			.be_hw_params_fixup = sm8250_be_hw_params_fixup,
+			.id = AIF_WSA2,
+		};
+		lpass->links[4] = (struct snd_soc_dai_link) {
+			.name = "MI2S2 Capture",
+			.stream_name = "MI2S2 Capture",
+			.capture_only = true,
+			.cpus = (void*) 1, // XXX
+			.platforms = &lpass->platform,
+			.num_platforms = 1,
+			.codecs = (void*) 1, // XXX
+			.be_hw_params_fixup = sm8250_be_hw_params_fixup,
+			.id = AIF_MI2S,
+		};
+
+		card->num_links = ARRAY_SIZE(lpass->links);
+	} else { // spkr_i2s
+		lpass->links[0] = (struct snd_soc_dai_link) {
+			.name = "SPKR Playback",
+			.stream_name = "SPKR Playback",
+			.playback_only = true,
+			.cpus = (void*) 1, // XXX see snd_soc_fill_dummy_dai
+			.platforms = &lpass->platform,
+			.num_platforms = 1,
+			.codecs = &lpass->codecs[0],
+			.num_codecs = 2,
+			.be_hw_params_fixup = sm8250_be_hw_params_fixup,
+			.id = AIF_SPKR_I2S,
+		};
+		lpass->links[1] = (struct snd_soc_dai_link) {
+			.name = "VA Capture",
+			.stream_name = "VA Capture",
+			.capture_only = true,
+			.cpus = (void*) 1, // XXX
+			.platforms = &lpass->platform,
+			.num_platforms = 1,
+			.codecs = &lpass->codecs[2],
+			.num_codecs = 1,
+			.be_hw_params_fixup = sm8250_be_hw_params_fixup,
+			.id = AIF_VA,
+		};
+		card->num_links = 2;
+		if (enable_hdmi) {
+			lpass->links[2] = (struct snd_soc_dai_link) {
+				.name = "HDMI Playback",
+				.stream_name = "HDMI Playback",
+				.playback_only = true,
+				.cpus = (void*) 1, // XXX
+				.platforms = &lpass->platform,
+				.num_platforms = 1,
+				.codecs = (void*) 1, // XXX
+				.be_hw_params_fixup = sm8250_be_hw_params_fixup,
+				.id = AIF_HDMI,
+			};
+			++card->num_links;
 		}
 	}
 
-	lpass->links[0] = (struct snd_soc_dai_link) {
-		.name = "WSA Playback",
-		.stream_name = "WSA Playback",
-		.playback_only = true,
-		.cpus = (void*) 1, // XXX see snd_soc_fill_dummy_dai
-		.platforms = &lpass->platform,
-		.num_platforms = 1,
-		.codecs = &lpass->codecs[0],
-		.num_codecs = 4,
-		.be_hw_params_fixup = sm8250_be_hw_params_fixup,
-		.ops = &sm8250_wsa_be_ops,
-		.id = AIF_WSA,
-	};
-	lpass->links[1] = (struct snd_soc_dai_link) {
-		.name = "VA Capture",
-		.stream_name = "VA Capture",
-		.capture_only = true,
-		.cpus = (void*) 1, // XXX
-		.platforms = &lpass->platform,
-		.num_platforms = 1,
-		.codecs = &lpass->codecs[5],
-		.num_codecs = 1,
-		.be_hw_params_fixup = sm8250_be_hw_params_fixup,
-		.id = AIF_VA,
-	};
-	lpass->links[2] = (struct snd_soc_dai_link) {
-		.name = "HDMI Playback",
-		.stream_name = "HDMI Playback",
-		.playback_only = true,
-		.cpus = (void*) 1, // XXX
-		.platforms = &lpass->platform,
-		.num_platforms = 1,
-		.codecs = (void*) 1, // XXX
-		.be_hw_params_fixup = sm8250_be_hw_params_fixup,
-		.id = AIF_HDMI,
-	};
-	lpass->links[3] = (struct snd_soc_dai_link) {
-		.name = "WSA Playback2",
-		.stream_name = "WSA Playback2",
-		.playback_only = true,
-		.cpus = (void*) 1, // XXX
-		.platforms = &lpass->platform,
-		.num_platforms = 1,
-		.codecs = &lpass->codecs[4],
-		.num_codecs = 1,
-		.be_hw_params_fixup = sm8250_be_hw_params_fixup,
-		.id = AIF_WSA2,
-	};
-	lpass->links[4] = (struct snd_soc_dai_link) {
-		.name = "MI2S2 Capture",
-		.stream_name = "MI2S2 Capture",
-		.capture_only = true,
-		.cpus = (void*) 1, // XXX
-		.platforms = &lpass->platform,
-		.num_platforms = 1,
-		.codecs = (void*) 1, // XXX
-		.be_hw_params_fixup = sm8250_be_hw_params_fixup,
-		.id = AIF_MI2S,
-	};
-
 	card->dai_link = lpass->links;
-	card->num_links = ARRAY_SIZE(lpass->links);
 
 	ret = devm_snd_soc_register_component(dev, &lpass_component_driver, NULL, 0);
 	if (ret) {

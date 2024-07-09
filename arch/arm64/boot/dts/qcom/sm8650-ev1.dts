@@ -473,3 +473,54 @@
 		};
 	};
 };
+
+&pm8550b_typec {
+    disable-cell-balancing;
+};
+
+&i2c_hub_8 {
+    /* MAX98390 */
+    right_spkr_i2s: speaker@38 {
+        compatible = "maxim,max98390";
+        reg = <0x38>;
+        maxim,temperature_calib = <1024>; // TODO
+        maxim,r0_calib = <100232>; // TODO
+        reset-gpios = <&tlmm 73 GPIO_ACTIVE_LOW>;
+        // irq-gpios = <&tlmm 186 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
+        #sound-dai-cells = <0>;
+        sound-name-prefix = "Speaker Right";
+    };
+
+    /* MAX98390 */
+    left_spkr_i2s: speaker@3d {
+        compatible = "maxim,max98390";
+        reg = <0x3d>;
+        maxim,temperature_calib = <1024>; // TODO
+        maxim,r0_calib = <100232>; // TODO
+        reset-gpios = <&tlmm 161 GPIO_ACTIVE_LOW>;
+        // irq-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
+        #sound-dai-cells = <0>;
+        sound-name-prefix = "Speaker Left";
+    };
+};
+
+&sound {
+    enable-i2s;
+    // enable-hdmi;
+    codecs =
+       <&left_spkr_i2s>, <&right_spkr_i2s>,
+       <&lpass_vamacro 0>;
+
+    pinctrl-0 = <&i2s2_active>;
+    pinctrl-names = "default";
+};
+
+// Disable Soundwire
+&wsa_swr_active {
+	status = "disabled";
+};
+
+&wsa_swr_sleep {
+	status = "disabled";
+};
+

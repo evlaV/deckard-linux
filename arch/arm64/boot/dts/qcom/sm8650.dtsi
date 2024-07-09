@@ -4889,7 +4889,7 @@
 			reg = <0 0x06bc8000 0 0x30000>;
 			compatible = "qcom,sm8550-audiocc";
 			clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>, // depend on lpasscc probe??
-				 <&rpmhcc RPMH_CXO_CLK>;
+				 <&bi_tcxo_div2>;
 			clock-names = "iface", "bi_tcxo";
 			power-domains = <&aoncc LPASS_AUDIO_HM_GDSCR>;
 			#clock-cells = <1>;
@@ -4899,7 +4899,7 @@
 			reg = <0 0x06e08000 0 0x30000>;
 			compatible = "qcom,sm8550-aoncc";
 			clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
-				 <&rpmhcc RPMH_CXO_CLK>;
+				 <&bi_tcxo_div2>;
 			clock-names = "iface", "bi_tcxo";
 			power-domains = <&lpass_hm LPASS_CORE_HM_GDSCR>;
 			#clock-cells = <1>;
@@ -4910,7 +4910,7 @@
 			compatible = "qcom,sm8550-lpasscorecc";
 			reg = <0 0x07b08000 0 0x4f000>;
 			clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
-				 <&rpmhcc RPMH_CXO_CLK>;
+				 <&bi_tcxo_div2>;
 			clock-names = "iface", "bi_tcxo";
 			power-domains = <&lpass_hm LPASS_CORE_HM_GDSCR>;
 			#clock-cells = <1>;
@@ -4920,7 +4920,7 @@
 			compatible = "qcom,sm8550-lpasshm";
 			reg = <0 0x07e00000 0 0xa000>;
 			clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
-				 <&rpmhcc RPMH_CXO_CLK>;
+				 <&bi_tcxo_div2>;
 			clock-names = "iface", "bi_tcxo";
 			#clock-cells = <1>;
 			#power-domain-cells = <1>;
@@ -5142,8 +5142,6 @@
 
 			#clock-cells = <0>;
 			clock-output-names = "mclk";
-			pinctrl-names = "default";
-			pinctrl-0 = <&wsa_swr_active>;
 			#sound-dai-cells = <1>;
 		};
 
@@ -5274,7 +5272,31 @@
 					drive-strength = <2>;
 					input-enable;
 					bias-pull-down;
+				};
+			};
 
+			i2s2_active: i2s2-active {
+				clk {
+					pins = "gpio10";
+					function = "i2s2_clk";
+					drive-strength = <8>;
+					bias-disable;
+					output-high;
+				};
+
+				ws {
+					pins = "gpio11";
+					function = "i2s2_ws";
+					drive-strength = <8>;
+					output-high;
+				};
+
+				data {
+					pins = "gpio15", "gpio16";
+					function = "i2s2_data";
+					drive-strength = <8>;
+					bias-disable;
+					output-high;
 				};
 			};
 		};
@@ -5317,9 +5339,10 @@
 				 <&lpasscc LPASS_CORE_CC_SYSNOC_MPORT_CORE_CLK>,
 				 <&lpass_wsamacro>,
 				 <&lpass_vamacro>,
-				 <&lpasscc LPASS_CORE_CC_EXT_IF2_IBIT_CLK>;
+				 <&lpasscc LPASS_CORE_CC_EXT_IF2_IBIT_CLK>,
+				 <&audiocc LPASS_AUDIO_CC_EXT_IF2_IBIT_CLK>;
 
-			clock-names = "pcnoc-sway-clk", "pcnoc-mport-clk", "wsa-mclk", "va-mclk", "mi2s-ter-ibit";
+			clock-names = "pcnoc-sway-clk", "pcnoc-mport-clk", "wsa-mclk", "va-mclk", "mi2s-ter-ibit", "mi2s-sen-ibit";
 
 			interrupts = <GIC_SPI 179 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>,

@@ -1797,15 +1797,6 @@
 	qcom,dmic-sample-rate = <2400000>; /* or 3200000 */
 };
 
-&sound {
-	status = "okay";
-	codecs =
-	<&left_spkr>, <&right_spkr>, <&swr0 0>,
-	<&lpass_wsamacro 0>,
-		 <&lpass_wsamacro 1>,
-		 <&lpass_vamacro 0>;
-};
-
 &pm8550_gpios {
 	volume_up_n: volume-up-n-state {
 		pins = "gpio6";
@@ -1843,37 +1834,6 @@
 	no-mmc;
 	status = "okay";
 };
-
-&swr0 {
-	status = "okay";
-
-	/* WSA8845 */
-	left_spkr: speaker@0,0 {
-		compatible = "sdw20217020400";
-		reg = <0 0>;
-		//pinctrl-names = "default";
-		//pinctrl-0 = <&spkr_1_sd_n_active>;
-		powerdown-gpios = <&tlmm 186 GPIO_ACTIVE_LOW>; // LPASS 21
-		#sound-dai-cells = <0>;
-		sound-name-prefix = "SpkrLeft";
-		vdd-1p8-supply = <&VREG_L15B_1P8>;
-		vdd-io-supply = <&VREG_L3C_1P2>;
-	};
-
-	/* WSA8845 */
-	right_spkr: speaker@0,1 {
-		compatible = "sdw20217020400";
-		reg = <0 1>;
-		//pinctrl-names = "default";
-		//pinctrl-0 = <&spkr_2_sd_n_active>;
-		powerdown-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;
-		#sound-dai-cells = <0>;
-		sound-name-prefix = "SpkrRight";
-		vdd-1p8-supply = <&VREG_L15B_1P8>;
-		vdd-io-supply = <&VREG_L3C_1P2>;
-	};
-};
-
 
 &camss {
 	status = "okay";
