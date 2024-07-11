@@ -460,12 +460,16 @@ done:
 	(TYPEC_STATE_MACHINE_CHANGE_INT_EN | TYPEC_VBUS_ERROR_INT_EN | \
 	 TYPEC_DEBOUNCE_DONE_INT_EN)
 
+#define VBUS_SAFE_TIMEOUT_USEC  650000
+#define VBUS_SAFE_CHECK_PERIOD_USEC 50000
+
 int qcom_pmic_typec_port_start(struct pmic_typec_port *pmic_typec_port,
 			       struct tcpm_port *tcpm_port)
 {
 	int i;
 	int mask;
 	int ret;
+	uint regval;
 
 	/* Configure interrupt sources */
 	ret = regmap_write(pmic_typec_port->regmap,
@@ -479,6 +483,28 @@ int qcom_pmic_typec_port_start(struct pmic_typec_port *pmic_typec_port,
 			   TYPEC_INTR_EN_CFG_2_MASK);
 	if (ret)
 		goto done;
+
+	// workaround for legacy cable detected on PON
+	// todo is there a way to pass the PON reason to this module?
+	// check legacy cable status
+	regmap_read(pmic_typec_port->regmap,
+				pmic_typec_port->base + LEGACY_CABLE_STATUS_REG, &regval);
+	if ( regval & TYPEC_LEGACY_CABLE_STATUS ) {
+		dev_dbg(pmic_typec_port->dev, "Legacy cable detected on TypeC start, toggling CC to clear\n");
+		// disable cc ( set port role disabled )
+		ret = regmap_write(pmic_typec_port->regmap,
+				pmic_typec_port->base + TYPEC_MODE_CFG_REG,
+				TYPEC_DISABLE_CMD);
+		// wait till vbus safe 0V
+		// TODO Android uses a 650 msec timeout here.  Is there a typec spec for vbussafe timeout we should follow?
+		i = 0;
+		while ( !qcom_pmic_typec_port_is_vbus_vsafe0v(pmic_typec_port) && ( i++ < ( VBUS_SAFE_TIMEOUT_USEC / VBUS_SAFE_CHECK_PERIOD_USEC ) ) ) {
+			usleep_range(VBUS_SAFE_CHECK_PERIOD_USEC, VBUS_SAFE_CHECK_PERIOD_USEC+1000);
+		}
+		// renable cc ( set port role DRP )
+		ret = regmap_write(pmic_typec_port->regmap,
+				pmic_typec_port->base + TYPEC_MODE_CFG_REG, 0);
+	}
 
 	/* start in TRY_SNK mode */
 	ret = regmap_write(pmic_typec_port->regmap,
