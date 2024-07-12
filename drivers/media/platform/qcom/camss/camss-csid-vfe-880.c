@@ -436,6 +436,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	if(rdi_status & 0x1000) // Test if PATH_INFO_SOF is set
 	{
 		//printk("csid sof");
+		// Just use monotonic raw 
 		u64 kernel_ts_raw_to_monotonic_offset = ts_monotonic-ts_monotonic_raw;
 		u32 sof_timestamp_lower = readl_relaxed(csid->base + 0x594);
 		u32 sof_timestamp_upper = readl_relaxed(csid->base + 0x598);
@@ -454,7 +455,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 			csid->isp_to_kernel_raw_ts_offset = detected_isp_to_kernel_raw_ts_offset;
 		}
 		csid->kernel_ts_raw_to_monotonic_offset = kernel_ts_raw_to_monotonic_offset;
-		csid->cur_sof_isp_timestamp_converted = sof_isp_timestamp + csid->isp_to_kernel_raw_ts_offset + csid->kernel_ts_raw_to_monotonic_offset;
+		csid->cur_sof_isp_timestamp_converted = sof_isp_timestamp + csid->isp_to_kernel_raw_ts_offset;
 		if(csid->do_post_sof_work != NULL) {
 			csid->do_post_sof_work(csid->capture_subdev, csid->cur_sof_isp_timestamp_converted, ts_monotonic);
 		}
@@ -476,7 +477,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 			CAM_IFE_CSID_MUL_FACTOR,
 			CAM_IFE_CSID_DIV_FACTOR);
 
-		csid->cur_eof_isp_timestamp_converted = eof_isp_timestamp + csid->isp_to_kernel_raw_ts_offset + csid->kernel_ts_raw_to_monotonic_offset;
+		csid->cur_eof_isp_timestamp_converted = eof_isp_timestamp + csid->isp_to_kernel_raw_ts_offset;
 
 		// Also test comp group 0 and the enabled statistics paths on non lite IFEs to support the IPP path
 		if ( (buf_status & BIT(RDI_COMP_GROUP(0))) || (!IS_LITE && (buf_status & (BIT(0) | csid->stats_comp_done_mask)))) {
@@ -576,7 +577,7 @@ static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
 	struct camss_buffer *ready_buf = NULL;
 	unsigned long flags;
 	u32 index;
-	u64 ts_monotonic = ktime_get_ns();
+	u64 ts_monotonic_raw = ktime_get_raw_ns();
 	// Data buffer pointers to retrieve for the metadata output planes
 	void* sensorMetaDataBufferAddr = NULL;
 	void* frameheaderDataAddr = NULL;
@@ -613,7 +614,7 @@ static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
 
 
 	ready_buf = csid->out_buf[0];
-	ready_buf->vb.vb2_buf.timestamp = ts_monotonic;
+	ready_buf->vb.vb2_buf.timestamp = ts_monotonic_raw;
 	ready_buf->vb.sequence = csid->sequence++;
 
 	index = 0;
@@ -652,7 +653,7 @@ static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
 	}
 
 
-	metadata_send(&csid->camss->metadata[csid->id], ts_monotonic, csid->cur_sof_isp_timestamp_converted, csid->cur_eof_isp_timestamp_converted, csid->last_sof_kernel_ts, ts_monotonic,
+	metadata_send(&csid->camss->metadata[csid->id], ts_monotonic_raw, csid->cur_sof_isp_timestamp_converted, csid->cur_eof_isp_timestamp_converted, csid->last_sof_kernel_ts, ts_monotonic_raw,
 		ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
 
 	spin_unlock_irqrestore(&csid->output_lock, flags);
