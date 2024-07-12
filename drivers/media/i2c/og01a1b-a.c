@@ -65,8 +65,8 @@ DEFINE_SPINLOCK(ir_spinlock);
 
 // Version 1.2 support histogram streaming.
 
-#define METADATA_MAJOR_VERSION 1
-#define METADATA_MINOR_VERSION 2
+#define METADATA_MAJOR_VERSION 2
+#define METADATA_MINOR_VERSION 0
 
 #define DRIVER_MAJOR_VERSION 1
 #define DRIVER_MINOR_VERSION 0
@@ -1529,7 +1529,7 @@ void set_ir_leds(struct og01a1b_dev *sensor, int state) {
 
 	// uncomment this to debug how long emitters were on for
 	// if(sensor->last_set_led_state == 1 && state ==0) {
-	// 	u64 ts = ktime_get_ns();
+	// 	u64 ts = ktime_get_raw_ns();
 	// 	printk("emitters were on for %lu ns\n", ts - sensor->last_emitter_on_ts);
 	// }
 	sensor->last_set_led_state = state;
@@ -1538,7 +1538,7 @@ void set_ir_leds(struct og01a1b_dev *sensor, int state) {
 
 void handle_exposure_event(struct og01a1b_dev *sensor, bool is_gpio_event) {
 	// todo: don't turn it on if it's been turned on within a millisecond
-    u64 ts = ktime_get_ns();
+    u64 ts = ktime_get_raw_ns();
 	int currentGroup = -1;
 		if(sensor->is_sync_sensor && sensor->group_mode != MODE_NOGROUPS) {
 			//find the most recent group switch before the last sof timestamp
@@ -1596,7 +1596,7 @@ static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp, u64 sof_
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 	handle_exposure_event(sensor, false);
 	if(sensor->is_sync_sensor ) {
-		u64 ts = ktime_get_ns();
+		u64 ts = ktime_get_raw_ns();
 		//printk("sof off at :%lu\n", ts);
 		set_ir_leds(sensor, 0);
 	}
@@ -1853,7 +1853,7 @@ void reset_groups(struct og01a1b_dev *sensor)
 static irqreturn_t gpio_handler(int irq, void * ident)
 {
 	struct og01a1b_dev *sensor = (struct og01a1b_dev *)ident;
-	u64 ts = ktime_get_ns();
+	u64 ts = ktime_get_raw_ns();
 	handle_exposure_event(sensor, true);
 	
 	return IRQ_HANDLED;
@@ -2103,7 +2103,7 @@ void update_groups(struct og01a1b_dev *sensor)
 
 	mutex_lock(&sensor->lock);
 
-	last_group_pre_write_timestamp = ktime_get_ns();
+	last_group_pre_write_timestamp = ktime_get_raw_ns();
 		for(int i = 0; i < numSensors; i++) {
 			if(sensors[i]->power_count < 1 ) {
 				continue;
@@ -2125,7 +2125,7 @@ void update_groups(struct og01a1b_dev *sensor)
 	}
 	og01a1b_write_reg(sensors[i], 0x3208, 0xa0 | last_set_group );
   }
-  lastGroupPostWriteTimestamp = ktime_get_ns();
+  lastGroupPostWriteTimestamp = ktime_get_raw_ns();
 
   for(int i = 0; i < numSensors; i++) {
 	if(sensors[i]->power_count < 1 ) {
