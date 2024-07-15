@@ -815,7 +815,10 @@
 
 		reset-gpios =<&pm8550_gpios 3 GPIO_ACTIVE_HIGH>;
 		reset2-gpios =<&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
-		enp-gpios = <&tlmm 32 GPIO_ACTIVE_HIGH>;
+
+		// TODO What should this be for EV1 and really POC-F as well?
+		// enp-gpios = <&tlmm 32 GPIO_ACTIVE_HIGH>;
+
 		// XXX or tlmm 121 boost?
 
 		wled1-supply = <&BACKLIGHT>;
