@@ -31,7 +31,7 @@
 #define		IRQ_CMD_CLEAR			BIT(0)
 
 #define CSID_RUP_AUP_CMD		0x18
-#define		CSID_RUP_AUP_RDI(rdi)		((BIT(4) | BIT(20)) << (rdi))
+#define		CSID_RUP_AUP_RDI(rdi)		((BIT(4) | BIT(20)) << (rdi) | BIT(28))
 
 #define CSID_TOP_IRQ_STATUS		0x7C
 #define		 TOP_IRQ_STATUS_RESET_DONE	BIT(0)
@@ -58,6 +58,7 @@
 #define CSID_CSI2_RDIN_IRQ_STATUS(rdi)	(0xEC + 0x10 * (rdi))
 #define		RUP_DONE_IRQ_STATUS		BIT(23)
 
+#define CSID_CSI2_RDIN_IRQ_MASK(rdi)	(0xF0 + 0x10 * (rdi))
 #define CSID_CSI2_RDIN_IRQ_CLEAR(rdi)	(0xF4 + 0x10 * (rdi))
 #define CSID_CSI2_RDIN_IRQ_SET(rdi)	(0xF8 + 0x10 * (rdi))
 
@@ -70,6 +71,7 @@
 #define CSID_CSI2_RX_CFG1		0x204
 #define		CSI2_RX_CFG1_ECC_CORRECTION_EN	BIT(0)
 #define		CSI2_RX_CFG1_VC_MODE		BIT(2)
+#define		CSI2_RX_CFG1_MISR_EN		BIT(6)
 
 #define CSID_RDI_CFG0(rdi)	(csid_is_lite(csid) && IS_CSID_690(csid) ?\
 					(0x300 + 0x100 * (rdi)) :\
@@ -117,6 +119,7 @@ static void __csid_configure_rx(struct csid_device *csid,
 	writel(val, csid->base + CSID_CSI2_RX_CFG0);
 
 	val = CSI2_RX_CFG1_ECC_CORRECTION_EN;
+	val |= CSI2_RX_CFG1_MISR_EN;
 	if (vc > 3)
 		val |= CSI2_RX_CFG1_VC_MODE;
 
@@ -131,6 +134,9 @@ static void __csid_ctrl_rdi(struct csid_device *csid, int enable, u8 rdi)
 		val = RDI_CTRL_START_CMD;
 
 	writel(val, csid->base + CSID_RDI_CTRL(rdi));
+
+	/* HACK */
+	camss_reg_update(csid->camss, 0, 0, true);
 }
 
 static void __csid_configure_wrapper(struct csid_device *csid)
@@ -174,6 +180,8 @@ static void __csid_configure_rdi_stream(struct csid_device *csid, u8 enable, u8 
 
 	val = RDI_CFG0_TIMESTAMP_EN;
 	val |= RDI_CFG0_TIMESTAMP_STB_SEL;
+	/* RDI_CFG0_SOF_RETIME_DIS */
+	val |= 1 << 5;
 	/* note: for non-RDI path, this should be format->decode_format */
 	val |= DECODE_FORMAT_PAYLOAD_ONLY << RDI_CFG0_DECODE_FORMAT;
 	val |= vc << RDI_CFG0_VC;
@@ -207,14 +215,24 @@ static void __csid_configure_rdi_stream(struct csid_device *csid, u8 enable, u8 
 	writel(val, csid->base + CSID_RDI_CFG0(vc));
 }
 
+static int csid_reset(struct csid_device *csid);
+
 static void csid_configure_stream(struct csid_device *csid, u8 enable)
 {
 	u8 i;
 
-	__csid_configure_wrapper(csid);
+	if (enable)
+		__csid_configure_wrapper(csid);
+
+	if (!enable) {
+		csid_reset(csid);
+		camss_buf_done(csid->camss, csid->id, 0);
+		usleep_range(10000, 20000);
+	}
 
 	/* Loop through all enabled VCs and configure stream for each */
 	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++)
+		//csid->phy.en_vc = 1;
 		if (csid->phy.en_vc & BIT(i)) {
 			__csid_configure_rdi_stream(csid, enable, i);
 			__csid_configure_rx(csid, &csid->phy, i);
@@ -247,20 +265,27 @@ static void csid_subdev_reg_update(struct csid_device *csid, int port_id, bool c
 static irqreturn_t csid_isr(int irq, void *dev)
 {
 	struct csid_device *csid = dev;
-	u32 val, buf_done_val;
+	u32 top_val, val, buf_done_val;
 	u8 reset_done;
-	int i;
+	int i = 0;
 
-	val = readl(csid->base + CSID_TOP_IRQ_STATUS);
-	writel(val, csid->base + CSID_TOP_IRQ_CLEAR);
-	reset_done = val & TOP_IRQ_STATUS_RESET_DONE;
+	top_val = readl(csid->base + CSID_TOP_IRQ_STATUS);
+	writel(top_val, csid->base + CSID_TOP_IRQ_CLEAR);
+	reset_done = top_val & TOP_IRQ_STATUS_RESET_DONE;
 
 	val = readl(csid->base + CSID_CSI2_RX_IRQ_STATUS);
 	writel(val, csid->base + CSID_CSI2_RX_IRQ_CLEAR);
 
-	buf_done_val = readl(csid->base + CSID_BUF_DONE_IRQ_STATUS);
-	writel(buf_done_val, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
+	val = readl(csid->base + CSID_CSI2_RDIN_IRQ_STATUS(i));
+	writel(val, csid->base + CSID_CSI2_RDIN_IRQ_CLEAR(i));
 
+#if 0
+	if (val & 0x1000) {
+		u32 sof_timestamp_lower = readl_relaxed(csid->base + 0x594);
+		u32 sof_timestamp_upper = readl_relaxed(csid->base + 0x598);
+	}
+#endif
+#if 0
 	/* Read and clear IRQ status for each enabled RDI channel */
 	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++)
 		if (csid->phy.en_vc & BIT(i)) {
@@ -280,6 +305,14 @@ static irqreturn_t csid_isr(int irq, void *dev)
 				camss_buf_done(csid->camss, csid->id, i);
 			}
 		}
+#endif
+
+	if (top_val & 0x2000) {
+		buf_done_val = readl(csid->base + CSID_BUF_DONE_IRQ_STATUS);
+		writel(buf_done_val, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
+
+		camss_buf_done(csid->camss, csid->id, 0);
+	}
 
 	val = IRQ_CMD_CLEAR;
 	writel(val, csid->base + CSID_IRQ_CMD);
@@ -300,14 +333,18 @@ static int csid_reset(struct csid_device *csid)
 {
 	unsigned long time;
 	u32 val;
+#if 0
 	int i;
+#endif
 
 	reinit_completion(&csid->reset_complete);
 
 	writel(1, csid->base + CSID_TOP_IRQ_CLEAR);
 	writel(1, csid->base + CSID_IRQ_CMD);
 	writel(1, csid->base + CSID_TOP_IRQ_MASK);
+	writel(1, csid->base + CSID_IRQ_CMD);
 
+#if 0
 	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++)
 		if (csid->phy.en_vc & BIT(i)) {
 			writel(BIT(BUF_DONE_IRQ_STATUS_RDI_OFFSET + i),
@@ -316,12 +353,14 @@ static int csid_reset(struct csid_device *csid)
 			writel(BIT(BUF_DONE_IRQ_STATUS_RDI_OFFSET + i),
 			       csid->base + CSID_BUF_DONE_IRQ_MASK);
 		}
+#endif
 
 	/* preserve registers */
 	val = RST_LOCATION | RST_MODE;
 	writel(val, csid->base + CSID_RST_CFG);
 
-	val = SELECT_HW_RST | SELECT_IRQ_RST;
+	/* val = SELECT_HW_RST | SELECT_IRQ_RST; */
+	val = 0x1e;
 	writel(val, csid->base + CSID_RST_CMD);
 
 	time = wait_for_completion_timeout(&csid->reset_complete,
@@ -330,6 +369,14 @@ static int csid_reset(struct csid_device *csid)
 		dev_err(csid->camss->dev, "CSID reset timeout\n");
 		return -EIO;
 	}
+
+	writel_relaxed(~0u, csid->base + CSID_TOP_IRQ_MASK);
+	writel_relaxed(~0u, csid->base + CSID_BUF_DONE_IRQ_MASK);
+	/* PATH_INFO_SOF | CAMIF_SOF */
+
+	val = 0x1010;
+	//val = 0x10881004;
+	writel_relaxed(val, csid->base + CSID_CSI2_RDIN_IRQ_MASK(csid->id));
 
 	return 0;
 }
