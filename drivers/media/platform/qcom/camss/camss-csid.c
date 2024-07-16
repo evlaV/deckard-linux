@@ -772,10 +772,10 @@ static int csid_set_stream(struct v4l2_subdev *sd, int enable)
 			return -ENOLINK;
 	}
 
-	if (csid->phy.need_vc_update) {
+	//if (csid->phy.need_vc_update) {
 		csid->res->hw_ops->configure_stream(csid, enable);
 		csid->phy.need_vc_update = false;
-	}
+	//}
 
 	return 0;
 }
@@ -1125,7 +1125,7 @@ int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
 		csid->base = devm_platform_ioremap_resource_byname(pdev, res->reg[0]);
 		if (IS_ERR(csid->base))
 			return PTR_ERR(csid->base);
-
+#if 0
 		/* CSID "top" is a new function in new version HW,
 		 * CSID can connect to VFE & SFE(Sensor Front End).
 		 * this connection is controlled by CSID "top" registers.
@@ -1138,6 +1138,7 @@ int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
 			if (IS_ERR(camss->csid_top_base))
 				return PTR_ERR(camss->csid_top_base);
 		}
+#endif
 	}
 
 	/* Interrupt */
