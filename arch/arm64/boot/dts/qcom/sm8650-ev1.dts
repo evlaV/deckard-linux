@@ -128,6 +128,32 @@
 	southgate_fg {
 		status = "disabled";
 	};
+
+	EYETCK_DOVDD_1V8: EYETCK_DOVDD_1V8 {
+		compatible = "regulator-fixed";
+		regulator-name = "EYETCK_DOVDD_1V8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		enable-active-high;
+		gpio = <&tlmm 74 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&VREG_L5M_1P8>;
+		regulator-always-on; // AON CAM ADSP TEST
+	};
+};
+
+// ADSP controls eye tracking cameras
+&adsp {
+	// AON CAM ADSP TEST: gpio102/104 to mclk function
+	pinctrl-names = "default";
+	pinctrl-0 = <&cam_sensor_mclk2_active &cam_sensor_mclk4_active>;
+};
+
+&VREG_L6M_2P8 {
+	regulator-always-on; // AON CAM ADSP TEST
+};
+
+&VREG_L6N_2P8 {
+	regulator-always-on; // AON CAM ADSP TEST
 };
 
 &fpga {
@@ -433,65 +459,6 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&host_spihid_default_state>;
     };
-};
-#endif
-
-#if 0
-// Directly accessed via ADSP code, but we have the defines here for reference
-&cci0_i2c1 { // "CCI_1"
-	cam0@60 {
-		compatible = "ovti,ov6211x";
-		reg = <0x60>;
-
-		reset-gpios = <&tlmm 58 GPIO_ACTIVE_LOW>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&cam_sensor_mclk4_active>; // <&cam_et_l_default>;
-
-		clocks = <&camcc CAM_CC_MCLK4_CLK>;
-		clock-names = "xclk";
-
-		DOVDD-supply = <&EYETCK_DOVDD_1V8>;
-		AVDD-supply = <&VREG_L6N_2P8>;
-		DVDD-supply = <&VREG_L1N_1P1>;
-
-		id = "eyetracking_left";
-
-		port {
-			cam_et_l: endpoint {
-				clock-lanes = <4>;
-				data-lanes = <0>;
-				remote-endpoint = <&csiphy2_ep>;
-			};
-		};
-	};
-};
-
-&cci1_i2c0 { // "CCI_2"
-	cam0@60 {
-		compatible = "ovti,ov6211x";
-		reg = <0x60>;
-
-		reset-gpios = <&tlmm 3 GPIO_ACTIVE_LOW>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&cam_sensor_mclk2_active>; // <&cam_et_r_default>;
-
-		clocks = <&camcc CAM_CC_MCLK2_CLK>;
-		clock-names = "xclk";
-
-		DOVDD-supply = <&EYETCK_DOVDD_1V8>;
-		AVDD-supply = <&VREG_L6M_2P8>;
-		DVDD-supply = <&VREG_L1M_1P1>;
-
-		id = "eyetracking_right";
-
-		port {
-			cam_et_r: endpoint {
-				clock-lanes = <4>;
-				data-lanes = <0>;
-				remote-endpoint = <&csiphy4_ep>;
-			};
-		};
-	};
 };
 #endif
 

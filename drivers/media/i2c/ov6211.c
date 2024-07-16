@@ -363,6 +363,8 @@ static void ov6211_reset(struct ov6211_dev *sensor)
 	usleep_range(20000, 25000);
 }
 
+uint8_t ov6211_power_on;
+
 static int ov6211_set_power_on(struct ov6211_dev *sensor)
 {
 	struct i2c_client *client = sensor->i2c_client;
@@ -389,6 +391,8 @@ static int ov6211_set_power_on(struct ov6211_dev *sensor)
 
 	usleep_range(5000,5500);
 
+    ov6211_power_on = 1;
+
 	return 0;
 
 power_off:
@@ -400,8 +404,18 @@ xclk_off:
 
 static void ov6211_set_power_off(struct ov6211_dev *sensor)
 {
-	regulator_bulk_disable(OV6211_NUM_SUPPLIES, sensor->supplies);
+	int i;
+	int ret;
+    // reset pin is setup as active low
+	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
+	usleep_range(20000, 25000);
+    // individually shut down regulators instead of bulk, because
+    // bulk will fail out if one of the regulators has already been shut off
+	for (i = OV6211_NUM_SUPPLIES - 1; i >= 0; --i) {
+		regulator_disable(sensor->supplies[i].consumer);
+	}
 	clk_disable_unprepare(sensor->xclk);
+    ov6211_power_on = 0;
 }
 
 static int ov6211_set_power(struct ov6211_dev *sensor, bool on)
@@ -424,9 +438,48 @@ static int ov6211_set_power(struct ov6211_dev *sensor, bool on)
 	return 0;
 
 power_off:
-	ov6211_set_power_off(sensor);
+	//ov6211_set_power_off(sensor);
 	return ret;
 }
+
+static ssize_t 
+enable_show(struct device *dev, struct device_attribute *attr,
+    char *buf)
+{
+	buf[0] = ov6211_power_on + '0';
+	buf[1] = '\n';
+	return 2;
+}
+
+static ssize_t
+enable_store(struct device *dev, struct device_attribute *attr,
+	  const char *buf, size_t count)
+{
+    int ret;
+	int enable;
+    struct ov6211_dev *sensor = dev_get_drvdata(dev);
+	ret = sscanf(buf, "%d", &enable);
+
+    if ( ret != 1){
+        pr_debug("Invalid number of params for enable\n");
+        return -1;
+    }
+
+    ov6211_set_power(sensor, !!enable);
+
+	return count;
+}
+static DEVICE_ATTR_RW(enable);
+
+static struct attribute *ov6211_attrs[] = {
+    &dev_attr_enable.attr,
+	NULL,
+};
+
+static const struct attribute_group ov6211_attr_group = {
+	.name = "ov6211",
+    .attrs = ov6211_attrs,
+};
 
 static int ov6211_set_ctrl(struct v4l2_ctrl *ctrl)
 {
@@ -754,6 +807,14 @@ static int ov6211_probe(struct i2c_client *client)
 	ret = v4l2_async_register_subdev_sensor(&sensor->sd);
 	if (ret)
 		goto free_ctrls;
+
+    dev_set_drvdata(dev, sensor);
+
+    ret = sysfs_create_group(&dev->kobj, &ov6211_attr_group);
+    if (ret < 0) {
+        dev_err(dev, "failed to create ov6211 sysfs files\n");
+        return ret;
+    }
 
 	return 0;
 
