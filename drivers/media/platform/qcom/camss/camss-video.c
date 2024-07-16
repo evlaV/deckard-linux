@@ -262,6 +262,7 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 	entity = &vdev->entity;
 	while (1) {
 		pad = &entity->pads[0];
+
 		if (!(pad->flags & MEDIA_PAD_FL_SINK))
 			break;
 
@@ -272,9 +273,32 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 		entity = pad->entity;
 		subdev = media_entity_to_v4l2_subdev(entity);
 
-		ret = v4l2_subdev_call(subdev, video, s_stream, 1);
-		if (ret < 0 && ret != -ENOIOCTLCMD)
-			goto error;
+		if (!strncmp("msm_csid0", pad->entity->name, 10)) {
+			ret = v4l2_subdev_call(subdev, video, s_stream, 1);
+			if (ret < 0 && ret != -ENOIOCTLCMD)
+				goto error;
+		}
+	}
+
+	entity = &vdev->entity;
+	while (1) {
+		pad = &entity->pads[0];
+
+		if (!(pad->flags & MEDIA_PAD_FL_SINK))
+			break;
+
+		pad = media_pad_remote_pad_first(pad);
+		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
+			break;
+
+		entity = pad->entity;
+		subdev = media_entity_to_v4l2_subdev(entity);
+
+		if (strncmp("msm_csid0", pad->entity->name, 10)) {
+			ret = v4l2_subdev_call(subdev, video, s_stream, 1);
+			if (ret < 0 && ret != -ENOIOCTLCMD)
+				goto error;
+		}
 	}
 
 	return 0;
@@ -300,6 +324,7 @@ static void video_stop_streaming(struct vb2_queue *q)
 	entity = &vdev->entity;
 	while (1) {
 		pad = &entity->pads[0];
+
 		if (!(pad->flags & MEDIA_PAD_FL_SINK))
 			break;
 
