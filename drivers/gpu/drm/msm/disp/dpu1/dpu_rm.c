@@ -425,6 +425,9 @@ static int _dpu_rm_reserve_lms(struct dpu_rm *rm,
 
 		trace_dpu_rm_reserve_lms(lm_idx[i] + LM_0, crtc_id,
 					 pp_idx[i] + PINGPONG_0);
+
+		DPU_DEBUG("reserve lm[%d]:%d, pp_idx[%d]:%d, dspp[%d]:%d for crtc_id %d\n",
+			  i, lm_idx[i], i, pp_idx[i], i, dspp_idx[i], crtc_id);
 	}
 
 	return 0;
@@ -628,7 +631,7 @@ static int _dpu_rm_reserve_dsc(struct dpu_rm *rm,
 	 * 2) DSC pair starts from even index, such as index(0,1), (2,3), etc
 	 * 3) even PINGPONG connects to even DSC
 	 * 4) odd PINGPONG connects to odd DSC
-	 * 5) pair: encoder +--> pp_idx_0 --> dsc_idx_0
+	 * 5) pair: crtc    +--> pp_idx_0 --> dsc_idx_0
 	 *                  +--> pp_idx_1 --> dsc_idx_1
 	 */
 
@@ -965,13 +968,13 @@ int dpu_rm_get_assigned_resources(struct dpu_rm *rm,
 		}
 
 		if (num_blks == blks_size) {
-			DPU_ERROR("More than %d %s assigned to enc %d\n",
-				  blks_size, dpu_hw_blk_type_name[type], enc_id);
+			DPU_ERROR("More than %d resources assigned to crtc %d\n",
+				  blks_size, crtc_id);
 			break;
 		}
 		if (!hw_blks[i]) {
-			DPU_ERROR("%s unavailable to assign to enc %d\n",
-				  dpu_hw_blk_type_name[type], enc_id);
+			DPU_ERROR("%s unavailable to assign to crtc %d\n",
+				  dpu_hw_blk_type_name[type], crtc_id);
 			break;
 		}
 		blks[num_blks++] = hw_blks[i];
