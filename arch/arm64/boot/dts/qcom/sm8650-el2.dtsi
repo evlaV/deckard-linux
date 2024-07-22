@@ -80,12 +80,47 @@
 	/delete-node/ smp2p-cdsp;
 	/delete-node/ smp2p-modem;
 
+	vdd_gfx: vdd-gfx {
+		compatible = "regulator-fixed-domain";
+		power-domains = <&rpmhpd RPMHPD_GFX>;
+		required-opps = <&rpmhpd_opp_turbo>; //903MHz
+		regulator-name = "GFX";
+		regulator-always-on;
+	};
+
 	soc@0 {
 		/delete-node/ timer@17420000;
 
 		restart@c264000 {
 			compatible = "qcom,pshold";
 			reg = <0 0x0c264000 0 0x4>;
+		};
+	};
+
+	thermal-zones {
+		gpuss0-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss1-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss2-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss3-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss4-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss5-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss6-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss7-thermal {
+			/delete-node/ cooling-maps;
 		};
 	};
 };
@@ -334,10 +369,6 @@
 &spi13 {
 	/delete-property/ dmas;
 	/delete-property/ dma-names;
-};
-
-&gpu {
-	status = "disabled";
 };
 
 /* PON PBS reboot mode */
