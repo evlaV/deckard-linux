@@ -1306,18 +1306,17 @@ static const struct adreno_info a7xx_gpus[] = {
 			{ 142, 3 },
 		),
 	}, {
-		.chip_ids = ADRENO_CHIP_IDS(0x07030001),
-		.family = ADRENO_7XX_GEN1,
+		.chip_ids = ADRENO_CHIP_IDS(0x07000001),
+		.revn = 730,
 		.fw = {
 			[ADRENO_FW_SQE] = "a730_sqe.fw",
-			[ADRENO_FW_GMU] = "gmu_gen70000.bin",
 		},
 		.gmem = SZ_2M,
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
 		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
 			  ADRENO_QUIRK_HAS_HW_APRIV,
-		.init = a6xx_gpu_init,
-		.zapfw = "a730_zap.mdt",
+		.init = a7xx_gpu_init,
+		.zapfw = "a730_zap.mbn",
 		.a6xx = &(const struct a6xx_info) {
 			.hwcg = a730_hwcg,
 			.protect = &a730_protect,
@@ -1325,63 +1324,39 @@ static const struct adreno_info a7xx_gpus[] = {
 		},
 		.address_space_size = SZ_16G,
 	}, {
-		.chip_ids = ADRENO_CHIP_IDS(0x43050a01), /* "C510v2" */
-		.family = ADRENO_7XX_GEN2,
+		.chip_ids = ADRENO_CHIP_IDS(0x07020001),
+		.revn = 740,
 		.fw = {
 			[ADRENO_FW_SQE] = "a740_sqe.fw",
-			[ADRENO_FW_GMU] = "gmu_gen70200.bin",
 		},
 		.gmem = 3 * SZ_1M,
-		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
+		.inactive_period = 30000, // 30 seconds
 		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
 			  ADRENO_QUIRK_HAS_HW_APRIV,
-		.init = a6xx_gpu_init,
-		.zapfw = "a740_zap.mdt",
+		.init = a7xx_gpu_init,
+		.zapfw = "a740_zap.mbn",
 		.a6xx = &(const struct a6xx_info) {
 			.hwcg = a740_hwcg,
 			.protect = &a730_protect,
-			.gmu_chipid = 0x7020100,
-			.gmu_cgc_mode = 0x00020202,
 		},
 		.address_space_size = SZ_16G,
 	}, {
-		.chip_ids = ADRENO_CHIP_IDS(0x43050c01), /* "C512v2" */
-		.family = ADRENO_7XX_GEN2,
-		.fw = {
-			[ADRENO_FW_SQE] = "gen70500_sqe.fw",
-			[ADRENO_FW_GMU] = "gen70500_gmu.bin",
-		},
-		.gmem = 3 * SZ_1M,
-		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
-			  ADRENO_QUIRK_HAS_HW_APRIV,
-		.init = a6xx_gpu_init,
-		.a6xx = &(const struct a6xx_info) {
-			.hwcg = a740_hwcg,
-			.protect = &a730_protect,
-			.gmu_chipid = 0x7050001,
-			.gmu_cgc_mode = 0x00020202,
-		},
-		.address_space_size = SZ_256G,
-	}, {
-		.chip_ids = ADRENO_CHIP_IDS(0x43051401), /* "C520v2" */
-		.family = ADRENO_7XX_GEN3,
+		.chip_ids = ADRENO_CHIP_IDS(0x43051401),
+		.revn = 750,
 		.fw = {
 			[ADRENO_FW_SQE] = "gen70900_sqe.fw",
-			[ADRENO_FW_GMU] = "gmu_gen70900.bin",
 		},
 		.gmem = 3 * SZ_1M,
-		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
+		.inactive_period = 3600*1000,
 		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
 			  ADRENO_QUIRK_HAS_HW_APRIV,
-		.init = a6xx_gpu_init,
+		.init = a7xx_gpu_init,
 		.zapfw = "gen70900_zap.mbn",
 		.a6xx = &(const struct a6xx_info) {
+			.hwcg = a740_hwcg,
 			.protect = &a730_protect,
-			.gmu_chipid = 0x7090100,
-			.gmu_cgc_mode = 0x00020202,
 		},
-		.address_space_size = SZ_16G,
+		.address_space_size = SZ_256G,
 	}
 };
 DECLARE_ADRENO_GPULIST(a7xx);

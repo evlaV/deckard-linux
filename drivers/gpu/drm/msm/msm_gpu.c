@@ -58,11 +58,7 @@ static int disable_pwrrail(struct msm_gpu *gpu)
 static int enable_clk(struct msm_gpu *gpu)
 {
 	if (gpu->core_clk && gpu->fast_rate)
-		dev_pm_opp_set_rate(&gpu->pdev->dev, gpu->fast_rate);
-
-	/* Set the RBBM timer rate to 19.2Mhz */
-	if (gpu->rbbmtimer_clk)
-		clk_set_rate(gpu->rbbmtimer_clk, 19200000);
+		clk_set_rate(gpu->core_clk, gpu->fast_rate);
 
 	return clk_bulk_prepare_enable(gpu->nr_clocks, gpu->grp_clks);
 }
@@ -70,17 +66,6 @@ static int enable_clk(struct msm_gpu *gpu)
 static int disable_clk(struct msm_gpu *gpu)
 {
 	clk_bulk_disable_unprepare(gpu->nr_clocks, gpu->grp_clks);
-
-	/*
-	 * Set the clock to a deliberately low rate. On older targets the clock
-	 * speed had to be non zero to avoid problems. On newer targets this
-	 * will be rounded down to zero anyway so it all works out.
-	 */
-	if (gpu->core_clk)
-		dev_pm_opp_set_rate(&gpu->pdev->dev, 27000000);
-
-	if (gpu->rbbmtimer_clk)
-		clk_set_rate(gpu->rbbmtimer_clk, 0);
 
 	return 0;
 }
@@ -409,35 +394,27 @@ static void recover_worker(struct kthread_work *work)
 	for (i = 0; i < gpu->nr_rings; i++) {
 		struct msm_ringbuffer *ring = gpu->rb[i];
 
-		uint32_t fence = ring->memptrs->fence;
-
 		/*
-		 * For the current (faulting?) ring/submit advance the fence by
-		 * one more to clear the faulting submit
+		 * Update all fences to the last one to pretend all submits completed
 		 */
-		if (ring == cur_ring)
-			ring->memptrs->fence = ++fence;
-
-		msm_update_fence(ring->fctx, fence);
+		msm_update_fence(ring->fctx, ring->fctx->last_fence);
 	}
 
-	if (msm_gpu_active(gpu)) {
-		/* retire completed submits, plus the one that hung: */
+	if (true) { //msm_gpu_active(gpu)) {
+		/* retire all submits */
 		retire_submits(gpu);
 
 		gpu->funcs->recover(gpu);
 
 		/*
-		 * Replay all remaining submits starting with highest priority
-		 * ring
+		 * Make sure all submits were retired
 		 */
 		for (i = 0; i < gpu->nr_rings; i++) {
 			struct msm_ringbuffer *ring = gpu->rb[i];
 			unsigned long flags;
 
 			spin_lock_irqsave(&ring->submit_lock, flags);
-			list_for_each_entry(submit, &ring->submits, node)
-				gpu->funcs->submit(gpu, submit);
+			WARN_ON(!list_empty(&ring->submits));
 			spin_unlock_irqrestore(&ring->submit_lock, flags);
 		}
 	}
