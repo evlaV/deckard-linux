@@ -19,13 +19,60 @@
 
 #define NO_REASON_SHIFT			0
 
+#define PON_PBS_PS_HOLD_SW_CTL		0x52
+#define  PON_PS_HOLD_ENABLE		BIT(7)
+#define PON_PBS_PS_HOLD_RESET_CTL2	0x53
+#define  PON_PS_HOLD_TYPE_MASK		0x0f
+#define  PON_PS_HOLD_TYPE_WARM_RESET	1
+#define  PON_PS_HOLD_TYPE_SHUTDOWN	4
+#define  PON_PS_HOLD_TYPE_HARD_RESET	7
+
+struct pm8916_pon_data {
+	long reason_shift;
+	bool needs_pbs_ps_hold_sw_ctl;
+};
+
 struct pm8916_pon {
 	struct device *dev;
 	struct regmap *regmap;
 	u32 baseaddr;
+	u32 pbs_baseaddr;
 	struct reboot_mode_driver reboot_mode;
 	long reason_shift;
+	bool needs_pbs_ps_hold_sw_ctl;
 };
+
+static void pm8916_reboot_ps_hold_type_setup(struct pm8916_pon *pon, unsigned int type)
+{
+	regmap_write(pon->regmap, pon->pbs_baseaddr + PON_PBS_PS_HOLD_RESET_CTL2, 0);
+	usleep_range(100, 1000);
+	regmap_write(pon->regmap, pon->pbs_baseaddr + PON_PBS_PS_HOLD_SW_CTL,
+		     type);
+	regmap_write(pon->regmap, pon->pbs_baseaddr + PON_PBS_PS_HOLD_RESET_CTL2,
+		     PON_PS_HOLD_ENABLE);
+}
+
+static int pm8916_pon_restart_prepare(struct sys_off_data *data)
+{
+	struct pm8916_pon *pon = data->cb_data;
+
+	dev_info(pon->dev, "Setting PON-PBS for Reset\n");
+
+	pm8916_reboot_ps_hold_type_setup(pon, PON_PS_HOLD_TYPE_HARD_RESET);
+
+	return NOTIFY_OK;
+}
+
+static int pm8916_pon_poweroff_prepare(struct sys_off_data *data)
+{
+	struct pm8916_pon *pon = data->cb_data;
+
+	dev_info(pon->dev, "Setting PON-PBS for Shutdown\n");
+
+	pm8916_reboot_ps_hold_type_setup(pon, PON_PS_HOLD_TYPE_SHUTDOWN);
+
+	return NOTIFY_OK;
+}
 
 static int pm8916_reboot_mode_write(struct reboot_mode_driver *reboot,
 				    unsigned int magic)
@@ -46,9 +93,13 @@ static int pm8916_reboot_mode_write(struct reboot_mode_driver *reboot,
 
 static int pm8916_pon_probe(struct platform_device *pdev)
 {
+	const struct pm8916_pon_data *data;
 	struct pm8916_pon *pon;
-	long reason_shift;
 	int error;
+
+	data = device_get_match_data(&pdev->dev);
+	if (!data)
+		return -EINVAL;
 
 	pon = devm_kzalloc(&pdev->dev, sizeof(*pon), GFP_KERNEL);
 	if (!pon)
@@ -62,16 +113,28 @@ static int pm8916_pon_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	error = of_property_read_u32(pdev->dev.of_node, "reg",
-				     &pon->baseaddr);
+	error = of_property_read_u32(pdev->dev.of_node, "reg", &pon->baseaddr);
 	if (error)
 		return error;
 
-	reason_shift = (long)of_device_get_match_data(&pdev->dev);
+	if (data->needs_pbs_ps_hold_sw_ctl) {
+		error = of_property_read_u32_index(pdev->dev.of_node, "reg", 1,
+						   &pon->pbs_baseaddr);
+		if (error)
+			return error;
 
-	if (reason_shift != NO_REASON_SHIFT) {
+		devm_register_sys_off_handler(&pdev->dev, SYS_OFF_MODE_RESTART_PREPARE,
+				      SYS_OFF_PRIO_FIRMWARE, pm8916_pon_restart_prepare,
+				      pon);
+
+		devm_register_sys_off_handler(&pdev->dev, SYS_OFF_MODE_POWER_OFF_PREPARE,
+				      SYS_OFF_PRIO_FIRMWARE, pm8916_pon_poweroff_prepare,
+				      pon);
+	}
+
+	if (data->reason_shift != NO_REASON_SHIFT) {
 		pon->reboot_mode.dev = &pdev->dev;
-		pon->reason_shift = reason_shift;
+		pon->reason_shift = data->reason_shift;
 		pon->reboot_mode.write = pm8916_reboot_mode_write;
 		error = devm_reboot_mode_register(&pdev->dev, &pon->reboot_mode);
 		if (error) {
@@ -85,12 +148,28 @@ static int pm8916_pon_probe(struct platform_device *pdev)
 	return devm_of_platform_populate(&pdev->dev);
 }
 
+static const struct pm8916_pon_data pm8916_pon_data = {
+	.reason_shift = GEN1_REASON_SHIFT,
+};
+
+static const struct pm8916_pon_data pm8941_pon_data = { };
+
+static const struct pm8916_pon_data pm8998_pon_data = {
+	.reason_shift = GEN2_REASON_SHIFT,
+};
+
+static const struct pm8916_pon_data pmk8350_el2_pon_data = {
+	.reason_shift = GEN2_REASON_SHIFT,
+	.needs_pbs_ps_hold_sw_ctl = true,
+};
+
 static const struct of_device_id pm8916_pon_id_table[] = {
-	{ .compatible = "qcom,pm8916-pon", .data = (void *)GEN1_REASON_SHIFT },
-	{ .compatible = "qcom,pm8941-pon", .data = (void *)NO_REASON_SHIFT },
-	{ .compatible = "qcom,pms405-pon", .data = (void *)GEN1_REASON_SHIFT },
-	{ .compatible = "qcom,pm8998-pon", .data = (void *)GEN2_REASON_SHIFT },
-	{ .compatible = "qcom,pmk8350-pon", .data = (void *)GEN2_REASON_SHIFT },
+	{ .compatible = "qcom,pm8916-pon", .data = &pm8916_pon_data },
+	{ .compatible = "qcom,pm8941-pon", .data = &pm8941_pon_data },
+	{ .compatible = "qcom,pms405-pon", .data = &pm8916_pon_data },
+	{ .compatible = "qcom,pm8998-pon", .data = &pm8998_pon_data },
+	{ .compatible = "qcom,pmk8350-pon", .data = &pm8998_pon_data },
+	{ .compatible = "qcom,pmk8350-el2-pon", .data = &pmk8350_el2_pon_data },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, pm8916_pon_id_table);
