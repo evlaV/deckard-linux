@@ -259,6 +259,37 @@ xtensa_boot(struct dsp *dsp)
 #define CVP_WRAPPER_DEBUG_BRIDGE_LPI_STATUS	(CVP_WRAPPER_BASE_OFFS + 0x58)
 #define CVP_WRAPPER_CORE_CLOCK_CONFIG		(CVP_WRAPPER_BASE_OFFS + 0x88)
 
+	// Error recovery
+	u32 intr_status = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS);
+	if(intr_status) {
+		// We have pending IRQs from the last session, try to recover from potential errors here
+		// Disable the cores power to make sure all per-core watchdog statuses are cleared
+		usleep_range(1000, 2000);
+		writel_relaxed(0x1, dsp->base + 0xb0084); // VPU_WRAPPER_CORE_POWER_CONTROL
+		usleep_range(1000, 2000);
+		// No need to re-enable power, done later-on during boot
+
+		// Clear double exception status
+		if(readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS) & 0x2) {
+			writel_relaxed(0x1, dsp->base + 0xb00c8); // VPU_WRAPPER_CPU_DOUBLEEXCEPTIONERROR_CLR
+		}
+		// Clear error logger errors (that's needed to clear CPU NOC error status after smmu context fault)
+		if(readl_relaxed(dsp->base + 0x1a010)) {
+			writel_relaxed(0x1, dsp->base + 0x1a018); // MAIN_ERRORLOGGER_ERRCLR_LOW
+		}
+		if(readl_relaxed(dsp->base + 0xd0010)) {
+			writel_relaxed(0x1, dsp->base + 0xd0018); // IRIS_CPU_NOC_ERRORLOGGER_ERRCLR_LOW
+			writel_relaxed(0x1, dsp->base + 0xd0018); // needs to be set twice... otherwise doesn't take effect
+		}
+
+		u32 post_recovery_status = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS);
+		dev_warn(dsp->miscdev.parent, "CVP error recovery | Initial status: 0x%x | Final status: 0x%x\n", intr_status, post_recovery_status); 
+		if(post_recovery_status)
+		{
+			dev_err(dsp->miscdev.parent, "CVP error recovery failed. Status: 0x%x\n", post_recovery_status);
+		}
+	}
+
 	u32 fw_size = 8 * SZ_1M;
 	// qtlb buffer
 	u32 addr = 0x80000000;
@@ -337,7 +368,10 @@ xtensa_boot(struct dsp *dsp)
 		usleep_range(500, 1000);
 	} while (--count);
 
-	//printk("Status of CPU_CS_SCIACMDARG0 after waiting: %d", status);
+	if(!count)
+	{
+		dev_err(dsp->miscdev.parent, "CVP boot failed with boot status 0x%x (interrupt status: 0x%x) \n", status, readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS));
+	}
 
 	writel_relaxed(1, dsp->base + CPU_CS_H2XSOFTINTEN);
 	writel_relaxed(0, dsp->base + CPU_CS_X2RPMh);
@@ -381,6 +415,29 @@ static int dsp_shutdown(struct dsp *dsp)
 		return -EBUSY;
 
 	if (dsp->is_xtensa) {
+		// Make sure the following is set so we know it's safe to reset cores and remove dma mappings
+		//	- IDLE status: BIT(30) in CPU_CS_SCIACMDARG0
+		//	- CPU Wait For Interrupt: BIT(0) in CVP_WRAPPER_CPU_STATUS
+		// (this state may not be reached if the hardware enters an error state, for example after an invalid iova access)
+		u32 retry_cnt = 0;
+		const u32 max_retry_cnt = 20;
+		while(retry_cnt < max_retry_cnt)
+		{
+			u32 cpu_status = readl_relaxed(dsp->base + CVP_WRAPPER_CPU_STATUS);
+			u32 arg0 = readl_relaxed(dsp->base + CPU_CS_SCIACMDARG0);
+			if((cpu_status & 0x1) && (arg0 & BIT(30)))
+			{
+				break;
+			}
+			retry_cnt++;
+			usleep_range(1000, 2000);
+		}
+		if(retry_cnt == max_retry_cnt)
+		{
+			dev_warn(dsp->miscdev.parent, "CVP failed to enter idle state during shutdown. (CPU_STATUS=0x%x SCIACMDARG0=0x%x)",
+				readl_relaxed(dsp->base + CVP_WRAPPER_CPU_STATUS), readl_relaxed(dsp->base + CPU_CS_SCIACMDARG0));
+		}
+
 		writel(1, dsp->base + 0xc1000); // VCODEC_VPU_WRAPPER_TZ_XTSS_SW_RESET
 
 		// disable CPU watchdog while off
