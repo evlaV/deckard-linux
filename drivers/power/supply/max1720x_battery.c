@@ -5714,6 +5714,12 @@ static int max1720x_probe(struct i2c_client *client)
 	priv->regmap = devm_regmap_init_i2c(client, &max1720x_regmap);
 	if (IS_ERR(priv->regmap))
 		return PTR_ERR(priv->regmap);
+	// check for i2c comms
+	ret = max1720x_regmap_read(priv, register_to_read, &data);
+	if ( ret ) {
+		dev_err(&client->dev, "i2c comms failed: %d\n", ret);
+		return -EIO;
+	}
 
 	INIT_WORK(&priv->init_worker, max1720x_init_worker);
 	schedule_work(&priv->init_worker);
