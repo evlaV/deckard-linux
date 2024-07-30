@@ -37,6 +37,10 @@ properties:
     items:
       - const: usb2-phy
 
+  usb-role-switch:
+    $ref: /schemas/types.yaml#/definitions/flag
+    description: Support role switch.
+
   ports:
     $ref: /schemas/graph.yaml#/properties/ports
     description:
