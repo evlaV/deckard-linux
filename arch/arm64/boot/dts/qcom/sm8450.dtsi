@@ -5498,6 +5498,35 @@
 			};
 		};
 
+		eud: eud@88e0000 {
+			compatible = "qcom,sm8450-eud", "qcom,eud";
+			reg = <0 0x88e0000 0 0x2000>,
+			      <0 0x88e2000 0 0x1000>;
+			interrupts-extended = <&pdc 11 IRQ_TYPE_LEVEL_HIGH>;
+
+			phys = <&usb_1_hsphy>;
+			phy-names = "usb2-phy";
+
+			status = "disabled";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					eud_ep: endpoint {
+					};
+				};
+
+				port@1 {
+					reg = <1>;
+					eud_con: endpoint {
+					};
+				};
+			};
+		};
+
 		nsp_noc: interconnect@320c0000 {
 			compatible = "qcom,sm8450-nsp-noc";
 			reg = <0 0x320c0000 0 0x10000>;
