@@ -29,6 +29,14 @@ properties:
     description: EUD interrupt
     maxItems: 1
 
+  phys:
+    items:
+      - description: USB2/HS PHY needed for EUD functionality
+
+  phy-names:
+    items:
+      - const: usb2-phy
+
   ports:
     $ref: /schemas/graph.yaml#/properties/ports
     description:
@@ -48,6 +56,8 @@ properties:
 required:
   - compatible
   - reg
+  - phys
+  - phy-names
   - ports
 
 additionalProperties: false
@@ -58,6 +68,8 @@ examples:
            compatible = "qcom,sc7280-eud", "qcom,eud";
            reg = <0x88e0000 0x2000>,
                  <0x88e2000 0x1000>;
+           phys = <&usb_2_hsphy>;
+           phy-names = "usb2-phy";
 
            ports {
                    #address-cells = <1>;
