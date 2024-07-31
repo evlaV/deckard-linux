@@ -143,7 +143,7 @@ static int reg_enable(struct regulator_dev *rdev)
 	int loopctr=0;
 
 	//the BOOST_CYCLE_COUNT is here to help the preboost boot up faster to the target voltage
-	#define BOOST_CYCLE_COUNT 20
+	#define BOOST_CYCLE_COUNT 40
 	dev_err(dev, "mpq3367: starting preboost: cycle count = %d\n", BOOST_CYCLE_COUNT);
 	for(int i=0; i < BOOST_CYCLE_COUNT; i++) {
 		//these times are fairly tightly tuned
