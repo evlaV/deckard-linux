@@ -460,8 +460,9 @@ done:
 	(TYPEC_STATE_MACHINE_CHANGE_INT_EN | TYPEC_VBUS_ERROR_INT_EN | \
 	 TYPEC_DEBOUNCE_DONE_INT_EN)
 
+// PD tSafe0V = 650000 usec
 #define VBUS_SAFE_TIMEOUT_USEC  650000
-#define VBUS_SAFE_CHECK_PERIOD_USEC 50000
+#define VBUS_SAFE_CHECK_PERIOD_USEC 130000
 
 int qcom_pmic_typec_port_start(struct pmic_typec_port *pmic_typec_port,
 			       struct tcpm_port *tcpm_port)
@@ -496,11 +497,9 @@ int qcom_pmic_typec_port_start(struct pmic_typec_port *pmic_typec_port,
 				pmic_typec_port->base + TYPEC_MODE_CFG_REG,
 				TYPEC_DISABLE_CMD);
 		// wait till vbus safe 0V
-		// TODO Android uses a 650 msec timeout here.  Is there a typec spec for vbussafe timeout we should follow?
-		i = 0;
-		while ( !qcom_pmic_typec_port_is_vbus_vsafe0v(pmic_typec_port) && ( i++ < ( VBUS_SAFE_TIMEOUT_USEC / VBUS_SAFE_CHECK_PERIOD_USEC ) ) ) {
-			usleep_range(VBUS_SAFE_CHECK_PERIOD_USEC, VBUS_SAFE_CHECK_PERIOD_USEC+1000);
-		}
+		// XXX should be able to call qcom_pmic_typec_port_is_vbus_vsafe0v here, but causes
+		// system to crash on EV1 due to init race conditions
+		usleep_range(VBUS_SAFE_CHECK_PERIOD_USEC, VBUS_SAFE_CHECK_PERIOD_USEC+1000);
 		// renable cc ( set port role DRP )
 		ret = regmap_write(pmic_typec_port->regmap,
 				pmic_typec_port->base + TYPEC_MODE_CFG_REG, 0);
