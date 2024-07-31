@@ -24,6 +24,7 @@ adreno-y := \
 	adreno/a6xx_gmu.o \
 	adreno/a6xx_hfi.o \
 	adreno/a7xx_gpu.o \
+	adreno/a6xx_preempt.o \
 
 adreno-$(CONFIG_DEBUG_FS) += adreno/a5xx_debugfs.o \
 
