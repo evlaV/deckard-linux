@@ -197,7 +197,7 @@ struct csid_device {
 	struct v4l2_subdev *capture_subdev;
 	size_t metadata_size;
 	void* (*get_metadata) (struct v4l2_subdev*);
-	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp);
+	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp, u8 group);
 	u64 last_sof_isp_timestamp_converted;
 	u64 cur_sof_isp_timestamp_converted;
 	u64 kernel_ts_raw_to_monotonic_offset;
@@ -205,6 +205,11 @@ struct csid_device {
 	u64 last_sof_kernel_ts;
 	u64 last_eof_kernel_ts;
 	u64 isp_to_kernel_raw_ts_offset;
+
+	void *sof_addr_upper;
+	void *sof_addr_lower;
+	void *eof_addr_upper;
+	void *eof_addr_lower;
 
 	u32 required_comp_done_mask; // bitfield where the index of each mandatory comp group for frames is set
 	u32 stats_cfg; // user-provided bitfield that indicates which statistics/frameheaders must be provided in the metadata buffers

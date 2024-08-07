@@ -22,7 +22,7 @@ struct metdata_data_buffer {
 	u64 eof_timestamp;
 	u64 sof_isr_timestamp;
 	u64 eof_isr_timestamp;
-	uint8_t sensorMetaDataBuffer[568];
+	uint8_t sensorMetaDataBuffer[1208];
     uint8_t frameheaderData[16];
     uint8_t imgHistFrameheaderData[16];
     uint8_t imgHistData[2048];
@@ -111,7 +111,7 @@ void metadata_send(struct metadata_device *metadata,
 	cur_metadata_data_buffer->eof_isr_timestamp = eof_isr_timestamp;
 	cur_metadata_data_buffer->sof_isr_timestamp = sof_isr_timestamp;
 	if(sensorDataBuffer != NULL) {
-		memcpy(cur_metadata_data_buffer->sensorMetaDataBuffer,sensorDataBuffer,568);
+		memcpy(cur_metadata_data_buffer->sensorMetaDataBuffer,sensorDataBuffer,1208);
 	}
     if(frameheaderData) {
 		memcpy(cur_metadata_data_buffer->frameheaderData, frameheaderData, 16);

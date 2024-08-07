@@ -41,8 +41,8 @@
 #define OG01A1B_REG_TIMING_DVPVO		0x380a
 #define OG01A1B_REG_TIMING_HTS		0x380c
 #define OG01A1B_REG_TIMING_VTS		0x380e
-#define NUM_REGISTER_GROUPS			2
-#define GROUP_REGMAP_MAX_SIZE		10
+#define NUM_REGISTER_GROUPS			3
+#define GROUP_REGMAP_MAX_SIZE		20
 #define LATE_GROUP_WRITE_FLAG 		0x1
 
 DEFINE_SPINLOCK(group_spinlock);
@@ -63,9 +63,13 @@ DEFINE_SPINLOCK(ir_spinlock);
 
 #define VIDIOC_OG01A1B_PRV_G_DRIVER_VERSION _IOR('V', BASE_VIDIOC_PRIVATE + 6, u32)
 
+#define VIDIOC_SENSOR_PRV_S_TIMING_ADJUSTMENT _IOW('V', BASE_VIDIOC_PRIVATE + 7, struct private_timing_adjustment)
+
+#define VIDIOC_SENSOR_PRV_S_GROUP_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct sensor_private_set_group_regs)
+
 // Version 1.2 support histogram streaming.
 
-#define METADATA_MAJOR_VERSION 2
+#define METADATA_MAJOR_VERSION 3
 #define METADATA_MINOR_VERSION 0
 
 #define DRIVER_MAJOR_VERSION 1
@@ -80,6 +84,26 @@ static const char * const og01a1b_supply_name[] = {
 };
 
 #define og01a1b_NUM_SUPPLIES ARRAY_SIZE(og01a1b_supply_name)
+
+struct sensor_private_group_reg {
+	u16 reg_addr;
+	u8 reg_value;
+	u8 group;
+};
+
+struct sensor_private_set_group_regs {
+	__u32 count;
+	struct sensor_private_group_reg __user *regs;
+};
+
+struct private_timing_adjustment {
+	__u16 new_rows;
+	__u16 rows_to_restore;
+	__u16 new_global_row;
+	__u16 global_row_to_restore;
+	__u8 group_to_adjust;
+	__u8 number_of_frames_to_hold_adjustment; // This depends on the group setup
+};
 
 struct reg_value {
 	u16 reg_addr;
@@ -126,14 +150,23 @@ struct SensorMetaData {
 enum og01a1b_group_mode {
 	MODE_NOGROUPS = 0,
 	MODE_1GROUPs = 1,
-	MODE_2GROUPS =  2
+	MODE_2GROUPS =  2,
+	MODE_3GROUPS =  3
 };
 
 enum og01a1b_ir_emitter_mode {
 	IR_EMITTER_MODE_OFF = 0,
 	IR_EMITTER_MODE_GROUP_1_ONLY = 1,
-	IR_EMITTER_MODE_GROUP_0_ONLY =  2,
+	IR_EMITTER_MODE_GROUP_0_AND_2_ONLY =  2,
 	IR_EMITTER_MODE_ALL_FRAMES
+};
+
+enum og01a1b_timing_adjustment_state {
+	TIMING_ADJUSTMENT_NOT_IN_PROGRESS = 0,
+	TIMING_READY_FOR_GROUP_RESTORE = 1,
+	TIMING_ADJUSTMENT_IN_PROGRESS = 2,
+	TIMING_READY_FOR_INITIAL_GROUP_WRITE = 3,
+	TIMING_ADJUSTMENT_REQUESTED = 4
 };
 
 struct og01a1b_dev {
@@ -173,9 +206,10 @@ struct og01a1b_dev {
 	u64 last_sof_isr_ts;
 	u64 last_requested_groupwrite_isp_ts;
 	u64 last_emitter_on_ts;
+	int last_vc;
 
 	struct group_and_registers active_group_registers;
-	bool updateGroupRegisters;
+	bool updateGroupRegisters[NUM_REGISTER_GROUPS];
 	enum og01a1b_ir_emitter_mode ir_emitter_mode;
 	bool emittersPresent;
 	bool ir_control_gpio_present;
@@ -185,883 +219,516 @@ struct og01a1b_dev {
 	const struct og01a1b_mode_info* current_mode;
 	bool is_streaming;
 	bool is_og0VE10;
+	bool is_left_sensor;
+	struct private_timing_adjustment current_timing_adjustment;
+	enum og01a1b_timing_adjustment_state timing_adjustment_state;
 };
 
 struct og01a1b_dev* sensors[4];
 int numSensors = 0;
 int sync_sensor_index = -1;
 
+struct workqueue_struct *left_sensor_workqueue;
+EXPORT_SYMBOL(left_sensor_workqueue);
+
+
+struct workqueue_struct *right_sensor_workqueue;
+EXPORT_SYMBOL(right_sensor_workqueue);
+
 static inline struct og01a1b_dev *to_og01a1b_dev(struct v4l2_subdev *sd)
 {
 	return container_of(sd, struct og01a1b_dev, sd);
 }
 
-static const struct reg_value og0VE10_setting[] = {
-	{0x0103, 0x01},
-{0x0100, 0x00},
-{0x30a0, 0x02},
-{0x30a1, 0x00},
-{0x30a2, 0x48},
-{0x30a3, 0x34},
-{0x30a4, 0xf7},
-{0x30a5, 0x00},
-{0x3082, 0x32},
-{0x3083, 0x01},
-{0x301c, 0xf0},
-{0x301e, 0x0b},
-{0x3106, 0x10},
-{0x3708, 0x77},
-{0x3709, 0xf8},
-{0x3717, 0x00},
-{0x3782, 0x00},
-{0x3783, 0x47},
-{0x37a2, 0x00},
-{0x3500, 0x00},
-{0x3501, 0x00},
-{0x3502, 0x40},
-{0x3503, 0x07},
-{0x3509, 0x10},
-{0x350b, 0x10},
-{0x3600, 0x83},
-{0x3601, 0x21},
-{0x3602, 0xf1},
-{0x360a, 0x18},
-{0x360e, 0xb3},
-{0x3613, 0x20},
-{0x366a, 0x78},
-{0x3706, 0x63},
-{0x3713, 0x00},
-{0x3716, 0xb0},
-{0x37a1, 0x38},
-{0x3800, 0x00},
-{0x3801, 0x04},
-{0x3802, 0x00},
-{0x3803, 0x04},
-{0x3804, 0x02},
-{0x3805, 0x8b},
-{0x3806, 0x01},
-{0x3807, 0xeb},
-{0x3808, 0x02},
-{0x3809, 0x80},
-{0x380a, 0x01},
-{0x380b, 0xe0},
-{0x380c, 0x03},
-{0x380d, 0x18},
-{0x380e, 0x02},
-{0x380f, 0x38},
-{0x3811, 0x04},
-{0x3813, 0x04},
-{0x3814, 0x11},
-{0x3815, 0x11},
-{0x3820, 0x00},
-{0x3821, 0x00},
-{0x3823, 0x04},
-{0x382a, 0x00},
-{0x382b, 0x03},
-{0x3840, 0x00},
-{0x389e, 0x00},
-{0x3c05, 0x08},
-{0x3c26, 0x02},
-{0x3c27, 0xc0},
-{0x3c28, 0x00},
-{0x3c29, 0x40},
-{0x3c2c, 0x00},
-{0x3c2d, 0x50},
-{0x3c2e, 0x02},
-{0x3c2f, 0x66},
-{0x3c33, 0x08},
-{0x3c35, 0x00},
-{0x3c36, 0x00},
-{0x3c37, 0x00},
-{0x3f52, 0x9b},
-{0x4001, 0x42},
-{0x4004, 0x08},
-{0x4005, 0x00},
-{0x4007, 0x28},
-{0x4009, 0x40},
-{0x4307, 0x30},
-{0x4500, 0x80},
-{0x4501, 0x02},
-{0x4502, 0x47},
-{0x4504, 0x7f},
-{0x4601, 0x48},
-{0x4800, 0x64},
-{0x4801, 0x0f},
-{0x4806, 0x2f},
-{0x4819, 0xaa},
-{0x4823, 0x3e},
-{0x5000, 0x85},
-{0x5e00, 0x0c},
-{0x3899, 0x09},
-{0x4f00, 0x64},
-{0x4f02, 0x0a},
-{0x4f05, 0x0e},
-{0x4f06, 0x11},
-{0x4f08, 0x0b},
-{0x4f0a, 0xc4},
-{0x4f20, 0x1f},
-{0x4f25, 0x10},
-{0x3016, 0x10},
-{0x3017, 0x00},
-{0x3018, 0x00},
-{0x3019, 0x00},
-{0x301a, 0x00},
-{0x301b, 0x00},
-{0x301c, 0x72},
-{0x3037, 0x40},
-{0x4f2c, 0x00},
-{0x4f21, 0x00},
-{0x4f23, 0x00},
-{0x4f2a, 0x00},
-{0x3665, 0xe7},
-{0x3668, 0x48},
-{0x3671, 0x3c},
-{0x389a, 0x02},
-{0x389b, 0x00},
-{0x303c, 0xa0},
-{0x300f, 0xf0},
-{0x304b, 0x0f},
-{0x3662, 0x24},
-{0x3006, 0x40},
-{0x4f26, 0x45},
-{0x3607, 0x34},
-{0x3608, 0x01},
-{0x360a, 0x0c},
-{0x360b, 0x86},
-{0x360c, 0xcc},
-{0x3013, 0x00},
-{0x3083, 0x02},
-{0x3084, 0x12},
-{0x4601, 0x38},
-{0x366f, 0x3a},
-{0x3713, 0x19},
-{0x37a2, 0x00},
-{0x3f43, 0x27},
-{0x3f45, 0x27},
-{0x3f47, 0x32},
-{0x3f49, 0x3e},
-{0x3f4b, 0x20},
-{0x3f4d, 0x30},
-{0x4300, 0x3f},
-{0x4009, 0x10},
-{0x3f02, 0x68},
-{0x3700, 0x8c},
-{0x370b, 0x7e},
-{0x3f47, 0x35},
-{0x350b, 0x10},
-{0x3500, 0x00},
-{0x3501, 0x22},
-{0x3502, 0xa0},
-};
-
 static const struct reg_value og01a1b_setting[] = {
 
-{0x0103, 0x01, 0, 0},
-{0x0100, 0x00, 0, 0},
-{0x0300, 0x0a, 0, 0},
-{0x0301, 0x29, 0, 0},
-{0x0302, 0x31, 0, 0},
-{0x0303, 0x04, 0, 0},
-{0x0304, 0x00, 0, 0},
-{0x0305, 0xfa, 0, 0},
-{0x0306, 0x00, 0, 0},
-{0x0307, 0x01, 0, 0},
-{0x0308, 0x02, 0, 0},
-{0x0309, 0x00, 0, 0},
-{0x0310, 0x00, 0, 0},
-{0x0311, 0x00, 0, 0},
-{0x0312, 0x07, 0, 0},
-{0x0313, 0x00, 0, 0},
-{0x0314, 0x00, 0, 0},
-{0x0315, 0x00, 0, 0},
-{0x0320, 0x02, 0, 0},
-{0x0321, 0x01, 0, 0},
-{0x0322, 0x01, 0, 0},
-{0x0323, 0x04, 0, 0},
-{0x0324, 0x01, 0, 0},
-{0x0325, 0xc2, 0, 0},
-{0x0326, 0xce, 0, 0},
-{0x0327, 0x04, 0, 0},
-{0x0329, 0x02, 0, 0},
-{0x032a, 0x04, 0, 0},
-{0x032b, 0x04, 0, 0},
-{0x032c, 0x02, 0, 0},
-{0x032d, 0x01, 0, 0},
-{0x032e, 0x00, 0, 0},
-{0x300d, 0x02, 0, 0},
-{0x300e, 0x04, 0, 0},
-{0x3021, 0x08, 0, 0},
-{0x301e, 0x03, 0, 0},
-{0x3103, 0x00, 0, 0},
-{0x3106, 0x08, 0, 0},
-{0x3107, 0x40, 0, 0},
-{0x3216, 0x01, 0, 0},
-{0x3217, 0x00, 0, 0},
-{0x3218, 0xc0, 0, 0},
-{0x3219, 0x55, 0, 0},
-{0x3500, 0x00, 0, 0},
-{0x3501, 0x04, 0, 0},
-{0x3502, 0x8a, 0, 0},
-{0x3506, 0x01, 0, 0},
-{0x3507, 0x72, 0, 0},
-{0x3508, 0x01, 0, 0},
-{0x3509, 0x00, 0, 0},
-{0x350a, 0x01, 0, 0},
-{0x350b, 0x00, 0, 0},
-{0x350c, 0x00, 0, 0},
-{0x3541, 0x00, 0, 0},
-{0x3542, 0x40, 0, 0},
-{0x3605, 0xe0, 0, 0},
-{0x3606, 0x41, 0, 0},
-{0x3614, 0x20, 0, 0},
-{0x3620, 0x0b, 0, 0},
-{0x3630, 0x07, 0, 0},
-{0x3636, 0xa0, 0, 0},
-{0x3637, 0xf9, 0, 0},
-{0x3638, 0x09, 0, 0},
-{0x3639, 0x38, 0, 0},
-{0x363f, 0x09, 0, 0},
-{0x3640, 0x17, 0, 0},
-{0x3662, 0x06, 0, 0}, // enables 8 bit mode
-{0x3665, 0x80, 0, 0},
-{0x3670, 0x68, 0, 0},
-{0x3674, 0x00, 0, 0},
-{0x3677, 0x3f, 0, 0},
-{0x3679, 0x00, 0, 0},
-{0x369f, 0x19, 0, 0},
-{0x36a0, 0x03, 0, 0},
-{0x36a2, 0x19, 0, 0},
-{0x36a3, 0x03, 0, 0},
-{0x370d, 0x66, 0, 0},
-{0x370f, 0x00, 0, 0},
-{0x3710, 0x03, 0, 0},
-{0x3715, 0x03, 0, 0},
-{0x3716, 0x03, 0, 0},
-{0x3717, 0x06, 0, 0},
-{0x3733, 0x00, 0, 0},
-{0x3778, 0x00, 0, 0},
-{0x37a8, 0x0f, 0, 0},
-{0x37a9, 0x01, 0, 0},
-{0x37aa, 0x07, 0, 0},
-{0x37bd, 0x1c, 0, 0},
-{0x37c1, 0x2f, 0, 0},
-{0x37c3, 0x09, 0, 0},
-{0x37c8, 0x1d, 0, 0},
-{0x37ca, 0x30, 0, 0},
-{0x37df, 0x00, 0, 0},
-{0x3800, 0x00, 0, 0},
-{0x3801, 0x00, 0, 0},
-{0x3802, 0x00, 0, 0},
-{0x3803, 0x00, 0, 0},
-{0x3804, 0x05, 0, 0},
-{0x3805, 0x0f, 0, 0},
-{0x3806, 0x04, 0, 0},
-{0x3807, 0x0f, 0, 0},
-{0x3808, 0x05, 0, 0},
-{0x3809, 0x00, 0, 0},
-{0x380a, 0x04, 0, 0},
-{0x380b, 0x00, 0, 0},
-{0x380c, 0x03, 0, 0},
-{0x380d, 0x50, 0, 0},
-{0x380e, 0x04, 0, 0},
-{0x380f, 0x98, 0, 0},
-{0x3810, 0x00, 0, 0},
-{0x3811, 0x08, 0, 0},
-{0x3812, 0x00, 0, 0},
-{0x3813, 0x08, 0, 0},
-{0x3814, 0x11, 0, 0},
-{0x3815, 0x11, 0, 0},
-{0x3820, 0x40, 0, 0},
-{0x3821, 0x04, 0, 0},
-{0x3826, 0x00, 0, 0},
-{0x3827, 0x00, 0, 0},
-{0x382a, 0x08, 0, 0},
-{0x382b, 0x52, 0, 0},
-{0x382d, 0xba, 0, 0},
-{0x383d, 0x14, 0, 0},
-{0x384a, 0xa2, 0, 0},
-{0x3866, 0x0e, 0, 0},
-{0x3867, 0x07, 0, 0},
-{0x3884, 0x00, 0, 0},
-{0x3885, 0x08, 0, 0},
-{0x3893, 0x68, 0, 0},
-{0x3894, 0x2a, 0, 0},
-{0x3898, 0x00, 0, 0},
-{0x3899, 0x31, 0, 0},
-{0x389a, 0x04, 0, 0},
-{0x389b, 0x00, 0, 0},
-{0x389c, 0x0b, 0, 0},
-{0x389d, 0xad, 0, 0},
-{0x389f, 0x08, 0, 0},
-{0x38a0, 0x00, 0, 0},
-{0x38a1, 0x00, 0, 0},
-{0x38a8, 0x70, 0, 0},
-{0x38ac, 0xea, 0, 0},
-{0x38b2, 0x00, 0, 0},
-{0x38b3, 0x08, 0, 0},
-{0x38bc, 0x20, 0, 0},
-{0x38c4, 0x0c, 0, 0},
-{0x38c5, 0x3a, 0, 0},
-{0x38c7, 0x3a, 0, 0},
-{0x38e1, 0xc0, 0, 0},
-{0x38ec, 0x3c, 0, 0},
-{0x38f0, 0x09, 0, 0},
-{0x38f1, 0x6f, 0, 0},
-{0x38fe, 0x3c, 0, 0},
-{0x391e, 0x00, 0, 0},
-{0x391f, 0x00, 0, 0},
-{0x3920, 0xa5, 0, 0},
-{0x3921, 0x00, 0, 0},
-{0x3922, 0x00, 0, 0},
-{0x3923, 0x00, 0, 0},
-{0x3924, 0x05, 0, 0},
-{0x3925, 0x00, 0, 0},
-{0x3926, 0x00, 0, 0},
-{0x3927, 0x00, 0, 0},
-{0x3928, 0x1a, 0, 0},
-{0x3929, 0x01, 0, 0},
-{0x392a, 0xb4, 0, 0},
-{0x392b, 0x00, 0, 0},
-{0x392c, 0x10, 0, 0},
-{0x392f, 0x40, 0, 0},
-{0x4000, 0xcf, 0, 0},
-{0x4003, 0x40, 0, 0},
-{0x4008, 0x00, 0, 0},
-{0x4009, 0x07, 0, 0},
-{0x400a, 0x02, 0, 0},
-{0x400b, 0x54, 0, 0},
-{0x400c, 0x00, 0, 0},
-{0x400d, 0x07, 0, 0},
-{0x4010, 0xc0, 0, 0},
-{0x4012, 0x02, 0, 0},
-{0x4014, 0x04, 0, 0},
-{0x4015, 0x04, 0, 0},
-{0x4017, 0x02, 0, 0},
-{0x4042, 0x01, 0, 0},
-{0x4306, 0x04, 0, 0},
-{0x4307, 0x12, 0, 0},
-{0x4509, 0x00, 0, 0},
-{0x450b, 0x83, 0, 0},
-{0x4604, 0x68, 0, 0},
-{0x4608, 0x0a, 0, 0},
-{0x4700, 0x06, 0, 0},
-{0x4800, 0x64, 0, 0},
-{0x481b, 0x3c, 0, 0},
-{0x4825, 0x32, 0, 0},
-{0x4833, 0x18, 0, 0},
-{0x4837, 0x10, 0, 0},
-{0x4850, 0x40, 0, 0},
-{0x4860, 0x00, 0, 0},
-{0x4861, 0xec, 0, 0},
-{0x4864, 0x00, 0, 0},
-{0x4883, 0x00, 0, 0},
-{0x4888, 0x90, 0, 0},
-{0x4889, 0x05, 0, 0},
-{0x488b, 0x04, 0, 0},
-{0x4f00, 0x04, 0, 0},
-{0x4f10, 0x04, 0, 0},
-{0x4f21, 0x01, 0, 0},
-{0x4f22, 0x40, 0, 0},
-{0x4f23, 0x44, 0, 0},
-{0x4f24, 0x51, 0, 0},
-{0x4f25, 0x41, 0, 0},
-{0x5000, 0x1f, 0, 0},
-{0x500a, 0x00, 0, 0},
-{0x5100, 0x00, 0, 0},
-{0x5111, 0x20, 0, 0},
+	{ 0x0103, 0x01 },
+	{ 0x0100, 0x00 },
+	{ 0x0300, 0x0a },
+	{ 0x0301, 0x29 },
+	{ 0x0302, 0x31 },
+	{ 0x0303, 0x04 },
+	{ 0x0304, 0x00 },
+	{ 0x0305, 0xfa },
+	{ 0x0306, 0x00 },
+	{ 0x0307, 0x01 },
+	{ 0x0308, 0x02 },
+	{ 0x0309, 0x00 },
+	{ 0x0310, 0x00 },
+	{ 0x0311, 0x00 },
+	{ 0x0312, 0x07 },
+	{ 0x0313, 0x00 },
+	{ 0x0314, 0x00 },
+	{ 0x0315, 0x00 },
+	{ 0x0320, 0x02 },
+	{ 0x0321, 0x01 },
+	{ 0x0322, 0x01 },
+	{ 0x0323, 0x04 },
+	{ 0x0324, 0x01 },
+	{ 0x0325, 0xc2 },
+	{ 0x0326, 0xce },
+	{ 0x0327, 0x04 },
+	{ 0x0329, 0x02 },
+	{ 0x032a, 0x04 },
+	{ 0x032b, 0x04 },
+	{ 0x032c, 0x02 },
+	{ 0x032d, 0x01 },
+	{ 0x032e, 0x00 },
+	{ 0x300d, 0x02 },
+	{ 0x300e, 0x04 },
+	{ 0x3021, 0x08 },
+	{ 0x301e, 0x03 },
+	{ 0x3103, 0x00 },
+	{ 0x3106, 0x08 },
+	{ 0x3107, 0x40 },
+	{ 0x3216, 0x01 },
+	{ 0x3217, 0x00 },
+	{ 0x3218, 0xc0 },
+	{ 0x3219, 0x55 },
+	{ 0x3500, 0x00 },
+	{ 0x3501, 0x04 },
+	{ 0x3502, 0x8a },
+	{ 0x3506, 0x01 },
+	{ 0x3507, 0x72 },
+	{ 0x3508, 0x01 },
+	{ 0x3509, 0x00 },
+	{ 0x350a, 0x01 },
+	{ 0x350b, 0x00 },
+	{ 0x350c, 0x00 },
+	{ 0x3541, 0x00 },
+	{ 0x3542, 0x40 },
+	{ 0x3605, 0xe0 },
+	{ 0x3606, 0x41 },
+	{ 0x3614, 0x20 },
+	{ 0x3620, 0x0b },
+	{ 0x3630, 0x07 },
+	{ 0x3636, 0xa0 },
+	{ 0x3637, 0xf9 },
+	{ 0x3638, 0x09 },
+	{ 0x3639, 0x38 },
+	{ 0x363f, 0x09 },
+	{ 0x3640, 0x17 },
+	{ 0x3662, 0x06 }, // enables 8 bit mode
+	{ 0x3665, 0x80 },
+	{ 0x3670, 0x68 },
+	{ 0x3674, 0x00 },
+	{ 0x3677, 0x3f },
+	{ 0x3679, 0x00 },
+	{ 0x369f, 0x19 },
+	{ 0x36a0, 0x03 },
+	{ 0x36a2, 0x19 },
+	{ 0x36a3, 0x03 },
+	{ 0x370d, 0x66 },
+	{ 0x370f, 0x00 },
+	{ 0x3710, 0x03 },
+	{ 0x3715, 0x03 },
+	{ 0x3716, 0x03 },
+	{ 0x3717, 0x06 },
+	{ 0x3733, 0x00 },
+	{ 0x3778, 0x00 },
+	{ 0x37a8, 0x0f },
+	{ 0x37a9, 0x01 },
+	{ 0x37aa, 0x07 },
+	{ 0x37bd, 0x1c },
+	{ 0x37c1, 0x2f },
+	{ 0x37c3, 0x09 },
+	{ 0x37c8, 0x1d },
+	{ 0x37ca, 0x30 },
+	{ 0x37df, 0x00 },
+	{ 0x3800, 0x00 },
+	{ 0x3801, 0x00 },
+	{ 0x3802, 0x00 },
+	{ 0x3803, 0x00 },
+	{ 0x3804, 0x05 },
+	{ 0x3805, 0x0f },
+	{ 0x3806, 0x04 },
+	{ 0x3807, 0x0f },
+	{ 0x3808, 0x05 },
+	{ 0x3809, 0x00 },
+	{ 0x380a, 0x04 },
+	{ 0x380b, 0x00 },
+	{ 0x380c, 0x03 },
+	{ 0x380d, 0x50 },
+	{ 0x380e, 0x04 },
+	{ 0x380f, 0x98 },
+	{ 0x3810, 0x00 },
+	{ 0x3811, 0x08 },
+	{ 0x3812, 0x00 },
+	{ 0x3813, 0x08 },
+	{ 0x3814, 0x11 },
+	{ 0x3815, 0x11 },
+	{ 0x3820, 0x40 },
+	{ 0x3821, 0x04 },
+	{ 0x3826, 0x00 },
+	{ 0x3827, 0x00 },
+	{ 0x382a, 0x08 },
+	{ 0x382b, 0x52 },
+	{ 0x382d, 0xba },
+	{ 0x383d, 0x14 },
+	{ 0x384a, 0xa2 },
+	{ 0x3866, 0x0e },
+	{ 0x3867, 0x07 },
+	{ 0x3884, 0x00 },
+	{ 0x3885, 0x08 },
+	{ 0x3893, 0x68 },
+	{ 0x3894, 0x2a },
+	{ 0x3898, 0x00 },
+	{ 0x3899, 0x31 },
+	{ 0x389a, 0x04 },
+	{ 0x389b, 0x00 },
+	{ 0x389c, 0x0b },
+	{ 0x389d, 0xad },
+	{ 0x389f, 0x08 },
+	{ 0x38a0, 0x00 },
+	{ 0x38a1, 0x00 },
+	{ 0x38a8, 0x70 },
+	{ 0x38ac, 0xea },
+	{ 0x38b2, 0x00 },
+	{ 0x38b3, 0x08 },
+	{ 0x38bc, 0x20 },
+	{ 0x38c4, 0x0c },
+	{ 0x38c5, 0x3a },
+	{ 0x38c7, 0x3a },
+	{ 0x38e1, 0xc0 },
+	{ 0x38ec, 0x3c },
+	{ 0x38f0, 0x09 },
+	{ 0x38f1, 0x6f },
+	{ 0x38fe, 0x3c },
+	{ 0x391e, 0x00 },
+	{ 0x391f, 0x00 },
+	{ 0x3920, 0xa5 },
+	{ 0x3921, 0x00 },
+	{ 0x3922, 0x00 },
+	{ 0x3923, 0x00 },
+	{ 0x3924, 0x05 },
+	{ 0x3925, 0x00 },
+	{ 0x3926, 0x00 },
+	{ 0x3927, 0x00 },
+	{ 0x3928, 0x1a },
+	{ 0x3929, 0x01 },
+	{ 0x392a, 0xb4 },
+	{ 0x392b, 0x00 },
+	{ 0x392c, 0x10 },
+	{ 0x392f, 0x40 },
+	{ 0x4000, 0xcf },
+	{ 0x4003, 0x40 },
+	{ 0x4008, 0x00 },
+	{ 0x4009, 0x07 },
+	{ 0x400a, 0x02 },
+	{ 0x400b, 0x54 },
+	{ 0x400c, 0x00 },
+	{ 0x400d, 0x07 },
+	{ 0x4010, 0xc0 },
+	{ 0x4012, 0x02 },
+	{ 0x4014, 0x04 },
+	{ 0x4015, 0x04 },
+	{ 0x4017, 0x02 },
+	{ 0x4042, 0x01 },
+	{ 0x4306, 0x04 },
+	{ 0x4307, 0x12 },
+	{ 0x4509, 0x00 },
+	{ 0x450b, 0x83 },
+	{ 0x4604, 0x68 },
+	{ 0x4608, 0x0a },
+	{ 0x4700, 0x06 },
+	{ 0x4800, 0x64 },
+	{ 0x481b, 0x3c },
+	{ 0x4825, 0x32 },
+	{ 0x4833, 0x18 },
+	{ 0x4837, 0x10 },
+	{ 0x4850, 0x40 },
+	{ 0x4860, 0x00 },
+	{ 0x4861, 0xec },
+	{ 0x4864, 0x00 },
+	{ 0x4883, 0x00 },
+	{ 0x4888, 0x90 },
+	{ 0x4889, 0x05 },
+	{ 0x488b, 0x04 },
+	{ 0x4f00, 0x04 },
+	{ 0x4f10, 0x04 },
+	{ 0x4f21, 0x01 },
+	{ 0x4f22, 0x40 },
+	{ 0x4f23, 0x44 },
+	{ 0x4f24, 0x51 },
+	{ 0x4f25, 0x41 },
+	{ 0x5000, 0x1f },
+	{ 0x500a, 0x00 },
+	{ 0x5100, 0x00 },
+	{ 0x5111, 0x20 },
 
-//enable strobe for testing
-{0x3009, 0b1000,0, 0},
-{0x3017, 0xf2, 0, 0},
-{0x3920, 0xff, 0, 0},
-{0x3924, 0x00, 0, 0},
+	//enable strobe for testing
+	{ 0x3009, 0b1000},
+	{ 0x3017, 0xf2 },
+	{ 0x3920, 0xff },
+	{ 0x3924, 0x00 },
 
-//for temperature sensor
-{0x3667, 0x80,0 ,0},
-{0x4d00, 0x4a,0 ,0},
-{0x4d01, 0x18,0 ,0},
-{0x4d02, 0xbb,0 ,0},
-{0x4d03, 0xde,0 ,0},
-{0x4d04, 0x93,0 ,0},
-{0x4d05, 0xff,0 ,0},
-{0x4d09, 0x0a,0 ,0},
+	//for temperature sensor
+	{ 0x3667, 0x80},
+	{ 0x4d00, 0x4a},
+	{ 0x4d01, 0x18},
+	{ 0x4d02, 0xbb},
+	{ 0x4d03, 0xde},
+	{ 0x4d04, 0x93},
+	{ 0x4d05, 0xff},
+	{ 0x4d09, 0x0a},
 
 };
 
 static const struct reg_value og01a1b_setting_640x512[] = {
 
-{0x0103, 0x01, 0, 0},
-{0x0100, 0x00, 0, 0},
-{0x0300, 0x0a, 0, 0},
-{0x0301, 0x29, 0, 0},
-{0x0302, 0x31, 0, 0},
-{0x0303, 0x04, 0, 0},
-{0x0304, 0x00, 0, 0},
-{0x0305, 0xfa, 0, 0},
-{0x0306, 0x00, 0, 0},
-{0x0307, 0x01, 0, 0},
-{0x0308, 0x02, 0, 0},
-{0x0309, 0x00, 0, 0},
-{0x0310, 0x00, 0, 0},
-{0x0311, 0x00, 0, 0},
-{0x0312, 0x07, 0, 0},
-{0x0313, 0x00, 0, 0},
-{0x0314, 0x00, 0, 0},
-{0x0315, 0x00, 0, 0},
-{0x0320, 0x02, 0, 0},
-{0x0321, 0x01, 0, 0},
-{0x0322, 0x01, 0, 0},
-{0x0323, 0x04, 0, 0},
-{0x0324, 0x01, 0, 0},
-{0x0325, 0xc2, 0, 0},
-{0x0326, 0xce, 0, 0},
-{0x0327, 0x04, 0, 0},
-{0x0329, 0x02, 0, 0},
-{0x032a, 0x04, 0, 0},
-{0x032b, 0x04, 0, 0},
-{0x032c, 0x02, 0, 0},
-{0x032d, 0x01, 0, 0},
-{0x032e, 0x00, 0, 0},
-{0x300d, 0x02, 0, 0},
-{0x300e, 0x04, 0, 0},
-{0x3021, 0x08, 0, 0},
-{0x301e, 0x03, 0, 0},
-{0x3103, 0x00, 0, 0},
-{0x3106, 0x08, 0, 0},
-{0x3107, 0x40, 0, 0},
-{0x3216, 0x01, 0, 0},
-{0x3217, 0x00, 0, 0},
-{0x3218, 0xc0, 0, 0},
-{0x3219, 0x55, 0, 0},
-{0x3500, 0x00, 0, 0},
-{0x3501, 0x04, 0, 0},
-{0x3502, 0x8a, 0, 0},
-{0x3506, 0x01, 0, 0},
-{0x3507, 0x72, 0, 0},
-{0x3508, 0x01, 0, 0},
-{0x3509, 0x00, 0, 0},
-{0x350a, 0x01, 0, 0},
-{0x350b, 0x00, 0, 0},
-{0x350c, 0x00, 0, 0},
-{0x3541, 0x00, 0, 0},
-{0x3542, 0x40, 0, 0},
-{0x3605, 0xe0, 0, 0},
-{0x3606, 0x41, 0, 0},
-{0x3614, 0x20, 0, 0},
-{0x3620, 0x0b, 0, 0},
-{0x3630, 0x07, 0, 0},
-{0x3636, 0xa0, 0, 0},
-{0x3637, 0xf9, 0, 0},
-{0x3638, 0x09, 0, 0},
-{0x3639, 0x38, 0, 0},
-{0x363f, 0x09, 0, 0},
-{0x3640, 0x17, 0, 0},
-{0x3662, 0x06, 0, 0}, // enables 8 bit mode
-{0x3665, 0x80, 0, 0},
-{0x3670, 0x68, 0, 0},
-{0x3674, 0x00, 0, 0},
-{0x3677, 0x3f, 0, 0},
-{0x3679, 0x00, 0, 0},
-{0x369f, 0x19, 0, 0},
-{0x36a0, 0x03, 0, 0},
-{0x36a2, 0x19, 0, 0},
-{0x36a3, 0x03, 0, 0},
-{0x370d, 0x66, 0, 0},
-{0x370f, 0x00, 0, 0},
-{0x3710, 0x03, 0, 0},
-{0x3715, 0x03, 0, 0},
-{0x3716, 0x03, 0, 0},
-{0x3717, 0x06, 0, 0},
-{0x3733, 0x00, 0, 0},
-{0x3778, 0x00, 0, 0},
-{0x37a8, 0x0f, 0, 0},
-{0x37a9, 0x01, 0, 0},
-{0x37aa, 0x07, 0, 0},
-{0x37bd, 0x1c, 0, 0},
-{0x37c1, 0x2f, 0, 0},
-{0x37c3, 0x09, 0, 0},
-{0x37c8, 0x1d, 0, 0},
-{0x37ca, 0x30, 0, 0},
-{0x37df, 0x00, 0, 0},
-{0x3800, 0x00, 0, 0},
-{0x3801, 0x00, 0, 0},
-{0x3802, 0x00, 0, 0},
-{0x3803, 0x00, 0, 0},
-{0x3804, 0x05, 0, 0},
-{0x3805, 0x0f, 0, 0},
-{0x3806, 0x04, 0, 0},
-{0x3807, 0x0f, 0, 0},
-{0x3808, 0x05, 0, 0},
-{0x3809, 0x00, 0, 0},
-{0x380a, 0x04, 0, 0},
-{0x380b, 0x00, 0, 0},
-{0x380c, 0x03, 0, 0},
-{0x380d, 0x50, 0, 0},
-{0x380e, 0x04, 0, 0},
-{0x380f, 0x98, 0, 0},
-{0x3810, 0x00, 0, 0},
-{0x3811, 0x08, 0, 0},
-{0x3812, 0x00, 0, 0},
-{0x3813, 0x08, 0, 0},
-{0x3814, 0x11, 0, 0},
-{0x3815, 0x11, 0, 0},
-{0x3820, 0x40, 0, 0},
-{0x3821, 0x04, 0, 0},
-{0x3826, 0x00, 0, 0},
-{0x3827, 0x00, 0, 0},
-{0x382a, 0x08, 0, 0},
-{0x382b, 0x52, 0, 0},
-{0x382d, 0xba, 0, 0},
-{0x383d, 0x14, 0, 0},
-{0x384a, 0xa2, 0, 0},
-{0x3866, 0x0e, 0, 0},
-{0x3867, 0x07, 0, 0},
-{0x3884, 0x00, 0, 0},
-{0x3885, 0x08, 0, 0},
-{0x3893, 0x68, 0, 0},
-{0x3894, 0x2a, 0, 0},
-{0x3898, 0x00, 0, 0},
-{0x3899, 0x31, 0, 0},
-{0x389a, 0x04, 0, 0},
-{0x389b, 0x00, 0, 0},
-{0x389c, 0x0b, 0, 0},
-{0x389d, 0xad, 0, 0},
-{0x389f, 0x08, 0, 0},
-{0x38a0, 0x00, 0, 0},
-{0x38a1, 0x00, 0, 0},
-{0x38a8, 0x70, 0, 0},
-{0x38ac, 0xea, 0, 0},
-{0x38b2, 0x00, 0, 0},
-{0x38b3, 0x08, 0, 0},
-{0x38bc, 0x20, 0, 0},
-{0x38c4, 0x0c, 0, 0},
-{0x38c5, 0x3a, 0, 0},
-{0x38c7, 0x3a, 0, 0},
-{0x38e1, 0xc0, 0, 0},
-{0x38ec, 0x3c, 0, 0},
-{0x38f0, 0x09, 0, 0},
-{0x38f1, 0x6f, 0, 0},
-{0x38fe, 0x3c, 0, 0},
-{0x391e, 0x00, 0, 0},
-{0x391f, 0x00, 0, 0},
-{0x3920, 0xa5, 0, 0},
-{0x3921, 0x00, 0, 0},
-{0x3922, 0x00, 0, 0},
-{0x3923, 0x00, 0, 0},
-{0x3924, 0x05, 0, 0},
-{0x3925, 0x00, 0, 0},
-{0x3926, 0x00, 0, 0},
-{0x3927, 0x00, 0, 0},
-{0x3928, 0x1a, 0, 0},
-{0x3929, 0x01, 0, 0},
-{0x392a, 0xb4, 0, 0},
-{0x392b, 0x00, 0, 0},
-{0x392c, 0x10, 0, 0},
-{0x392f, 0x40, 0, 0},
-{0x4000, 0xcf, 0, 0},
-{0x4003, 0x40, 0, 0},
-{0x4008, 0x00, 0, 0},
-{0x4009, 0x07, 0, 0},
-{0x400a, 0x02, 0, 0},
-{0x400b, 0x54, 0, 0},
-{0x400c, 0x00, 0, 0},
-{0x400d, 0x07, 0, 0},
-{0x4010, 0xc0, 0, 0},
-{0x4012, 0x02, 0, 0},
-{0x4014, 0x04, 0, 0},
-{0x4015, 0x04, 0, 0},
-{0x4017, 0x02, 0, 0},
-{0x4042, 0x01, 0, 0},
-{0x4306, 0x04, 0, 0},
-{0x4307, 0x12, 0, 0},
-{0x4509, 0x00, 0, 0},
-{0x450b, 0x83, 0, 0},
-{0x4604, 0x68, 0, 0},
-{0x4608, 0x0a, 0, 0},
-{0x4700, 0x06, 0, 0},
-{0x4800, 0x64, 0, 0},
-{0x481b, 0x3c, 0, 0},
-{0x4825, 0x32, 0, 0},
-{0x4833, 0x18, 0, 0},
-{0x4837, 0x10, 0, 0},
-{0x4850, 0x40, 0, 0},
-{0x4860, 0x00, 0, 0},
-{0x4861, 0xec, 0, 0},
-{0x4864, 0x00, 0, 0},
-{0x4883, 0x00, 0, 0},
-{0x4888, 0x90, 0, 0},
-{0x4889, 0x05, 0, 0},
-{0x488b, 0x04, 0, 0},
-{0x4f00, 0x04, 0, 0},
-{0x4f10, 0x04, 0, 0},
-{0x4f21, 0x01, 0, 0},
-{0x4f22, 0x40, 0, 0},
-{0x4f23, 0x44, 0, 0},
-{0x4f24, 0x51, 0, 0},
-{0x4f25, 0x41, 0, 0},
-{0x5000, 0x1f, 0, 0},
-{0x500a, 0x00, 0, 0},
-{0x5100, 0x00, 0, 0},
-{0x5111, 0x20, 0, 0},
+	{ 0x0103, 0x01 },
+	{ 0x0100, 0x00 },
+	{ 0x0300, 0x0a },
+	{ 0x0301, 0x29 },
+	{ 0x0302, 0x31 },
+	{ 0x0303, 0x04 },
+	{ 0x0304, 0x00 },
+	{ 0x0305, 0xfa },
+	{ 0x0306, 0x00 },
+	{ 0x0307, 0x01 },
+	{ 0x0308, 0x02 },
+	{ 0x0309, 0x00 },
+	{ 0x0310, 0x00 },
+	{ 0x0311, 0x00 },
+	{ 0x0312, 0x07 },
+	{ 0x0313, 0x00 },
+	{ 0x0314, 0x00 },
+	{ 0x0315, 0x00 },
+	{ 0x0320, 0x02 },
+	{ 0x0321, 0x01 },
+	{ 0x0322, 0x01 },
+	{ 0x0323, 0x04 },
+	{ 0x0324, 0x01 },
+	{ 0x0325, 0xc2 },
+	{ 0x0326, 0xce },
+	{ 0x0327, 0x04 },
+	{ 0x0329, 0x02 },
+	{ 0x032a, 0x04 },
+	{ 0x032b, 0x04 },
+	{ 0x032c, 0x02 },
+	{ 0x032d, 0x01 },
+	{ 0x032e, 0x00 },
+	{ 0x300d, 0x02 },
+	{ 0x300e, 0x04 },
+	{ 0x3021, 0x08 },
+	{ 0x301e, 0x03 },
+	{ 0x3103, 0x00 },
+	{ 0x3106, 0x08 },
+	{ 0x3107, 0x40 },
+	{ 0x3216, 0x01 },
+	{ 0x3217, 0x00 },
+	{ 0x3218, 0xc0 },
+	{ 0x3219, 0x55 },
+	{ 0x3500, 0x00 },
+	{ 0x3501, 0x04 },
+	{ 0x3502, 0x8a },
+	{ 0x3506, 0x01 },
+	{ 0x3507, 0x72 },
+	{ 0x3508, 0x01 },
+	{ 0x3509, 0x00 },
+	{ 0x350a, 0x01 },
+	{ 0x350b, 0x00 },
+	{ 0x350c, 0x00 },
+	{ 0x3541, 0x00 },
+	{ 0x3542, 0x40 },
+	{ 0x3605, 0xe0 },
+	{ 0x3606, 0x41 },
+	{ 0x3614, 0x20 },
+	{ 0x3620, 0x0b },
+	{ 0x3630, 0x07 },
+	{ 0x3636, 0xa0 },
+	{ 0x3637, 0xf9 },
+	{ 0x3638, 0x09 },
+	{ 0x3639, 0x38 },
+	{ 0x363f, 0x09 },
+	{ 0x3640, 0x17 },
+	{ 0x3662, 0x06 }, // enables 8 bit mode
+	{ 0x3665, 0x80 },
+	{ 0x3670, 0x68 },
+	{ 0x3674, 0x00 },
+	{ 0x3677, 0x3f },
+	{ 0x3679, 0x00 },
+	{ 0x369f, 0x19 },
+	{ 0x36a0, 0x03 },
+	{ 0x36a2, 0x19 },
+	{ 0x36a3, 0x03 },
+	{ 0x370d, 0x66 },
+	{ 0x370f, 0x00 },
+	{ 0x3710, 0x03 },
+	{ 0x3715, 0x03 },
+	{ 0x3716, 0x03 },
+	{ 0x3717, 0x06 },
+	{ 0x3733, 0x00 },
+	{ 0x3778, 0x00 },
+	{ 0x37a8, 0x0f },
+	{ 0x37a9, 0x01 },
+	{ 0x37aa, 0x07 },
+	{ 0x37bd, 0x1c },
+	{ 0x37c1, 0x2f },
+	{ 0x37c3, 0x09 },
+	{ 0x37c8, 0x1d },
+	{ 0x37ca, 0x30 },
+	{ 0x37df, 0x00 },
+	{ 0x3800, 0x00 },
+	{ 0x3801, 0x00 },
+	{ 0x3802, 0x00 },
+	{ 0x3803, 0x00 },
+	{ 0x3804, 0x05 },
+	{ 0x3805, 0x0f },
+	{ 0x3806, 0x04 },
+	{ 0x3807, 0x0f },
+	{ 0x3808, 0x05 },
+	{ 0x3809, 0x00 },
+	{ 0x380a, 0x04 },
+	{ 0x380b, 0x00 },
+	{ 0x380c, 0x03 },
+	{ 0x380d, 0x50 },
+	{ 0x380e, 0x04 },
+	{ 0x380f, 0x98 },
+	{ 0x3810, 0x00 },
+	{ 0x3811, 0x08 },
+	{ 0x3812, 0x00 },
+	{ 0x3813, 0x08 },
+	{ 0x3814, 0x11 },
+	{ 0x3815, 0x11 },
+	{ 0x3820, 0x40 },
+	{ 0x3821, 0x04 },
+	{ 0x3826, 0x00 },
+	{ 0x3827, 0x00 },
+	{ 0x382a, 0x08 },
+	{ 0x382b, 0x52 },
+	{ 0x382d, 0xba },
+	{ 0x383d, 0x14 },
+	{ 0x384a, 0xa2 },
+	{ 0x3866, 0x0e },
+	{ 0x3867, 0x07 },
+	{ 0x3884, 0x00 },
+	{ 0x3885, 0x08 },
+	{ 0x3893, 0x68 },
+	{ 0x3894, 0x2a },
+	{ 0x3898, 0x00 },
+	{ 0x3899, 0x31 },
+	{ 0x389a, 0x04 },
+	{ 0x389b, 0x00 },
+	{ 0x389c, 0x0b },
+	{ 0x389d, 0xad },
+	{ 0x389f, 0x08 },
+	{ 0x38a0, 0x00 },
+	{ 0x38a1, 0x00 },
+	{ 0x38a8, 0x70 },
+	{ 0x38ac, 0xea },
+	{ 0x38b2, 0x00 },
+	{ 0x38b3, 0x08 },
+	{ 0x38bc, 0x20 },
+	{ 0x38c4, 0x0c },
+	{ 0x38c5, 0x3a },
+	{ 0x38c7, 0x3a },
+	{ 0x38e1, 0xc0 },
+	{ 0x38ec, 0x3c },
+	{ 0x38f0, 0x09 },
+	{ 0x38f1, 0x6f },
+	{ 0x38fe, 0x3c },
+	{ 0x391e, 0x00 },
+	{ 0x391f, 0x00 },
+	{ 0x3920, 0xa5 },
+	{ 0x3921, 0x00 },
+	{ 0x3922, 0x00 },
+	{ 0x3923, 0x00 },
+	{ 0x3924, 0x05 },
+	{ 0x3925, 0x00 },
+	{ 0x3926, 0x00 },
+	{ 0x3927, 0x00 },
+	{ 0x3928, 0x1a },
+	{ 0x3929, 0x01 },
+	{ 0x392a, 0xb4 },
+	{ 0x392b, 0x00 },
+	{ 0x392c, 0x10 },
+	{ 0x392f, 0x40 },
+	{ 0x4000, 0xcf },
+	{ 0x4003, 0x40 },
+	{ 0x4008, 0x00 },
+	{ 0x4009, 0x07 },
+	{ 0x400a, 0x02 },
+	{ 0x400b, 0x54 },
+	{ 0x400c, 0x00 },
+	{ 0x400d, 0x07 },
+	{ 0x4010, 0xc0 },
+	{ 0x4012, 0x02 },
+	{ 0x4014, 0x04 },
+	{ 0x4015, 0x04 },
+	{ 0x4017, 0x02 },
+	{ 0x4042, 0x01 },
+	{ 0x4306, 0x04 },
+	{ 0x4307, 0x12 },
+	{ 0x4509, 0x00 },
+	{ 0x450b, 0x83 },
+	{ 0x4604, 0x68 },
+	{ 0x4608, 0x0a },
+	{ 0x4700, 0x06 },
+	{ 0x4800, 0x64 },
+	{ 0x481b, 0x3c },
+	{ 0x4825, 0x32 },
+	{ 0x4833, 0x18 },
+	{ 0x4837, 0x10 },
+	{ 0x4850, 0x40 },
+	{ 0x4860, 0x00 },
+	{ 0x4861, 0xec },
+	{ 0x4864, 0x00 },
+	{ 0x4883, 0x00 },
+	{ 0x4888, 0x90 },
+	{ 0x4889, 0x05 },
+	{ 0x488b, 0x04 },
+	{ 0x4f00, 0x04 },
+	{ 0x4f10, 0x04 },
+	{ 0x4f21, 0x01 },
+	{ 0x4f22, 0x40 },
+	{ 0x4f23, 0x44 },
+	{ 0x4f24, 0x51 },
+	{ 0x4f25, 0x41 },
+	{ 0x5000, 0x1f },
+	{ 0x500a, 0x00 },
+	{ 0x5100, 0x00 },
+	{ 0x5111, 0x20 },
 
-//enable strobe for testing
-{0x3009, 0b1000,0, 0},
-{0x3017, 0xf2, 0, 0},
-{0x3920, 0xff, 0, 0},
-{0x3924, 0x00, 0, 0},
+	//enable strobe for testing
+	{ 0x3009, 0b1000},
+	{ 0x3017, 0xf2 },
+	{ 0x3920, 0xff },
+	{ 0x3924, 0x00 },
 
-//for temperature sensor
-{0x3667, 0x80,0 ,0},
-{0x4d00, 0x4a,0 ,0},
-{0x4d01, 0x18,0 ,0},
-{0x4d02, 0xbb,0 ,0},
-{0x4d03, 0xde,0 ,0},
-{0x4d04, 0x93,0 ,0},
-{0x4d05, 0xff,0 ,0},
-{0x4d09, 0x0a,0 ,0},
+	//for temperature sensor
+	{ 0x3667, 0x80},
+	{ 0x4d00, 0x4a},
+	{ 0x4d01, 0x18},
+	{ 0x4d02, 0xbb},
+	{ 0x4d03, 0xde},
+	{ 0x4d04, 0x93},
+	{ 0x4d05, 0xff},
+	{ 0x4d09, 0x0a},
 
-{0x3501, 0x02, 0, 0},
-{0x3502, 0x73, 0, 0},
-{0x3778, 0x00, 0, 0},
-{0x3803, 0x00, 0, 0},
-{0x3806, 0x04, 0, 0},
-{0x3807, 0x0f, 0, 0},
-{0x3808, 0x02, 0, 0},
-{0x3809, 0x80, 0, 0},
-{0x380a, 0x02, 0, 0},
-{0x380b, 0x00, 0, 0},
-{0x380c, 0x03, 0, 0},
-{0x380d, 0x0c, 0, 0},
-{0x380e, 0x02, 0, 0},
-{0x380f, 0x81, 0, 0},
-{0x3810, 0x00, 0, 0},
-{0x3811, 0x04, 0, 0},
-{0x3812, 0x00, 0, 0},
-{0x3813, 0x04, 0, 0},
-{0x3814, 0x22, 0, 0},
-{0x3815, 0x22, 0, 0},
-{0x3820, 0x40, 0, 0},
-{0x3821, 0x04, 0, 0},
-{0x4509, 0x80, 0, 0},
-
-};
-
-static const struct reg_value og01a1b_setting_640x480[] = {
-
-{0x0103, 0x01, 0, 0},
-{0x0100, 0x00, 0, 0},
-{0x0300, 0x0a, 0, 0},
-{0x0301, 0x29, 0, 0},
-{0x0302, 0x31, 0, 0},
-{0x0303, 0x04, 0, 0},
-{0x0304, 0x00, 0, 0},
-{0x0305, 0xfa, 0, 0},
-{0x0306, 0x00, 0, 0},
-{0x0307, 0x01, 0, 0},
-{0x0308, 0x02, 0, 0},
-{0x0309, 0x00, 0, 0},
-{0x0310, 0x00, 0, 0},
-{0x0311, 0x00, 0, 0},
-{0x0312, 0x07, 0, 0},
-{0x0313, 0x00, 0, 0},
-{0x0314, 0x00, 0, 0},
-{0x0315, 0x00, 0, 0},
-{0x0320, 0x02, 0, 0},
-{0x0321, 0x01, 0, 0},
-{0x0322, 0x01, 0, 0},
-{0x0323, 0x04, 0, 0},
-{0x0324, 0x01, 0, 0},
-{0x0325, 0xc2, 0, 0},
-{0x0326, 0xce, 0, 0},
-{0x0327, 0x04, 0, 0},
-{0x0329, 0x02, 0, 0},
-{0x032a, 0x04, 0, 0},
-{0x032b, 0x04, 0, 0},
-{0x032c, 0x02, 0, 0},
-{0x032d, 0x01, 0, 0},
-{0x032e, 0x00, 0, 0},
-
-{0x300d, 0x02, 0, 0},
-{0x300e, 0x04, 0, 0},
-{0x3021, 0x08, 0, 0},
-{0x301e, 0x03, 0, 0},
-{0x3103, 0x00, 0, 0},
-{0x3106, 0x08, 0, 0},
-{0x3107, 0x40, 0, 0},
-{0x3216, 0x01, 0, 0},
-{0x3217, 0x00, 0, 0},
-{0x3218, 0xc0, 0, 0},
-{0x3219, 0x55, 0, 0},
-{0x3500, 0x00, 0, 0},
-{0x3501, 0x02, 0, 0},
-{0x3502, 0x73, 0, 0},
-{0x3506, 0x01, 0, 0},
-{0x3507, 0x72, 0, 0},
-{0x3508, 0x01, 0, 0},
-{0x3509, 0x00, 0, 0},
-{0x350a, 0x01, 0, 0},
-{0x350b, 0x00, 0, 0},
-{0x350c, 0x00, 0, 0},
-{0x3541, 0x00, 0, 0},
-{0x3542, 0x40, 0, 0},
-{0x3605, 0xe0, 0, 0},
-{0x3606, 0x41, 0, 0},
-{0x3614, 0x20, 0, 0},
-{0x3620, 0x0b, 0, 0},
-{0x3630, 0x07, 0, 0},
-{0x3636, 0xa0, 0, 0},
-{0x3637, 0xf9, 0, 0},
-{0x3638, 0x09, 0, 0},
-{0x3639, 0x38, 0, 0},
-{0x363f, 0x09, 0, 0},
-{0x3640, 0x17, 0, 0},
-{0x3662, 0x06, 0, 0},
-{0x3665, 0x80, 0, 0},
-{0x3670, 0x68, 0, 0},
-{0x3674, 0x00, 0, 0},
-{0x3677, 0x3f, 0, 0},
-{0x3679, 0x00, 0, 0},
-{0x369f, 0x19, 0, 0},
-{0x36a0, 0x03, 0, 0},
-{0x36a2, 0x19, 0, 0},
-{0x36a3, 0x03, 0, 0},
-{0x370d, 0x66, 0, 0},
-{0x370f, 0x00, 0, 0},
-{0x3710, 0x03, 0, 0},
-{0x3715, 0x03, 0, 0},
-{0x3716, 0x03, 0, 0},
-{0x3717, 0x06, 0, 0},
-{0x3733, 0x00, 0, 0},
-{0x3778, 0x10, 0, 0},
-{0x37a8, 0x0f, 0, 0},
-{0x37a9, 0x01, 0, 0},
-{0x37aa, 0x07, 0, 0},
-{0x37bd, 0x1c, 0, 0},
-{0x37c1, 0x2f, 0, 0},
-{0x37c3, 0x09, 0, 0},
-{0x37c8, 0x1d, 0, 0},
-{0x37ca, 0x30, 0, 0},
-{0x37df, 0x00, 0, 0},
-{0x3800, 0x00, 0, 0},
-{0x3801, 0x00, 0, 0},
-{0x3802, 0x00, 0, 0},
-{0x3803, 0x20, 0, 0},
-{0x3804, 0x05, 0, 0},
-{0x3805, 0x0f, 0, 0},
-{0x3806, 0x03, 0, 0},
-{0x3807, 0xef, 0, 0},
-{0x3808, 0x02, 0, 0},
-{0x3809, 0x80, 0, 0},
-{0x380a, 0x01, 0, 0},
-{0x380b, 0xe0, 0, 0},
-{0x380c, 0x03, 0, 0},
-{0x380d, 0x0c, 0, 0},
-{0x380e, 0x02, 0, 0},
-{0x380f, 0x81, 0, 0},
-{0x3810, 0x00, 0, 0},
-{0x3811, 0x04, 0, 0},
-{0x3812, 0x00, 0, 0},
-{0x3813, 0x04, 0, 0},
-{0x3814, 0x22, 0, 0},
-{0x3815, 0x22, 0, 0},
-{0x3820, 0x60, 0, 0},
-{0x3821, 0x05, 0, 0},
-{0x3826, 0x00, 0, 0},
-{0x3827, 0x00, 0, 0},
-{0x382a, 0x08, 0, 0},
-{0x382b, 0x52, 0, 0},
-{0x382d, 0xba, 0, 0},
-{0x383d, 0x14, 0, 0},
-{0x384a, 0xa2, 0, 0},
-{0x3866, 0x0e, 0, 0},
-{0x3867, 0x07, 0, 0},
-{0x3884, 0x00, 0, 0},
-{0x3885, 0x08, 0, 0},
-{0x3893, 0x68, 0, 0},
-{0x3894, 0x2a, 0, 0},
-{0x3898, 0x00, 0, 0},
-{0x3899, 0x31, 0, 0},
-{0x389a, 0x04, 0, 0},
-{0x389b, 0x00, 0, 0},
-{0x389c, 0x0b, 0, 0},
-{0x389d, 0xad, 0, 0},
-{0x389f, 0x08, 0, 0},
-{0x38a0, 0x00, 0, 0},
-{0x38a1, 0x00, 0, 0},
-{0x38a8, 0x70, 0, 0},
-{0x38ac, 0xea, 0, 0},
-{0x38b2, 0x00, 0, 0},
-{0x38b3, 0x08, 0, 0},
-{0x38bc, 0x20, 0, 0},
-{0x38c4, 0x0c, 0, 0},
-{0x38c5, 0x3a, 0, 0},
-{0x38c7, 0x3a, 0, 0},
-{0x38e1, 0xc0, 0, 0},
-{0x38ec, 0x3c, 0, 0},
-{0x38f0, 0x09, 0, 0},
-{0x38f1, 0x6f, 0, 0},
-{0x38fe, 0x3c, 0, 0},
-{0x391e, 0x00, 0, 0},
-{0x391f, 0x00, 0, 0},
-{0x3920, 0xa5, 0, 0},
-{0x3921, 0x00, 0, 0},
-{0x3922, 0x00, 0, 0},
-{0x3923, 0x00, 0, 0},
-{0x3924, 0x05, 0, 0},
-{0x3925, 0x00, 0, 0},
-{0x3926, 0x00, 0, 0},
-{0x3927, 0x00, 0, 0},
-{0x3928, 0x1a, 0, 0},
-{0x3929, 0x01, 0, 0},
-{0x392a, 0xb4, 0, 0},
-{0x392b, 0x00, 0, 0},
-{0x392c, 0x10, 0, 0},
-{0x392f, 0x40, 0, 0},
-{0x4000, 0xcf, 0, 0},
-{0x4003, 0x40, 0, 0},
-{0x4008, 0x00, 0, 0},
-{0x4009, 0x07, 0, 0},
-{0x400a, 0x02, 0, 0},
-{0x400b, 0x54, 0, 0},
-{0x400c, 0x00, 0, 0},
-{0x400d, 0x07, 0, 0},
-{0x4010, 0xc0, 0, 0},
-{0x4012, 0x02, 0, 0},
-{0x4014, 0x04, 0, 0},
-{0x4015, 0x04, 0, 0},
-{0x4017, 0x02, 0, 0},
-{0x4042, 0x01, 0, 0},
-{0x4306, 0x04, 0, 0},
-{0x4307, 0x12, 0, 0},
-{0x4509, 0x80, 0, 0},
-{0x450b, 0x83, 0, 0},
-{0x4604, 0x68, 0, 0},
-{0x4608, 0x0a, 0, 0},
-{0x4700, 0x06, 0, 0},
-{0x4800, 0x64, 0, 0},
-{0x481b, 0x3c, 0, 0},
-{0x4825, 0x32, 0, 0},
-{0x4833, 0x18, 0, 0},
-{0x4837, 0x10, 0, 0},
-{0x4850, 0x40, 0, 0},
-{0x4860, 0x00, 0, 0},
-{0x4861, 0xec, 0, 0},
-{0x4864, 0x00, 0, 0},
-{0x4883, 0x00, 0, 0},
-{0x4888, 0x90, 0, 0},
-{0x4889, 0x05, 0, 0},
-{0x488b, 0x04, 0, 0},
-{0x4f00, 0x04, 0, 0},
-{0x4f10, 0x04, 0, 0},
-{0x4f21, 0x01, 0, 0},
-{0x4f22, 0x40, 0, 0},
-{0x4f23, 0x44, 0, 0},
-{0x4f24, 0x51, 0, 0},
-{0x4f25, 0x41, 0, 0},
-{0x5000, 0x1f, 0, 0},
-{0x500a, 0x00, 0, 0},
-{0x5100, 0x00, 0, 0},
-{0x5111, 0x20, 0, 0},
+	{ 0x3501, 0x02 },
+	{ 0x3502, 0x73 },
+	{ 0x3778, 0x00 },
+	{ 0x3803, 0x00 },
+	{ 0x3806, 0x04 },
+	{ 0x3807, 0x0f },
+	{ 0x3808, 0x02 },
+	{ 0x3809, 0x80 },
+	{ 0x380a, 0x02 },
+	{ 0x380b, 0x00 },
+	{ 0x380c, 0x03 },
+	{ 0x380d, 0x0c },
+	{ 0x380e, 0x02 },
+	{ 0x380f, 0x81 },
+	{ 0x3810, 0x00 },
+	{ 0x3811, 0x04 },
+	{ 0x3812, 0x00 },
+	{ 0x3813, 0x04 },
+	{ 0x3814, 0x22 },
+	{ 0x3815, 0x22 },
+	{ 0x3820, 0x40 },
+	{ 0x3821, 0x04 },
+	{ 0x4509, 0x80 },
 
 };
 
@@ -1071,10 +738,6 @@ static const struct og01a1b_mode_info og01a1b_mode_data_1280x1024 = {
 
 static const struct og01a1b_mode_info og01a1b_mode_data_640x512 = {
 	640, 848, 512, 1176, og01a1b_setting_640x512, ARRAY_SIZE(og01a1b_setting_640x512)
-};
-
-static const struct og01a1b_mode_info og01a1b_mode_data_640x480 = {
-	640, 848, 480, 1176, og0VE10_setting, ARRAY_SIZE(og0VE10_setting)
 };
 
 static const s64 link_freq_menu_items[] = {
@@ -1107,105 +770,46 @@ static int og01a1b_write_reg(struct og01a1b_dev *sensor, u16 reg, u8 val)
 	return 0;
 }
 
-static int og01a1b_add_or_set_group_reg(struct og01a1b_dev *sensor, int ctrlval)
+int og01a1b_write_map(struct og01a1b_dev *sensor, struct reg_value *regs, int num_regs)
 {
+    int i;
+    int ret;
+    struct i2c_client *client = sensor->i2c_client;
+    struct i2c_msg msg;
+    static u8 buf[10000]; // Static buffer allocation as per the new requirement
+    int max_regs_per_transfer = 3;
+    int regs_written = 0;
 
-	u16 address = ctrlval & 0xffff;
-	u8 val = ctrlval >> 16 & 0xff;
-	u8 group = ctrlval >> 24 & 0xf;
+    if (num_regs * 3 > sizeof(buf)) {
+        dev_err(&client->dev, "Buffer size exceeded\n");
+        return -EINVAL;
+    }
 
-	struct register_set *reg_set =  &sensor->active_group_registers.group_register_sets[group];
-	int index = -1;
-	for(int i = 0; i < reg_set->num_group_reg; i++) 
-	{
-		if(reg_set->group_reg_addresses[i] == address)
-		{
-			index = i;
-			break;
-		}
-	}
-	if(index == -1) 
-	{
-		if(reg_set->num_group_reg >= GROUP_REGMAP_MAX_SIZE) 
-		{
-			struct i2c_client *client = sensor->i2c_client;
-			dev_err(&client->dev, "Group register map exceeded maximum size");
-			return -1;
-		}
-		index = reg_set->num_group_reg;
-		reg_set->num_group_reg++;
-		reg_set->group_reg_addresses[index] = address;
-		sensor->updateGroupRegisters = true;
-	}
-	if(reg_set->group_reg_values[index] != val)
-	{
-		reg_set->group_reg_values[index] = val;
-		sensor->updateGroupRegisters = true;
-	}
+    while (regs_written < num_regs) {
+        int chunk_size = (num_regs - regs_written > max_regs_per_transfer) ? max_regs_per_transfer : num_regs - regs_written;
+        for (i = 0; i < chunk_size; i++) {
+            buf[i * 3] = regs[regs_written + i].reg_addr >> 8;
+            buf[i * 3 + 1] = regs[regs_written + i].reg_addr & 0xff;
+            buf[i * 3 + 2] = regs[regs_written + i].val;
+        }
 
+        msg.addr = client->addr;
+        msg.flags = 0;
+        msg.buf = buf;
+        msg.len = chunk_size * 3;
 
-	return 0;
+        ret = i2c_transfer(client->adapter, &msg, 1);
+        if (ret < 0) {
+            dev_err(&client->dev, "%s: i2c_transfer failed\n", __func__);
+            return ret;
+        }
+
+        regs_written += chunk_size;
+    }
+
+    return 0;
 }
 
-bool emitter_enabled_for_group(struct og01a1b_dev *sensor, int group) {
-	//printk("sensor->ir_emitter_mode:%d group:%d",sensor->ir_emitter_mode,group);
-	if(sensor->ir_emitter_mode == IR_EMITTER_MODE_ALL_FRAMES) {
-		return true;
-	}
-	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_1_ONLY) {
-		return group == 1;
-	}
-	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_0_ONLY) {
-		return group == 0;
-	}
-	return false;
-}
-
-int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
-{
-	int ret;
-	if(!sensor->updateGroupRegisters)
-		return 0;
-	sensor->updateGroupRegisters = false;
-
-	for(int group = 0; group < NUM_REGISTER_GROUPS; group++) 
-	{
-		ret = og01a1b_write_reg(sensor, 0x3208, 0x00 | group);
-		if(ret != 0) {
-			return ret;
-		}
-		for(int i = 0; i < sensor->active_group_registers.group_register_sets[group].num_group_reg; i++) 
-		{
-			ret = og01a1b_write_reg(sensor, sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i],sensor->active_group_registers.group_register_sets[group].group_reg_values[i]);
-			if(ret != 0) 
-			{
-				return ret;
-			}
-		}
-		if(emitter_enabled_for_group(sensor, group))
-		{
-			ret = og01a1b_write_reg(sensor, 0x3920, 0xff);
-			if(ret != 0) 
-			{
-				return ret;
-			}
-		}
-		else{
-			ret = og01a1b_write_reg(sensor, 0x3920, 0x00);
-			if(ret != 0) 
-			{
-				return ret;
-			}
-		}
-		ret = og01a1b_write_reg(sensor, 0x3208, 0x10 | group);
-		if(ret!= 0)
-		{
-			return ret;
-		}
-	}
-	return 0;
-
-}
 
 static int og01a1b_read_reg(struct og01a1b_dev *sensor, u16 reg, u8 *val)
 {
@@ -1265,36 +869,139 @@ static int og01a1b_write_reg16(struct og01a1b_dev *sensor, u16 reg, u16 val)
 	return og01a1b_write_reg(sensor, reg + 1, val & 0xff);
 }
 
-/* download og01a1b settings to sensor through i2c */
-static int og01a1b_set_timings(struct og01a1b_dev *sensor,
-			      const struct og01a1b_mode_info *mode)
+
+
+static int og01a1b_add_or_set_group_reg(struct og01a1b_dev *sensor, u16 address, u8 val, u8 group)
+{
+
+	
+
+	struct register_set *reg_set =  &sensor->active_group_registers.group_register_sets[group];
+	int index = -1;
+	for(int i = 0; i < reg_set->num_group_reg; i++) 
+	{
+		if(reg_set->group_reg_addresses[i] == address)
+		{
+			index = i;
+			break;
+		}
+	}
+	if(index == -1) 
+	{
+		if(reg_set->num_group_reg >= GROUP_REGMAP_MAX_SIZE) 
+		{
+			struct i2c_client *client = sensor->i2c_client;
+			dev_err(&client->dev, "Group register map exceeded maximum size");
+			return -1;
+		}
+		index = reg_set->num_group_reg;
+		reg_set->num_group_reg++;
+		reg_set->group_reg_addresses[index] = address;
+		sensor->updateGroupRegisters[group] = true;
+	}
+	if(reg_set->group_reg_values[index] != val)
+	{
+		reg_set->group_reg_values[index] = val;
+		sensor->updateGroupRegisters[group] = true;
+	}
+	return 0;
+}
+
+static int og01a1b_add_or_set_group_reg_from_ctrlval(struct og01a1b_dev *sensor, int ctrlval)
+{
+	u16 address = ctrlval & 0xffff;
+	u8 val = ctrlval >> 16 & 0xff;
+	u8 group = ctrlval >> 24 & 0xf;
+
+	return og01a1b_add_or_set_group_reg(sensor, address, val, group);
+}
+
+bool emitter_enabled_for_group(struct og01a1b_dev *sensor, int group) {
+	//printk("sensor->ir_emitter_mode:%d group:%d",sensor->ir_emitter_mode,group);
+	if(sensor->ir_emitter_mode == IR_EMITTER_MODE_ALL_FRAMES) {
+		return true;
+	}
+	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_1_ONLY) {
+		return group == 1;
+	}
+	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_0_AND_2_ONLY) {
+		return (group == 0) || (group == 2);
+	}
+	return false;
+}
+
+int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
 {
 	int ret;
 
+	for(int group = 0; group < NUM_REGISTER_GROUPS; group++) 
+	{	
+		bool doingTimingAdjustment = ((sensor->timing_adjustment_state == TIMING_READY_FOR_INITIAL_GROUP_WRITE) || (sensor->timing_adjustment_state == TIMING_READY_FOR_GROUP_RESTORE)) && group == sensor->current_timing_adjustment.group_to_adjust;
+		//printk("doing timing adjustment:%d group:%d sensor->current_timing_adjustment.group_to_adjust:%d\n",doingTimingAdjustment,group,sensor->current_timing_adjustment.group_to_adjust);
+		if(!sensor->updateGroupRegisters[group] && !doingTimingAdjustment)
+		{
+			continue;
+		}
+		sensor->updateGroupRegisters[group] = false;
+		ret = og01a1b_write_reg(sensor, 0x3208, 0x00 | group);
+		if(ret != 0) {
+			return ret;
+		}
+		for(int i = 0; i < sensor->active_group_registers.group_register_sets[group].num_group_reg; i++) 
+		{
+			ret = og01a1b_write_reg(sensor, sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i],sensor->active_group_registers.group_register_sets[group].group_reg_values[i]);
+			if(ret != 0) 
+			{
+				return ret;
+			}
+		}
+		if(emitter_enabled_for_group(sensor, group))
+		{
+			ret = og01a1b_write_reg(sensor, 0x3920, 0xff);
+			if(ret != 0) 
+			{
+				return ret;
+			}
+		}
+		else{
+			ret = og01a1b_write_reg(sensor, 0x3920, 0x00);
+			if(ret != 0) 
+			{
+				return ret;
+			}
+		}
+		if(sensor->timing_adjustment_state == TIMING_READY_FOR_INITIAL_GROUP_WRITE && sensor->current_timing_adjustment.group_to_adjust == group)
+		{
+			ret = og01a1b_write_reg16(sensor, 0x380e, sensor->current_timing_adjustment.new_rows);
+			if(ret != 0) 
+			{
+				return ret;
+			}
+			ret = og01a1b_write_reg16(sensor, 0x382c, sensor->current_timing_adjustment.new_global_row);
+			if(ret != 0) 
+			{
+				return ret;
+			}
+			sensor->timing_adjustment_state = TIMING_ADJUSTMENT_IN_PROGRESS;
+		}
+		// WHAT happens is we update group registers during a timing adjustment? 
+		if(sensor->timing_adjustment_state == TIMING_READY_FOR_GROUP_RESTORE && sensor->current_timing_adjustment.group_to_adjust == group) 
+		{
+			// TODO: add register writes to be more explicit, the restored rows should be part of the group regs though
+			// ( we could also get rid of the restore )
+			sensor->timing_adjustment_state = TIMING_ADJUSTMENT_NOT_IN_PROGRESS;
+		}
+		ret = og01a1b_write_reg(sensor, 0x3208, 0x10 | group);
+		if(ret!= 0)
+		{
+			return ret;
+		}
+	}
+	if(sensor->current_timing_adjustment.number_of_frames_to_hold_adjustment > 0)
+	{
+		sensor->current_timing_adjustment.number_of_frames_to_hold_adjustment--;
+	}
 	return 0;
-	// ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_DVPHO, mode->hact);
-	// if (ret < 0)
-	// 	return ret;
-
-	// ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_DVPVO, mode->vact);
-	// if (ret < 0)
-	// 	return ret;
-
-	// if(sensor->ep.bus.mipi_csi2.num_data_lanes == 1) {
-	// 	ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_HTS, mode->htot*2);
-	// }
-	// else if(sensor->ep.bus.mipi_csi2.num_data_lanes == 2) {
-	// 	ret = og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_HTS, mode->htot);
-	// }
-	// else {
-	// 	struct i2c_client *client = sensor->i2c_client;
-	// 	dev_err(&client->dev, "Unsupported lane configuration. Must be 1 or 2 lane MIPI");
-	// 	return -EINVAL;
-	// }
-	// if (ret < 0)
-	// 	return ret;
-
-	// return og01a1b_write_reg16(sensor, OG01A1B_REG_TIMING_VTS, mode->vtot);
 }
 
 static int og01a1b_load_regs(struct og01a1b_dev *sensor,
@@ -1321,7 +1028,7 @@ static int og01a1b_load_regs(struct og01a1b_dev *sensor,
 			usleep_range(1000 * delay_ms, 1000 * delay_ms + 100);
 	}
 
-	return og01a1b_set_timings(sensor, mode);
+	return 0;
 }
 
 /* restore the last set video mode after chip power-on */
@@ -1354,7 +1061,7 @@ static int og01a1b_restore_mode(struct og01a1b_dev *sensor)
 
 	// }
 
-	return og01a1b_set_timings(sensor, (sensor->current_mode));
+	return 0;
 }
 
 static void og01a1b_reset(struct og01a1b_dev *sensor)
@@ -1518,134 +1225,26 @@ static void* get_metadata(struct v4l2_subdev *sd) {
 
 }
 
-void set_ir_leds(struct og01a1b_dev *sensor, int state) {
-	unsigned long flags;
-	spin_lock_irqsave(&ir_spinlock, flags);
-	for(int i = 0; i < 2; i++) {
-		if(sensor->ir_gpio[i]!=NULL && sensor->ir_emitter_mode != IR_EMITTER_MODE_OFF) {
-			gpiod_set_value(sensor->ir_gpio[i], state);
-		}
-	}
-
-	// uncomment this to debug how long emitters were on for
-	// if(sensor->last_set_led_state == 1 && state ==0) {
-	// 	u64 ts = ktime_get_raw_ns();
-	// 	printk("emitters were on for %lu ns\n", ts - sensor->last_emitter_on_ts);
-	// }
-	sensor->last_set_led_state = state;
-	spin_unlock_irqrestore(&ir_spinlock, flags);
-}
-
-void handle_exposure_event(struct og01a1b_dev *sensor, bool is_gpio_event) {
-	// todo: don't turn it on if it's been turned on within a millisecond
-    u64 ts = ktime_get_raw_ns();
-	int currentGroup = -1;
-		if(sensor->is_sync_sensor && sensor->group_mode != MODE_NOGROUPS) {
-			//find the most recent group switch before the last sof timestamp
-			for(int i = 0; i < 4; i++) {
-				if(sensor->last_sof_ts > sensor->sensorMetaData.group_and_reg[i].post_group_write_timestamp )
-				{
-					currentGroup = sensor->sensorMetaData.group_and_reg[i].group_written;
-				}
-			}
-		}
-		if(sensor->is_sync_sensor && sensor->group_mode == MODE_NOGROUPS) {
-			currentGroup = 0;
-		}
-
-	//int state = gpiod_get_value(sensor->strobe_gpio);
-	if(is_gpio_event) {
-		sensor->sensorMetaData.currentSOE = ts;
-		// only turn the emitters on if they are enabled, present and the last_emitter_on_ts is more than 4 ms ago
-		// this prevents a problem when the group 0 exposure  is long and prevents a nearly 50% duty cycle for some safety
-		//if(sensor->is_sync_sensor && ((ts - sensor->last_emitter_on_ts )> 4000000)) {
-		if(sensor->is_sync_sensor) {
-			if(emitter_enabled_for_group(sensor, currentGroup)) {
-				// Only turn the sensor on when the last SOF_TS is more than 4 ms ago. This prevents another edge case
-               if(sensor->power_count > 0 && sensor->last_set_led_state == 0 && ((ts - sensor->last_emitter_on_ts ) > 4000000) ) {
-					set_ir_leds(sensor, 1);
-					sensor->last_emitter_on_ts = ts;
-					//printk("gpio edge on at :%lu\n", ts);
-				}
-				else {
-					set_ir_leds(sensor, 0);
-					//printk("gpio edge off at :%lu\n", ts);
-				}
-			}
-			else {
-				set_ir_leds(sensor, 0);
-			}
-		}
-	}
-	else
-	{
-		if(sensor->is_sync_sensor ) {
-			set_ir_leds(sensor, 0);
-		}
-		// we use this spinlock to prevent reading corrupted data because these are on different cores
-		// We use the non irqsave version because this is always called from an atomic context and we
-		// Just need to synchronize across cores.
-		spin_lock(&group_spinlock);
-		sensor->sensorMetaData.lastEOE = ts;
-		sensor->sensorMetaData.lastSOE = sensor->sensorMetaData.currentSOE;
-		spin_unlock(&group_spinlock);
-	}
-}
-
-static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp, u64 sof_isr_timestamp) {
-	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
-	handle_exposure_event(sensor, false);
-	if(sensor->is_sync_sensor ) {
-		u64 ts = ktime_get_raw_ns();
-		//printk("sof off at :%lu\n", ts);
-		set_ir_leds(sensor, 0);
-	}
+static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp, u64 sof_isr_timestamp, u8 vc) {
+	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);	
 	sensor->last_sof_ts = sof_timestamp;
 	sensor->last_sof_isr_ts = sof_isr_timestamp;
 
-	if(numSensors ==2) 
-	{	
-		//we need to check the other sensors timestamp vs this one because it is possible that the other sensor fired the IRQ first but this sensor finished the SOF first
-		if(((sof_timestamp - sensor->other_sensor->last_sof_ts) < 3000000 || (sensor->other_sensor->last_sof_ts - sof_timestamp) < 3000000) && sensor->group_mode != MODE_NOGROUPS)
-		{
-			if(sensor->is_sync_sensor) {
-				sensor->last_requested_groupwrite_isp_ts = sof_timestamp;
-				schedule_work(&sensor->work);
-			}
-			else 
-			{
-				sensor->other_sensor->last_requested_groupwrite_isp_ts = sof_timestamp;
-				schedule_work(&sensor->other_sensor->work);
-			}
-		}
-		return;
-
+	if(/*vc == 1 && */ sensor->timing_adjustment_state == TIMING_ADJUSTMENT_REQUESTED) {
+		sensor->timing_adjustment_state = TIMING_READY_FOR_INITIAL_GROUP_WRITE;
+		//printk("Asked for it here:%d\n", sensor->sensor_index);
+	}
+	else if( /*vc == 1 && */ sensor->timing_adjustment_state == TIMING_ADJUSTMENT_IN_PROGRESS && sensor->current_timing_adjustment.number_of_frames_to_hold_adjustment == 0) {
+		sensor->timing_adjustment_state = TIMING_READY_FOR_GROUP_RESTORE;
+	}
+	sensor->last_vc = vc;
+		if(sensor->is_left_sensor) {
+		if(left_sensor_workqueue != NULL)
+			queue_work(left_sensor_workqueue, &sensor->work);
 	}
 	else {
-		
-		if(sensor->group_mode != MODE_NOGROUPS) 
-		{
-			for(int i = 0; i < numSensors; i++) {
-				u64 start = sof_timestamp - 3000000;
-				u64 end = sof_timestamp + 3000000;
-				//printk("sensor_index:%d i:%d start: %lu, end: %lu, last_sof_ts: %lu\n", sensor->sensor_index, i, start, end, sensors[i]->last_sof_ts);
-				if(!sensors[i]->is_streaming ) {
-					continue;
-				}
-				if(sensors[i]->last_sof_ts < start || sensors[i]->last_sof_ts > end)
-				{
-					return;
-				}
-			}
-			if(sensor->is_sync_sensor) {
-				schedule_work(&sensor->work);
-			}
-			else {
-				schedule_work(&sensor->other_sensor->work);
-			}
-		}
-		
-		return;
+		if(right_sensor_workqueue != NULL)
+			queue_work(right_sensor_workqueue, &sensor->work);
 	}
 }
 
@@ -1710,6 +1309,7 @@ static int og01a1b_init_controls(struct og01a1b_dev *sensor)
 						   sensor->sof_cb_address);
 
 	sensor->metadata_size[0] = sizeof(struct SensorMetaData);
+	printk("metadata size: %d\n", sizeof(struct SensorMetaData));
 	if (size_control)
 		size_control->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 
@@ -1722,109 +1322,6 @@ static int og01a1b_init_controls(struct og01a1b_dev *sensor)
 	sensor->sd.ctrl_handler = ctrl_hdlr;
 
 	return 0;
-}
-
-/* --------------- Subdev Operations --------------- */
-
-static int og01a1b_s_power(struct v4l2_subdev *sd, int on)
-{
-	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
-	int ret = 0;
-	static char *gpionames[] = {"ira", "irb"};
-
-	mutex_lock(&sensor->lock);
-
-	if(sensor->is_sync_sensor) {
-		struct i2c_client *client = sensor->i2c_client;
-		sensor->ir_emitter_mode = false;
-		sensor->last_emitter_on_ts = 0;
-		unsigned long flags;
-		sensor->last_emitter_on_ts = 0;
-		spin_lock_irqsave(&ir_spinlock, flags);
-		if(!!on) {
-			sensor->emittersPresent = true;
-
-			for(int i = 0; i < 2; i++)
-			{
-				sensor->ir_gpio[i] = devm_gpiod_get_optional(&client->dev, gpionames[i],
-									GPIOD_OUT_LOW);
-				
-				
-				if(sensor->ir_gpio[i] == NULL)
-				{
-					//if we don't acquire the gpio assume emitters are not present
-					sensor->emittersPresent = false;
-					break;
-				}
-			}
-
-			sensor->ir_control_gpio = devm_gpiod_get_optional(&client->dev, "ircontrol",
-									GPIOD_OUT_LOW);
-			if(sensor->ir_control_gpio == NULL) {
-				sensor->ir_control_gpio_present = false;
-			}
-			else
-			{
-				sensor->ir_control_gpio_present = true;
-			}
-			
-
-			//if an emitter is not found make sure both gpio_desc* are NULL
-			//and return the GPIO so userspace can use it
-			if(!sensor->emittersPresent) {
-				for(int i = 0; i < 2; i++)
-				{
-					if(sensor->ir_gpio[i] != NULL) {
-						devm_gpiod_put(&client->dev,sensor->ir_gpio[i]);
-					}
-					sensor->ir_gpio[i] = NULL;
-				}
-			}
-				
-		}
-		else 
-		{
-			if(sensor->emittersPresent) {
-			
-				gpiod_set_value(sensor->ir_gpio[0], 0);
-				gpiod_set_value(sensor->ir_gpio[1], 0);
-
-				for(int i = 0; i < 2; i++)
-				{
-					devm_gpiod_put(&client->dev,sensor->ir_gpio[i]);
-					sensor->ir_gpio[i] = NULL;
-				}
-			}
-
-			if(sensor->ir_control_gpio_present) 
-			{
-				devm_gpiod_put(&client->dev,sensor->ir_control_gpio);
-			}
-		}
-		spin_unlock_irqrestore(&ir_spinlock, flags);	
-	}
-
-	/*
-	 * If the power count is modified from 0 to != 0 or from != 0 to 0,
-	 * update the power state.
-	 */
-	if (sensor->power_count == !on) {
-		if(!!on == 0) 
-		{
-			sensor->updateGroupRegisters = true;
-		}
-		ret = og01a1b_set_power(sensor, !!on);
-		if (ret)
-			goto out;
-	}
-
-	/* Update the power count. */
-	sensor->power_count += on ? 1 : -1;
-	WARN_ON(sensor->power_count < 0);
-out:
-	mutex_unlock(&sensor->lock);
-
-	return ret;
 }
 
 void reset_groups(struct og01a1b_dev *sensor) 
@@ -1847,29 +1344,82 @@ void reset_groups(struct og01a1b_dev *sensor)
 	memcpy(&sensor->sensorMetaData.group_and_reg[0], &sensor->active_group_registers,sizeof(struct group_and_registers));
 }
 
+/* --------------- Subdev Operations --------------- */
 
-
-
-static irqreturn_t gpio_handler(int irq, void * ident)
+static int og01a1b_s_power(struct v4l2_subdev *sd, int on)
 {
-	struct og01a1b_dev *sensor = (struct og01a1b_dev *)ident;
-	u64 ts = ktime_get_raw_ns();
-	handle_exposure_event(sensor, true);
-	
-	return IRQ_HANDLED;
+	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
+	int ret = 0;
+	static char *gpionames[] = {"ira", "irb"};
+
+	mutex_lock(&sensor->lock);
+	reset_groups(sensor);
+	if(sensor->is_sync_sensor) {
+		struct i2c_client *client = sensor->i2c_client;
+		sensor->ir_emitter_mode = false;
+		unsigned long flags;
+		spin_lock_irqsave(&ir_spinlock, flags);
+		if(!!on) {
+			sensor->emittersPresent = true;
+
+			sensor->ir_control_gpio = devm_gpiod_get_optional(&client->dev, "ircontrol",
+									GPIOD_OUT_LOW);
+			if(sensor->ir_control_gpio == NULL) {
+				sensor->ir_control_gpio_present = false;
+			}
+			else
+			{
+				sensor->ir_control_gpio_present = true;
+			}				
+		}
+		else 
+		{
+			if(sensor->ir_control_gpio_present) 
+			{
+				devm_gpiod_put(&client->dev,sensor->ir_control_gpio);
+			}
+		}
+		spin_unlock_irqrestore(&ir_spinlock, flags);	
+	}
+
+	/*
+	 * If the power count is modified from 0 to != 0 or from != 0 to 0,
+	 * update the power state.
+	 */
+	if (sensor->power_count == !on) {
+		if(!!on == 0) 
+		{
+			for(int i = 0; i < NUM_REGISTER_GROUPS; i++) {
+				sensor->updateGroupRegisters[i] = true;
+			}
+		}
+		ret = og01a1b_set_power(sensor, !!on);
+		if (ret)
+			goto out;
+	}
+
+	/* Update the power count. */
+	sensor->power_count += on ? 1 : -1;
+	WARN_ON(sensor->power_count < 0);
+out:
+	mutex_unlock(&sensor->lock);
+
+	return ret;
 }
 
 static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 	struct i2c_client *client = sensor->i2c_client;
-
-	sensor->updateGroupRegisters = true;
-	reset_groups(sensor);
+	for(int i = 0; i < NUM_REGISTER_GROUPS; i++) {
+		sensor->updateGroupRegisters[i] = true;
+	}
+	
 	sensor->is_streaming = !!enable;
 
 	og01a1b_write_reg(sensor, 0x100, !!enable);
-	if(sensor->ir_control_gpio_present) {
+	// Only disable ir_control_gpio when stopping streaming since it can be configured before streamon
+	if(!enable && sensor->ir_control_gpio_present) {
 		gpiod_set_value(sensor->ir_control_gpio, 0);
 	}
 	return 0;
@@ -1900,7 +1450,11 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
         {
 			
 			sensor->ir_emitter_mode = *a;
-			sensor->updateGroupRegisters = true;
+			// strobe configuration is done as part of the group registers update so we need
+			// to re-update these when updating IR emitter mode
+			for(int i = 0; i < NUM_REGISTER_GROUPS; i++) {
+				sensor->updateGroupRegisters[i] = true;
+			}
 			// If the ir control GPIO is on this camera, enable it if any emitters are on.
 			if(sensor->ir_control_gpio_present) {
 				if(*a != 0)
@@ -1916,44 +1470,63 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
         case VIDIOC_OG01A1B_PRV_S_REG:
         {
             u32 val = (uintptr_t)arg; // argument is passed as an integer value
-            if(sensor->is_sync_sensor) {
-                mutex_lock(&sensor->lock);
-            }
-            else {
-                if(sensor->other_sensor != NULL) {
-                    mutex_lock(&sensor->other_sensor->lock);
-                }
-            }
+            mutex_lock(&sensor->lock);
             ret = og01a1b_write_reg(sensor, val & 0xffff, val >> 16 & 0xff);
-            if(sensor->is_sync_sensor) {
-                    mutex_unlock(&sensor->lock);
-            }
-            else {
-                if(sensor->other_sensor != NULL) {
-                    mutex_unlock(&sensor->other_sensor->lock);
-                }
-            }
+           
+            mutex_unlock(&sensor->lock);
             break;
         }
         case VIDIOC_OG01A1B_PRV_S_GROUP_REG:
         {
             //ret = og01a1b_queue_reg(sensor, val & 0xffff, val >> 16 & 0xff);
             mutex_lock(&sensor->lock);
-            ret = og01a1b_add_or_set_group_reg(sensor, (uintptr_t)arg); // argument is passed as an integer value
+            ret = og01a1b_add_or_set_group_reg_from_ctrlval(sensor, (uintptr_t)arg); // argument is passed as an integer value
             mutex_unlock(&sensor->lock);
             break;
         }
+		case VIDIOC_SENSOR_PRV_S_GROUP_REGS:
+		{
+			mutex_lock(&sensor->lock);
+			struct sensor_private_set_group_regs *group_regs = arg;
+			printk("VIDIOC_SENSOR_PRV_S_GROUP_REGS: count:%d sensor:%d\n", group_regs->count, sensor->sensor_index);
+			if (group_regs->count > 0 && group_regs->regs) {
+				struct sensor_private_group_reg *kernel_regs = kmalloc_array(group_regs->count, sizeof(struct sensor_private_group_reg), GFP_KERNEL);
+				if (!kernel_regs) {
+					ret = -ENOMEM;
+				} else {
+					if (copy_from_user(kernel_regs, group_regs->regs, group_regs->count * sizeof(struct sensor_private_group_reg))) {
+						ret = -EFAULT;
+					} else {
+						for (int i = 0; i < group_regs->count; i++) {
+							og01a1b_add_or_set_group_reg(sensor ,kernel_regs[i].reg_addr, kernel_regs[i].reg_value, kernel_regs[i].group );
+							
+						}
+					}
+					kfree(kernel_regs);
+				}
+			}
+			mutex_unlock(&sensor->lock);
+			break;
+		}
         case VIDIOC_OG01A1B_PRV_S_GROUP_MODE:
         {
             sensor->group_mode = (uintptr_t)arg; // argument is passed as an integer value
             break;
         }
+		case VIDIOC_SENSOR_PRV_S_TIMING_ADJUSTMENT:
+		{
+			struct private_timing_adjustment *timing_adjustment = arg;
+			//printk("new_rows: %d, rows_to_restore: %d, new_global_row: %d, global_row_to_restore: %d, group_to_adjust: %d sensor id:%d\n", timing_adjustment->new_rows, timing_adjustment->rows_to_restore, timing_adjustment->new_global_row, timing_adjustment->global_row_to_restore, timing_adjustment->group_to_adjust, sensor->sensor_index);
+			//ret = og01a1b_set_timing_adjustment(sensor, timing_adjustment);
+			sensor->current_timing_adjustment = *timing_adjustment;
+			sensor->timing_adjustment_state = TIMING_ADJUSTMENT_REQUESTED;
+			break;
+		}
         default:
         {
             ret = -EINVAL;
         }
     }
-
 	return ret;
 }
 
@@ -1990,11 +1563,6 @@ static int og01a1b_set_fmt(struct v4l2_subdev *sd,
 	else if (fmt->format.width == 640 && fmt->format.height == 512) 
 	{
 		sensor->current_mode = &og01a1b_mode_data_640x512;
-	}
-	else if (fmt->format.width == 640 && fmt->format.height == 480) 
-	{
-		sensor->is_og0VE10 = true;
-		sensor->current_mode = &og01a1b_mode_data_640x480;
 	}
 	else {
 		// Use the 1280x1024 register map
@@ -2102,61 +1670,53 @@ void update_groups(struct og01a1b_dev *sensor)
     unsigned long flags;
 
 	mutex_lock(&sensor->lock);
+	
 
 	last_group_pre_write_timestamp = ktime_get_raw_ns();
-		for(int i = 0; i < numSensors; i++) {
-			if(sensors[i]->power_count < 1 ) {
-				continue;
-			}
-			og01a1b_write_group_registers_if_needed(sensors[i]);
-		}
+		//printk("updating groups for sensor:%d\n", sensor->sensor_index);
+		og01a1b_write_group_registers_if_needed(sensor);
 
-  if(sensor->group_mode == MODE_2GROUPS) {
-	last_set_group = !last_set_group;
-  }
-  else
-  {
-	last_set_group = 0;
-  }
+	if(sensor->group_mode != MODE_NOGROUPS)
+	{
+		last_set_group = (last_set_group + 1) % sensor->group_mode;
+	}
+	else
+	{
+		last_set_group = 0;
+	}
+
+	// Fix the last set group based on the last VC received if that's getting
+	// out of sync during group_mode updates
+	if(sensor->last_vc == 1 && last_set_group != 1)
+	{
+		last_set_group = 1;
+	}
   
   for(int i = 0; i < numSensors; i++) {
 	if(sensors[i]->power_count < 1 ) {
 		continue;
 	}
-	og01a1b_write_reg(sensors[i], 0x3208, 0xa0 | last_set_group );
+	//og01a1b_write_reg(sensors[i], 0x3208, 0xa0 | last_set_group );
   }
   lastGroupPostWriteTimestamp = ktime_get_raw_ns();
 
-  for(int i = 0; i < numSensors; i++) {
-	if(sensors[i]->power_count < 1 ) {
-		continue;
-	}
-	sensors[i]->active_group_registers.group_written = last_set_group;
-	sensors[i]->active_group_registers.pre_group_write_timestamp = last_group_pre_write_timestamp;
-	sensors[i]->active_group_registers.sof_ts = sensor->last_sof_ts;
-	sensors[i]->active_group_registers.sof_isr_ts = sensor->last_sof_isr_ts;
-	sensors[i]->active_group_registers.post_group_write_timestamp = lastGroupPostWriteTimestamp;
-  }
+	sensor->active_group_registers.group_written = last_set_group;
+	sensor->active_group_registers.pre_group_write_timestamp = last_group_pre_write_timestamp;
+	sensor->active_group_registers.sof_ts = sensor->last_sof_ts;
+	sensor->active_group_registers.sof_isr_ts = sensor->last_sof_isr_ts;
+	sensor->active_group_registers.post_group_write_timestamp = lastGroupPostWriteTimestamp;
   spin_lock_irqsave(&metadata_spinlock, flags);
-  for(int i = 0; i < numSensors; i++) {
-	if(sensors[i]->power_count < 1 ) {
-		continue;
-	}
-	memcpy(&sensors[i]->sensorMetaData.group_and_reg[4], &sensors[i]->sensorMetaData.group_and_reg[3],sizeof(struct group_and_registers));
-	memcpy(&sensors[i]->sensorMetaData.group_and_reg[3], &sensors[i]->sensorMetaData.group_and_reg[2],sizeof(struct group_and_registers));
-	memcpy(&sensors[i]->sensorMetaData.group_and_reg[2], &sensors[i]->sensorMetaData.group_and_reg[1],sizeof(struct group_and_registers));
-	memcpy(&sensors[i]->sensorMetaData.group_and_reg[1], &sensors[i]->sensorMetaData.group_and_reg[0],sizeof(struct group_and_registers));
-	memcpy(&sensors[i]->sensorMetaData.group_and_reg[0], &sensors[i]->active_group_registers,sizeof(struct group_and_registers));
-  }
+
+	memcpy(&sensor->sensorMetaData.group_and_reg[4], &sensor->sensorMetaData.group_and_reg[3],sizeof(struct group_and_registers));
+	memcpy(&sensor->sensorMetaData.group_and_reg[3], &sensor->sensorMetaData.group_and_reg[2],sizeof(struct group_and_registers));
+	memcpy(&sensor->sensorMetaData.group_and_reg[2], &sensor->sensorMetaData.group_and_reg[1],sizeof(struct group_and_registers));
+	memcpy(&sensor->sensorMetaData.group_and_reg[1], &sensor->sensorMetaData.group_and_reg[0],sizeof(struct group_and_registers));
+	memcpy(&sensor->sensorMetaData.group_and_reg[0], &sensor->active_group_registers,sizeof(struct group_and_registers));
+
   spin_unlock_irqrestore(&metadata_spinlock, flags);
 
   mutex_unlock(&sensor->lock);
 }
-
-
-
-
-
 
 static void update_groups_work_fn(struct work_struct *Wq)
 {
@@ -2164,7 +1724,6 @@ static void update_groups_work_fn(struct work_struct *Wq)
 	update_groups(sensor);
 
 }
-
 
 static int og01a1b_probe(struct i2c_client *client)
 {
@@ -2175,8 +1734,6 @@ static int og01a1b_probe(struct i2c_client *client)
 	int ret;
     const char *id;
     bool skip_check_chip_id = false;
-	static int num = 0; 
-
 	sensor = devm_kzalloc(dev, sizeof(*sensor), GFP_KERNEL);
 	if (!sensor)
 		return -ENOMEM;
@@ -2198,14 +1755,65 @@ static int og01a1b_probe(struct i2c_client *client)
 			// We keep this in for the 2 camera compatibility case
 			sensor->other_sensor = sensors[i];
 		}
+		sensor->is_left_sensor = true;
     } else {
 		sensor->is_sync_sensor = false;
+		INIT_WORK(&sensor->work,update_groups_work_fn);
 		if(sync_sensor_index != -1) {
 			sensor->other_sensor = sensors[sync_sensor_index];
 			// We keep this in for the 2 camera compatibility case
 			sensors[sync_sensor_index]->other_sensor = sensor;
 		}
+		sensor->is_left_sensor = false;
     }
+
+	if(numSensors == 0) {
+		{
+			left_sensor_workqueue = alloc_workqueue("left_sensor_workqueue", WQ_UNBOUND | WQ_HIGHPRI, 1);
+			
+			// Define workqueue attributes
+			struct workqueue_attrs *attrs;
+			attrs = alloc_workqueue_attrs();
+			if (!attrs) {
+				// Handle allocation failure
+				return -ENOMEM;
+			}
+			cpumask_set_cpu(2, attrs->cpumask); // Set CPU affinity to CPU 2
+
+			// Apply workqueue attributes
+			if (apply_workqueue_attrs(left_sensor_workqueue, attrs)) {
+				// Handle attribute application failure
+				free_workqueue_attrs(attrs);
+				return -EINVAL;
+			}
+			free_workqueue_attrs(attrs);
+		}
+
+	
+		{
+			
+			right_sensor_workqueue = alloc_workqueue("right_sensor_workqueue", WQ_UNBOUND | WQ_HIGHPRI, 1);
+		
+			// Define workqueue attributes
+			struct workqueue_attrs *attrs;
+			attrs = alloc_workqueue_attrs();
+			if (!attrs) {
+				// Handle allocation failure
+				return -ENOMEM;
+			}
+			cpumask_set_cpu(3, attrs->cpumask); // Set CPU affinity to CPU 3
+
+			// Apply workqueue attributes
+			if (apply_workqueue_attrs(right_sensor_workqueue, attrs)) {
+				// Handle attribute application failure
+				free_workqueue_attrs(attrs);
+				return -EINVAL;
+			}
+			free_workqueue_attrs(attrs);
+		}
+	}
+
+
 	
 	sensors[numSensors] = sensor;
 	numSensors++;
@@ -2309,31 +1917,6 @@ static int og01a1b_probe(struct i2c_client *client)
 	ret = v4l2_async_register_subdev_sensor(&sensor->sd);
 	if (ret)
 		goto free_ctrls;
-
-	if(num < 4) {
-		int gpio = desc_to_gpio(sensor->strobe_gpio);
-		int irq = gpiod_to_irq(sensor->strobe_gpio);
-		int err;
-		u32 core_affinity;
-
-		if((err = request_irq      (irq, gpio_handler, IRQF_SHARED | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "og01a1b", sensor)) != 0)
-		{
-			dev_err(&client->dev, "Error %d: could not request irq: %d\n", err, gpio);
-			return err;
-		}
-
-		if (!of_property_read_u32( dev->of_node, "irq-core-affinity", &core_affinity)) {
-			// Only set the core affinity if it is not 0. This is because 0 is the default and GPIOs that can only be zero will fail in the call to irq_set_affinity
-			if(core_affinity != 0) {
-				int ret = irq_set_affinity(irq,cpumask_of(core_affinity));
-				if (ret < 0)
-				{
-					dev_err(&client->dev, "Failed to set core affinity for irq:%d ret:%d core_affinity:%d",irq, ret, core_affinity);
-				}
-			}
-		}
-		num++;
-	}
 
 	sensor->current_mode = &og01a1b_mode_data_1280x1024;
 

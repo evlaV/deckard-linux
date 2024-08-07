@@ -2103,7 +2103,7 @@
 	};
 
 	cam_u@3e {
-		compatible = "ovti,og01a1bx";
+		compatible = "ovti,og0ve10x";
 		reg = <0x3E>;
 
 		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
@@ -2160,7 +2160,7 @@
 	};
 
 	cam_u@3e {
-		compatible = "ovti,og01a1bx";
+		compatible = "ovti,og0ve10x";
 		reg = <0x3e>;
 
 		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;

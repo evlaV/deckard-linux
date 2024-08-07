@@ -12,6 +12,7 @@
 #include <linux/kernel.h>
 #include <linux/of.h>
 #include <linux/delay.h>
+#include <linux/minmax.h>
 
 #include "camss-csid.h"
 #include "camss-csid-gen2.h"
@@ -58,6 +59,17 @@
 #define CSID_CSI2_RDI0_IRQ_CLEAR	0xf4
 #define CSID_CSI2_RDI0_IRQ_SET		0xf8
 
+#define CSID_PPP0_IRQ_STATUS 0xcc
+#define CSID_PPP0_IRQ_MASK 0xd0
+#define CSID_PPP0_IRQ_CLEAR 0xd4
+#define CSID_PPP0_IRQ_SET 0xd8
+
+#define CSID_IPP0_IRQ_STATUS 0xac
+#define CSID_IPP0_IRQ_MASK 0xb0
+#define CSID_IPP0_IRQ_CLEAR 0xb4
+#define CSID_IPP0_IRQ_SET 0xb8
+
+
 #define CSID_CSI2_RX_CFG0	0x200
 #define		CSI2_RX_CFG0_NUM_ACTIVE_LANES	0
 #define		CSI2_RX_CFG0_DL0_INPUT_SEL	4
@@ -89,6 +101,13 @@
 #define			HALT_CMD_HALT_AT_FRAME_BOUNDARY		0
 #define			HALT_CMD_RESUME_AT_FRAME_BOUNDARY	1
 #define		RDI_CTRL_HALT_MODE		2
+
+#define CSID_RDI_MULTIVCDT_CFG(rdi)	(0x50c + 0x100 * (rdi))
+#define		RDI_MULTIVCDT_EN				0
+#define		RDI_MULTIVCDT_VC1				2
+#define		RDI_MULTIVCDT_DT1				7
+#define		RDI_MULTIVCDT_TS_COMB_EN		13
+#define		RDI_MULTIVCDT_DECODE_FMT		16
 
 /* IFE regs */
 
@@ -161,6 +180,22 @@ static inline void vfe_write(struct csid_device *csid, u32 reg, u32 val)
 #define STATS_BHIST_DATA_OFFSET (STATS_BHIST_FH_DATA_OFFSET + STATS_BHIST_FH_DATA_SIZE)
 #define STATS_BHIST_DATA_SIZE ALIGN(4096, 256)
 
+
+// Shared offset for all CSIDs
+#define OFFSET_ESTIMATION_STATE_INIT 0
+#define OFFSET_ESTIMATION_STATE_REFINE 1
+
+#define MAX_OFFSET_DELTA_FOR_ADJUSTMENT_IN_NS 10000
+#define MAX_OFFSET_DELTA_FOR_VOTE_IN_NS 30000
+#define MAX_NUM_OFFSETS 100
+#define VOTE_COUNT_THRESHOLD_FOR_OFFSET_RESET (MAX_NUM_OFFSETS/4)
+DEFINE_SPINLOCK(isp_to_kernel_raw_ts_offset_estimation_spinlock);
+u32 isp_to_kernel_raw_ts_offset_stream_cnt = 0;
+u32 isp_to_kernel_raw_ts_offset_estimation_state;
+u64 isp_to_kernel_raw_ts_offset_counter;
+u32 isp_to_kernel_raw_ts_offset_refinement_vote_cnt;
+s64 isp_to_kernel_raw_ts_offset_floor;
+
 static void vfe_write_buf(struct csid_device *csid, struct camss_buffer *buf)
 {
 	struct v4l2_pix_format_mplane *pix = &csid->video_out.active_fmt.fmt.pix_mp;
@@ -193,6 +228,13 @@ static void vfe_write_buf(struct csid_device *csid, struct camss_buffer *buf)
 	else {
 		// vfe_write(csid, BUS_CLIENT_ADDR_CFG(RDI_WM(0)), 0); // byte offset
 		vfe_write(csid, BUS_CLIENT_ADDR_IMAGE(RDI_WM(0)), buf->addr[0] >> 8);
+
+		// Also enqueue the buffers address for the frameheader if enabled
+		if(csid->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
+			dma_sync_single_for_device(csid->camss->dev, buf->extrabuffer_dma_addr, buf->extrabuffer_size, DMA_BIDIRECTIONAL);
+			vfe_write(csid, BUS_CLIENT_ADDR_FRAME_HEADER(RDI_WM(0)), (buf->extrabuffer_dma_addr + STATS_FH_DATA_OFFSET) >> 8);
+		}
+
 		// RUP_RDI0 | AUP_RDI0 | MUP (which one is needed here?)
 		writel_relaxed(BIT(4) | BIT(20) | BIT(28), csid->base + CSID_RUP_AUP_CMD);
 	}
@@ -213,7 +255,16 @@ struct camss_buffer *vfe_buf_get_pending(struct csid_device *csid);
 
 static void csid_configure_stream(struct csid_device *csid, u8 enable)
 {
-	csid->isp_to_kernel_raw_ts_offset = ULONG_MAX;
+	spin_lock(&isp_to_kernel_raw_ts_offset_estimation_spinlock);
+	if(enable && (isp_to_kernel_raw_ts_offset_stream_cnt == 0))
+	{
+		isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_INIT;
+		isp_to_kernel_raw_ts_offset_counter = 0;
+		isp_to_kernel_raw_ts_offset_refinement_vote_cnt = 0;
+		isp_to_kernel_raw_ts_offset_floor = LONG_MAX;
+	}
+	isp_to_kernel_raw_ts_offset_stream_cnt += (enable ? 1 : -1);
+	spin_unlock(&isp_to_kernel_raw_ts_offset_estimation_spinlock);
 
 	u32 val;
 	u32 phy_sel = 0;
@@ -263,6 +314,7 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	phy_sel = csid->phy.csiphy_id + 1;
 
 	if (enable) {
+		val = 0;
 		//val = 1 << RDI_CFG0_BYTE_CNTR_EN;
 		//val |= 1 << RDI_CFG0_FORMAT_MEASURE_EN;
 		val |= 1 << RDI_CFG0_TIMESTAMP_EN;
@@ -274,6 +326,15 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 		val |= 0 << RDI_CFG0_DT_ID;
 		val |= RDI_CFG0_SOF_RETIME_DIS; // Disable SOF RETIME?
 		writel_relaxed(val, csid->base + CSID_RDI_CFG0(0));
+
+		// Enable multi-vcdt by default to accept VC=1/DT=0x2a (could be enabled by a config ioctl)
+		val = 0x1 << RDI_MULTIVCDT_EN;
+		val |= 0x1 << RDI_MULTIVCDT_VC1;
+		val |= 0x2a << RDI_MULTIVCDT_DT1;
+		val |= 0xf << RDI_MULTIVCDT_DECODE_FMT;
+		// with that on the last 2 bits of IFE timestamps will be set to 0x1 if we receive from this secondary VCDT
+		val |= 0x1 << RDI_MULTIVCDT_TS_COMB_EN;
+		writel_relaxed(val, csid->base + CSID_RDI_MULTIVCDT_CFG(0));
 
 		writel_relaxed(0, csid->base + CSID_RDI_CTRL(0));
 
@@ -298,7 +359,7 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	writel_relaxed(val, csid->base + CSID_RDI_CTRL(0));
 
 	// RUP_RDI0 | AUP_RDI0 | MUP
-	writel_relaxed(BIT(4) | BIT(20) | BIT(28), csid->base + CSID_RUP_AUP_CMD);
+	writel_relaxed(BIT(4) | BIT(20) | BIT(28) | BIT(0) | BIT(16), csid->base + CSID_RUP_AUP_CMD);
 
 	// bus client config
 	if (enable)
@@ -306,6 +367,12 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 		struct v4l2_pix_format_mplane *pix = &csid->video_out.active_fmt.fmt.pix_mp;
 		if (pix->pixelformat == V4L2_PIX_FMT_NV12) {
 			// IPP path config
+
+			csid->sof_addr_upper = csid->base + 0x39c; // CSID_IPP0_TIMESTAMP_CURR1_SOF
+			csid->sof_addr_lower = csid->base + 0x398; // CSID_IPP0_TIMESTAMP_CURR0_SOF
+			csid->eof_addr_upper = csid->base + 0x3ac; // CSID_IPP0_TIMESTAMP_CURR1_EOF
+			csid->eof_addr_lower = csid->base + 0x3a8; // CSID_IPP0_TIMESTAMP_CURR0_EOF
+
 			u32 wm;
 			for(wm = 0; wm < 2; wm++) {
 				vfe_write(csid, BUS_CLIENT_IMAGE_CFG_0(wm), (pix->height >> wm) << 16 | pix->width);
@@ -342,6 +409,12 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 		}
 		else {
 			// RDI path config
+
+			csid->sof_addr_upper = csid->base + 0x598; // CSID_RDI0_TIMESTAMP_CURR1_SOF
+			csid->sof_addr_lower = csid->base + 0x594; // CSID_RDI0_TIMESTAMP_CURR0_SOF
+			csid->eof_addr_upper = csid->base + 0x5a8; // CSID_RDI0_TIMESTAMP_CURR1_EOF
+			csid->eof_addr_lower = csid->base + 0x5a4; // CSID_RDI0_TIMESTAMP_CURR0_EOF
+
 			//struct v4l2_pix_format_mplane *pix =
 			//	&csid->video_out.active_fmt.fmt.pix_mp;
 			u32 mode = 1;
@@ -352,7 +425,10 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 			vfe_write(csid, BUS_CLIENT_IMAGE_CFG_1(wm), 0); // X_INIT = 0
 			vfe_write(csid, BUS_CLIENT_IMAGE_CFG_2(wm), 0xffff);//pix->plane_fmt[0].bytesperline);
 			vfe_write(csid, BUS_CLIENT_PACKER_CFG(wm), 0); // for RDI mode
-			vfe_write(csid, BUS_CLIENT_CFG(wm), 1 | mode << 16); // EN=1 (+ all other settings to 0)
+
+			// Frameheader streaming can be enabled on LITE IFEs
+			u32 use_fh = !!(csid->stats_cfg & STATS_CFG_FH_OUTPUT_EN);
+			vfe_write(csid, BUS_CLIENT_CFG(wm), 1 | (use_fh << 2) | mode << 16); // EN=1 (+ all other settings to 0)
 
 			csid->required_comp_done_mask = BIT(RDI_COMP_GROUP(0)); // need RDI0 composite group
 		}
@@ -420,7 +496,7 @@ static int vfe_queue_buffer_nolock(struct camss_video *vid, struct camss_buffer 
 static irqreturn_t csid_isr(int irq, void *dev)
 {
 	struct csid_device *csid = dev;
-	u32 top_status, rx_status, buf_status, rdi_status;
+	u32 top_status, rx_status, buf_status, rdi_status, ppp_status, ipp_status;
 	u64 ts_monotonic_raw = ktime_get_raw_ns();
 	u64 ts_monotonic = ktime_get_ns();
 
@@ -431,36 +507,96 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	writel_relaxed(rx_status, csid->base + CSID_CSI2_RX_IRQ_CLEAR);
 
 	rdi_status = readl_relaxed(csid->base + CSID_CSI2_RDI0_IRQ_STATUS);
-	//printk("rdi_status:0x%x ts:%lu", rdi_status, ts_monotonic);
 	writel_relaxed(rdi_status, csid->base + CSID_CSI2_RDI0_IRQ_CLEAR);
-	if(rdi_status & 0x1000) // Test if PATH_INFO_SOF is set
+
+	ppp_status = readl_relaxed(csid->base + CSID_PPP0_IRQ_STATUS);
+	writel_relaxed(ppp_status, csid->base + CSID_PPP0_IRQ_CLEAR); 
+
+	ipp_status = readl_relaxed(csid->base + CSID_IPP0_IRQ_STATUS);
+	writel_relaxed(ipp_status, csid->base + CSID_IPP0_IRQ_CLEAR);
+
+	if((rdi_status & 0x0010) || (ipp_status & 0x0010)) // Test if PATH_INFO_SOF is set
 	{
 		//printk("csid sof");
 		// Just use monotonic raw 
 		u64 kernel_ts_raw_to_monotonic_offset = ts_monotonic-ts_monotonic_raw;
-		u32 sof_timestamp_lower = readl_relaxed(csid->base + 0x594);
-		u32 sof_timestamp_upper = readl_relaxed(csid->base + 0x598);
+		u32 sof_timestamp_lower = readl_relaxed(csid->sof_addr_lower);
+		u32 sof_timestamp_upper = readl_relaxed(csid->sof_addr_upper);
 		u64 sof_isp_timestamp = ((u64)sof_timestamp_upper) << 32 | sof_timestamp_lower;
 
 		sof_isp_timestamp = mul_u64_u32_div(
 			sof_isp_timestamp,
 			CAM_IFE_CSID_MUL_FACTOR,
 			CAM_IFE_CSID_DIV_FACTOR);
-		//printk("ts:%lu sof_isp_timestamp:%lu",ts_monotonic, sof_isp_timestamp);
-		u64 detected_isp_to_kernel_raw_ts_offset = ts_monotonic_raw - sof_isp_timestamp;
+		//printk("csid:%d sof_isp_timestamp:%lu current ts:%lu", csid->id, sof_isp_timestamp, ts_monotonic);
+		if(sof_isp_timestamp != 0) {
+			s64 detected_isp_to_kernel_raw_ts_offset = ts_monotonic_raw - sof_isp_timestamp;
 
-		// This works because the ISP clock does not drift from the monotonic_raw timestamps and the lower the distance
-		// between the raw timestamp and the ISP clock, the closer that offset is to the "actual offset"
-		if(csid->isp_to_kernel_raw_ts_offset > detected_isp_to_kernel_raw_ts_offset) {
-			csid->isp_to_kernel_raw_ts_offset = detected_isp_to_kernel_raw_ts_offset;
-		}
-		csid->kernel_ts_raw_to_monotonic_offset = kernel_ts_raw_to_monotonic_offset;
-		csid->cur_sof_isp_timestamp_converted = sof_isp_timestamp + csid->isp_to_kernel_raw_ts_offset;
-		if(csid->do_post_sof_work != NULL) {
-			csid->do_post_sof_work(csid->capture_subdev, csid->cur_sof_isp_timestamp_converted, ts_monotonic);
-		}
+			isp_to_kernel_raw_ts_offset_counter++;
+			
+			// Handle estimation state change
+			if(isp_to_kernel_raw_ts_offset_counter == MAX_NUM_OFFSETS)
+			{
+				if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
+				{
+					isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_REFINE;
+				}
+				else
+				{
+					// If the a percentage of the recent offsets disagreed with the current floor
+					// reset the floor and go back to INIT state
+					if(isp_to_kernel_raw_ts_offset_refinement_vote_cnt < VOTE_COUNT_THRESHOLD_FOR_OFFSET_RESET)
+					{
+						isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_INIT;
+						isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
+					}
+				}
+				isp_to_kernel_raw_ts_offset_counter = 0;
+				isp_to_kernel_raw_ts_offset_refinement_vote_cnt = 0;
+			}
 
-		csid->last_sof_kernel_ts = ts_monotonic;
+			// Compute the difference in nanoseconds between the current floor and the detected offset
+			s64 offsets_delta = (detected_isp_to_kernel_raw_ts_offset > isp_to_kernel_raw_ts_offset_floor) ?
+				(detected_isp_to_kernel_raw_ts_offset - isp_to_kernel_raw_ts_offset_floor) :
+				(isp_to_kernel_raw_ts_offset_floor - detected_isp_to_kernel_raw_ts_offset);
+
+			// In INIT just update the floor with the latest measurement if lower
+			if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
+			{
+				if(detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor)
+				{
+					isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
+				}
+			}
+			else if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_REFINE)
+			{
+				// Update the vote counter if detected offset is close to the current floor
+				if(offsets_delta < MAX_OFFSET_DELTA_FOR_VOTE_IN_NS)
+				{
+					isp_to_kernel_raw_ts_offset_refinement_vote_cnt++;
+				}
+
+				// If detected value is lower and very close to the current floor we adjust to it
+				if((detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor) && (offsets_delta < MAX_OFFSET_DELTA_FOR_ADJUSTMENT_IN_NS))
+				{
+					isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
+				}
+			}
+
+			csid->kernel_ts_raw_to_monotonic_offset = kernel_ts_raw_to_monotonic_offset;
+			csid->cur_sof_isp_timestamp_converted = sof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
+			if(csid->do_post_sof_work != NULL) {
+				u8 group = (sof_timestamp_lower & 1) ? 1 : 0;
+				csid->do_post_sof_work(csid->capture_subdev, csid->cur_sof_isp_timestamp_converted, ts_monotonic_raw, group);
+			}
+
+			csid->last_sof_kernel_ts = ts_monotonic_raw;
+		}
+		else
+		{
+			csid->last_sof_kernel_ts = ts_monotonic_raw;
+			csid->cur_sof_isp_timestamp_converted = 0;
+		}
 	}
 
 	if (top_status & BIT(TOP_IRQ_STATUS_BUF_DONE)) {
@@ -468,8 +604,8 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		writel_relaxed(buf_status, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
 
 
-		u32 eof_timestamp_lower = readl_relaxed(csid->base + 0x5A4);
-		u32 eof_timestamp_upper = readl_relaxed(csid->base + 0x5A8);
+		u32 eof_timestamp_lower = readl_relaxed(csid->eof_addr_lower);
+		u32 eof_timestamp_upper = readl_relaxed(csid->eof_addr_upper);
 		u64 eof_isp_timestamp = ((u64)eof_timestamp_upper) << 32 | eof_timestamp_lower;
 
 		eof_isp_timestamp = mul_u64_u32_div(
@@ -477,7 +613,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 			CAM_IFE_CSID_MUL_FACTOR,
 			CAM_IFE_CSID_DIV_FACTOR);
 
-		csid->cur_eof_isp_timestamp_converted = eof_isp_timestamp + csid->isp_to_kernel_raw_ts_offset;
+		csid->cur_eof_isp_timestamp_converted = eof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
 
 		// Also test comp group 0 and the enabled statistics paths on non lite IFEs to support the IPP path
 		if ( (buf_status & BIT(RDI_COMP_GROUP(0))) || (!IS_LITE && (buf_status & (BIT(0) | csid->stats_comp_done_mask)))) {
@@ -698,6 +834,7 @@ static int csid_reset(struct csid_device *csid)
 	writel_relaxed(~0u, csid->base + CSID_TOP_IRQ_MASK);
 	writel_relaxed(~0u, csid->base + CSID_BUF_DONE_IRQ_MASK);
 	writel_relaxed(0x1010, csid->base + CSID_CSI2_RDI0_IRQ_MASK); // PATH_INFO_SOF | CAMIF_SOF
+	writel_relaxed(0x1010, csid->base + CSID_IPP0_IRQ_MASK); // PATH_INFO_SOF | CAMIF_SOF
 
 	return 0;
 }
@@ -926,8 +1063,8 @@ int csid_vfe_get_registers(struct csid_device *csid, struct csid_vfe_private_reg
 
 static long csid_vfe_set_statistics_config(struct csid_device *csid, u32 stats_cfg)
 {
-	if(IS_LITE) {
-		dev_err(csid->camss->dev, "Statistics streaming is not supported for LITE CSID/VFEs\n");
+	if(IS_LITE && (stats_cfg & ~STATS_CFG_FH_OUTPUT_EN)) {
+		dev_err(csid->camss->dev, "Invalid statistics streaming configuration. Only frameheader streaming is supported for LITE CSID/VFEs\n");
 		return -EINVAL;
 	}
 
@@ -949,15 +1086,18 @@ static long csid_vfe_set_statistics_config(struct csid_device *csid, u32 stats_c
 	// - 16 bytes for the camera frame header
 	// - 16 + 2048 bytes for the image histogram and its header
 	// - 16 + 4096 bytes for the bayer histogram and its header
-	csid->video_out.required_extrabuffer_size = 8192;
+	// (For LITE IFEs only reserve a small size since we can only stream frameheaders)
+	csid->video_out.required_extrabuffer_size = IS_LITE ? 256 : 8192;
 
 	// Setup the write bus COMP DONE mask used to test the IRQ status
 	csid->stats_comp_done_mask = 0;
-	if(csid->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
-		csid->stats_comp_done_mask |= BIT(STATS_IHIST_COMP_GROUP);
-	}
-	if(csid->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
-		csid->stats_comp_done_mask |= BIT(STATS_BHIST_COMP_GROUP);
+	if(!IS_LITE) {
+		if(csid->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
+			csid->stats_comp_done_mask |= BIT(STATS_IHIST_COMP_GROUP);
+		}
+		if(csid->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
+			csid->stats_comp_done_mask |= BIT(STATS_BHIST_COMP_GROUP);
+		}
 	}
 
 	dev_warn(csid->camss->dev, "csid/vfe(%d) statistics streaming config set to 0x%x", csid->id, csid->stats_cfg);
