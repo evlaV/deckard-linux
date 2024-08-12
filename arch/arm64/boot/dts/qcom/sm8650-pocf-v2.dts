@@ -283,7 +283,7 @@
 
 &cci2_i2c0 { // "CCI_4"
 	cam@60 {
-		compatible = "ovti,og0ve10x";
+		compatible = "ovti,og01a1bx";
 		reg = <0x60>;
 
 		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
