@@ -1938,6 +1938,29 @@ static const struct resources_icc icc_res_sc8280xp[] = {
 	},
 };
 
+static const struct resources_icc icc_res_sm8550[] = {
+	{
+		.name = "ahb",
+		.icc_bw_tbl.avg = 2097152,
+		.icc_bw_tbl.peak = 2097152,
+	},
+	{
+		.name = "hf_0_mnoc",
+		.icc_bw_tbl.avg = 2097152,
+		.icc_bw_tbl.peak = 2097152,
+	},
+	{
+		.name = "icp_mnoc",
+		.icc_bw_tbl.avg = 2097152,
+		.icc_bw_tbl.peak = 2097152,
+	},
+	{
+		.name = "sf_0_mnoc",
+		.icc_bw_tbl.avg = 2097152,
+		.icc_bw_tbl.peak = 2097152,
+	},
+};
+
 /*
  * camss_add_clock_margin - Add margin to clock frequency rate
  * @rate: Clock frequency rate
@@ -2938,17 +2961,11 @@ static const struct camss_resources sc8280xp_resources = {
 	.link_entities = camss_link_entities
 };
 
-static const struct camss_resources sc7280_resources = {
-	.version = CAMSS_7280,
+static const struct camss_resources sm8550_resources = {
+	.version = CAMSS_8550,
 	.pd_name = "top",
-	.csiphy_res = csiphy_res_7280,
-	.csid_res = csid_res_7280,
-	.vfe_res = vfe_res_7280,
-	.icc_res = icc_res_sc7280,
-	.icc_path_num = ARRAY_SIZE(icc_res_sc7280),
-	.csiphy_num = ARRAY_SIZE(csiphy_res_7280),
-	.csid_num = ARRAY_SIZE(csid_res_7280),
-	.vfe_num = ARRAY_SIZE(vfe_res_7280),
+	.icc_res = icc_res_sm8550,
+	.icc_path_num = ARRAY_SIZE(icc_res_sm8550),
 	.link_entities = camss_link_entities
 };
 
@@ -2961,6 +2978,8 @@ static const struct of_device_id camss_dt_match[] = {
 	{ .compatible = "qcom,sdm660-camss", .data = &sdm660_resources },
 	{ .compatible = "qcom,sdm845-camss", .data = &sdm845_resources },
 	{ .compatible = "qcom,sm8250-camss", .data = &sm8250_resources },
+	{ .compatible = "qcom,sc8280xp-camss", .data = &sc8280xp_resources },
+	{ .compatible = "qcom,sm8550-camss", .data = &sm8550_resources },
 	{ }
 };
 
