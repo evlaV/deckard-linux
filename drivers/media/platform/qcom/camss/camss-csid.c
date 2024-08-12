@@ -838,7 +838,7 @@ static void csid_try_format(struct csid_device *csid,
 		break;
 
 	case MSM_CSID_PAD_SRC:
-		if (csid->testgen_mode->cur.val == 0) {
+		if (!csid->testgen_mode || csid->testgen_mode->cur.val == 0) {
 			/* Test generator is disabled, */
 			/* keep pad formats in sync */
 			u32 code = fmt->code;
@@ -1042,6 +1042,7 @@ static int csid_init_formats(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 static int csid_set_test_pattern(struct csid_device *csid, s32 value)
 {
 	struct csid_testgen_config *tg = &csid->testgen;
+	const struct csid_hw_ops *hw_ops = csid->res->hw_ops;
 
 	/* If CSID is linked to CSIPHY, do not allow to enable test generator */
 	if (value && media_pad_remote_pad_first(&csid->pads[MSM_CSID_PAD_SINK]))
@@ -1049,7 +1050,10 @@ static int csid_set_test_pattern(struct csid_device *csid, s32 value)
 
 	tg->enabled = !!value;
 
-	return csid->res->hw_ops->configure_testgen_pattern(csid, value);
+	if (hw_ops->configure_testgen_pattern)
+		return -EOPNOTSUPP;
+	else
+		return hw_ops->configure_testgen_pattern(csid, value);
 }
 
 /*
@@ -1121,6 +1125,19 @@ int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
 		csid->base = devm_platform_ioremap_resource_byname(pdev, res->reg[0]);
 		if (IS_ERR(csid->base))
 			return PTR_ERR(csid->base);
+
+		/* CSID "top" is a new function in new version HW,
+		 * CSID can connect to VFE & SFE(Sensor Front End).
+		 * this connection is controlled by CSID "top" registers.
+		 * There is only one CSID "top" region for all CSIDs.
+		 */
+		if (!csid_is_lite(csid) && res->reg[1] && !camss->csid_top_base) {
+			camss->csid_top_base =
+				devm_platform_ioremap_resource_byname(pdev, res->reg[1]);
+
+			if (IS_ERR(camss->csid_top_base))
+				return PTR_ERR(camss->csid_top_base);
+		}
 	}
 
 	/* Interrupt */
@@ -1267,7 +1284,7 @@ static int csid_link_setup(struct media_entity *entity,
 
 		/* If test generator is enabled */
 		/* do not allow a link from CSIPHY to CSID */
-		if (csid->testgen_mode->cur.val != 0)
+		if (csid->testgen_mode && csid->testgen_mode->cur.val != 0)
 			return -EBUSY;
 
 		sd = media_entity_to_v4l2_subdev(remote->entity);
@@ -1366,15 +1383,20 @@ int msm_csid_register_entity(struct csid_device *csid,
 		return ret;
 	}
 
-	csid->testgen_mode = v4l2_ctrl_new_std_menu_items(&csid->ctrls,
-				&csid_ctrl_ops, V4L2_CID_TEST_PATTERN,
-				csid->testgen.nmodes, 0, 0,
-				csid->testgen.modes);
+	if (csid->res->hw_ops->configure_testgen_pattern) {
+		csid->testgen_mode =
+			v4l2_ctrl_new_std_menu_items(&csid->ctrls,
+						     &csid_ctrl_ops,
+						     V4L2_CID_TEST_PATTERN,
+						     csid->testgen.nmodes, 0,
+						     0, csid->testgen.modes);
 
-	if (csid->ctrls.error) {
-		dev_err(dev, "Failed to init ctrl: %d\n", csid->ctrls.error);
-		ret = csid->ctrls.error;
-		goto free_ctrl;
+		if (csid->ctrls.error) {
+			dev_err(dev, "Failed to init ctrl: %d\n",
+				csid->ctrls.error);
+			ret = csid->ctrls.error;
+			goto free_ctrl;
+		}
 	}
 
 	csid->subdev.ctrl_handler = &csid->ctrls;
