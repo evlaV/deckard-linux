@@ -219,7 +219,6 @@ struct og01a1b_dev {
 
 	const struct og01a1b_mode_info* current_mode;
 	bool is_streaming;
-	bool is_og0VE10;
 	bool is_left_sensor;
 	struct private_timing_adjustment current_timing_adjustment;
 	enum og01a1b_timing_adjustment_state timing_adjustment_state;
@@ -229,11 +228,11 @@ struct og01a1b_dev* sensors[4];
 int numSensors = 0;
 int sync_sensor_index = -1;
 
-struct workqueue_struct *left_sensor_workqueue;
+struct workqueue_struct *left_sensor_workqueue = NULL;
 EXPORT_SYMBOL(left_sensor_workqueue);
 
 
-struct workqueue_struct *right_sensor_workqueue;
+struct workqueue_struct *right_sensor_workqueue = NULL;
 EXPORT_SYMBOL(right_sensor_workqueue);
 
 static inline struct og01a1b_dev *to_og01a1b_dev(struct v4l2_subdev *sd)
@@ -1604,6 +1603,7 @@ static int og01a1b_set_fmt(struct v4l2_subdev *sd,
 			  struct v4l2_subdev_state *sd_state,
 			  struct v4l2_subdev_format *fmt)
 {
+	
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 
 	mutex_lock(&sensor->lock);
@@ -1611,7 +1611,6 @@ static int og01a1b_set_fmt(struct v4l2_subdev *sd,
 	if(fmt->format.width == 1280 && fmt->format.height == 1024) 
 	{
 		sensor->current_mode = &og01a1b_mode_data_1280x1024;
-		sensor->is_og0VE10 = false;
 	}
 	else if (fmt->format.width == 640 && fmt->format.height == 512) 
 	{
@@ -1791,7 +1790,6 @@ static int og01a1b_probe(struct i2c_client *client)
 	if (!sensor)
 		return -ENOMEM;
 	sensor->is_streaming = false;
-	sensor->is_og0VE10 = false;
 	sensor->sensor_index = numSensors;
 	sensor->last_set_led_state = 0;
 	if (of_property_read_string(dev->of_node, "id", &id)) {

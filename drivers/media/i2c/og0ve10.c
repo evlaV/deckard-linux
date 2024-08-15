@@ -188,7 +188,6 @@ struct og0ve10_dev {
 
 	const struct og0ve10_mode_info *current_mode;
 	bool is_streaming;
-	bool is_og0VE10;
 	bool is_left_sensor;
 
 	struct private_timing_adjustment current_timing_adjustment;
@@ -829,27 +828,26 @@ static int og0ve10_set_fmt(struct v4l2_subdev *sd,
 			   struct v4l2_subdev_state *sd_state,
 			   struct v4l2_subdev_format *fmt)
 {
+	int ret = 0;
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
 	struct i2c_client *client = sensor->i2c_client;
 
 	mutex_lock(&sensor->lock);
 
 	if (fmt->format.width == 640 && fmt->format.height == 480) {
-		sensor->is_og0VE10 = true;
 		sensor->current_mode = &og0ve10_mode_data_640x480;
 	} else {
 		dev_err(&client->dev, "%s: Unsupported format.\n", __func__);
-		return -1;
+		ret = -1;
+		goto set_fmt_cleanup;
 	}
 
 	sensor->fmt.width = fmt->format.width;
 	sensor->fmt.height = fmt->format.height;
 
-	//TODO: return non zero value if invalid format
-
+set_fmt_cleanup:
 	mutex_unlock(&sensor->lock);
-
-	return 0;
+	return ret;
 }
 
 static int og0ve10_get_fmt(struct v4l2_subdev *sd,
@@ -1057,7 +1055,7 @@ void update_groups_og0VE10(struct og0ve10_dev *sensor)
 	//for(int i = 0; i < numSensors_og0VE10; i++)
 	{
 		if (sensor->power_count < 1) {
-			return;
+			goto update_groups_og0VE10_cleanup;
 		}
 		sensor->active_group_registers.group_written =
 			last_set_group_og0VE10;
@@ -1073,7 +1071,7 @@ void update_groups_og0VE10(struct og0ve10_dev *sensor)
 	//for(int i = 0; i < numSensors_og0VE10; i++)
 	{
 		if (sensor->power_count < 1) {
-			return;
+			goto update_groups_og0VE10_cleanup;
 		}
 		memcpy(&sensor->sensorMetaData.group_and_reg[4],
 		       &sensor->sensorMetaData.group_and_reg[3],
@@ -1091,6 +1089,7 @@ void update_groups_og0VE10(struct og0ve10_dev *sensor)
 		       &sensor->active_group_registers,
 		       sizeof(struct group_and_registers));
 	}
+update_groups_og0VE10_cleanup:
 	spin_unlock_irqrestore(&metadata_spinlock_og0VE10, flags);
 
 	mutex_unlock(&sensor->lock);
@@ -1116,7 +1115,6 @@ static int og0ve10_probe(struct i2c_client *client)
 	if (!sensor)
 		return -ENOMEM;
 	sensor->is_streaming = false;
-	sensor->is_og0VE10 = false;
 	sensor->sensor_index = numSensors_og0VE10;
 	sensor->last_set_led_state = 0;
 	if (of_property_read_string(dev->of_node, "id", &id)) {
