@@ -4511,6 +4511,7 @@ static struct attribute *max17320_attr[] = {
 	&dev_attr_log.attr,
 	&dev_attr_nvmem.attr,
 	&dev_attr_atrate.attr,
+	&dev_attr_ship.attr,
 	&dev_attr_attte.attr,
 	&dev_attr_cell.attr,
 	&dev_attr_temp.attr,
