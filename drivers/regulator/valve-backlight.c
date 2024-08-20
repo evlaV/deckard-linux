@@ -292,12 +292,35 @@ static ssize_t mpq_reinit_store(struct device *dev, struct device_attribute *att
 	return count;
 }
 
+static ssize_t mpq_preboost_enable_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct valve_backlight * bl = dev_get_drvdata(dev);
+	int ret;
+	int input;
+
+	ret = sscanf(buf, "%d", &input);
+	if(input == 0)
+	{
+		printk("Disabling Preboost\n");
+		gpiod_set_value(bl->preboost_gpio, 0);
+	}
+	else
+	{
+		printk("Enabling Preboost\n");
+		gpiod_set_value(bl->preboost_gpio, 1);
+	}
+
+	return count;
+}
+
 static DEVICE_ATTR_RO(mpq_status);
 static DEVICE_ATTR_RW(mpq_reinit);
+static DEVICE_ATTR_WO(mpq_preboost_enable);
 
 static struct attribute *mpq_attrs[] = {
 	&dev_attr_mpq_status.attr,
 	&dev_attr_mpq_reinit.attr,
+	&dev_attr_mpq_preboost_enable.attr,
 	NULL,
 };
 
