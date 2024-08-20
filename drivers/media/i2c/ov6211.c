@@ -6,6 +6,7 @@
  * Based on OV6211 driver. Adapted by arcturus.industries
  */
 
+#include <asm/unaligned.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/clkdev.h>
@@ -35,6 +36,14 @@
 #define OV6211_REG_TIMING_DVPVO		0x380a
 #define OV6211_REG_TIMING_HTS		0x380c
 #define OV6211_REG_TIMING_VTS		0x380e
+
+#define VIDIOC_SENSOR_PRV_G_REGISTER _IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct sensor_register)
+
+struct sensor_register {
+	u16 reg_addr;
+	u32 reg_value;
+	u8 len;
+};
 
 static unsigned int virtual_channel;
 
@@ -205,19 +214,33 @@ static int ov6211_read_reg(struct ov6211_dev *sensor, u16 reg, u8 *val)
 	return 0;
 }
 
-static int ov6211_read_reg16(struct ov6211_dev *sensor, u16 reg, u16 *val)
+static int ov6211_read_reg_len(struct ov6211_dev *sensor, u16 reg, u16 len, u32 *val)
 {
-	u8 hi, lo;
+	struct i2c_client *client = v4l2_get_subdevdata(&sensor->sd);
+	struct i2c_msg msgs[2];
+	u8 addr_buf[2];
+	u8 data_buf[4] = {0};
 	int ret;
 
-	ret = ov6211_read_reg(sensor, reg, &hi);
-	if (ret)
-		return ret;
-	ret = ov6211_read_reg(sensor, reg + 1, &lo);
-	if (ret)
-		return ret;
+	if (len > 4)
+		return -EINVAL;
 
-	*val = ((u16)hi << 8) | (u16)lo;
+	put_unaligned_be16(reg, addr_buf);
+	msgs[0].addr = client->addr;
+	msgs[0].flags = 0;
+	msgs[0].len = sizeof(addr_buf);
+	msgs[0].buf = addr_buf;
+	msgs[1].addr = client->addr;
+	msgs[1].flags = I2C_M_RD;
+	msgs[1].len = len;
+	msgs[1].buf = &data_buf[4 - len];
+
+	ret = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+	if (ret != ARRAY_SIZE(msgs))
+		return -EIO;
+
+	*val = get_unaligned_be32(data_buf);
+
 	return 0;
 }
 
@@ -266,7 +289,7 @@ static int ov6211_load_regs(struct ov6211_dev *sensor,
 	struct i2c_client *client = sensor->i2c_client;
 
 	u16 chip_id;
-	ret = ov6211_read_reg16(sensor, OV6211_REG_CHIP_ID, &chip_id);
+	ret = ov6211_read_reg_len(sensor, OV6211_REG_CHIP_ID, 2, (u32 *)&chip_id);
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to read chip identifier\n",
 			__func__);
@@ -532,8 +555,35 @@ static int ov6211_s_stream(struct v4l2_subdev *sd, int enable)
 	return 0;
 }
 
+static long ov6211_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
+				 void *arg)
+{
+	struct ov6211_dev *sensor = to_ov6211_dev(sd);
+	struct i2c_client *client = sensor->i2c_client;
+	int ret = 0;
+	u32 *a = arg;
+
+	switch (cmd) {
+	case VIDIOC_SENSOR_PRV_G_REGISTER: {
+		struct sensor_register *reg = arg;
+		u32 regval = 0;
+		ret = ov6211_read_reg_len(sensor, reg->reg_addr, reg->len, &regval);
+		if (ret) {
+			dev_err(&sensor->i2c_client->dev, "Failed to read register 0x%04x: %d\n", reg->reg_addr, ret);
+		}
+		reg->reg_value = regval;
+		break;
+	}
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
 static const struct v4l2_subdev_core_ops ov6211_core_ops = {
 	.s_power = ov6211_s_power,
+	.ioctl = ov6211_private_ioctl,
 };
 
 static const struct v4l2_subdev_video_ops ov6211_video_ops = {
@@ -599,7 +649,7 @@ static int ov6211_check_chip_id(struct ov6211_dev *sensor)
 	if (ret)
 		return ret;
 
-	ret = ov6211_read_reg16(sensor, OV6211_REG_CHIP_ID, &chip_id);
+	ret = ov6211_read_reg_len(sensor, OV6211_REG_CHIP_ID, 2, (u32 *)&chip_id);
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to read chip identifier\n",
 			__func__);
