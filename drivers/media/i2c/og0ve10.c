@@ -5,7 +5,7 @@
  *
  * Based on OV9282 driver and some register settings from intel OG01A1B driver. Adapted by arcturus.industries
  */
-
+#include <asm/unaligned.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/clkdev.h>
@@ -64,6 +64,14 @@ DEFINE_SPINLOCK(metadata_spinlock_og0VE10);
 #define VIDIOC_SENSOR_PRV_S_TIMING_ADJUSTMENT \
 	_IOW('V', BASE_VIDIOC_PRIVATE + 7, struct private_timing_adjustment)
 
+#define VIDIOC_SENSOR_PRV_G_REGISTER _IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct sensor_register)
+
+
+struct sensor_register {
+	u16 reg_addr;
+	u32 reg_value;
+	u8 len;
+};
 // Version 1.2 support histogram streaming.
 
 #define METADATA_MAJOR_VERSION 3
@@ -348,19 +356,33 @@ static int og0ve10_read_reg(struct og0ve10_dev *sensor, u16 reg, u8 *val)
 	return 0;
 }
 
-static int og0ve10_read_reg16(struct og0ve10_dev *sensor, u16 reg, u16 *val)
+static int og0ve10_read_reg_len(struct og0ve10_dev *sensor, u16 reg, u16 len, u32 *val)
 {
-	u8 hi, lo;
+	struct i2c_client *client = v4l2_get_subdevdata(&sensor->sd);
+	struct i2c_msg msgs[2];
+	u8 addr_buf[2];
+	u8 data_buf[4] = {0};
 	int ret;
 
-	ret = og0ve10_read_reg(sensor, reg, &hi);
-	if (ret)
-		return ret;
-	ret = og0ve10_read_reg(sensor, reg + 1, &lo);
-	if (ret)
-		return ret;
+	if (len > 4)
+		return -EINVAL;
 
-	*val = ((u16)hi << 8) | (u16)lo;
+	put_unaligned_be16(reg, addr_buf);
+	msgs[0].addr = client->addr;
+	msgs[0].flags = 0;
+	msgs[0].len = sizeof(addr_buf);
+	msgs[0].buf = addr_buf;
+	msgs[1].addr = client->addr;
+	msgs[1].flags = I2C_M_RD;
+	msgs[1].len = len;
+	msgs[1].buf = &data_buf[4 - len];
+
+	ret = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+	if (ret != ARRAY_SIZE(msgs))
+		return -EIO;
+
+	*val = get_unaligned_be32(data_buf);
+
 	return 0;
 }
 
@@ -799,6 +821,16 @@ static long og0ve10_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 		sensor->timing_adjustment_state = TIMING_ADJUSTMENT_REQUESTED;
 		break;
 	}
+	case VIDIOC_SENSOR_PRV_G_REGISTER: {
+		struct sensor_register *reg = arg;
+		u32 regval = 0;
+		ret = og0ve10_read_reg_len(sensor, reg->reg_addr, reg->len, &regval);
+		if (ret) {
+			dev_err(&sensor->i2c_client->dev, "Failed to read register 0x%04x: %d\n", reg->reg_addr, ret);
+		}
+		reg->reg_value = regval;
+		break;
+	}
 	default: {
 		ret = -EINVAL;
 	}
@@ -903,7 +935,7 @@ static int og0ve10_check_chip_id(struct og0ve10_dev *sensor)
 	if (ret)
 		return ret;
 
-	ret = og0ve10_read_reg16(sensor, OG01A1B_REG_CHIP_ID, &chip_id);
+	ret = og0ve10_read_reg_len(sensor, OG01A1B_REG_CHIP_ID, 2, (u32 *)&chip_id);
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to read chip identifier\n",
 			__func__);

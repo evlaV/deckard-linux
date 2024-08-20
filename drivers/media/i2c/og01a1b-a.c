@@ -5,7 +5,7 @@
  *
  * Based on OV9282 driver and some register settings from intel OG01A1B driver. Adapted by arcturus.industries
  */
-
+#include <asm/unaligned.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/clkdev.h>
@@ -66,7 +66,7 @@ DEFINE_SPINLOCK(ir_spinlock);
 
 #define VIDIOC_SENSOR_PRV_S_TIMING_ADJUSTMENT _IOW('V', BASE_VIDIOC_PRIVATE + 7, struct private_timing_adjustment)
 
-#define VIDIOC_SENSOR_PRV_S_GROUP_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct sensor_private_set_group_regs)
+#define VIDIOC_SENSOR_PRV_G_REGISTER _IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct sensor_register)
 
 // Version 1.2 support histogram streaming.
 
@@ -86,15 +86,15 @@ static const char * const og01a1b_supply_name[] = {
 
 #define og01a1b_NUM_SUPPLIES ARRAY_SIZE(og01a1b_supply_name)
 
+struct sensor_register {
+	u16 reg_addr;
+	u32 reg_value;
+	u8 len;
+};
 struct sensor_private_group_reg {
 	u16 reg_addr;
 	u8 reg_value;
 	u8 group;
-};
-
-struct sensor_private_set_group_regs {
-	__u32 count;
-	struct sensor_private_group_reg __user *regs;
 };
 
 struct private_timing_adjustment {
@@ -811,6 +811,7 @@ int og01a1b_write_map(struct og01a1b_dev *sensor, struct reg_value *regs, int nu
 }
 
 
+
 static int og01a1b_read_reg(struct og01a1b_dev *sensor, u16 reg, u8 *val)
 {
 	struct i2c_client *client = sensor->i2c_client;
@@ -842,19 +843,33 @@ static int og01a1b_read_reg(struct og01a1b_dev *sensor, u16 reg, u8 *val)
 	return 0;
 }
 
-static int og01a1b_read_reg16(struct og01a1b_dev *sensor, u16 reg, u16 *val)
+static int og01a1b_read_reg_len(struct og01a1b_dev *sensor, u16 reg, u16 len, u32 *val)
 {
-	u8 hi, lo;
+	struct i2c_client *client = v4l2_get_subdevdata(&sensor->sd);
+	struct i2c_msg msgs[2];
+	u8 addr_buf[2];
+	u8 data_buf[4] = {0};
 	int ret;
 
-	ret = og01a1b_read_reg(sensor, reg, &hi);
-	if (ret)
-		return ret;
-	ret = og01a1b_read_reg(sensor, reg + 1, &lo);
-	if (ret)
-		return ret;
+	if (len > 4)
+		return -EINVAL;
 
-	*val = ((u16)hi << 8) | (u16)lo;
+	put_unaligned_be16(reg, addr_buf);
+	msgs[0].addr = client->addr;
+	msgs[0].flags = 0;
+	msgs[0].len = sizeof(addr_buf);
+	msgs[0].buf = addr_buf;
+	msgs[1].addr = client->addr;
+	msgs[1].flags = I2C_M_RD;
+	msgs[1].len = len;
+	msgs[1].buf = &data_buf[4 - len];
+
+	ret = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+	if (ret != ARRAY_SIZE(msgs))
+		return -EIO;
+
+	*val = get_unaligned_be32(data_buf);
+
 	return 0;
 }
 
@@ -1202,7 +1217,7 @@ static int og01a1b_get_ctrl(struct v4l2_ctrl *ctrl)
 	struct og01a1b_dev *sensor =
 			container_of(ctrl->handler, struct og01a1b_dev, ctrl_handler);
 
-	og01a1b_read_reg16(sensor, OG01A1B_REG_TPM_TEMPERATURE, &temperature);
+	og01a1b_read_reg_len(sensor, OG01A1B_REG_TPM_TEMPERATURE, 2, (u32 *)&temperature);
 	ctrl->val = temperature;
 	ctrl->has_changed = 1;
 	ctrl->cur.val = temperature;
@@ -1536,30 +1551,6 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
             mutex_unlock(&sensor->lock);
             break;
         }
-		case VIDIOC_SENSOR_PRV_S_GROUP_REGS:
-		{
-			mutex_lock(&sensor->lock);
-			struct sensor_private_set_group_regs *group_regs = arg;
-			printk("VIDIOC_SENSOR_PRV_S_GROUP_REGS: count:%d sensor:%d\n", group_regs->count, sensor->sensor_index);
-			if (group_regs->count > 0 && group_regs->regs) {
-				struct sensor_private_group_reg *kernel_regs = kmalloc_array(group_regs->count, sizeof(struct sensor_private_group_reg), GFP_KERNEL);
-				if (!kernel_regs) {
-					ret = -ENOMEM;
-				} else {
-					if (copy_from_user(kernel_regs, group_regs->regs, group_regs->count * sizeof(struct sensor_private_group_reg))) {
-						ret = -EFAULT;
-					} else {
-						for (int i = 0; i < group_regs->count; i++) {
-							og01a1b_add_or_set_group_reg(sensor ,kernel_regs[i].reg_addr, kernel_regs[i].reg_value, kernel_regs[i].group );
-							
-						}
-					}
-					kfree(kernel_regs);
-				}
-			}
-			mutex_unlock(&sensor->lock);
-			break;
-		}
         case VIDIOC_OG01A1B_PRV_S_GROUP_MODE:
         {
             sensor->group_mode = (uintptr_t)arg; // argument is passed as an integer value
@@ -1572,6 +1563,17 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
 			//ret = og01a1b_set_timing_adjustment(sensor, timing_adjustment);
 			sensor->current_timing_adjustment = *timing_adjustment;
 			sensor->timing_adjustment_state = TIMING_ADJUSTMENT_REQUESTED;
+			break;
+		}
+		case VIDIOC_SENSOR_PRV_G_REGISTER:
+		{
+			struct sensor_register *reg = arg;
+			u32 regval = 0;
+			ret = og01a1b_read_reg_len(sensor, reg->reg_addr, reg->len, &regval);
+			if (ret) {
+				dev_err(&sensor->i2c_client->dev, "Failed to read register 0x%04x: %d\n", reg->reg_addr, ret);
+			}
+			reg->reg_value = regval;
 			break;
 		}
         default:
@@ -1689,7 +1691,7 @@ static int og01a1b_check_chip_id(struct og01a1b_dev *sensor)
 	if (ret)
 		return ret;
 
-	ret = og01a1b_read_reg16(sensor, OG01A1B_REG_CHIP_ID, &chip_id);
+	ret = og01a1b_read_reg_len(sensor, OG01A1B_REG_CHIP_ID, 2, (u32 *)&chip_id);
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to read chip identifier\n",
 			__func__);
