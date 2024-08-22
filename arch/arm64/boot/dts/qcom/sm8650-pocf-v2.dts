@@ -380,3 +380,11 @@
 		 <&lpass_wsamacro 1>,
 		 <&lpass_vamacro 0>;
 };
+
+&mdss_dsi0 {
+	panel: panel@0 {
+		// backlight ramp setup
+		backlight_ramp_step_size = <10>;
+		backlight_ramp_step_time_msec = <50>;
+	};
+};
