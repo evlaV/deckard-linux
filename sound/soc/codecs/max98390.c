@@ -790,7 +790,6 @@ static int max98390_dsm_init(struct snd_soc_component *component)
 {
 	int ret;
 	int param_size, param_start_addr;
-	char filename[128];
 	const char *vendor, *product;
 	struct max98390_priv *max98390 =
 		snd_soc_component_get_drvdata(component);
@@ -800,19 +799,25 @@ static int max98390_dsm_init(struct snd_soc_component *component)
 	vendor = dmi_get_system_info(DMI_SYS_VENDOR);
 	product = dmi_get_system_info(DMI_PRODUCT_NAME);
 
-	if (!strcmp(max98390->dsm_param_name, "default")) {
-		if (vendor && product) {
-			snprintf(filename, sizeof(filename),
-				"dsm_param_%s_%s.bin", vendor, product);
+	// First check if filename has been set yet
+	if(strncmp(max98390->filename, "dsm_param", strlen("dsm_param"))){
+		printk("setting up default file\n");
+		if (!strcmp(max98390->dsm_param_name, "default")) {
+			if (vendor && product) {
+				snprintf(max98390->filename, sizeof(max98390->filename),
+					"dsm_param_%s_%s.bin", vendor, product);
+			} else {
+				sprintf(max98390->filename, "dsm_param.bin");
+			}
 		} else {
-			sprintf(filename, "dsm_param.bin");
+			snprintf(max98390->filename, sizeof(max98390->filename), "%s",
+				max98390->dsm_param_name);
 		}
-	} else {
-		snprintf(filename, sizeof(filename), "%s",
-			max98390->dsm_param_name);
 	}
-	ret = request_firmware(&fw, filename, component->dev);
+
+	ret = request_firmware(&fw, max98390->filename, component->dev);
 	if (ret) {
+		dev_err(component->dev, "Requested Firmware %s Not Found! Trying default\n", max98390->filename);
 		ret = request_firmware(&fw, "dsm_param.bin", component->dev);
 		if (ret) {
 			ret = request_firmware(&fw, "dsmparam.bin",
@@ -824,7 +829,8 @@ static int max98390_dsm_init(struct snd_soc_component *component)
 		}
 	}
 
-	dev_info(component->dev, "Loading Firmware\n");
+	dev_info(component->dev, "Found Firmware %s", max98390->filename);
+
 	dev_dbg(component->dev,
 		"max98390: param fw size %zd\n",
 		fw->size);
@@ -943,6 +949,9 @@ static int max98390_probe(struct snd_soc_component *component)
 			(max98390->ambient_temp_value) & 0x000000ff);
 	}
 
+    /* save a pointer to the component in priv for use with sysfs entries */
+    max98390->component = component;
+
 	return 0;
 }
 
@@ -1014,6 +1023,62 @@ static void max98390_slot_config(struct i2c_client *i2c,
 	else
 		max98390->i_l_slot = 1;
 }
+
+/* sysfs helper for loading different firmware files */
+static ssize_t firmware_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct max98390_priv *max98390 = dev_get_drvdata(dev);
+	return scnprintf(buf, PAGE_SIZE, "%s", max98390->filename);
+}
+
+static ssize_t firmware_store(struct device *dev, struct device_attribute *attr,const char *buf, size_t count)
+{
+	struct max98390_priv *max98390 = dev_get_drvdata(dev);
+
+	// Max size 128 taken from init function
+	snprintf(max98390->filename, 128, "%.*s",
+				(int)min(count, 128 - 1), buf);
+
+	dev_info(dev, "MAX98390 firmware set to %s", max98390->filename);
+	return count;
+}
+
+static const char * const load_modes[] = {
+	"load", "unload"
+};
+
+static ssize_t load_store(struct device *dev, struct device_attribute *attr,const char *buf, size_t count)
+{
+	int ret, mode;
+	struct max98390_priv *max98390 = dev_get_drvdata(dev);
+	struct snd_soc_component *component = max98390->component;
+
+	mode = sysfs_match_string(load_modes, buf);
+	if (mode < 0) {
+		return mode;
+	}
+
+	ret = max98390_dsm_init(component);
+	if ( ret ) {
+		return ret;
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(firmware);
+static DEVICE_ATTR_WO(load);
+
+static struct attribute *max98390_attrs[] = {
+	&dev_attr_firmware.attr,
+	&dev_attr_load.attr,
+	NULL,
+};
+
+static const struct attribute_group max98390_attr_group = {
+	.name = "max98390",
+	.attrs = max98390_attrs,
+};
 
 static int max98390_i2c_probe(struct i2c_client *i2c)
 {
@@ -1099,6 +1164,14 @@ static int max98390_i2c_probe(struct i2c_client *i2c)
 	ret = devm_snd_soc_register_component(&i2c->dev,
 			&soc_codec_dev_max98390,
 			max98390_dai, ARRAY_SIZE(max98390_dai));
+
+    /* Setup sysfs files */
+    dev_set_drvdata(&i2c->dev, max98390);
+    ret = sysfs_create_group(&i2c->dev.kobj, &max98390_attr_group);
+    if (ret < 0) {
+        dev_err(&i2c->dev, "failed to create MAX98390 sysfs files\n");
+        return ret;
+    }
 
 	return ret;
 }
