@@ -1150,25 +1150,16 @@ static int dpu_plane_virtual_assign_resources(struct drm_crtc *crtc,
 	struct dpu_kms *dpu_kms = _dpu_plane_get_kms(plane);
 	struct dpu_rm_sspp_requirements reqs;
 	struct dpu_plane_state *pstate;
-	struct dpu_sw_pipe *pipe;
-	struct dpu_sw_pipe *r_pipe;
-	struct dpu_sw_pipe_cfg *pipe_cfg;
-	struct dpu_sw_pipe_cfg *r_pipe_cfg;
+	struct dpu_plane *pdpu = to_dpu_plane(plane);
 	const struct msm_format *fmt;
 	uint32_t max_linewidth;
-	int i;
+	int i, lm_num, mxcfg_id;
 
 	if (plane_state->crtc)
 		crtc_state = drm_atomic_get_new_crtc_state(state,
 							   plane_state->crtc);
 
 	pstate = to_dpu_plane_state(plane_state);
-
-	/* loop below code for another pair later */
-	pipe = &pstate->pipe[0];
-	r_pipe = &pstate->pipe[1];
-	pipe_cfg = &pstate->pipe_cfg[0];
-	r_pipe_cfg = &pstate->pipe_cfg[1];
 
 	for (i = 0; i < PIPES_PER_PLANE; i++)
 		pstate->pipe[i].sspp = NULL;
@@ -1185,41 +1176,47 @@ static int dpu_plane_virtual_assign_resources(struct drm_crtc *crtc,
 
 	max_linewidth = dpu_kms->catalog->caps->max_linewidth;
 
-	pipe->sspp = dpu_rm_reserve_sspp(&dpu_kms->rm, global_state, crtc, &reqs);
-	if (!pipe->sspp)
-		return -ENODEV;
+	lm_num = dpu_crtc_get_lm_num(crtc_state);
+	for (mxcfg_id = 0; mxcfg_id < (lm_num + 1) / 2; mxcfg_id++) {
+		for (i = PIPES_PER_LM_PAIR * mxcfg_id; i < (mxcfg_id + 1) * PIPES_PER_LM_PAIR; i++) {
+			struct dpu_sw_pipe *pipe = &pstate->pipe[i];
+			struct dpu_sw_pipe *r_pipe = &pstate->pipe[i + 1];
+			struct dpu_sw_pipe_cfg *pipe_cfg = &pstate->pipe_cfg[i];
+			struct dpu_sw_pipe_cfg *r_pipe_cfg = &pstate->pipe_cfg[i + 1];
 
-	if (drm_rect_width(&r_pipe_cfg->src_rect) == 0) {
-		pipe->multirect_index = DPU_SSPP_RECT_SOLO;
-		pipe->multirect_mode = DPU_SSPP_MULTIRECT_NONE;
+			if (!pipe_cfg->valid)
+				break;
 
-		r_pipe->multirect_index = DPU_SSPP_RECT_SOLO;
-		r_pipe->multirect_mode = DPU_SSPP_MULTIRECT_NONE;
-
-		r_pipe->sspp = NULL;
-	} else {
-		if (dpu_plane_is_multirect_parallel_capable(pipe, pipe_cfg, fmt, max_linewidth) &&
-		    dpu_plane_is_multirect_parallel_capable(r_pipe, r_pipe_cfg, fmt, max_linewidth) &&
-		    (test_bit(DPU_SSPP_SMART_DMA_V1, &pipe->sspp->cap->features) ||
-		     test_bit(DPU_SSPP_SMART_DMA_V2, &pipe->sspp->cap->features))) {
-			r_pipe->sspp = pipe->sspp;
-
-			pipe->multirect_index = DPU_SSPP_RECT_0;
-			pipe->multirect_mode = DPU_SSPP_MULTIRECT_PARALLEL;
-
-			r_pipe->multirect_index = DPU_SSPP_RECT_1;
-			r_pipe->multirect_mode = DPU_SSPP_MULTIRECT_PARALLEL;
-		} else {
-			/* multirect is not possible, use two SSPP blocks */
-			r_pipe->sspp = dpu_rm_reserve_sspp(&dpu_kms->rm, global_state, crtc, &reqs);
-			if (!r_pipe->sspp)
+			pipe->sspp = dpu_rm_reserve_sspp(&dpu_kms->rm, global_state, crtc, &reqs);
+			if (!pipe->sspp)
 				return -ENODEV;
 
-			pipe->multirect_index = DPU_SSPP_RECT_SOLO;
-			pipe->multirect_mode = DPU_SSPP_MULTIRECT_NONE;
+			/*
+			 * Only check multi-rect opportunity for the 2nd pipe
+			 * in a pair to avoid the multi-rect cross mixer pairs.
+			 */
+			if (i % 2 &&
+			    r_pipe_cfg->valid &&
+			    drm_rect_width(&r_pipe_cfg->src_rect) != 0 &&
+			    dpu_plane_is_multirect_parallel_capable(pipe, pipe_cfg, fmt, max_linewidth) &&
+			    dpu_plane_is_multirect_parallel_capable(r_pipe, r_pipe_cfg, fmt, max_linewidth) &&
+			    (test_bit(DPU_SSPP_SMART_DMA_V1, &pipe->sspp->cap->features) ||
+			     test_bit(DPU_SSPP_SMART_DMA_V2, &pipe->sspp->cap->features))) {
+				pipe->multirect_index = DPU_SSPP_RECT_0;
+				pipe->multirect_mode = DPU_SSPP_MULTIRECT_PARALLEL;
 
-			r_pipe->multirect_index = DPU_SSPP_RECT_SOLO;
-			r_pipe->multirect_mode = DPU_SSPP_MULTIRECT_NONE;
+				DPU_DEBUG_PLANE(pdpu, "allocating sspp_%d for pipe %d and set pipe %d as multi-rect\n",
+						pipe->sspp->idx - SSPP_NONE, i, i + 1);
+				r_pipe->sspp = pipe->sspp;
+				r_pipe->multirect_index = DPU_SSPP_RECT_1;
+				r_pipe->multirect_mode = DPU_SSPP_MULTIRECT_PARALLEL;
+				i++;
+			} else {
+				pipe->multirect_index = DPU_SSPP_RECT_SOLO;
+				pipe->multirect_mode = DPU_SSPP_MULTIRECT_NONE;
+				DPU_DEBUG_PLANE(pdpu, "allocating sspp_%d for pipe %d.\n",
+						pipe->sspp->idx - SSPP_NONE, i);
+			}
 		}
 	}
 
