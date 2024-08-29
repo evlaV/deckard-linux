@@ -222,18 +222,18 @@ struct og01a1b_dev {
 	bool is_left_sensor;
 	struct private_timing_adjustment current_timing_adjustment;
 	enum og01a1b_timing_adjustment_state timing_adjustment_state;
+	int queue_index;
 };
 
 struct og01a1b_dev* sensors[4];
 int numSensors = 0;
 int sync_sensor_index = -1;
 
-struct workqueue_struct *left_sensor_workqueue = NULL;
-EXPORT_SYMBOL(left_sensor_workqueue);
 
-
-struct workqueue_struct *right_sensor_workqueue = NULL;
-EXPORT_SYMBOL(right_sensor_workqueue);
+// These workqueues are shared between multiple sensors that are either og01a1b or og0ve10
+// They should be assigned the same workqueue if they share an i2c bus
+struct workqueue_struct *sensor_workqueues[2] = {NULL, NULL};
+EXPORT_SYMBOL(sensor_workqueues);
 
 static inline struct og01a1b_dev *to_og01a1b_dev(struct v4l2_subdev *sd)
 {
@@ -1303,13 +1303,8 @@ static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp, u64 sof_
 		sensor->timing_adjustment_state = TIMING_READY_FOR_GROUP_RESTORE;
 	}
 	sensor->last_vc = vc;
-		if(sensor->is_left_sensor) {
-		if(left_sensor_workqueue != NULL)
-			queue_work(left_sensor_workqueue, &sensor->work);
-	}
-	else {
-		if(right_sensor_workqueue != NULL)
-			queue_work(right_sensor_workqueue, &sensor->work);
+	if(sensor_workqueues[sensor->queue_index] != NULL) {
+		queue_work(sensor_workqueues[sensor->queue_index], &sensor->work);
 	}
 }
 
@@ -1821,49 +1816,26 @@ static int og01a1b_probe(struct i2c_client *client)
     }
 
 	if(numSensors == 0) {
-		{
-			left_sensor_workqueue = alloc_workqueue("left_sensor_workqueue", WQ_UNBOUND | WQ_HIGHPRI, 1);
-			
-			// Define workqueue attributes
-			struct workqueue_attrs *attrs;
-			attrs = alloc_workqueue_attrs();
-			if (!attrs) {
-				// Handle allocation failure
-				return -ENOMEM;
-			}
-			cpumask_set_cpu(2, attrs->cpumask); // Set CPU affinity to CPU 2
+		for (int i = 0; i < 2; i++) {
+            sensor_workqueues[i] = alloc_workqueue("sensor_workqueue", WQ_UNBOUND | WQ_HIGHPRI, 1);
 
-			// Apply workqueue attributes
-			if (apply_workqueue_attrs(left_sensor_workqueue, attrs)) {
-				// Handle attribute application failure
-				free_workqueue_attrs(attrs);
-				return -EINVAL;
-			}
-			free_workqueue_attrs(attrs);
-		}
+            // Define workqueue attributes
+            struct workqueue_attrs *attrs;
+            attrs = alloc_workqueue_attrs();
+            if (!attrs) {
+                // Handle allocation failure
+                return -ENOMEM;
+            }
+            cpumask_set_cpu(i + 2, attrs->cpumask); // Set CPU affinity to CPU 2 and 3
 
-	
-		{
-			
-			right_sensor_workqueue = alloc_workqueue("right_sensor_workqueue", WQ_UNBOUND | WQ_HIGHPRI, 1);
-		
-			// Define workqueue attributes
-			struct workqueue_attrs *attrs;
-			attrs = alloc_workqueue_attrs();
-			if (!attrs) {
-				// Handle allocation failure
-				return -ENOMEM;
-			}
-			cpumask_set_cpu(3, attrs->cpumask); // Set CPU affinity to CPU 3
-
-			// Apply workqueue attributes
-			if (apply_workqueue_attrs(right_sensor_workqueue, attrs)) {
-				// Handle attribute application failure
-				free_workqueue_attrs(attrs);
-				return -EINVAL;
-			}
-			free_workqueue_attrs(attrs);
-		}
+            // Apply workqueue attributes
+            if (apply_workqueue_attrs(sensor_workqueues[i], attrs)) {
+                // Handle attribute application failure
+                free_workqueue_attrs(attrs);
+                return -EINVAL;
+            }
+            free_workqueue_attrs(attrs);
+        }
 	}
 
 
@@ -1972,6 +1944,17 @@ static int og01a1b_probe(struct i2c_client *client)
 		goto free_ctrls;
 
 	sensor->current_mode = &og01a1b_mode_data_1280x1024;
+
+	// Read the sensor queue index from the device tree
+    ret = of_property_read_u32(dev->of_node, "sensor-queue-index", &sensor->queue_index);
+    if (ret) {
+        dev_err(dev, "Failed to read 'sensor-queue-index' property. Defaulting to 0.\n");
+		sensor->queue_index = 0;
+    }
+	if (sensor->queue_index > 1) {
+		dev_err(dev, "Invalid sensor-queue-index value. Defaulting to 0.\n");
+		sensor->queue_index = 0;
+	}
 
 	return 0;
 

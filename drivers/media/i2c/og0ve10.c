@@ -201,11 +201,15 @@ struct og0ve10_dev {
 	struct private_timing_adjustment current_timing_adjustment;
 	enum og0ve10_timing_adjustment_state timing_adjustment_state;
 	int lastGroup;
+
+	int queue_index;
 };
 
 struct og0ve10_dev *sensors_og0VE10[4];
 int numSensors_og0VE10 = 0;
 int sync_sensor_index_og0VE10 = -1;
+
+extern struct workqueue_struct *sensor_workqueues[2];
 
 extern struct workqueue_struct *left_sensor_workqueue;
 extern struct workqueue_struct *right_sensor_workqueue;
@@ -604,18 +608,10 @@ static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp,
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
 	sensor->last_sof_ts = sof_timestamp;
 	sensor->last_sof_isr_ts = sof_isr_timestamp;
-	if (sensor->is_left_sensor) {
-		if (left_sensor_workqueue != NULL) {
-			queue_work(left_sensor_workqueue, &sensor->work);
-		} else {
-			printk("Failed to get queue for left sensor\n");
-		}
+	if (sensor_workqueues[sensor->queue_index] != NULL) {
+		queue_work(sensor_workqueues[sensor->queue_index], &sensor->work);
 	} else {
-		if (right_sensor_workqueue != NULL) {
-			queue_work(right_sensor_workqueue, &sensor->work);
-		} else {
-			printk("Failed to get queue for right sensor\n");
-		}
+		printk("Failed to get queue for sensor\n");
 	}
 }
 
@@ -1273,6 +1269,14 @@ static int og0ve10_probe(struct i2c_client *client)
 		goto free_ctrls;
 
 	sensor->current_mode = &og0ve10_mode_data_640x480;
+
+	// Read the sensor queue index from the device tree
+	ret = of_property_read_u32(dev->of_node, "sensor-queue-index", &sensor->queue_index);
+	if (ret) {
+		dev_err(dev, "Failed to read 'sensor-queue-index' property. Defaulting to 0.\n");
+		sensor->queue_index = 0;
+		return ret;
+	}
 
 	return 0;
 

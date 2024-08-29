@@ -473,6 +473,7 @@
 	cam_u@60 {
 		compatible = "ovti,og0ve10x";
 		reg = <0x60>;
+        sensor-queue-index = <1>;
 
 		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 28 GPIO_ACTIVE_HIGH>;
@@ -500,6 +501,7 @@
 	cam_u@3e {
 		compatible = "ovti,og0ve10x";
 		reg = <0x3E>;
+        sensor-queue-index = <1>;
 
 		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 68 GPIO_ACTIVE_HIGH>;
@@ -529,6 +531,7 @@
 	cam@60 {
 		compatible = "ovti,og01a1bx";
 		reg = <0x60>;
+        sensor-queue-index = <0>;
 
 		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 123 GPIO_ACTIVE_HIGH>;
@@ -557,6 +560,7 @@
 	cam@36 {
 		compatible = "ovti,og01a1bx";
 		reg = <0x36>;
+        sensor-queue-index = <0>;
 
 		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 121 GPIO_ACTIVE_HIGH>;
