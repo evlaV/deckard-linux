@@ -18,6 +18,9 @@
 #include "camss-csid-gen2.h"
 #include "camss.h"
 
+#define CREATE_TRACE_POINTS
+#include "trace.h"
+
 /* The CSID 2 IP-block is different from the others,
  * and is of a bare-bones Lite version, with no PIX
  * interface support. As a result of that it has an
@@ -500,6 +503,8 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	u64 ts_monotonic_raw = ktime_get_raw_ns();
 	u64 ts_monotonic = ktime_get_ns();
 
+	trace_csid_isr(0);
+
 	top_status = readl_relaxed(csid->base + CSID_TOP_IRQ_STATUS);
 	writel_relaxed(top_status, csid->base + CSID_TOP_IRQ_CLEAR);
 
@@ -599,6 +604,8 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		}
 	}
 
+	trace_csid_isr(1);
+
 	if (top_status & BIT(TOP_IRQ_STATUS_BUF_DONE)) {
 		buf_status = readl_relaxed(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 		writel_relaxed(buf_status, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
@@ -623,10 +630,13 @@ static irqreturn_t csid_isr(int irq, void *dev)
 
 	writel_relaxed(BIT(IRQ_CMD_CLEAR), csid->base + CSID_IRQ_CMD);
 
+	trace_csid_isr(2);
+
 	if (top_status & BIT(TOP_IRQ_STATUS_RESET_DONE))
 		complete(&csid->reset_complete);
 
 
+	trace_csid_isr(3);
 
 	return IRQ_HANDLED;
 }
@@ -638,6 +648,8 @@ static irqreturn_t vfe_isr(int irq, void *dev)
 	u32 status;
 
 	// note: should not be getting IFE interrupts unless there's an error
+
+	trace_vfe_isr(0);
 
 	status = readl_relaxed(vfe_base + VFE_IRQ_STATUS(0));
 	writel_relaxed(status, vfe_base + VFE_IRQ_CLEAR(0));
@@ -722,7 +734,9 @@ static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
 	void* bhistFHDataAddr = NULL;
 	void* bhistDataAddr = NULL;
 
+	trace_csid_isr_wm_done(0);
 	spin_lock_irqsave(&csid->output_lock, flags);
+	trace_csid_isr_wm_done(1);
 
 	if(!csid->out_buf[0]) {
 		dev_warn(csid->camss->dev, "buf done without a corresponding buffer\n");
