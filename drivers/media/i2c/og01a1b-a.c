@@ -1817,7 +1817,7 @@ static int og01a1b_probe(struct i2c_client *client)
 
 	if(numSensors == 0) {
 		for (int i = 0; i < 2; i++) {
-            sensor_workqueues[i] = alloc_workqueue("sensor_workqueue", WQ_UNBOUND | WQ_HIGHPRI, 1);
+            sensor_workqueues[i] = alloc_workqueue("sensor_workqueue%d", WQ_UNBOUND | WQ_HIGHPRI | WQ_SYSFS, 1, i);
 
             // Define workqueue attributes
             struct workqueue_attrs *attrs;
