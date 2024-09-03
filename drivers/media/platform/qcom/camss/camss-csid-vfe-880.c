@@ -503,7 +503,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	u64 ts_monotonic_raw = ktime_get_raw_ns();
 	u64 ts_monotonic = ktime_get_ns();
 
-	trace_csid_isr(0);
+	trace_csid_isr(0, csid->id);
 
 	top_status = readl_relaxed(csid->base + CSID_TOP_IRQ_STATUS);
 	writel_relaxed(top_status, csid->base + CSID_TOP_IRQ_CLEAR);
@@ -522,6 +522,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 
 	if((rdi_status & 0x0010) || (ipp_status & 0x0010)) // Test if PATH_INFO_SOF is set
 	{
+		trace_csid_isr_sof(0, csid->id);
 		//printk("csid sof");
 		// Just use monotonic raw 
 		u64 kernel_ts_raw_to_monotonic_offset = ts_monotonic-ts_monotonic_raw;
@@ -602,9 +603,10 @@ static irqreturn_t csid_isr(int irq, void *dev)
 			csid->last_sof_kernel_ts = ts_monotonic_raw;
 			csid->cur_sof_isp_timestamp_converted = 0;
 		}
+		trace_csid_isr_sof(1, csid->id);
 	}
 
-	trace_csid_isr(1);
+	//trace_csid_isr(1);
 
 	if (top_status & BIT(TOP_IRQ_STATUS_BUF_DONE)) {
 		buf_status = readl_relaxed(csid->base + CSID_BUF_DONE_IRQ_STATUS);
@@ -630,13 +632,13 @@ static irqreturn_t csid_isr(int irq, void *dev)
 
 	writel_relaxed(BIT(IRQ_CMD_CLEAR), csid->base + CSID_IRQ_CMD);
 
-	trace_csid_isr(2);
+	//trace_csid_isr(2);
 
 	if (top_status & BIT(TOP_IRQ_STATUS_RESET_DONE))
 		complete(&csid->reset_complete);
 
 
-	trace_csid_isr(3);
+	//trace_csid_isr(3);
 
 	return IRQ_HANDLED;
 }
@@ -734,9 +736,9 @@ static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
 	void* bhistFHDataAddr = NULL;
 	void* bhistDataAddr = NULL;
 
-	trace_csid_isr_wm_done(0);
+	trace_csid_isr_wm_done(0, csid->id);
 	spin_lock_irqsave(&csid->output_lock, flags);
-	trace_csid_isr_wm_done(1);
+	trace_csid_isr_wm_done(1, csid->id);
 
 	if(!csid->out_buf[0]) {
 		dev_warn(csid->camss->dev, "buf done without a corresponding buffer\n");
@@ -808,6 +810,7 @@ static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
 
 	spin_unlock_irqrestore(&csid->output_lock, flags);
 	vb2_buffer_done(&ready_buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
+	trace_csid_isr_wm_done(2, csid->id);
 	return;
 
 out_unlock:

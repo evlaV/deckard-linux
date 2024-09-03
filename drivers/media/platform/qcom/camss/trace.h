@@ -9,27 +9,45 @@
 #include <linux/tracepoint.h>
 
 TRACE_EVENT(csid_isr_wm_done,
-	TP_PROTO(unsigned int arg1),
-	TP_ARGS(arg1),
+	TP_PROTO(unsigned int arg1, unsigned int csid_id),
+	TP_ARGS(arg1, csid_id),
 	TP_STRUCT__entry(
 		__field(unsigned int, arg1)
+		__field(unsigned int, csid_id)
 	),
 	TP_fast_assign(
 		__entry->arg1 = arg1;
+		__entry->csid_id = csid_id;
 	),
-	TP_printk("arg1 = %u", __entry->arg1)
+	TP_printk("arg1 = %u, csid_id = %u", __entry->arg1, __entry->csid_id)
+);
+
+TRACE_EVENT(csid_isr_sof,
+	TP_PROTO(unsigned int arg1, unsigned int csid_id),
+	TP_ARGS(arg1, csid_id),
+	TP_STRUCT__entry(
+		__field(unsigned int, arg1)
+		__field(unsigned int, csid_id)
+	),
+	TP_fast_assign(
+		__entry->arg1 = arg1;
+		__entry->csid_id = csid_id;
+	),
+	TP_printk("arg1 = %u, csid_id = %u", __entry->arg1, __entry->csid_id)
 );
 
 TRACE_EVENT(csid_isr,
-	TP_PROTO(unsigned int arg1),
-	TP_ARGS(arg1),
+	TP_PROTO(unsigned int arg1, unsigned int csid_id),
+	TP_ARGS(arg1, csid_id),
 	TP_STRUCT__entry(
 		__field(unsigned int, arg1)
+		__field(unsigned int, csid_id)
 	),
 	TP_fast_assign(
 		__entry->arg1 = arg1;
+		__entry->csid_id = csid_id;
 	),
-	TP_printk("arg1 = %u", __entry->arg1)
+	TP_printk("arg1 = %u, csid_id = %u", __entry->arg1, __entry->csid_id)
 );
 
 TRACE_EVENT(vfe_isr,
