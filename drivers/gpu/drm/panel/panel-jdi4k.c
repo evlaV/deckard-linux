@@ -104,8 +104,8 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 // Modeset params: terms are defined per panel.
 #define H_PIXELS           2160
 
-#define V_BACK_PORCH       20
-#define V_SYNC             1
+#define V_BACK_PORCH       10
+#define V_SYNC             10
 #define NUM_PANELS         2
 
 // Brightness settings
@@ -119,13 +119,11 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 #define CAMERA_TRIGGER_OFFSET 50
 
 #ifdef PANEL_FIFO_MODE
-	#define H_FRONT_PORCH      64
-	#define H_BACK_PORCH       64
-	#define H_SYNC             32
+	#define H_FRONT_PORCH      40
+	#define H_BACK_PORCH       10
+	#define H_SYNC             90
 	#define V_LINES            2160
-	#define V_FRONT_PORCH_120  123
-	#define V_FRONT_PORCH_90   891
-	#define V_FRONT_PORCH_80   1275
+	#define V_FRONT_PORCH_120  290
 	
 	// DSI DCS command related
 
@@ -213,31 +211,7 @@ static const struct drm_display_mode modes[3] = {
 		.vsync_start = V_LINES + V_FRONT_PORCH_120,
 		.vsync_end = V_LINES + V_FRONT_PORCH_120 + V_SYNC,
 		.vtotal = V_LINES + V_FRONT_PORCH_120 + V_SYNC + V_BACK_PORCH,
-	},
-	{
-		.name = "4320x2160_90",
-		.clock = PIXEL_CLOCK_KHZ_90 * NUM_PANELS,
-		.hdisplay = H_PIXELS * NUM_PANELS,
-		.hsync_start = (H_PIXELS + H_FRONT_PORCH) * NUM_PANELS,
-		.hsync_end = (H_PIXELS + H_FRONT_PORCH + H_SYNC) * NUM_PANELS,
-		.htotal = (H_PIXELS + H_FRONT_PORCH + H_SYNC + H_BACK_PORCH) * NUM_PANELS,
-		.vdisplay = V_LINES,
-		.vsync_start = V_LINES + V_FRONT_PORCH_90,
-		.vsync_end = V_LINES + V_FRONT_PORCH_90 + V_SYNC,
-		.vtotal = V_LINES + V_FRONT_PORCH_90 + V_SYNC + V_BACK_PORCH,
-	},
-	{
-		.name = "4320x2160_80",
-		.clock = PIXEL_CLOCK_KHZ_80 * NUM_PANELS,
-		.hdisplay = H_PIXELS * NUM_PANELS,
-		.hsync_start = (H_PIXELS + H_FRONT_PORCH) * NUM_PANELS,
-		.hsync_end = (H_PIXELS + H_FRONT_PORCH + H_SYNC) * NUM_PANELS,
-		.htotal = (H_PIXELS + H_FRONT_PORCH + H_SYNC + H_BACK_PORCH) * NUM_PANELS,
-		.vdisplay = V_LINES,
-		.vsync_start = V_LINES + V_FRONT_PORCH_80,
-		.vsync_end = V_LINES + V_FRONT_PORCH_80 + V_SYNC,
-		.vtotal = V_LINES + V_FRONT_PORCH_80 + V_SYNC + V_BACK_PORCH,
-	},
+	}
 };
 
 void _get_per_mode_settings(rad_modes_t mode, unsigned * panel_vfp, unsigned * vid_vs_delay, unsigned * vbp)
@@ -332,10 +306,10 @@ static void rad_init_dsc_config(struct rad *ctx)
 {
 	ctx->dsc_cfg = (struct drm_dsc_config) {
 		.dsc_version_major = 0x1,
-		.dsc_version_minor = 0x2,
-		.slice_height = 48,
+		.dsc_version_minor = 0x1,
+		.slice_height = 16,
 		.slice_width = 540,
-		.slice_count = 4,
+		.slice_count = 4, // What should be the slice count?
 		.bits_per_component = 8,
 		.bits_per_pixel = 8 << 4,
 		.block_pred_enable = true,
@@ -352,69 +326,53 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 
 	u8 pps_cmd[1 + sizeof(struct drm_dsc_picture_parameter_set)];
 	unsigned RTN = 66, NL = 2160;
-	unsigned VFP, VBP, VID_VS_DELAY;
-	unsigned GPO1_TES1 = 233, GPO1_TEW1 = 17;
+	unsigned VFP, VBP, VID_VS_DELAY;	// Display Timing
+	unsigned GPO1_TES1 = 4068, GPO1_TEW1 = 459;
     _get_per_mode_settings(ctx->current_mode, &VFP, &VID_VS_DELAY, &VBP);
 
 	pps_cmd[0] = 0xe6;
 	drm_dsc_pps_payload_pack((void*) &pps_cmd[1], &ctx->dsc_cfg);
 
-	// note:
-	// - changed VFP from 2013 to 221 (for 120Hz mode)
-	// - changed last byte of 0xb6 command to 0x70 (based on datasheet)
-	// - disabled broken 0xc6 command (has wrong parameters based on datasheet)
-
-	DSI_CMD(0xb0, 0x04), // mfg register unlock
-	DSI_CMD(0xd6, 0x00), // skip loading register defaults out of sleep
-	// DSI-2 Control Setting (C option): SELDL=2 (3 lane), PN2PTXR=1 (one port)
-#ifdef PANEL_FIFO_MODE
-	DSI_CMD(0xb6, 0x20, 0x6b, 0x80, 0x06, 0x33, 0x9a, 0x00, 0x1a, 0x7a), //note the 0x7a last byte is needed to avoid corruption
-	// Display Mode: VRM=0b010, DM=1 (FIFO mode), TE_ON_VIDEO=1 (TE follows TE_MODE setting)
-	DSI_CMD(0xb7, 0x54, 0x00, 0x00, 0x00),
-#else	
-	// why 0x7a for the last byte? 0x70 vs 0x7a doesn't appear to change anything
-	DSI_CMD(0xb6, 0x20, 0x6b, 0x80, 0x06, 0x33, 0x8a, 0x00, 0x1a, 0x7a), //note the 0x7a last byte is needed to avoid corruption
-	// Display Mode: VRM=0b010, DM=0 (video mode), TE_ON_VIDEO=1 (TE follows TE_MODE setting)
-	DSI_CMD(0xb7, 0x52, 0x00, 0x00, 0x00),
-#endif		
+	DSI_CMD(0xb0, 0x00), // mfg register unlock
+	// DSI-2 Control Setting)
+	DSI_CMD(0xb6, 0x20, 0x6b, 0x00, 0x06, 0x33, 0x98, 0x00, 0x1a, 0x7a), //note the 0x7a last byte is needed to avoid corruption
 	// Generic pin output setting: GPO1_TES1=233, GPO1_TEW1=17
 	// GPO2 is routed out TE, and is set to trigger 50 lines before, and last 50 lines longer, to trigger camera capture on the panel tester
-	DSI_CMD(0xb9, BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00, 0x00, 0x00, BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET), BE16(GPO1_TEW1+CAMERA_TRIGGER_OFFSET*2));
+	DSI_CMD(0xb9, 0x0f, 0xef, 0x01, 0xcb, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00),
 	// Display Timing
-	//DSI_CMD(0xc0, RTN, 0x86, VBP&0xff, VBP>>8, BE16(NL), BE16(VFP)),
-	// this was changed to 0x3a but mode_set function changes it back to 66 ?
-	// (anyway RTN doesn't seem to have any effect in video through mode?)
-	DSI_CMD(0xc0, 0x3A, 0x86, VBP&0xff, VBP>>8, BE16(NL), BE16(VFP)),
-	// Source Setting
-	DSI_CMD(0xf1,0x1e); // set offset for next write ( 0xc6 )
-	DSI_CMD(0xc6,0x70,0x08,0xd0,0x02,0x21,0x6f,0x08,0x5a,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00); // video mode timings
-	// Scaling Mode Setting: RTSON=0
+	DSI_CMD(0xc0, 0x3B, 0x86, 0x19, 0x00, 0x08, 0x70, 0x00, 0x08, 0x00, 0x00, 0x08, 0x3B, 0x00, 0x00, 0x19, 0x01, 0x22),
+    // Source Setting
+	DSI_CMD(0xc6,0x08,0x70,0x28,0x48,0x00,0x00,0x13,0x21,0xff,0x00,0x0f,0x01,0x14,0x17,0x00,0x00,0x00,0x02,0x40,0x0C,0x00,0x00,0x00,
+            0x20,0x00,0x00,0x00,0x40,0x00,0x00,0x70,0x08,0xD0,0x02,0x21,0x6F,0x08,0x5A,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00),
+	// Scaling Mode Setting
 	DSI_CMD(0xcd, 0x00),
 	// Compression Mode Setting:
 	// COMPV_METHOD=0x8b (DSC 1/3 for DSI)
 	// DATA_SWAP=1 (MSB first),
 	// COMPSYNA_METHOD=0x8b (DSC 1/3 for partial frame memory)
 	DSI_CMD(0xcf, 0x8b, 0x00, 0x80, 0x46, 0x61, 0x00, 0x8b),
-	// VID VS delay Setting: to shift when frame internal scanout starts
-	DSI_CMD(0xec, BE16(VID_VS_DELAY), 0x00, 0x00, 0x00),
-
-	//TE and TE2 settings
-	DSI_CMD(0xbe, 0x00, 0x6A, 0x02 ); //TE=GPIO2 0x6A, TE2=internal vsync 0x02
-
 	// PPS Setting
 	_DSI_CMD(pps_cmd);
-	DSI_CMD(MIPI_DCS_GET_COMPRESSION_MODE, 0x01), // compression enabled
-	DSI_CMD(MIPI_DCS_SET_TEAR_SCANLINE, 0x00, 0x00), // turn on TE at line 0
+	// VID VS delay Setting: to shift when frame internal scanout starts
+	DSI_CMD(0xec, 0x04, 0x58),
+    // SSW setting
+    DSI_CMD(0xef,0x00,0x24,0x00,0x00,0x1f,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x03,0x00,0x00,0x00,0x08,0x00,0x00,0x00,0x00,0x00,0x0A,0x0A,0x00,0x00,0x00,0x03,0x1D,0x01,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00),
+	// NVM Load
+	DSI_CMD(0xd6, 0x00),
+    DSI_CMD(0xb0, 0x03), // mfg register lock
+	//TE and TE2 settings  TODO: do we still need this?
+	//DSI_CMD(0xbe, 0x00, 0x6A, 0x02 ), //TE=GPIO2 0x6A, TE2=internal vsync 0x02
 	DSI_CMD(MIPI_DCS_SET_TEAR_ON, 0x00), // turn on TE
-	DSI_CMD(MIPI_DCS_SET_ADDRESS_MODE, 0x00), // Set scan out order ( default )
-	DSI_CMD(MIPI_DCS_SET_PIXEL_FORMAT, 0x77), // 24 bits / pixel ( default )
+	DSI_CMD(MIPI_DCS_SET_ADDRESS_MODE, 0x40), // Set scan out order / inversion setting
+    // not in sharp init sequence doc, but stashing here in case we do need these
+    //DSI_CMD(MIPI_DCS_GET_COMPRESSION_MODE, 0x01), // compression enabled
+    //DSI_CMD(MIPI_DCS_SET_PIXEL_FORMAT, 0x77), // 24 bits / pixel ( default )
+
+    // sharp has display on and then exit sleep?  and no delay in between?  seems fishy
 	DSI_CMD(MIPI_DCS_EXIT_SLEEP_MODE),
 	SLEEP(170),
-	DSI_CMD(MIPI_DCS_SET_DISPLAY_ON),
-	DSI_CMD(0xd6, 0x80), // load defaults after sleep out
-	SLEEP(200),
-	DSI_CMD(0xb0, 0x03),
-	SLEEP(200);
+	DSI_CMD(MIPI_DCS_SET_DISPLAY_ON);
 }
 
 static void dsi_write_panel_off(struct drm_panel *panel)
@@ -752,6 +710,8 @@ static int rad_unprepare(struct drm_panel *panel)
 {
 	struct rad *ctx = panel_to_ctx(panel);
 	int ret = 0;
+
+    //cancel_delayed_work(&ctx->wdt_work);
 
 	if (!ctx->prepared)
 		return 0;
