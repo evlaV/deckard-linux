@@ -22,6 +22,20 @@ TRACE_EVENT(csid_isr_wm_done,
 	TP_printk("arg1 = %u, csid_id = %u", __entry->arg1, __entry->csid_id)
 );
 
+TRACE_EVENT(csid_isr_wm_done_buffer_status,
+	TP_PROTO(unsigned int buffer_status, unsigned int csid_id),
+	TP_ARGS(buffer_status, csid_id),
+	TP_STRUCT__entry(
+		__field(unsigned int, buffer_status)
+		__field(unsigned int, csid_id)
+	),
+	TP_fast_assign(
+		__entry->buffer_status = buffer_status;
+		__entry->csid_id = csid_id;
+	),
+	TP_printk("buffer_status = %u, csid_id = %u", __entry->buffer_status, __entry->csid_id)
+);
+
 TRACE_EVENT(csid_isr_sof,
 	TP_PROTO(unsigned int arg1, unsigned int csid_id),
 	TP_ARGS(arg1, csid_id),

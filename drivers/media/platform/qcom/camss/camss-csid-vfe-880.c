@@ -199,6 +199,12 @@ u64 isp_to_kernel_raw_ts_offset_counter;
 u32 isp_to_kernel_raw_ts_offset_refinement_vote_cnt;
 s64 isp_to_kernel_raw_ts_offset_floor;
 
+struct frameheader_data {
+	u64 ts;
+    u32 id;
+    u32 local_id;
+};
+
 static void vfe_write_buf(struct csid_device *csid, struct camss_buffer *buf)
 {
 	struct v4l2_pix_format_mplane *pix = &csid->video_out.active_fmt.fmt.pix_mp;
@@ -522,7 +528,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 
 	if((rdi_status & 0x0010) || (ipp_status & 0x0010)) // Test if PATH_INFO_SOF is set
 	{
-		trace_csid_isr_sof(0, csid->id);
+		//trace_csid_isr_sof(0, csid->id);
 		//printk("csid sof");
 		// Just use monotonic raw 
 		u64 kernel_ts_raw_to_monotonic_offset = ts_monotonic-ts_monotonic_raw;
@@ -606,8 +612,6 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		trace_csid_isr_sof(1, csid->id);
 	}
 
-	//trace_csid_isr(1);
-
 	if (top_status & BIT(TOP_IRQ_STATUS_BUF_DONE)) {
 		buf_status = readl_relaxed(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 		writel_relaxed(buf_status, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
@@ -632,13 +636,9 @@ static irqreturn_t csid_isr(int irq, void *dev)
 
 	writel_relaxed(BIT(IRQ_CMD_CLEAR), csid->base + CSID_IRQ_CMD);
 
-	//trace_csid_isr(2);
 
 	if (top_status & BIT(TOP_IRQ_STATUS_RESET_DONE))
 		complete(&csid->reset_complete);
-
-
-	//trace_csid_isr(3);
 
 	return IRQ_HANDLED;
 }
@@ -720,6 +720,8 @@ static void csid_update_buffer_status(struct csid_device *csid, u32 buf_done_sta
 			csid_update_buffer_comp_mask_from_fifo(csid, RDI_COMP_GROUP(0), RDI_WM(0), buff0_addr, buff1_addr);
 		}
 	}
+	// Trace the buffer status
+	trace_csid_isr_wm_done_buffer_status(buf_done_status, csid->id);
 }
 
 static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
@@ -735,10 +737,10 @@ static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
 	void* ihistDataAddr = NULL;
 	void* bhistFHDataAddr = NULL;
 	void* bhistDataAddr = NULL;
+	struct frameheader_data *frameheaderData;
 
 	trace_csid_isr_wm_done(0, csid->id);
 	spin_lock_irqsave(&csid->output_lock, flags);
-	trace_csid_isr_wm_done(1, csid->id);
 
 	if(!csid->out_buf[0]) {
 		dev_warn(csid->camss->dev, "buf done without a corresponding buffer\n");
@@ -790,9 +792,28 @@ static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
 	{
 		// Make buffer changes visible to CPU
 		dma_sync_single_for_cpu(csid->camss->dev, ready_buf->extrabuffer_dma_addr, ready_buf->extrabuffer_size, DMA_BIDIRECTIONAL);
-				
+
+
+		// If stats are enabled, use the frameheader timestamp which should be guaranteed to be properly
+		// associated with the buffer.
 		if(csid->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
 			frameheaderDataAddr = ready_buf->extrabuffer_vaddr + STATS_FH_DATA_OFFSET;
+			frameheaderData = (struct frameheader_data*)frameheaderDataAddr;
+			uint64_t frameheader_ts = frameheaderData->ts;
+
+			// The timestamp is 8 bits left shifted because the lower 8 bits contain virtual channel 
+			// and other information.
+			frameheader_ts >>= 8;
+
+			// Apply the same transformation as in the SOF handler
+			frameheader_ts = mul_u64_u32_div(
+				frameheader_ts,
+				CAM_IFE_CSID_MUL_FACTOR,
+				CAM_IFE_CSID_DIV_FACTOR);
+
+			// Use the existing offset to adjust the frame header timestamp
+			frameheader_ts += isp_to_kernel_raw_ts_offset_floor;
+			csid->cur_sof_isp_timestamp_converted = frameheader_ts;
 		}
 		if(csid->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
 			ihistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_FH_DATA_OFFSET;
@@ -805,12 +826,14 @@ static void csid_isr_wm_done(struct csid_device *csid, u32 buf_done_status)
 	}
 
 
+
+
 	metadata_send(&csid->camss->metadata[csid->id], ts_monotonic_raw, csid->cur_sof_isp_timestamp_converted, csid->cur_eof_isp_timestamp_converted, csid->last_sof_kernel_ts, ts_monotonic_raw,
 		ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
 
 	spin_unlock_irqrestore(&csid->output_lock, flags);
 	vb2_buffer_done(&ready_buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
-	trace_csid_isr_wm_done(2, csid->id);
+	trace_csid_isr_wm_done(1, csid->id);
 	return;
 
 out_unlock:
