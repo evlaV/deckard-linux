@@ -415,7 +415,7 @@ backlight_probe(struct platform_device *pdev)
 	ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VNEG, 0x11); //-5.7V
 	while(++i<10 && ret) {
 		usleep_range(10000, 20000);
-		ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VPOS, 0x11); //+5.7V
+		ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VNEG, 0x11); //-5.7V
 	}
 	if (ret)
 		dev_err(dev, "failed to write VNEG (ret=%d)\n", ret);
