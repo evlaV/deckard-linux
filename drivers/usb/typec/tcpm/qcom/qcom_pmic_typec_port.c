@@ -398,6 +398,37 @@ done:
 	return ret;
 }
 
+// PD tSafe0V = 650000 usec
+#define VBUS_SAFE_TIMEOUT_USEC  650000
+#define VBUS_SAFE_CHECK_PERIOD_USEC 130000
+
+int qcom_pmic_typec_port_legacy_cable_reset(struct pmic_typec_port *pmic_typec_port)
+{
+	int ret,i = 0;
+	uint regval;
+	// workaround for legacy cable detected on PON
+	// todo is there a way to pass the PON reason to this module?
+	// check legacy cable status
+	regmap_read(pmic_typec_port->regmap,
+				pmic_typec_port->base + LEGACY_CABLE_STATUS_REG, &regval);
+	if ( regval & TYPEC_LEGACY_CABLE_STATUS ) {
+		dev_dbg(pmic_typec_port->dev, "Legacy cable detected on TypeC start, toggling CC to clear\n");
+		// disable cc ( set port role disabled )
+		ret = regmap_write(pmic_typec_port->regmap,
+				pmic_typec_port->base + TYPEC_MODE_CFG_REG,
+				TYPEC_DISABLE_CMD);
+		// wait till vbus safe 0V, 650 msec timeout from PD spec
+		i = 0;
+		while ( !qcom_pmic_typec_port_is_vbus_vsafe0v(pmic_typec_port) && ( i++ < ( VBUS_SAFE_TIMEOUT_USEC / VBUS_SAFE_CHECK_PERIOD_USEC ) ) ) {
+				usleep_range(VBUS_SAFE_CHECK_PERIOD_USEC, VBUS_SAFE_CHECK_PERIOD_USEC+1000);
+		}
+		// renable cc ( set port role DRP )
+		ret = regmap_write(pmic_typec_port->regmap,
+				pmic_typec_port->base + TYPEC_MODE_CFG_REG, 0);
+	}
+    return ret;
+}
+
 int qcom_pmic_typec_port_start_toggling(struct pmic_typec_port *pmic_typec_port,
 					enum typec_port_type port_type,
 					enum typec_cc_status cc)
