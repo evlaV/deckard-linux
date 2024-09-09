@@ -272,6 +272,18 @@ config DRM_PANEL_JDI_4K
 	  The panel has a 4320x2160 resolution. It provides dual MIPI DSI
 	  interface to the host.
 
+config DRM_PANEL_JDI_LPM026M648C
+	tristate "JDI LPM026M648C DSI panel"
+	depends on OF && GPIOLIB
+	depends on DRM_MIPI_DSI
+	depends on BACKLIGHT_CLASS_DEVICE
+	help
+	  Say Y here if you want to enable support for JDI LPM026M648C DSI
+	  command mode panel as found in POCF devices.
+	  The panel has a 2160x2160 resolution. It provides a MIPI DSI interface
+	  to the host.
+
+
 config DRM_PANEL_JDI_LPM102A188A
 	tristate "JDI LPM102A188A DSI panel"
 	depends on OF && GPIOLIB
