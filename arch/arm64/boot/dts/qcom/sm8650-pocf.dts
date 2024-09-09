@@ -667,10 +667,11 @@
 
 	panel: panel@0 {
 		reg = <0>;
-		compatible = "jdi4k";
+		compatible = "pocf,jdi-lpm026m648c";
+		dual-panel;
 
-		reset-gpios =<&pm8550_gpios 3 GPIO_ACTIVE_HIGH>;
-		reset2-gpios =<&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
+			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
 		enp-gpios = <&tlmm 32 GPIO_ACTIVE_HIGH>;
 
 		wled1-supply = <&backlight>;
