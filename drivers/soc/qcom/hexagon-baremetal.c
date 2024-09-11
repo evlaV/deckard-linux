@@ -301,6 +301,11 @@ xtensa_boot(struct dsp *dsp)
 	if (is_cvp)
 		fw_size = 7 * SZ_1M;
 
+	// Make sure host->xtensa and xtensa->host interrupt status are cleared before booting
+	// since these prevent the CVP firmware from booting successfully with status 0x6400
+	writel_relaxed(1, dsp->base + CPU_CS_A2HSOFTINTCLR);
+	writel_relaxed(1, dsp->base + CPU_CS_H2ASOFTINTCLR);
+
 #define WRAPPER_CPA_START_ADDR 		0xc1020
 #define WRAPPER_CPA_END_ADDR 		0xc1024
 #define WRAPPER_FW_START_ADDR 		0xc1028
