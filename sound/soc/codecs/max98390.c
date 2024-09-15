@@ -853,7 +853,6 @@ static int max98390_dsm_init(struct snd_soc_component *component)
 		ret = -EINVAL;
 		goto err_alloc;
 	}
-    regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x01);
 	regmap_write(max98390->regmap, MAX98390_R203A_AMP_EN, 0x80);
 	dsm_param += MAX98390_DSM_PAYLOAD_OFFSET;
 	regmap_bulk_write(max98390->regmap, param_start_addr,
