@@ -27,6 +27,9 @@
 
 #include <dt-bindings/input/input.h>
 
+// EMC testing only, will disable controller functionality
+//#define NRF_UART
+
 
 / {
 	interrupt-parent = <&intc>;
@@ -37,6 +40,9 @@
 	aliases {
 		serial0 = &uart15;
 		serial1 = &uart14;
+#ifdef NRF_UART
+		serial2 = &uart10;
+#endif
 	};
 
 	chosen {
@@ -1083,6 +1089,12 @@
 &qupv3_id_2 {
 	status = "okay";
 };
+
+#ifdef NRF_UART
+&uart10 {
+	status = "okay";
+};
+#endif
 
 &uart14 {
 	status = "okay";

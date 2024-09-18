@@ -365,6 +365,7 @@
 	};
 };
 
+#ifndef NRF_UART
 // nRF SPI HID
 &spi10 {
 	status = "okay";
@@ -390,6 +391,7 @@
 		pinctrl-0 = <&host_spihid_default_state>;
     };
 };
+#endif
 
 #if 0
 // Directly accessed via ADSP code, but we have the defines here for reference

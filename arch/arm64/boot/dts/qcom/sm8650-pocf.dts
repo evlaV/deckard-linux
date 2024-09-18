@@ -91,6 +91,7 @@
 	};
 };
 
+#ifndef NRF_UART
 // nRF SPI HID
 &spi10 {
 	status = "okay";
@@ -140,6 +141,7 @@
 		//pinctrl-assert-gpios = < &tlmm 164 GPIO_ACTIVE_LOW >;
     };
 };
+#endif
 
 &i2c4 {
 	status = "okay";
