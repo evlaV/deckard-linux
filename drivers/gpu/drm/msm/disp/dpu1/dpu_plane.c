@@ -1045,6 +1045,11 @@ static int dpu_plane_atomic_check(struct drm_plane *plane,
 		pipe->multirect_index = DPU_SSPP_RECT_0;
 		pipe->multirect_mode = DPU_SSPP_MULTIRECT_PARALLEL;
 
+		/*
+		 * Signifies that r_pipe is to be used if the width of the 2nd
+		 * pipe is not 0. This does not apply to virtual plane case.
+		 */
+		r_pipe->sspp = pipe->sspp;
 		r_pipe->multirect_index = DPU_SSPP_RECT_1;
 		r_pipe->multirect_mode = DPU_SSPP_MULTIRECT_PARALLEL;
 	}
