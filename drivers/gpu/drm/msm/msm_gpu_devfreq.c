@@ -23,6 +23,8 @@ static int msm_devfreq_target(struct device *dev, unsigned long *freq,
 	struct msm_gpu_devfreq *df = &gpu->devfreq;
 	struct dev_pm_opp *opp;
 
+	DRM_DEV_ERROR(&gpu->pdev->dev, "gabe: msm_devfreq_target\n");
+
 	/*
 	 * Note that devfreq_recommended_opp() can modify the freq
 	 * to something that actually is in the opp table:

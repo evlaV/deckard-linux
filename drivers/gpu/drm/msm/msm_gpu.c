@@ -58,7 +58,14 @@ static int disable_pwrrail(struct msm_gpu *gpu)
 static int enable_clk(struct msm_gpu *gpu)
 {
 	if (gpu->core_clk && gpu->fast_rate)
+	{
+		DRM_INFO("GABE: enable_clk %d\n", gpu->fast_rate);
 		clk_set_rate(gpu->core_clk, gpu->fast_rate);
+	}
+	else
+	{
+		DRM_INFO("GABE: enable_clk fallback\n");
+	}
 
 	return clk_bulk_prepare_enable(gpu->nr_clocks, gpu->grp_clks);
 }
@@ -66,6 +73,8 @@ static int enable_clk(struct msm_gpu *gpu)
 static int disable_clk(struct msm_gpu *gpu)
 {
 	clk_bulk_disable_unprepare(gpu->nr_clocks, gpu->grp_clks);
+
+	DRM_INFO("GABE: disable_clk\n");
 
 	return 0;
 }
@@ -84,6 +93,7 @@ static int disable_axi(struct msm_gpu *gpu)
 int msm_gpu_pm_resume(struct msm_gpu *gpu)
 {
 	int ret;
+	struct drm_device *dev = gpu->dev;
 
 	DBG("%s", gpu->name);
 	trace_msm_gpu_resume(0);
@@ -91,6 +101,8 @@ int msm_gpu_pm_resume(struct msm_gpu *gpu)
 	ret = enable_pwrrail(gpu);
 	if (ret)
 		return ret;
+
+	//DRM_INFO("GABE: msm_gpu_pm_resume calling enable_clk !\n");
 
 	ret = enable_clk(gpu);
 	if (ret)

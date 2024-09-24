@@ -1064,6 +1064,10 @@ int msm_drv_probe(struct device *master_dev,
 	if (ret)
 		return ret;
 
+//gabe
+
+	DRM_INFO("gabe: msm_drv_probe\n");
+
 	/* on all devices that I am aware of, iommu's which can map
 	 * any address the cpu can see are used:
 	 */

@@ -841,6 +841,9 @@ static int adreno_probe(struct platform_device *pdev)
 	if (of_device_is_compatible(pdev->dev.of_node, "amd,imageon"))
 		adreno_device_register_headless();
 
+	//gabe
+	dev_warn(&pdev->dev, "gabe adreno_probe\n");
+
 	return 0;
 }
 
