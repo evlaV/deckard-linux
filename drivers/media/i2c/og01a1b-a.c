@@ -875,13 +875,29 @@ static int og01a1b_read_reg_len(struct og01a1b_dev *sensor, u16 reg, u16 len, u3
 
 static int og01a1b_write_reg16(struct og01a1b_dev *sensor, u16 reg, u16 val)
 {
+	// Use the og01a1b sequential write feature to use a single i2c transfer
+	struct i2c_client *client = sensor->i2c_client;
+	struct i2c_msg msg;
+	u8 buf[4];
 	int ret;
 
-	ret = og01a1b_write_reg(sensor, reg, val >> 8);
-	if (ret)
-		return ret;
+	buf[0] = reg >> 8;
+	buf[1] = reg & 0xff;
+	buf[2] = val >> 8; // written at reg
+	buf[3] = val & 0xff; // written at reg+1
 
-	return og01a1b_write_reg(sensor, reg + 1, val & 0xff);
+	msg.addr = client->addr;
+	msg.flags = client->flags;
+	msg.buf = buf;
+	msg.len = sizeof(buf);
+
+	ret = i2c_transfer(client->adapter, &msg, 1);
+	if (ret < 0) {
+		dev_err(&client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
+			__func__, reg, val, ret);
+		return ret;
+	}
+	return 0;
 }
 
 
@@ -964,7 +980,21 @@ int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
 		}
 		for(int i = 0; i < sensor->active_group_registers.group_register_sets[group].num_group_reg; i++) 
 		{
-			ret = og01a1b_write_reg(sensor, sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i],sensor->active_group_registers.group_register_sets[group].group_reg_values[i]);
+			if (i < sensor->active_group_registers.group_register_sets[group].num_group_reg - 1 &&
+				sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i + 1] == 
+				sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i] + 1) {
+				// Sequential registers, use og01a1b_write_reg16
+				u16 val = (sensor->active_group_registers.group_register_sets[group].group_reg_values[i] << 8) |
+						   sensor->active_group_registers.group_register_sets[group].group_reg_values[i + 1];
+				ret = og01a1b_write_reg16(sensor, 
+					sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i], val);
+				i++; // Skip the next register as we've already written it
+			} else {
+				// Non-sequential registers, use og01a1b_write_reg
+				ret = og01a1b_write_reg(sensor, 
+					sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i],
+					sensor->active_group_registers.group_register_sets[group].group_reg_values[i]);
+			}
 			if(ret != 0) 
 			{
 				return ret;
