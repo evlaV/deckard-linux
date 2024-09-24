@@ -1048,12 +1048,12 @@ static int csid_set_test_pattern(struct csid_device *csid, s32 value)
 	if (value && media_pad_remote_pad_first(&csid->pads[MSM_CSID_PAD_SINK]))
 		return -EBUSY;
 
+	if (!hw_ops->configure_testgen_pattern)
+		return -EOPNOTSUPP;
+
 	tg->enabled = !!value;
 
-	if (hw_ops->configure_testgen_pattern)
-		return -EOPNOTSUPP;
-	else
-		return hw_ops->configure_testgen_pattern(csid, value);
+	return hw_ops->configure_testgen_pattern(csid, value);
 }
 
 /*
