@@ -66,6 +66,7 @@ DEFINE_SPINLOCK(metadata_spinlock_og0VE10);
 
 #define VIDIOC_SENSOR_PRV_G_REGISTER _IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct sensor_register)
 
+#define VIDIOC_SENSOR_PRV_S_IN_SYNC _IO('V', BASE_VIDIOC_PRIVATE + 9)
 
 struct sensor_register {
 	u16 reg_addr;
@@ -78,7 +79,7 @@ struct sensor_register {
 #define METADATA_MINOR_VERSION 0
 
 #define DRIVER_MAJOR_VERSION 1
-#define DRIVER_MINOR_VERSION 0
+#define DRIVER_MINOR_VERSION 1
 
 /* regulator supplies */
 static const char *const og0ve10_supply_name[] = {
@@ -152,6 +153,9 @@ enum og0ve10_timing_adjustment_state {
 	TIMING_READY_FOR_INITIAL_GROUP_WRITE = 3,
 	TIMING_ADJUSTMENT_REQUESTED = 4
 };
+u64 last_time_in_sync_og0VE10 = 0;
+u64 last_dual_write_time_og0VE10 = 0;
+
 
 struct og0ve10_dev {
 	struct i2c_client *i2c_client;
@@ -203,6 +207,9 @@ struct og0ve10_dev {
 	int lastGroup;
 
 	int queue_index;
+
+	bool dual_i2c_available;
+	bool dual_i2c_main;
 };
 
 struct og0ve10_dev *sensors_og0VE10[4];
@@ -415,6 +422,26 @@ static int og0ve10_write_reg16(struct og0ve10_dev *sensor, u16 reg, u16 val)
 		return ret;
 	}
 	return 0;
+}
+
+static int og0ve10_write_reg_dual(struct og0ve10_dev *sensor, u16 reg, u8 val)
+{
+    struct i2c_client *client = sensor->i2c_client;
+    unsigned short old_addr = client->addr;
+    client->addr = 0x70;
+    int ret = og0ve10_write_reg(sensor, reg, val);
+    client->addr = old_addr;
+    return ret;
+}
+
+static int og0ve10_write_reg16_dual(struct og0ve10_dev *sensor, u16 reg, u16 val)
+{
+    struct i2c_client *client = sensor->i2c_client;
+    unsigned short old_addr = client->addr;
+    client->addr = 0x70;
+    int ret = og0ve10_write_reg16(sensor, reg, val);
+    client->addr = old_addr;
+    return ret;
 }
 
 static int og0ve10_load_regs(struct og0ve10_dev *sensor,
@@ -753,6 +780,7 @@ out:
 
 static int og0ve10_s_stream(struct v4l2_subdev *sd, int enable)
 {
+	last_time_in_sync_og0VE10 = 0;
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
 	struct i2c_client *client = sensor->i2c_client;
 
@@ -825,6 +853,20 @@ static long og0ve10_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 			dev_err(&sensor->i2c_client->dev, "Failed to read register 0x%04x: %d\n", reg->reg_addr, ret);
 		}
 		reg->reg_value = regval;
+		break;
+	}
+	case VIDIOC_SENSOR_PRV_S_IN_SYNC:
+	{
+		u32 val = (uintptr_t)arg;
+		if (val == 1) {
+			if (last_time_in_sync_og0VE10 == 0) {
+				last_time_in_sync_og0VE10 = ktime_get_raw_ns();
+			} else {
+				last_time_in_sync_og0VE10 = min_t(u64, last_time_in_sync_og0VE10, ktime_get_raw_ns());
+			}
+		} else {
+			last_time_in_sync_og0VE10 = 0;
+		}
 		break;
 	}
 	default: {
@@ -961,7 +1003,7 @@ power_off:
 	return ret;
 }
 
-int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int group)
+int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int group, bool use_dual_i2c)
 {
 	int ret;
 
@@ -997,11 +1039,17 @@ int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int group)
 				  sensor->active_group_registers
 					  .group_register_sets[group]
 					  .group_reg_values[i + 1];
-			ret = og0ve10_write_reg16(sensor, reg, val);
+			ret = use_dual_i2c ? og0ve10_write_reg16_dual(sensor, reg, val) : og0ve10_write_reg16(sensor, reg, val);
 			i++; // bump i since we wrote two registers
 		} else {
-			ret = og0ve10_write_reg(
-				sensor,
+			ret = use_dual_i2c ? og0ve10_write_reg_dual(sensor, 
+				sensor->active_group_registers
+					.group_register_sets[group]
+					.group_reg_addresses[i],
+				sensor->active_group_registers
+					.group_register_sets[group]
+					.group_reg_values[i]) :
+				og0ve10_write_reg(sensor, 
 				sensor->active_group_registers
 					.group_register_sets[group]
 					.group_reg_addresses[i],
@@ -1077,7 +1125,20 @@ void update_groups_og0VE10(struct og0ve10_dev *sensor)
 	} else {
 		sensor->lastGroup = 0;
 	}
-	og0VE10_write_registers_for_group(sensor, sensor->lastGroup);
+
+	if (last_time_in_sync_og0VE10 != 0) {
+		if (sensor->dual_i2c_main) {
+			og0VE10_write_registers_for_group(sensor, sensor->lastGroup, true);
+			last_dual_write_time_og0VE10 = ktime_get_raw_ns();
+		} else if (last_dual_write_time_og0VE10 < last_time_in_sync_og0VE10) {
+			//printk("og0ve10 dual write safety write on non main sensor\n");
+			og0VE10_write_registers_for_group(sensor, sensor->lastGroup, false);
+		}
+	} else {
+		//printk("og0ve10 non dual write write on non main sensor\n");
+		og0VE10_write_registers_for_group(sensor, sensor->lastGroup, false);
+	}
+
 	lastGroupPostWriteTimestamp = ktime_get_raw_ns();
 
 	//for(int i = 0; i < numSensors_og0VE10; i++)
@@ -1277,6 +1338,26 @@ static int og0ve10_probe(struct i2c_client *client)
 		sensor->queue_index = 0;
 		return ret;
 	}
+
+	u32 dual_i2c_available_val, dual_i2c_main_val;
+
+	ret = of_property_read_u32(dev->of_node, "dual-i2c-available", &dual_i2c_available_val);
+	if (ret) {
+		dev_err(dev, "Failed to read 'dual-i2c-available' property. Defaulting to 0.\n");
+		sensor->dual_i2c_available = false;
+	} else {
+		sensor->dual_i2c_available = (dual_i2c_available_val != 0);
+	}
+
+	ret = of_property_read_u32(dev->of_node, "dual-i2c-main", &dual_i2c_main_val);
+	if (ret) {
+		dev_err(dev, "Failed to read 'dual-i2c-main' property. Defaulting to 0.\n");
+		sensor->dual_i2c_main = false;
+	} else {
+		sensor->dual_i2c_main = (dual_i2c_main_val != 0);
+	}
+
+	last_time_in_sync_og0VE10 = 0;
 
 	return 0;
 

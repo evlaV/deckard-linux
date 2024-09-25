@@ -322,3 +322,4 @@
 		 <&lpass_wsamacro 1>,
 		 <&lpass_vamacro 0>;
 };
+

@@ -68,13 +68,15 @@ DEFINE_SPINLOCK(ir_spinlock);
 
 #define VIDIOC_SENSOR_PRV_G_REGISTER _IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct sensor_register)
 
+#define VIDIOC_SENSOR_PRV_S_IN_SYNC _IO('V', BASE_VIDIOC_PRIVATE + 9)
+
 // Version 1.2 support histogram streaming.
 
 #define METADATA_MAJOR_VERSION 3
 #define METADATA_MINOR_VERSION 0
 
 #define DRIVER_MAJOR_VERSION 1
-#define DRIVER_MINOR_VERSION 0
+#define DRIVER_MINOR_VERSION 1
 
 
 /* regulator supplies */
@@ -220,6 +222,8 @@ struct og01a1b_dev {
 	const struct og01a1b_mode_info* current_mode;
 	bool is_streaming;
 	bool is_left_sensor;
+	bool dual_i2c_available;
+	bool dual_i2c_main;
 	struct private_timing_adjustment current_timing_adjustment;
 	enum og01a1b_timing_adjustment_state timing_adjustment_state;
 	int queue_index;
@@ -228,6 +232,12 @@ struct og01a1b_dev {
 struct og01a1b_dev* sensors[4];
 int numSensors = 0;
 int sync_sensor_index = -1;
+
+// This is used to determine whether or not we can use dual i2c mode. If this is non zero and more than 30 ms ago we can
+// Because that means we do not have a danger of missing an update to one sensor
+u64 last_time_in_sync = 0;
+u64 last_dual_write_time = 0;
+
 
 
 // These workqueues are shared between multiple sensors that are either og01a1b or og0ve10
@@ -770,6 +780,36 @@ static int og01a1b_write_reg(struct og01a1b_dev *sensor, u16 reg, u8 val)
 	return 0;
 }
 
+static int og01a1b_write_reg_dual(struct og01a1b_dev *sensor, u16 reg, u8 val)
+{
+	struct i2c_client *client = sensor->i2c_client;
+	unsigned short old_addr = client->addr;
+	client->addr = 0x70;
+	struct i2c_msg msg;
+	u8 buf[3];
+	int ret;
+
+	buf[0] = reg >> 8;
+	buf[1] = reg & 0xff;
+	buf[2] = val;
+
+	msg.addr = client->addr;
+	msg.flags = client->flags;
+	msg.buf = buf;
+	msg.len = sizeof(buf);
+
+	ret = i2c_transfer(client->adapter, &msg, 1);
+	if (ret < 0) {
+		dev_err(&client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
+			__func__, reg, val, ret);
+		client->addr = old_addr;
+		return ret;
+	}
+
+	client->addr = old_addr;
+	return 0;
+}
+
 int og01a1b_write_map(struct og01a1b_dev *sensor, struct reg_value *regs, int num_regs)
 {
     int i;
@@ -900,6 +940,37 @@ static int og01a1b_write_reg16(struct og01a1b_dev *sensor, u16 reg, u16 val)
 	return 0;
 }
 
+static int og01a1b_write_reg16_dual(struct og01a1b_dev *sensor, u16 reg, u16 val)
+{
+	// Use the og01a1b sequential write feature to use a single i2c transfer
+	struct i2c_client *client = sensor->i2c_client;
+	unsigned short old_addr = client->addr;
+	client->addr = 0x70;
+	struct i2c_msg msg;
+	u8 buf[4];
+	int ret;
+
+	buf[0] = reg >> 8;
+	buf[1] = reg & 0xff;
+	buf[2] = val >> 8; // written at reg
+	buf[3] = val & 0xff; // written at reg+1
+
+	msg.addr = client->addr;
+	msg.flags = client->flags;
+	msg.buf = buf;
+	msg.len = sizeof(buf);
+
+	ret = i2c_transfer(client->adapter, &msg, 1);
+	if (ret < 0) {
+		dev_err(&client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
+			__func__, reg, val, ret);
+		client->addr = old_addr;
+		return ret;
+	}
+	client->addr = old_addr;
+	return 0;
+}
+
 
 
 static int og01a1b_add_or_set_group_reg(struct og01a1b_dev *sensor, u16 address, u8 val, u8 group)
@@ -961,7 +1032,7 @@ bool emitter_enabled_for_group(struct og01a1b_dev *sensor, int group) {
 	return false;
 }
 
-int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
+int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, bool use_dual_i2c)
 {
 	int ret;
 
@@ -974,7 +1045,7 @@ int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
 			continue;
 		}
 		sensor->updateGroupRegisters[group] = false;
-		ret = og01a1b_write_reg(sensor, 0x3208, 0x00 | group);
+		ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, 0x3208, 0x00 | group) : og01a1b_write_reg(sensor, 0x3208, 0x00 | group);
 		if(ret != 0) {
 			return ret;
 		}
@@ -986,12 +1057,17 @@ int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
 				// Sequential registers, use og01a1b_write_reg16
 				u16 val = (sensor->active_group_registers.group_register_sets[group].group_reg_values[i] << 8) |
 						   sensor->active_group_registers.group_register_sets[group].group_reg_values[i + 1];
-				ret = og01a1b_write_reg16(sensor, 
+				ret = use_dual_i2c ? og01a1b_write_reg16_dual(sensor, 
+					sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i], val) :
+					og01a1b_write_reg16(sensor, 
 					sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i], val);
 				i++; // Skip the next register as we've already written it
 			} else {
 				// Non-sequential registers, use og01a1b_write_reg
-				ret = og01a1b_write_reg(sensor, 
+				ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, 
+					sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i],
+					sensor->active_group_registers.group_register_sets[group].group_reg_values[i]) :
+					og01a1b_write_reg(sensor, 
 					sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i],
 					sensor->active_group_registers.group_register_sets[group].group_reg_values[i]);
 			}
@@ -1002,14 +1078,14 @@ int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
 		}
 		if(emitter_enabled_for_group(sensor, group))
 		{
-			ret = og01a1b_write_reg(sensor, 0x3920, 0xff);
+			ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, 0x3920, 0xff) : og01a1b_write_reg(sensor, 0x3920, 0xff);
 			if(ret != 0) 
 			{
 				return ret;
 			}
 		}
 		else{
-			ret = og01a1b_write_reg(sensor, 0x3920, 0x00);
+			ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, 0x3920, 0x00) : og01a1b_write_reg(sensor, 0x3920, 0x00);
 			if(ret != 0) 
 			{
 				return ret;
@@ -1017,12 +1093,14 @@ int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
 		}
 		if(sensor->timing_adjustment_state == TIMING_READY_FOR_INITIAL_GROUP_WRITE && sensor->current_timing_adjustment.group_to_adjust == group)
 		{
-			ret = og01a1b_write_reg16(sensor, 0x380e, sensor->current_timing_adjustment.new_rows);
+			ret = use_dual_i2c ? og01a1b_write_reg16_dual(sensor, 0x380e, sensor->current_timing_adjustment.new_rows) :
+				og01a1b_write_reg16(sensor, 0x380e, sensor->current_timing_adjustment.new_rows);
 			if(ret != 0) 
 			{
 				return ret;
 			}
-			ret = og01a1b_write_reg16(sensor, 0x382c, sensor->current_timing_adjustment.new_global_row);
+			ret = use_dual_i2c ? og01a1b_write_reg16_dual(sensor, 0x382c, sensor->current_timing_adjustment.new_global_row) :
+				og01a1b_write_reg16(sensor, 0x382c, sensor->current_timing_adjustment.new_global_row);
 			if(ret != 0) 
 			{
 				return ret;
@@ -1036,7 +1114,7 @@ int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor)
 			// ( we could also get rid of the restore )
 			sensor->timing_adjustment_state = TIMING_ADJUSTMENT_NOT_IN_PROGRESS;
 		}
-		ret = og01a1b_write_reg(sensor, 0x3208, 0x10 | group);
+		ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, 0x3208, 0x10 | group) : og01a1b_write_reg(sensor, 0x3208, 0x10 | group);
 		if(ret!= 0)
 		{
 			return ret;
@@ -1501,6 +1579,8 @@ out:
 
 static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
 {
+    // Reset the sync state
+    last_time_in_sync = 0;
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 	struct i2c_client *client = sensor->i2c_client;
 	for(int i = 0; i < NUM_REGISTER_GROUPS; i++) {
@@ -1508,7 +1588,6 @@ static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
 	}
 	
 	sensor->is_streaming = !!enable;
-
 	og01a1b_write_reg(sensor, 0x100, !!enable);
 	// Only disable ir_control_gpio when stopping streaming since it can be configured before streamon
 	if(!enable && sensor->ir_control_gpio_present) {
@@ -1563,7 +1642,12 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
         {
             u32 val = (uintptr_t)arg; // argument is passed as an integer value
             mutex_lock(&sensor->lock);
-            ret = og01a1b_write_reg(sensor, val & 0xffff, val >> 16 & 0xff);
+			if((val & 0xffff) == 0x100) {
+				ret = og01a1b_write_reg_dual(sensor, val & 0xffff, val >> 16 & 0xff);
+			}
+			else {
+				ret = og01a1b_write_reg(sensor, val & 0xffff, val >> 16 & 0xff);
+			}
            
             mutex_unlock(&sensor->lock);
             break;
@@ -1599,6 +1683,26 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
 				dev_err(&sensor->i2c_client->dev, "Failed to read register 0x%04x: %d\n", reg->reg_addr, ret);
 			}
 			reg->reg_value = regval;
+			break;
+		}
+		case VIDIOC_SENSOR_PRV_S_IN_SYNC:
+		{
+			u32 val = (uintptr_t)arg; // argument is passed as an integer value
+			if(val == 1) {
+				if(last_time_in_sync == 0) {
+					last_time_in_sync = ktime_get_raw_ns();
+				}
+				else {
+					last_time_in_sync = min_t(u64, last_time_in_sync, ktime_get_raw_ns());
+				}
+				printk("last_time_in_sync: %lld\n", last_time_in_sync);
+			}
+			else
+			{
+				// Means we can't use dual i2c mode right now
+				last_time_in_sync = 0;
+				printk("last_time_in_sync: %lld\n", last_time_in_sync);
+			}
 			break;
 		}
         default:
@@ -1753,7 +1857,23 @@ void update_groups(struct og01a1b_dev *sensor)
 
 	last_group_pre_write_timestamp = ktime_get_raw_ns();
 		//printk("updating groups for sensor:%d\n", sensor->sensor_index);
-		og01a1b_write_group_registers_if_needed(sensor);
+	if(last_time_in_sync != 0) {
+		if(sensor->dual_i2c_main) {
+			og01a1b_write_group_registers_if_needed(sensor, true);
+			//printk("dual write on main sensor\n");
+			last_dual_write_time = ktime_get_raw_ns();
+		}
+		// If there is not a dual write after the last time in sync, we need to write on the non main sensor to be safe
+		else if(last_dual_write_time < last_time_in_sync) {
+			//printk("dual write safety write on non main sensor\n");
+			og01a1b_write_group_registers_if_needed(sensor, false);
+		}
+	}
+	// If not in sync both sensors need to be updated
+	else {
+		//printk("non dual write write on non main sensor\n");
+		og01a1b_write_group_registers_if_needed(sensor, false);
+	}
 
 	if(sensor->group_mode != MODE_NOGROUPS)
 	{
@@ -1985,6 +2105,26 @@ static int og01a1b_probe(struct i2c_client *client)
 		dev_err(dev, "Invalid sensor-queue-index value. Defaulting to 0.\n");
 		sensor->queue_index = 0;
 	}
+
+	u32 dual_i2c_available_val, dual_i2c_main_val;
+
+	ret = of_property_read_u32(dev->of_node, "dual-i2c-available", &dual_i2c_available_val);
+	if (ret) {
+		dev_err(dev, "Failed to read 'dual-i2c-available' property. Defaulting to 0.\n");
+		sensor->dual_i2c_available = false;
+	} else {
+		sensor->dual_i2c_available = (dual_i2c_available_val != 0);
+	}
+
+	ret = of_property_read_u32(dev->of_node, "dual-i2c-main", &dual_i2c_main_val);
+	if (ret) {
+		dev_err(dev, "Failed to read 'dual-i2c-main' property. Defaulting to 0.\n");
+		sensor->dual_i2c_main = false;
+	} else {
+		sensor->dual_i2c_main = (dual_i2c_main_val != 0);
+	}
+
+	last_time_in_sync = 0;
 
 	return 0;
 
