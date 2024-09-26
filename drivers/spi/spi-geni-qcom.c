@@ -402,7 +402,11 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 	u32 loopback_cfg = 0, cpol = 0, cpha = 0, demux_output_inv = 0;
 	u32 demux_sel;
 
+	// BUG!  mode isn't the only thing that can be different between slaves,
+	// for example the chip select! aaronna
+#ifdef ALLOW_LAST_MODE_BUG
 	if (mas->last_mode != spi_slv->mode) {
+#endif
 		if (spi_slv->mode & SPI_LOOP)
 			loopback_cfg = LOOPBACK_ENABLE;
 
@@ -426,7 +430,9 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 		writel(demux_output_inv, se->base + SE_SPI_DEMUX_OUTPUT_INV);
 
 		mas->last_mode = spi_slv->mode;
+#ifdef ALLOW_LAST_MODE_BUG
 	}
+#endif
 
 	return geni_spi_set_clock_and_bw(mas, spi_slv->max_speed_hz);
 }
