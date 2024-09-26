@@ -647,6 +647,7 @@ TRACE_EVENT(dpu_enc_phys_vid_irq_disable,
 		  __entry->drm_id)
 );
 
+#if 0
 TRACE_EVENT(dpu_crtc_setup_mixer,
 	TP_PROTO(uint32_t crtc_id, uint32_t plane_id,
 		 struct drm_plane_state *state, struct dpu_plane_state *pstate,
@@ -693,6 +694,7 @@ TRACE_EVENT(dpu_crtc_setup_mixer,
 		  __entry->multirect_idx, __entry->multirect_mode,
 		  __entry->pixel_format, __entry->modifier)
 );
+#endif
 
 TRACE_EVENT(dpu_crtc_setup_lm_bounds,
 	TP_PROTO(uint32_t drm_id, int mixer, struct drm_rect *bounds),
