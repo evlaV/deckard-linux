@@ -604,6 +604,21 @@
 
 &i2c4 {
 	status = "okay";
+	
+    /* FAN_I2C */
+	slg4ax46073v@8 {
+		compatible = "silego,slg4ax46073v";
+		reg = <0x08>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		//vdd-fan-1-supply = <&VBATT_2S>; not modeled in dts
+		fan-alert-gpios = <&tlmm 174 GPIO_ACTIVE_HIGH>;
+		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
+		bp-gpio = <&tlmm 139 GPIO_ACTIVE_HIGH>;
+
+		status = "ok";
+	};
 };
 
 &i2c5 {
