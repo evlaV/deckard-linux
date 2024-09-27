@@ -8,6 +8,8 @@
 #include <linux/kernel.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
+#include <linux/of_device.h>
+#include <linux/of_irq.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
@@ -15,73 +17,7 @@
 #include <linux/string_choices.h>
 #include <linux/usb/pd.h>
 #include <linux/usb/tcpm.h>
-#include "qcom_pmic_typec.h"
 #include "qcom_pmic_typec_pdphy.h"
-
-/* PD PHY register offsets and bit fields */
-#define USB_PDPHY_MSG_CONFIG_REG	0x40
-#define MSG_CONFIG_PORT_DATA_ROLE	BIT(3)
-#define MSG_CONFIG_PORT_POWER_ROLE	BIT(2)
-#define MSG_CONFIG_SPEC_REV_MASK	(BIT(1) | BIT(0))
-
-#define USB_PDPHY_EN_CONTROL_REG	0x46
-#define CONTROL_ENABLE			BIT(0)
-
-#define USB_PDPHY_RX_STATUS_REG		0x4A
-#define RX_FRAME_TYPE			(BIT(0) | BIT(1) | BIT(2))
-
-#define USB_PDPHY_FRAME_FILTER_REG	0x4C
-#define FRAME_FILTER_EN_HARD_RESET	BIT(5)
-#define FRAME_FILTER_EN_SOP		BIT(0)
-
-#define USB_PDPHY_TX_SIZE_REG		0x42
-#define TX_SIZE_MASK			0xF
-
-#define USB_PDPHY_TX_CONTROL_REG	0x44
-#define TX_CONTROL_RETRY_COUNT(n)	(((n) & 0x3) << 5)
-#define TX_CONTROL_FRAME_TYPE(n)        (((n) & 0x7) << 2)
-#define TX_CONTROL_FRAME_TYPE_CABLE_RESET	(0x1 << 2)
-#define TX_CONTROL_SEND_SIGNAL		BIT(1)
-#define TX_CONTROL_SEND_MSG		BIT(0)
-
-#define USB_PDPHY_RX_SIZE_REG		0x48
-
-#define USB_PDPHY_RX_ACKNOWLEDGE_REG	0x4B
-#define RX_BUFFER_TOKEN			BIT(0)
-
-#define USB_PDPHY_BIST_MODE_REG		0x4E
-#define BIST_MODE_MASK			0xF
-#define BIST_ENABLE			BIT(7)
-#define PD_MSG_BIST			0x3
-#define PD_BIST_TEST_DATA_MODE		0x8
-
-#define USB_PDPHY_TX_BUFFER_HDR_REG	0x60
-#define USB_PDPHY_TX_BUFFER_DATA_REG	0x62
-
-#define USB_PDPHY_RX_BUFFER_REG		0x80
-
-/* VDD regulator */
-#define VDD_PDPHY_VOL_MIN		2800000	/* uV */
-#define VDD_PDPHY_VOL_MAX		3300000	/* uV */
-#define VDD_PDPHY_HPM_LOAD		3000	/* uA */
-
-/* Message Spec Rev field */
-#define PD_MSG_HDR_REV(hdr)		(((hdr) >> 6) & 3)
-
-/* timers */
-#define RECEIVER_RESPONSE_TIME		15	/* tReceiverResponse */
-#define HARD_RESET_COMPLETE_TIME	5	/* tHardResetComplete */
-
-/* Interrupt numbers */
-#define PMIC_PDPHY_SIG_TX_IRQ		0x0
-#define PMIC_PDPHY_SIG_RX_IRQ		0x1
-#define PMIC_PDPHY_MSG_TX_IRQ		0x2
-#define PMIC_PDPHY_MSG_RX_IRQ		0x3
-#define PMIC_PDPHY_MSG_TX_FAIL_IRQ	0x4
-#define PMIC_PDPHY_MSG_TX_DISCARD_IRQ	0x5
-#define PMIC_PDPHY_MSG_RX_DISCARD_IRQ	0x6
-#define PMIC_PDPHY_FR_SWAP_IRQ		0x7
-
 
 struct pmic_typec_pdphy_irq_data {
 	int				virq;
@@ -226,6 +162,10 @@ qcom_pmic_typec_pdphy_pd_transmit_payload(struct pmic_typec_pdphy *pmic_typec_pd
 	unsigned long flags;
 	int ret;
 
+	hdr_len = sizeof(msg->header);
+	txbuf_len = pd_header_cnt_le(msg->header) * 4;
+	txsize_len = hdr_len + txbuf_len - 1;
+
 	spin_lock_irqsave(&pmic_typec_pdphy->lock, flags);
 
 	hdr_len = sizeof(msg->header);
@@ -298,13 +238,11 @@ done:
 	return ret;
 }
 
-static int qcom_pmic_typec_pdphy_pd_transmit(struct tcpc_dev *tcpc,
-					     enum tcpm_transmit_type type,
-					     const struct pd_message *msg,
-					     unsigned int negotiated_rev)
+int qcom_pmic_typec_pdphy_pd_transmit(struct pmic_typec_pdphy *pmic_typec_pdphy,
+				      enum tcpm_transmit_type type,
+				      const struct pd_message *msg,
+				      unsigned int negotiated_rev)
 {
-	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
-	struct pmic_typec_pdphy *pmic_typec_pdphy = tcpm->pmic_typec_pdphy;
 	struct device *dev = pmic_typec_pdphy->dev;
 	int ret;
 
@@ -405,10 +343,8 @@ static irqreturn_t qcom_pmic_typec_pdphy_isr(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int qcom_pmic_typec_pdphy_set_pd_rx(struct tcpc_dev *tcpc, bool on)
+int qcom_pmic_typec_pdphy_set_pd_rx(struct pmic_typec_pdphy *pmic_typec_pdphy, bool on)
 {
-	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
-	struct pmic_typec_pdphy *pmic_typec_pdphy = tcpm->pmic_typec_pdphy;
 	unsigned long flags;
 	int ret;
 
@@ -424,12 +360,9 @@ static int qcom_pmic_typec_pdphy_set_pd_rx(struct tcpc_dev *tcpc, bool on)
 	return ret;
 }
 
-static int qcom_pmic_typec_pdphy_set_roles(struct tcpc_dev *tcpc, bool attached,
-					   enum typec_role power_role,
-					   enum typec_data_role data_role)
+int qcom_pmic_typec_pdphy_set_roles(struct pmic_typec_pdphy *pmic_typec_pdphy,
+				    bool data_role_host, bool power_role_src)
 {
-	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
-	struct pmic_typec_pdphy *pmic_typec_pdphy = tcpm->pmic_typec_pdphy;
 	struct device *dev = pmic_typec_pdphy->dev;
 	unsigned long flags;
 	int ret;
@@ -440,13 +373,12 @@ static int qcom_pmic_typec_pdphy_set_roles(struct tcpc_dev *tcpc, bool attached,
 				 pmic_typec_pdphy->base + USB_PDPHY_MSG_CONFIG_REG,
 				 MSG_CONFIG_PORT_DATA_ROLE |
 				 MSG_CONFIG_PORT_POWER_ROLE,
-				 (data_role == TYPEC_HOST ? MSG_CONFIG_PORT_DATA_ROLE : 0) |
-				 (power_role == TYPEC_SOURCE ? MSG_CONFIG_PORT_POWER_ROLE : 0));
+				 data_role_host << 3 | power_role_src << 2);
 
 	spin_unlock_irqrestore(&pmic_typec_pdphy->lock, flags);
 
 	dev_dbg(dev, "pdphy_set_roles: data_role_host=%d power_role_src=%d\n",
-		data_role, power_role);
+		data_role_host, power_role_src);
 
 	return ret;
 }
@@ -508,10 +440,9 @@ done:
 	return ret;
 }
 
-static int qcom_pmic_typec_pdphy_start(struct pmic_typec *tcpm,
-				       struct tcpm_port *tcpm_port)
+int qcom_pmic_typec_pdphy_start(struct pmic_typec_pdphy *pmic_typec_pdphy,
+				struct tcpm_port *tcpm_port)
 {
-	struct pmic_typec_pdphy *pmic_typec_pdphy = tcpm->pmic_typec_pdphy;
 	int i;
 	int ret;
 
@@ -536,9 +467,8 @@ err_disable_vdd_pdhy:
 	return ret;
 }
 
-static void qcom_pmic_typec_pdphy_stop(struct pmic_typec *tcpm)
+void qcom_pmic_typec_pdphy_stop(struct pmic_typec_pdphy *pmic_typec_pdphy)
 {
-	struct pmic_typec_pdphy *pmic_typec_pdphy = tcpm->pmic_typec_pdphy;
 	int i;
 
 	for (i = 0; i < pmic_typec_pdphy->nr_irqs; i++)
@@ -549,20 +479,20 @@ static void qcom_pmic_typec_pdphy_stop(struct pmic_typec *tcpm)
 	regulator_disable(pmic_typec_pdphy->vdd_pdphy);
 }
 
+struct pmic_typec_pdphy *qcom_pmic_typec_pdphy_alloc(struct device *dev)
+{
+	return devm_kzalloc(dev, sizeof(struct pmic_typec_pdphy), GFP_KERNEL);
+}
+
 int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
-				struct pmic_typec *tcpm,
-				const struct pmic_typec_pdphy_resources *res,
+				struct pmic_typec_pdphy *pmic_typec_pdphy,
+				struct pmic_typec_pdphy_resources *res,
 				struct regmap *regmap,
 				u32 base)
 {
-	struct pmic_typec_pdphy *pmic_typec_pdphy;
 	struct device *dev = &pdev->dev;
 	struct pmic_typec_pdphy_irq_data *irq_data;
 	int i, ret, irq;
-
-	pmic_typec_pdphy = devm_kzalloc(dev, sizeof(*pmic_typec_pdphy), GFP_KERNEL);
-	if (!pmic_typec_pdphy)
-		return -ENOMEM;
 
 	if (!res->nr_irqs || res->nr_irqs > PMIC_PDPHY_MAX_IRQS)
 		return -EINVAL;
@@ -602,48 +532,5 @@ int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
 			return ret;
 	}
 
-	tcpm->pmic_typec_pdphy = pmic_typec_pdphy;
-
-	tcpm->tcpc.set_pd_rx = qcom_pmic_typec_pdphy_set_pd_rx;
-	tcpm->tcpc.set_roles = qcom_pmic_typec_pdphy_set_roles;
-	tcpm->tcpc.pd_transmit = qcom_pmic_typec_pdphy_pd_transmit;
-
-	tcpm->pdphy_start = qcom_pmic_typec_pdphy_start;
-	tcpm->pdphy_stop = qcom_pmic_typec_pdphy_stop;
-
 	return 0;
 }
-
-const struct pmic_typec_pdphy_resources pm8150b_pdphy_res = {
-	.irq_params = {
-		{
-			.virq = PMIC_PDPHY_SIG_TX_IRQ,
-			.irq_name = "sig-tx",
-		},
-		{
-			.virq = PMIC_PDPHY_SIG_RX_IRQ,
-			.irq_name = "sig-rx",
-		},
-		{
-			.virq = PMIC_PDPHY_MSG_TX_IRQ,
-			.irq_name = "msg-tx",
-		},
-		{
-			.virq = PMIC_PDPHY_MSG_RX_IRQ,
-			.irq_name = "msg-rx",
-		},
-		{
-			.virq = PMIC_PDPHY_MSG_TX_FAIL_IRQ,
-			.irq_name = "msg-tx-failed",
-		},
-		{
-			.virq = PMIC_PDPHY_MSG_TX_DISCARD_IRQ,
-			.irq_name = "msg-tx-discarded",
-		},
-		{
-			.virq = PMIC_PDPHY_MSG_RX_DISCARD_IRQ,
-			.irq_name = "msg-rx-discarded",
-		},
-	},
-	.nr_irqs = 7,
-};
