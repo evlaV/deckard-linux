@@ -9,7 +9,6 @@
 #include <linux/kernel.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
@@ -33,6 +32,8 @@ struct pmic_typec_port {
 	u32				base;
 	unsigned int			nr_irqs;
 	struct pmic_typec_port_irq_data	*irq_data;
+
+	struct regulator		*vdd_vbus;
 
 	int				cc;
 	bool				debouncing_cc;
@@ -148,37 +149,25 @@ int qcom_pmic_typec_port_get_vbus(struct pmic_typec_port *pmic_typec_port)
 	return !!(misc & TYPEC_VBUS_DETECT);
 }
 
-#define SCPQ_P_DCDC_BASE 0x2700
+bool qcom_pmic_typec_port_is_vbus_vsafe0v(struct pmic_typec_port *pmic_typec_port)
+{
+	unsigned int sensor_status;
+	bool safe = false;
+	int ret;
 
-#define PMIO_SCPQ_P_DCDC_BST_EN_ADDR                                                                       (SCPQ_P_DCDC_BASE            + 0x00000050)
-#define PMIO_SCPQ_P_DCDC_BST_EN_RMSK                                                                             0x1b
-#define PMIO_SCPQ_P_DCDC_BST_EN_FAST_ROLE_SWAP_CMD_BMSK                                                          0x10
-#define PMIO_SCPQ_P_DCDC_BST_EN_FAST_ROLE_SWAP_CMD_SHFT                                                           0x4
-#define PMIO_SCPQ_P_DCDC_BST_EN_FAST_ROLE_SWAP_SRC_BMSK                                                           0x8
-#define PMIO_SCPQ_P_DCDC_BST_EN_FAST_ROLE_SWAP_SRC_SHFT                                                           0x3
-#define PMIO_SCPQ_P_DCDC_BST_EN_BST_EN_WLS_BMSK                                                                   0x2
-#define PMIO_SCPQ_P_DCDC_BST_EN_BST_EN_WLS_SHFT                                                                   0x1
-#define PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_BMSK                                                                       0x1
-#define PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_SHFT                                                                       0x0
+	ret = regmap_read(pmic_typec_port->regmap,
+			  pmic_typec_port->base + TYPEC_SM_STATUS_REG,
+			  &sensor_status);
+	if (ret) {
+		safe = false;
+	} else {
+		safe = (sensor_status & TYPEC_SM_VBUS_VSAFE0V);
+	}
 
-#define PMIO_SCPQ_P_DCDC_BST_CFG_ADDR                                                                      (SCPQ_P_DCDC_BASE            + 0x00000056)
-#define PMIO_SCPQ_P_DCDC_BST_CFG_RMSK                                                                            0x73
-#define PMIO_SCPQ_P_DCDC_BST_CFG_FAST_ROLE_SWAP_START_OPTION_BMSK                                                0x40
-#define PMIO_SCPQ_P_DCDC_BST_CFG_FAST_ROLE_SWAP_START_OPTION_SHFT                                                 0x6
-#define PMIO_SCPQ_P_DCDC_BST_CFG_OTG_HICCUP_CNTR_RST_TIMER_SEL_BMSK                                              0x20
-#define PMIO_SCPQ_P_DCDC_BST_CFG_OTG_HICCUP_CNTR_RST_TIMER_SEL_SHFT                                               0x5
-#define PMIO_SCPQ_P_DCDC_BST_CFG_EN_SOC_BASED_OTG_UVLO_BMSK                                                      0x10
-#define PMIO_SCPQ_P_DCDC_BST_CFG_EN_SOC_BASED_OTG_UVLO_SHFT                                                       0x4
-#define PMIO_SCPQ_P_DCDC_BST_CFG_ENABLE_OTG_IN_DEBUG_MODE_BMSK                                                    0x2
-#define PMIO_SCPQ_P_DCDC_BST_CFG_ENABLE_OTG_IN_DEBUG_MODE_SHFT                                                    0x1
-#define PMIO_SCPQ_P_DCDC_BST_CFG_OTG_EN_SRC_CFG_BMSK                                                              0x1
-#define PMIO_SCPQ_P_DCDC_BST_CFG_OTG_EN_SRC_CFG_SHFT                                                              0x0
+	pr_warn("qcom_pmic_typec_is_vbus_vsafe0v reading 0x%08X - safe %d\n", sensor_status, safe);
 
-#define PMIO_SCPQ_P_DCDC_ENG_CFG7_ADDR                                                                         (SCPQ_P_DCDC_BASE            + 0x000000c6)
-#define ENG_OTG_FPF_RSNS_DIV4_VARB_BMSK                                                                            0x1
-
-#define PMIO_SCPQ_P_DCDC_BST_STS_ADDR                                                                      (SCPQ_P_DCDC_BASE            + 0x0000000d)
-#define BOOST_SOFTSTART_DONE_BMSK 0x8
+	return (safe);
+}
 
 int qcom_pmic_typec_port_set_vbus(struct pmic_typec_port *pmic_typec_port, bool on)
 {
@@ -186,24 +175,19 @@ int qcom_pmic_typec_port_set_vbus(struct pmic_typec_port *pmic_typec_port, bool 
 	u32 val;
 	int ret;
 
-	//ret = regmap_read(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_STS_ADDR, &sm_stat);
-
-	printk("qcom_pmic_typec_port_set_vbus: %d\n", on);//, sm_stat);
-
-#if 0
 	if (on) {
 		ret = regulator_enable(pmic_typec_port->vdd_vbus);
 		if (ret)
 			return ret;
+
+		val = TYPEC_SM_VBUS_VSAFE5V;
 	} else {
 		ret = regulator_disable(pmic_typec_port->vdd_vbus);
 		if (ret)
 			return ret;
-	}
-#endif
 
-	regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_EN_ADDR, PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_BMSK, on);
-	val = on ? TYPEC_SM_VBUS_VSAFE5V : TYPEC_SM_VBUS_VSAFE0V;
+		val = TYPEC_SM_VBUS_VSAFE0V;
+	}
 
 	/* Poll waiting for transition to required vSafe5V or vSafe0V */
 	ret = regmap_read_poll_timeout(pmic_typec_port->regmap,
@@ -250,6 +234,11 @@ int qcom_pmic_typec_port_get_cc(struct pmic_typec_port *pmic_typec_port,
 		if (ret)
 			goto done;
 		switch (val & DETECTED_SRC_TYPE_MASK) {
+		case AUDIO_ACCESS_RA_RA:
+			val = TYPEC_CC_RA;
+			*cc1 = TYPEC_CC_RA;
+			*cc2 = TYPEC_CC_RA;
+			break;
 		case SRC_RD_OPEN:
 			val = TYPEC_CC_RD;
 			break;
@@ -554,6 +543,12 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 	if (!irq_data)
 		return -ENOMEM;
 
+	pmic_typec_port->vdd_vbus = devm_regulator_get(dev, "vdd-vbus");
+	if (IS_ERR(pmic_typec_port->vdd_vbus)) {
+		pr_warn("qcom_pmic_typec_port_probe Failed to Find USB OTG Supply\n");
+		return PTR_ERR(pmic_typec_port->vdd_vbus);
+	}
+
 	pmic_typec_port->dev = dev;
 	pmic_typec_port->base = base;
 	pmic_typec_port->regmap = regmap;
@@ -562,9 +557,6 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 	spin_lock_init(&pmic_typec_port->lock);
 	INIT_DELAYED_WORK(&pmic_typec_port->cc_debounce_dwork,
 			  qcom_pmic_typec_port_cc_debounce);
-
-	regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_EN_ADDR, PMIO_SCPQ_P_DCDC_BST_EN_OTG_EN_BMSK, 0x0);
-	regmap_update_bits(pmic_typec_port->regmap, PMIO_SCPQ_P_DCDC_BST_CFG_ADDR, PMIO_SCPQ_P_DCDC_BST_CFG_OTG_EN_SRC_CFG_BMSK, 0);
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
