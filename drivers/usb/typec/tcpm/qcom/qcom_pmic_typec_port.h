@@ -184,6 +184,8 @@ int qcom_pmic_typec_port_set_cc(struct pmic_typec_port *pmic_typec_port,
 
 int qcom_pmic_typec_port_get_vbus(struct pmic_typec_port *pmic_typec_port);
 
+bool qcom_pmic_typec_port_is_vbus_vsafe0v(struct pmic_typec_port *pmic_typec_port);
+
 int qcom_pmic_typec_port_set_vconn(struct pmic_typec_port *pmic_typec_port, bool on);
 
 int qcom_pmic_typec_port_start_toggling(struct pmic_typec_port *pmic_typec_port,
