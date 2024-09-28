@@ -3872,6 +3872,7 @@ static struct clk_regmap *gcc_sm8650_clocks[] = {
 	[GCC_GPLL6_AO] = &gcc_gpll6_ao.clkr,
 };
 
+
 static const struct qcom_reset_map gcc_sm8650_resets[] = {
 	[GCC_CAMERA_BCR] = { 0x26000 },
 	[GCC_DISPLAY_BCR] = { 0x27000 },
