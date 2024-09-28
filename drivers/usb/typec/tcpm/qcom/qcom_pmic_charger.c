@@ -54,13 +54,12 @@ int qcom_pmic_charger_init(struct regmap *regmap)
 	PRINT_REG(CHGR_TERM_CFG_ADDR);
 	PRINT_REG(CHGR_WD_CFG_ADDR);
 	PRINT_REG(CHGR_CHG_EN_ADDR);
-	return 0;
 #endif
 	// settings todd posted on slack:
 
-	regmap_write(regmap, CHGR_IPRE_CFG_ADDR, IPRE_250MA); // (125mA for 2S?)
-	regmap_write(regmap, CHGR_ICHG_CFG_ADDR, 1100/50); // 1.1 A (550mA for 2S?)
-	regmap_write(regmap, CHGR_VFLT_CFG_ADDR, (4500-3600)/10); // 4.5V float (9.0V for 2S?)
+	regmap_write(regmap, CHGR_IPRE_CFG_ADDR, IPRE_250MA); // (250 mA for 2S?)
+	regmap_write(regmap, CHGR_ICHG_CFG_ADDR, 1320/60); // 1.32 A for 2S?
+	regmap_write(regmap, CHGR_VFLT_CFG_ADDR, (4450-3600)/10); // 4.45V float (8.9V for 2S)
 	regmap_write(regmap, CHGR_TERM_CFG_ADDR, CHGR_TERM_CFG_I_TERM); // enabled and min (100mA)
 
 	regmap_write(regmap, CHGR_WD_CFG_ADDR, CHGR_WD_CFG_BITE_WDOG_DISABLE_CHARGING_CFG); // disable watchdog
