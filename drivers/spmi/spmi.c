@@ -17,6 +17,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/spmi.h>
 
+#include "spmi-dbgfs.h"
+
 static bool is_registered;
 static DEFINE_IDA(ctrl_ida);
 
@@ -43,7 +45,7 @@ static const struct device_type spmi_ctrl_type = {
 	.release	= spmi_ctrl_release,
 };
 
-static int spmi_device_match(struct device *dev, const struct device_driver *drv)
+static int spmi_device_match(struct device *dev, struct device_driver *drv)
 {
 	if (of_driver_match_device(dev, drv))
 		return 1;
@@ -378,7 +380,7 @@ static int spmi_drv_uevent(const struct device *dev, struct kobj_uevent_env *env
 	return 0;
 }
 
-static const struct bus_type spmi_bus_type = {
+static struct bus_type spmi_bus_type = {
 	.name		= "spmi",
 	.match		= spmi_device_match,
 	.probe		= spmi_drv_probe,
@@ -550,6 +552,8 @@ int spmi_controller_add(struct spmi_controller *ctrl)
 
 	if (IS_ENABLED(CONFIG_OF))
 		of_spmi_register_devices(ctrl);
+
+	spmi_dfs_add_controller(ctrl);
 
 	dev_dbg(&ctrl->dev, "spmi-%d registered: dev:%p\n",
 		ctrl->nr, &ctrl->dev);
