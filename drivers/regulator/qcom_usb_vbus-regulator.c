@@ -13,15 +13,16 @@
 #include <linux/regulator/of_regulator.h>
 #include <linux/regmap.h>
 
-#define CMD_OTG				0x40
+#define CMD_OTG 			0x50
 #define OTG_EN				BIT(0)
-#define OTG_CURRENT_LIMIT_CFG		0x52
+#define OTG_CURRENT_LIMIT_CFG		0x53
 #define OTG_CURRENT_LIMIT_MASK		GENMASK(2, 0)
-#define OTG_CFG				0x53
+// The 0 bit in this register's bit field is undocumented
+#define OTG_CFG					0x56
 #define OTG_EN_SRC_CFG			BIT(1)
 
 static const unsigned int curr_table[] = {
-	500000, 1000000, 1500000, 2000000, 2500000, 3000000,
+	1000000, 1250000, 1500000, 1750000, 2000000, 2500000, 3000000, 3500000
 };
 
 static const struct regulator_ops qcom_usb_vbus_reg_ops = {
@@ -91,7 +92,7 @@ static int qcom_usb_vbus_regulator_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id qcom_usb_vbus_regulator_match[] = {
-	{ .compatible = "qcom,pm8150b-vbus-reg" },
+	{ .compatible = "qcom,pm8550b-vbus-reg" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, qcom_usb_vbus_regulator_match);
