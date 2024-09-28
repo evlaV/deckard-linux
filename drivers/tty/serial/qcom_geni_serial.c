@@ -1301,11 +1301,6 @@ static int setup_fifos(struct qcom_geni_serial_port *port)
 		(port->tx_fifo_depth * port->tx_fifo_width) / BITS_PER_BYTE;
 
 	if (port->rx_buf && (old_rx_fifo_depth != port->rx_fifo_depth) && port->rx_fifo_depth) {
-		/*
-		 * Use krealloc rather than krealloc_array because rx_buf is
-		 * accessed as 1 byte entries as well as 4 byte entries so it's
-		 * not necessarily an array.
-		 */
 		port->rx_buf = devm_krealloc(uport->dev, port->rx_buf,
 					     port->rx_fifo_depth * sizeof(u32),
 					     GFP_KERNEL);
@@ -1472,8 +1467,6 @@ static int geni_serial_set_rate(struct geni_se *se, unsigned long baud)
 	trace_geni_serial_clk_cfg(uport->dev, baud * sampling_rate, clk_rate,
 				  clk_div, clk_idx);
 
-	uport->uartclk = clk_rate;
-	port->clk_rate = clk_rate;
 	dev_pm_opp_set_rate(uport->dev, clk_rate);
 	ser_clk_cfg = SER_CLK_EN;
 	ser_clk_cfg |= clk_div << CLK_DIV_SHFT;
@@ -1817,7 +1810,6 @@ static const struct uart_ops qcom_geni_console_pops = {
 #ifdef CONFIG_CONSOLE_POLL
 	.poll_get_char	= qcom_geni_serial_get_char,
 	.poll_put_char	= qcom_geni_serial_poll_put_char,
-	.poll_init = qcom_geni_serial_poll_init,
 #endif
 };
 
@@ -1999,6 +1991,13 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 
 	port->panic_nb.notifier_call = qcom_geni_serial_panic_notifier;
 	atomic_notifier_chain_register(&panic_notifier_list, &port->panic_nb);
+
+	/*
+	 * Set pm_runtime status as ACTIVE so that wakeup_irq gets
+	 * enabled/disabled from dev_pm_arm_wake_irq during system
+	 * suspend/resume respectively.
+	 */
+	pm_runtime_set_active(&pdev->dev);
 
 	return 0;
 

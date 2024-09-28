@@ -455,7 +455,7 @@ static struct gdsc video_cc_mvs0c_gdsc = {
 		.name = "video_cc_mvs0c_gdsc",
 	},
 	.pwrsts = PWRSTS_OFF_ON,
-	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | ALWAYS_ON,
 };
 
 static struct gdsc video_cc_mvs0_gdsc = {
@@ -468,7 +468,7 @@ static struct gdsc video_cc_mvs0_gdsc = {
 	},
 	.pwrsts = PWRSTS_OFF_ON,
 	.parent = &video_cc_mvs0c_gdsc.pd,
-	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | HW_CTRL_TRIGGER,
+	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | HW_CTRL_TRIGGER | ALWAYS_ON,
 };
 
 static struct gdsc video_cc_mvs1c_gdsc = {
@@ -480,7 +480,7 @@ static struct gdsc video_cc_mvs1c_gdsc = {
 		.name = "video_cc_mvs1c_gdsc",
 	},
 	.pwrsts = PWRSTS_OFF_ON,
-	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | ALWAYS_ON,
 };
 
 static struct gdsc video_cc_mvs1_gdsc = {
@@ -493,7 +493,7 @@ static struct gdsc video_cc_mvs1_gdsc = {
 	},
 	.pwrsts = PWRSTS_OFF_ON,
 	.parent = &video_cc_mvs1c_gdsc.pd,
-	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | HW_CTRL_TRIGGER,
+	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | HW_CTRL_TRIGGER | ALWAYS_ON,
 };
 
 static struct clk_regmap *video_cc_sm8550_clocks[] = {
