@@ -991,6 +991,24 @@
 	status = "okay";
 };
 
+// Prox Sensor I2C
+&i2c_hub_8 {
+	status = "okay";
+
+	light-sensor@60 {
+		compatible = "vishay,vcnl4040";
+		reg = <0x60>;
+		proximity-near-level = <220>;
+		// interrupts-extended = <&tlmm 31 IRQ_TYPE_EDGE_FALLING>;
+		// driver lacks support for regulators, l8c and l11c set to always on
+
+		vin0-supply = <&vreg_l2b_3p0>; 
+		vin1-supply = <&vreg_l15b_1p8>; 
+
+		status = "okay";
+	};
+};
+
 &tlmm {
 	gpio-line-names =
 		// GPIO000 - GPIO015
