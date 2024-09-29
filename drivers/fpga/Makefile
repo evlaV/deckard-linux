@@ -60,3 +60,6 @@ obj-$(CONFIG_FPGA_DFL_PCI)		+= dfl-pci.o
 
 # KUnit tests
 obj-$(CONFIG_FPGA_KUNIT_TESTS)		+= tests/
+
+#driver for valve fpga
+obj-y += efinix-t8f81c2.o
