@@ -992,4 +992,14 @@ config INPUT_STPMIC1_ONKEY
 	  To compile this driver as a module, choose M here: the
 	  module will be called stpmic1_onkey.
 
+config INPUT_ALS31300
+	tristate "Allegro ALS31300 Support"
+	depends on I2C
+	help
+	  Say Y here if you want to use Allegro ALS31300 Hall Effect Sensor
+	  through its I2C interface.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called als31300.
+
 endif
