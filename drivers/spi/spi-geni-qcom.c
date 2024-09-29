@@ -708,7 +708,10 @@ static int spi_geni_init(struct spi_geni_master *mas)
 	else
 		mas->oversampling = 1;
 
+	fifo_disable = readl(se->base + GENI_IF_DISABLE_RO) & FIFO_IF_DISABLE;
+#ifdef ALLOW_DMA
 	fifo_disable = 0;
+#endif
 	switch (fifo_disable) {
 	case 1:
 		ret = spi_geni_grab_gpi_chan(mas);
@@ -900,6 +903,7 @@ static int setup_se_xfer(struct spi_transfer *xfer,
 	 * expected to fit into in 1 entry almost always, and if any
 	 * doesn't for any reason we fall back to FIFO mode anyway
 	 */
+#ifdef ALLOW_DMA
 	if (!xfer->tx_sg.nents && !xfer->rx_sg.nents)
 		mas->cur_xfer_mode = GENI_SE_FIFO;
 	else if (xfer->tx_sg.nents > 1 || xfer->rx_sg.nents > 1) {
@@ -908,7 +912,9 @@ static int setup_se_xfer(struct spi_transfer *xfer,
 		mas->cur_xfer_mode = GENI_SE_FIFO;
 	} else
 		mas->cur_xfer_mode = GENI_SE_DMA;
+#else
 	mas->cur_xfer_mode = GENI_SE_FIFO;
+#endif
 	geni_se_select_mode(se, mas->cur_xfer_mode);
 
 	/*
