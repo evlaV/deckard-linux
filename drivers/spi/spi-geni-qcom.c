@@ -1097,7 +1097,12 @@ static int spi_geni_probe(struct platform_device *pdev)
 	mas->se.wrapper = dev_get_drvdata(dev->parent);
 	mas->se.base = base;
 	mas->se.clk = clk;
-
+#if 0
+//TODO: gabe -- found this was missed -- is it needed? from this patch	"GENI_SE firmware loading"
+	mas->se.ibi_base = devm_platform_ioremap_resource(pdev, 1);
+	if (IS_ERR(mas->se.ibi_base))
+		mas->se.ibi_base = NULL;
+#endif
 	ret = devm_pm_opp_set_clkname(&pdev->dev, "se");
 	if (ret)
 		return ret;
