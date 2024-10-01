@@ -483,7 +483,7 @@ static int pm8xxx_rtc_probe(struct platform_device *pdev)
 	rtc_dd->nvmem_cell = devm_nvmem_cell_get(&pdev->dev, "offset");
 	if (IS_ERR(rtc_dd->nvmem_cell)) {
 		rc = PTR_ERR(rtc_dd->nvmem_cell);
-		if (rc != -ENOENT)
+		if (rc != -ENOENT && rc != -EOPNOTSUPP)
 			return rc;
 		rtc_dd->nvmem_cell = NULL;
 	}
