@@ -366,6 +366,7 @@ static int pwrseq_qcom_wcn_probe(struct platform_device *pdev)
 	struct pwrseq_qcom_wcn_ctx *ctx;
 	struct pwrseq_config config;
 	int i, ret;
+	u32 voltage[16];
 
 	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
@@ -390,6 +391,16 @@ static int pwrseq_qcom_wcn_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return dev_err_probe(dev, ret,
 				     "Failed to get all regulators\n");
+
+	ret = device_property_read_u32_array(&pdev->dev, "voltage-list", voltage, ctx->pdata->num_vregs);
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret, "Failed to obtain voltage-list\n");
+
+	for (i = 0; i < ctx->pdata->num_vregs; i++) {
+		ret = regulator_set_voltage(ctx->regs[i].consumer, voltage[i], voltage[i]);
+		if (ret < 0)
+			return dev_err_probe(dev, ret, "Failed to set voltage %d\n", i);
+	}
 
 	ctx->bt_gpio = devm_gpiod_get_optional(dev, "bt-enable", GPIOD_OUT_LOW);
 	if (IS_ERR(ctx->bt_gpio))
