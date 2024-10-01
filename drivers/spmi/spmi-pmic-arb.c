@@ -1206,6 +1206,8 @@ static int pmic_arb_read_apid_map_v5(struct spmi_pmic_arb_bus *bus)
 		apid = bus->ppid_to_apid[ppid] & ~PMIC_ARB_APID_VALID;
 		prev_apidd = &bus->apid_data[apid];
 
+		// printk("apid=%.3x ppid=%.3x owner %d irq %d", i, ppid, apidd->write_ee, is_irq_ee);
+
 		if (!valid || apidd->write_ee == pmic_arb->ee) {
 			/* First PPID mapping or one for this EE */
 			bus->ppid_to_apid[ppid] = i | PMIC_ARB_APID_VALID;
