@@ -1793,7 +1793,7 @@ int a6xx_gmu_init(struct a6xx_gpu *a6xx_gpu, struct device_node *node)
 	}
 
 	gmu->qmp = qmp_get(gmu->dev);
-	if (IS_ERR(gmu->qmp) && adreno_is_a7xx(adreno_gpu)) {
+	if (IS_ERR(gmu->qmp) && 0) {
 		ret = PTR_ERR(gmu->qmp);
 		goto remove_device_link;
 	}
