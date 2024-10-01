@@ -10,8 +10,6 @@
 		preboost-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
 		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>,
 			   <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
-		bias-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>,
-			     <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
 		i2c-adapter = <&i2c4 &i2c5>;
 	};
 

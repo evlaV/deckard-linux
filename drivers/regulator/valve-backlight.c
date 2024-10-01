@@ -16,7 +16,7 @@ struct valve_backlight {
 
 	struct gpio_desc *preboost_gpio;
 	struct gpio_desc *en_gpio[2];
-	struct gpio_desc *bias_gpio[2];
+//	struct gpio_desc *bias_gpio[2];
 
 	uint8_t required_reinit;
 	struct delayed_work backlight_work;
@@ -359,10 +359,14 @@ backlight_probe(struct platform_device *pdev)
 		if (IS_ERR(bl->en_gpio[i]))
 			return PTR_ERR(bl->en_gpio[i]);
 
+	/*	Bias supplies are for the display backplane and should only be enabled
+	 *	while display VDD is enabled, as per the display's specified power-up /
+	 *	shut-down sequence
 		// GPIOD_OUT_HIGH: set bias gpios to be always on
 		bl->bias_gpio[i] = devm_gpiod_get_index(dev, "bias", i, GPIOD_OUT_HIGH);
 		if (IS_ERR(bl->bias_gpio[i]))
 			return PTR_ERR(bl->bias_gpio[i]);
+	*/
 	}
 
 	for (i = 0; i < 2; i++) {
@@ -402,6 +406,9 @@ backlight_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	// Configure the display backplane VPOS and VNEG bias supplies here, since
+	// the regulator shares the same I2C as the backlight, but bias enable (via
+	// GPIO) should only be controlled by the display driver
 	i = 0;
 	ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VPOS, 0x11); //+5.7V
 	while(++i<10 && ret) {
