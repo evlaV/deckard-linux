@@ -905,6 +905,10 @@
 
 	vdd-pdphy-supply = <&vreg_l5b_3p1>;
 
+	io-channels = <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_SNS_CHGR>,
+				  <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_2S_MID_CHGR>;
+	io-channel-names = "vbat", "vmid";
+
 	connector {
 		power-role = "dual";
 		data-role = "dual";
