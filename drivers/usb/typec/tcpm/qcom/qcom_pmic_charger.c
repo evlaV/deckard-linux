@@ -71,5 +71,8 @@ int qcom_pmic_charger_init(struct regmap *regmap)
 	// sleep 10 seconds ??
 	regmap_write(regmap, CHGR_CHG_EN_ADDR, CHGR_CHG_EN_CHARGING_ENABLE_CMD); // enable charging
 
+	INIT_DELAYED_WORK(&chg->balance_work, balance_delayed_work_handler);
+	schedule_delayed_work(&chg->balance_work, BALANCE_PERIOD / 4);
+
 	return 0;
 }
