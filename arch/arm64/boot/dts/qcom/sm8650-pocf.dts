@@ -203,6 +203,14 @@
 		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
 	};
 
+	southgate_fg {
+		compatible = "deckard,southgate_fg";
+		status="okay";
+		io-channels = <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_SNS_CHGR>,
+					  <&pmk8550_vadc PM8550B_ADC5_GEN3_ICHG_FB>;
+		io-channel-names = "vbat", "ibat";
+	};
+
 };
 
 
