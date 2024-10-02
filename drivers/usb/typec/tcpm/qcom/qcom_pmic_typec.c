@@ -275,7 +275,7 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	if (ret)
 		goto fwnode_remove;
 
-	qcom_pmic_charger_init(regmap);
+	qcom_pmic_charger_init(dev, regmap);
 
 	return 0;
 
