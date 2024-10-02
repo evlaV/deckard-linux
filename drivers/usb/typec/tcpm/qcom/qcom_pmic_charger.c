@@ -1,9 +1,16 @@
+#include <linux/iio/consumer.h>
+#include <linux/jiffies.h>
+
 #define CHGR_BASE 0x2600
 #define USB_BASE 0x2900
+#define BALANCE_BASE 0x3000
 
 #define CHGR_CHG_EN_ADDR  (CHGR_BASE + 0x46)
 #define CHGR_CHG_EN_CHARGING_PAUSE_CMD 	BIT(4)
 #define CHGR_CHG_EN_CHARGING_ENABLE_CMD BIT(0)
+
+#define BALANCE_TARGET (BALANCE_BASE + 0x41)
+#define BALANCE_PERIOD                 HZ*60
 
 enum pre_charge_current {
 	IPRE_100MA,
@@ -42,8 +49,171 @@ enum pre_charge_current {
 #define USB_USB_ICL_OVERRIDE_ADDR (USB_BASE + 0x51) // bit(0) OVERRIDE, and bit(4) for OVERRIDE_AFTER_APSD
 #define USB_USB_ICL_CFG_ADDR (USB_BASE + 0x52) // 50mA steps, max 6000mA
 
-int qcom_pmic_charger_init(struct regmap *regmap)
+struct pmic_charger {
+	struct device      *dev;
+	struct regmap      *regmap;
+	struct iio_channel *vmid_ch;
+	struct iio_channel *vbat_ch;
+	struct delayed_work balance_work;
+};
+
+struct pmic_charger *chg;
+
+static ssize_t balancing_show(struct device *dev, struct device_attribute *attr,
+			   char *buf)
 {
+	ssize_t rc;
+	uint balance;
+	regmap_read(chg->regmap, BALANCE_TARGET, &balance);
+	rc = snprintf(buf, PAGE_SIZE, "%x", balance);
+	return rc;
+}
+static DEVICE_ATTR_RO(balancing);
+
+static ssize_t delta_show(struct device *dev, struct device_attribute *attr,
+			   char *buf)
+{
+	ssize_t rc;
+	int vbat,lower,upper,delta,ret;
+
+	// read vbat and mid voltages
+	ret = iio_read_channel_processed(chg->vbat_ch, &vbat);
+	if (ret < 0) {
+		pr_err("qcom-pmic: failed to read vbat_ch\n");
+		return 0;
+	}
+	ret = iio_read_channel_processed(chg->vmid_ch, &lower);
+	if (ret < 0) {
+		pr_err("qcom-pmic: failed to read vmid_ch\n");
+		return 0;
+	}
+	
+	// calculate delta in mV    
+	upper = vbat-lower;
+	delta = ( upper - lower ) / 1000;
+	rc = snprintf(buf, PAGE_SIZE, "%d", delta);
+	return rc;
+}
+static DEVICE_ATTR_RO(delta);
+
+static struct attribute *balancing_attrs[] = {
+	&dev_attr_balancing.attr,
+	&dev_attr_delta.attr,
+	NULL,
+};
+
+static const struct attribute_group balancing_attr_group = {
+	.name = "balancing",
+	.attrs = balancing_attrs,
+};
+
+void set_voltage(struct pmic_charger *chg, uint float_voltage, int delta)
+{
+	u32 abs_delta = abs(delta);
+	uint voltage_reg = (float_voltage-3600 - abs_delta/2)/10;
+
+	regmap_write(chg->regmap, CHGR_VFLT_CFG_ADDR, voltage_reg); // 4.45V float (8.9V for 2S)
+}
+
+int charger_connected(struct pmic_charger *chg)
+{
+	int ret;
+	int val;
+
+	// Read USB Sink Status
+	ret = regmap_read(chg->regmap, 0x2B06, &val);
+	if (ret) {
+		// Flag disconnected on PMIC read failure
+		return 0;
+	}
+
+	switch (val & DETECTED_SNK_TYPE_MASK) {
+	case SNK_RP_STD:
+	case SNK_RP_1P5:
+	case SNK_RP_3P0:
+		ret = 1;
+		break;
+	default:
+		ret = 0;
+		break;
+
+	}
+
+	return ret;
+}
+
+
+void balance_delayed_work_handler(struct work_struct *work)
+{
+	int ret;
+	int vbat,lower,upper,delta;
+	uint balance;
+	struct pmic_charger *chg = container_of((struct delayed_work *)work, struct pmic_charger, balance_work);
+	
+	regmap_read(chg->regmap, BALANCE_TARGET, &balance);
+
+	// Get Charger Status
+	if (!charger_connected(chg)) {
+		// Charger Disconnected
+		if ( balance != 0x00 ) {
+			pr_warn("qcom-pmic: charger disconnected, disabling cell balancing\n");
+			regmap_write(chg->regmap, BALANCE_TARGET, 0x00);
+		}
+
+		goto end;
+	}
+
+	// read vbat and mid voltages
+	ret = iio_read_channel_processed(chg->vbat_ch, &vbat);
+	if (ret < 0) {
+		pr_err("qcom-pmic: failed to read vbat_ch\n");
+		goto end;
+	}
+	ret = iio_read_channel_processed(chg->vmid_ch, &lower);
+	if (ret < 0) {
+		pr_err("qcom-pmic: failed to read vmid_ch\n");
+		goto end;
+	}
+	
+	// calculate delta in mV    
+	upper = vbat-lower;
+	delta = ( upper - lower ) / 1000;
+
+	// set balance target and float voltage according to delta
+	if ( delta > 20 ) {
+		set_voltage(chg, 4450, delta);
+		if ( balance != 0x02 ) {
+			pr_warn("qcom-pmic: setting balance target to upper\n");
+			regmap_write(chg->regmap, BALANCE_TARGET, 0x02);
+		}
+	}
+	else if ( delta < -20 ) {
+		set_voltage(chg, 4450, delta);
+		regmap_write(chg->regmap, BALANCE_TARGET, 0x01);
+		if ( balance != 0x01 ) {
+			pr_warn("qcom-pmic: setting balance target to lower\n");
+			regmap_write(chg->regmap, BALANCE_TARGET, 0x01);
+		}
+	}
+	else if ( delta < 10 && delta > -10 ) {
+		set_voltage(chg, 4450, 0);
+		regmap_write(chg->regmap, BALANCE_TARGET, 0x00);
+	}
+
+end:
+	schedule_delayed_work(&chg->balance_work, BALANCE_PERIOD);
+};
+
+int qcom_pmic_charger_init(struct device *dev, struct regmap *regmap)
+{
+	int ret;
+	int vbat,vmid,delta;
+
+	chg = devm_kzalloc(dev, sizeof(*chg), GFP_KERNEL);
+	if (!chg)
+		return -ENOMEM;
+
+	chg->regmap = regmap;
 #if 1
 	// just print the bootloader charging settings
 	// expected: ipre=300mA, ichg=750mA, vflt=4350mV, term=300mA
@@ -55,10 +225,48 @@ int qcom_pmic_charger_init(struct regmap *regmap)
 	PRINT_REG(CHGR_WD_CFG_ADDR);
 	PRINT_REG(CHGR_CHG_EN_ADDR);
 #endif
-	// settings todd posted on slack:
+
+	chg->vmid_ch = devm_iio_channel_get(dev, "vmid");
+	if (IS_ERR(chg->vmid_ch)) {
+		pr_warn("qcom-pmic: vmid get failed\n");
+		goto enable_charger;
+	}
+
+	chg->vbat_ch = devm_iio_channel_get(dev, "vbat");
+	if (IS_ERR(chg->vbat_ch)) {
+		pr_warn("qcom-pmic: vbat get failed\n");
+		goto enable_charger;
+	}
+
+	ret = iio_read_channel_processed(chg->vbat_ch, &vbat);
+	if (ret < 0) {
+		pr_warn("qcom-pmic: failed to read vbat\n");
+		goto enable_charger;
+	}
+
+	ret = iio_read_channel_processed(chg->vmid_ch, &vmid);
+	if (ret < 0) {
+		pr_warn("qcom-pmic: failed to read vmid\n");
+		goto enable_charger;
+	}
+
+	delta = abs( vmid - ( vbat - vmid ) ) / 1000;
+
+	if ( delta > 20 ) {
+		 pr_warn("!! WARNING !! qcom-pmic: Battery cell imbalance detected: %d mV\n", delta);
+	}
+
+	ret = sysfs_create_group(&dev->kobj, &balancing_attr_group);
+	if (ret < 0) {
+		pr_err("qcom-pmic: Can't register sysfs attr group: %d\n", ret);
+	}
+
+enable_charger:
+	// Disable QBG - This lowers ADC Reads and Reads on VMid
+	regmap_write(regmap, 0x4F46, 0x00);
 
 	regmap_write(regmap, CHGR_IPRE_CFG_ADDR, IPRE_250MA); // (250 mA for 2S?)
-	regmap_write(regmap, CHGR_ICHG_CFG_ADDR, 1320/60); // 1.32 A for 2S?
+	regmap_write(regmap, CHGR_ICHG_CFG_ADDR, 1320/60); // 1.32 A for 2S? NOTE This might actually be 50 mA steps
 	regmap_write(regmap, CHGR_VFLT_CFG_ADDR, (4450-3600)/10); // 4.45V float (8.9V for 2S)
 	regmap_write(regmap, CHGR_TERM_CFG_ADDR, CHGR_TERM_CFG_I_TERM); // enabled and min (100mA)
 
