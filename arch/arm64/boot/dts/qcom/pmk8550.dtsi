@@ -92,6 +92,168 @@
 				label = "pmk8550_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
+
+			/* PM8550 Channel nodes */
+			channel@100 {
+				reg = <ADC5_GEN3_REF_GND(1)>;
+				label = "pm8550_offset_ref";
+				qcom,pre-scaling = <1 1>;
+			};
+
+			channel@101 {
+				reg = <ADC5_GEN3_1P25VREF(1)>;
+				label = "pm8550_vref_1p25";
+				qcom,pre-scaling = <1 1>;
+			};
+
+			channel@103 {
+				reg = <ADC5_GEN3_DIE_TEMP(1)>;
+				label = "pm8550_die_temp";
+				qcom,pre-scaling = <1 1>;
+			};
+
+			channel@18e {
+				reg = <ADC5_GEN3_VPH_PWR(1)>;
+				label = "pm8550_vph_pwr";
+				qcom,pre-scaling = <1 3>;
+			};
+
+			/* PM8550B Channel nodes */
+			channel@700 {
+				reg = <ADC5_GEN3_REF_GND(7)>;
+				label = "pm8550b_offset_ref";
+				qcom,pre-scaling = <1 1>;
+			};
+
+			channel@701 {
+				reg = <ADC5_GEN3_1P25VREF(7)>;
+				label = "pm8550b_vref_1p25";
+				qcom,pre-scaling = <1 1>;
+			};
+
+			channel@703 {
+				reg = <ADC5_GEN3_DIE_TEMP(7)>;
+				label = "pm8550b_die_temp";
+				qcom,pre-scaling = <1 1>;
+			};
+
+			channel@718 {
+				reg = <ADC5_GEN3_TEMP_ALARM_LITE(7)>;
+				label = "pm8550b_lite_die_temp";
+				qcom,pre-scaling = <1 1>;
+			}
+
+			channel@78e {
+				reg = <ADC5_GEN3_VPH_PWR(7)>;
+				label = "pm8550b_vph_pwr";
+				qcom,pre-scaling = <1 3>;
+			};
+
+			channel@78f {
+				reg = <ADC5_GEN3_VBAT_SNS_QBG(7)>;
+				label = "pm8550b_vbat_sns_qbg";
+				qcom,pre-scaling = <1 6>;
+			};
+
+			channel@794 {
+				reg = <ADC5_GEN3_VBAT_SNS_CHGR(7)>;
+				label = "pm8550b_vbat_sns_chgr";
+				qcom,pre-scaling = <1 6>;
+			};
+
+			// NOTE That this seems correct, but is not... TGoyen
+			// qcom,scale-fn-type = <ADC_SCALE_HW_CALIB_PM5_GEN3_BATT_THERM_100K>;
+			battery_temp {
+				reg = <PM8550B_ADC5_GEN3_AMUX_THM1_BATT_THERM_100K_PU>;
+				label = "battery_temp";
+                qcom,ratiometric;
+                qcom,hw-settle-time = <200>;
+			};
+
+			channel@796 {
+				reg = <ADC5_GEN3_VBAT_2S_MID_QBG(7)>;
+				label = "pm8550b_vbat_2s_mid_qbg";
+				qcom,pre-scaling = <1 3>;
+			};
+
+			channel@79d {
+				reg = <ADC5_GEN3_VBAT_2S_MID_CHGR(7)>;
+				label = "pm8550b_vbat_2s_mid_chgr";
+				qcom,pre-scaling = <1 3>;
+			};
+
+			channel@710 {
+				reg = <ADC5_GEN3_CHG_TEMP(7)>;
+				label = "pm8550b_chg_temp";
+			};
+
+			channel@711 {
+				reg = <ADC5_GEN3_USB_SNS_V_16(7)>;
+				label = "pm8550b_usb_sns_v_div_16";
+				qcom,pre-scaling = <1 16>;
+			};
+
+			channel@712 {
+				reg = <ADC5_GEN3_VIN_DIV16_MUX(7)>;
+				label = "pm8550b_wls_vin_div_16";
+				qcom,pre-scaling = <1 16>;
+			};
+
+			// TODO Check Scaling of these
+			channel@717 {
+				reg = <ADC5_GEN3_IIN_FB(7)>;
+				label = "pm8550b_iin_fb";
+			};
+
+			channel@719 {
+				reg = <ADC5_GEN3_IIN_SMB(7)>;
+				label = "pm8550b_iin_smb";
+			};
+
+			channel@7a1 {
+				reg = <ADC5_GEN3_ICHG_FB(7)>;
+				label = "pm8550b_ichg_fb";
+			};
+
+			channel@71b {
+				reg = <ADC5_GEN3_ICHG_SMB(7)>;
+				label = "pm8550b_ichg_smb";
+			};
+
+			/* PM8550VS_C Channel nodes */
+			channel@203 {
+				reg = <ADC5_GEN3_DIE_TEMP(2)>;
+				label = "pm8550vs_c_die_temp";
+				qcom,pre-scaling = <1 1>;
+			};
+
+			/* PM8550VS_D Channel nodes */
+			channel@303 {
+				reg = <ADC5_GEN3_DIE_TEMP(3)>;
+				label = "pm8550vs_d_die_temp";
+				qcom,pre-scaling = <1 1>;
+			};
+
+			/* PM8550VS_E Channel nodes */
+			channel@403 {
+				reg = <ADC5_GEN3_DIE_TEMP(4)>;
+				label = "pm8550vs_e_die_temp";
+				qcom,pre-scaling = <1 1>;
+			};
+
+			/* PM8550VS_G Channel nodes */
+			channel@603 {
+				reg = <ADC5_GEN3_DIE_TEMP(6)>;
+				label = "pm8550vs_g_die_temp";
+				qcom,pre-scaling = <1 1>;
+			};
+
+			/* PM8550VE Channel nodes */
+			channel@503 {
+				reg = <ADC5_GEN3_DIE_TEMP(PMK8550VE_SID)>;
+				label = "pm8550ve_die_temp";
+				qcom,pre-scaling = <1 1>;
+			};
 		};
 
 		pmk8550_gpios: gpio@b800 {
