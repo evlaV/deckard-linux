@@ -418,6 +418,13 @@ config AXP288_FUEL_GAUGE
 	  monitoring as well as alerts for battery over/under voltage and
 	  over/under temperature.
 
+config FUEL_GAUGE_SOUTHGATE
+	tristate "Southgate Fuel Gauge"
+	depends on IIO
+	depends on OF
+	help
+	  Southgate Fuel Gauge.
+
 config BATTERY_MAX17040
 	tristate "Maxim MAX17040/17041/17043 family Fuel Gauge"
 	depends on I2C && IIO
