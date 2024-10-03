@@ -3806,6 +3806,7 @@ CONFIG_V4L_PLATFORM_DRIVERS=y
 # Qualcomm media platform drivers
 #
 CONFIG_VIDEO_QCOM_CAMSS=y
+CONFIG_VIDEO_QCOM_IRIS=y
 
 #
 # Raspberry Pi media platform drivers
