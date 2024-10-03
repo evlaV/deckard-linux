@@ -1980,6 +1980,18 @@
 			#mbox-cells = <2>;
 		};
 
+		ipcc_computel0: mailbox@443000 {
+			compatible = "qcom,sm8650-ipcc", "qcom,ipcc";
+			reg = <0 0x00443000 0 0x1000>;
+
+			interrupts = <GIC_SPI 230 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-controller;
+			#interrupt-cells = <3>;
+
+			#mbox-cells = <2>;
+		};
+
+
 		gpi_dma2: dma-controller@800000 {
 			compatible = "qcom,sm8650-gpi-dma", "qcom,sm6350-gpi-dma";
 			reg = <0 0x00800000 0 0x60000>;
