@@ -67,6 +67,11 @@
 			no-map;
 			reg = <0x0 0xe1200000 0x0 0x9b0000>;
 		};
+
+		video_mem: video@9bb00000 {
+			reg = <0 0x9bb00000 0 0x800000>;
+			no-map;
+		};
 	};
 
 	psci {
@@ -177,6 +182,12 @@
 &lpass_tlmm {
 	/delete-property/ clocks;
 	status = "disabled";
+};
+
+&iris {
+	video-firmware {
+		iommus = <&apps_smmu 0x1942 0x0000>;
+	};
 };
 
 &swr0 {
