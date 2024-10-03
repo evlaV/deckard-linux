@@ -201,6 +201,12 @@
 	status = "disabled";
 };
 
+&iris {
+	video-firmware {
+		iommus = <&apps_smmu 0x1942 0x0000>;
+	};
+};
+
 &swr0 {
 	status = "disabled";
 };
