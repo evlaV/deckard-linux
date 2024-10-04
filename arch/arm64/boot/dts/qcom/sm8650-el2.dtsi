@@ -58,8 +58,8 @@
 			no-map;
 		};
 
-		cpucp_fw_mem: cpucp-fw@d8140000 {
-			reg = <0x0 0xd8140000 0x0 0x1c0000>;
+		cpucp_fw_mem: cpucp-fw-region@d8040000 {
+			reg = <0x0 0xd8040000 0x0 0x1b2000>; // 0x160000>;
 			no-map;
 		};
 
