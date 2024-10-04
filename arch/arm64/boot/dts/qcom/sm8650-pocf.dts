@@ -1148,6 +1148,10 @@
 	};
 };
 
+&lpass_tlmm {
+	status = "ok";
+};
+
 &tlmm {
 	// TODO verify reserved pins for 8650
 	// qcom,gpios-reserved = <36 37 38 39>;
