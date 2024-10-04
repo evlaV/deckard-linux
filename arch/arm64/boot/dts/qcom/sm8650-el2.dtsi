@@ -29,11 +29,6 @@
 		#address-cells = <2>;
 		#size-cells = <2>;
 
-		hyp_tags_mem: hyp-tags@80e00000 {
-			no-map;
-			reg = <0x0 0x80e00000 0x0 0x3d0000>;
-		};
-
 		aop_mem: aop@81c00000 {
 			no-map;
 			reg = <0x0 0x81c00000 0x0 0x60000>;
@@ -61,11 +56,6 @@
 		cpucp_fw_mem: cpucp-fw-region@d8040000 {
 			reg = <0x0 0xd8040000 0x0 0x1b2000>; // 0x160000>;
 			no-map;
-		};
-
-		tz_tags_mem: tz-tags@e1200000 {
-			no-map;
-			reg = <0x0 0xe1200000 0x0 0x9b0000>;
 		};
 
 		video_mem: video@9bb00000 {
