@@ -120,6 +120,9 @@ int iris_hfi_core_init(struct iris_core *core)
 	if (ret)
 		return ret;
 
+	if (core->iris_platform_data->broken_suspend)
+		return 0;
+
 	return hfi_ops->sys_interframe_powercollapse(core);
 }
 
@@ -169,6 +172,9 @@ int iris_hfi_pm_suspend(struct iris_core *core)
 		dev_err(core->dev, "power not enabled\n");
 		return 0;
 	}
+
+	if (core->iris_platform_data->broken_suspend)
+		return -EAGAIN;
 
 	ret = iris_vpu_prepare_pc(core);
 	if (ret) {
