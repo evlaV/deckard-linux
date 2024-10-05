@@ -1503,7 +1503,9 @@ void ath12k_pci_power_down(struct ath12k_base *ab, bool is_suspend)
 
 static int ath12k_pci_panic_handler(struct ath12k_base *ab)
 {
-	ath12k_pci_sw_reset(ab, false);
+	
+//this is buggy -- ends up making kernel crashes look like they were caused by ath12k
+//	ath12k_pci_sw_reset(ab, false);
 
 	return NOTIFY_OK;
 }
