@@ -361,6 +361,13 @@ static unsigned int msm_get_clock_mult_for_bus_mode(struct sdhci_host *host)
 	return 1;
 }
 
+/*
+ * Due to level shifter insertion, HS mode frequency is reduced to 37.5MHz
+ * but clk's driver supply 37MHz only and uses ceil ops. So vote for
+ * 37MHz to avoid picking next ceil value.
+ */
+#define LEVEL_SHIFTER_HIGH_SPEED_FREQ	37000000
+
 static void msm_set_clock_rate_for_bus_mode(struct sdhci_host *host,
 					    unsigned int clock)
 {
@@ -375,6 +382,10 @@ static void msm_set_clock_rate_for_bus_mode(struct sdhci_host *host,
 
 	mult = msm_get_clock_mult_for_bus_mode(host);
 	desired_rate = clock * mult;
+
+	if (curr_ios.timing == MMC_TIMING_SD_HS)
+			desired_rate = LEVEL_SHIFTER_HIGH_SPEED_FREQ;
+
 	rc = dev_pm_opp_set_rate(mmc_dev(host->mmc), desired_rate);
 	if (rc) {
 		pr_err("%s: Failed to set clock at rate %u at timing %d\n",
@@ -621,7 +632,7 @@ static inline void msm_cm_dll_set_freq(struct sdhci_host *host)
 		mclk_freq = 5;
 	else if (host->clock <= 187000000)
 		mclk_freq = 6;
-	else if (host->clock <= 200000000)
+	else if (host->clock <= 208000000)
 		mclk_freq = 7;
 
 	config = readl_relaxed(host->ioaddr + msm_offset->core_dll_config);
