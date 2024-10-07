@@ -9,6 +9,8 @@
 #define CHGR_CHG_EN_CHARGING_PAUSE_CMD 	BIT(4)
 #define CHGR_CHG_EN_CHARGING_ENABLE_CMD BIT(0)
 
+#define CHGR_CHG_STATUS_ADDR  (CHGR_BASE + 0x06)
+
 #define BALANCE_TARGET (BALANCE_BASE + 0x41)
 #define BALANCE_PERIOD                 HZ*60
 
@@ -49,6 +51,29 @@ enum pre_charge_current {
 #define USB_USB_ICL_OVERRIDE_ADDR (USB_BASE + 0x51) // bit(0) OVERRIDE, and bit(4) for OVERRIDE_AFTER_APSD
 #define USB_USB_ICL_CFG_ADDR (USB_BASE + 0x52) // 50mA steps, max 6000mA
 
+typedef enum
+{
+	CHGR_CHG_STATUS_INHIBIT,
+	CHGR_CHG_STATUS_TRICKLE,
+	CHGR_CHG_STATUS_PRECHARGE,
+	CHGR_CHG_STATUS_FULLON,
+	CHGR_CHG_STATUS_TAPER,
+	CHGR_CHG_STATUS_TERMINATION,
+	CHGR_CHG_STATUS_PAUSE,
+	CHGR_CHG_STATUS_CHARGING_DISABLED
+} CHGR_CHG_STATUS;
+
+const char charger_status_string [][16] = {
+	"Inhibit",
+	"Trickle",
+	"Precharge",
+	"Full On",
+	"Taper",
+	"Termination",
+	"Paused",
+	"Disabled"
+};
+
 struct pmic_charger {
 	struct device      *dev;
 	struct regmap      *regmap;
@@ -58,6 +83,40 @@ struct pmic_charger {
 };
 
 struct pmic_charger *chg;
+
+static ssize_t charging_store(struct device *dev, struct device_attribute *attr,
+			   const char *buf, size_t count)
+{
+	unsigned long num;
+
+	if (kstrtoul(buf, 0, &num))
+		return -EINVAL;
+
+	if (num == 0) {
+		// Disable Charging
+		regmap_write(chg->regmap, CHGR_CHG_EN_ADDR, 0x00);
+	} else {
+		// Enable Charging
+		regmap_write(chg->regmap, CHGR_CHG_EN_ADDR, CHGR_CHG_EN_CHARGING_ENABLE_CMD);
+	}
+
+	return count;
+}
+
+static ssize_t charging_show(struct device *dev, struct device_attribute *attr,
+			   char *buf)
+{
+	ssize_t rc;
+	uint reg;
+	CHGR_CHG_STATUS status;
+
+	regmap_read(chg->regmap, CHGR_CHG_STATUS_ADDR, &reg);
+	status = (CHGR_CHG_STATUS)(reg & 0x07);
+	rc = snprintf(buf, PAGE_SIZE, "%s", charger_status_string[status]);
+
+	return rc;
+}
+static DEVICE_ATTR_RW(charging);
 
 static ssize_t balancing_show(struct device *dev, struct device_attribute *attr,
 			   char *buf)
@@ -97,6 +156,7 @@ static ssize_t delta_show(struct device *dev, struct device_attribute *attr,
 static DEVICE_ATTR_RO(delta);
 
 static struct attribute *balancing_attrs[] = {
+	&dev_attr_charging.attr,
 	&dev_attr_balancing.attr,
 	&dev_attr_delta.attr,
 	NULL,
