@@ -23,7 +23,7 @@ struct t8f81c2_fpga
     struct regulator *v1v1;
 };
 
-int t8f81c2_fpga_suspend(struct platform_device * dev, pm_message_t state)
+static int t8f81c2_fpga_suspend(struct platform_device * dev, pm_message_t state)
 {
     struct t8f81c2_fpga *t8f81c2 = platform_get_drvdata(dev);
     // Power off and disable clock
@@ -34,7 +34,7 @@ int t8f81c2_fpga_suspend(struct platform_device * dev, pm_message_t state)
 }
 
 
-int t8f81c2_fpga_resume(struct platform_device * dev)
+static int t8f81c2_fpga_resume(struct platform_device * dev)
 {
     struct t8f81c2_fpga *t8f81c2 = platform_get_drvdata(dev);
     // Power on and enable clock
