@@ -890,7 +890,7 @@ static int qpnpint_irq_domain_activate(struct irq_domain *domain,
 	u8 buf;
 
 	if (pmic_arb->apid_data[apid].irq_ee != pmic_arb->ee) {
-		dev_err(&pmic_arb->spmic->dev, "gabexxx1: failed to xlate sid = %#x, periph = %#x, irq = %u: ee=%u but owner=%u\n",
+		dev_err(&pmic_arb->spmic->dev, "failed to xlate sid = %#x, periph = %#x, irq = %u: ee=%u but owner=%u\n",
 			sid, periph, irq, pmic_arb->ee,
 			pmic_arb->apid_data[apid].irq_ee);
 		return -ENODEV;
@@ -937,7 +937,7 @@ static int qpnpint_irq_domain_translate(struct irq_domain *d,
 	ppid = intspec[0] << 8 | intspec[1];
 	rc = pmic_arb->ver_ops->ppid_to_apid(pmic_arb, ppid);
 	if (rc < 0) {
-		dev_err(&pmic_arb->spmic->dev, "gabexxx2: failed to xlate sid = %#x, periph = %#x, irq = %u rc = %d\n",
+		dev_err(&pmic_arb->spmic->dev, "failed to xlate sid = %#x, periph = %#x, irq = %u rc = %d\n",
 		intspec[0], intspec[1], intspec[2], rc);
 		return rc;
 	}
