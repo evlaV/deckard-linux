@@ -200,6 +200,33 @@
 					  "mi2s-lpaif";
 		};
 	};
+
+	thermal-zones {
+		gpuss0-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss1-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss2-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss3-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss4-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss5-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss6-thermal {
+			/delete-node/ cooling-maps;
+		};
+		gpuss7-thermal {
+			/delete-node/ cooling-maps;
+		};
+	};
 };
 
 &apps_rsc {
