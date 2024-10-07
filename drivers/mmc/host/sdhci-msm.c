@@ -351,6 +351,13 @@ static unsigned int msm_get_clock_mult_for_bus_mode(struct sdhci_host *host)
 	return 1;
 }
 
+/*
+ * Due to level shifter insertion, HS mode frequency is reduced to 37.5MHz
+ * but clk's driver supply 37MHz only and uses ceil ops. So vote for
+ * 37MHz to avoid picking next ceil value.
+ */
+#define LEVEL_SHIFTER_HIGH_SPEED_FREQ	37000000
+
 static void msm_set_clock_rate_for_bus_mode(struct sdhci_host *host,
 					    unsigned int clock)
 {
@@ -365,6 +372,10 @@ static void msm_set_clock_rate_for_bus_mode(struct sdhci_host *host,
 
 	mult = msm_get_clock_mult_for_bus_mode(host);
 	desired_rate = clock * mult;
+
+	if (curr_ios.timing == MMC_TIMING_SD_HS)
+			desired_rate = LEVEL_SHIFTER_HIGH_SPEED_FREQ;
+
 	rc = dev_pm_opp_set_rate(mmc_dev(host->mmc), desired_rate);
 	if (rc) {
 		pr_err("%s: Failed to set clock at rate %u at timing %d\n",
@@ -611,7 +622,7 @@ static inline void msm_cm_dll_set_freq(struct sdhci_host *host)
 		mclk_freq = 5;
 	else if (host->clock <= 187000000)
 		mclk_freq = 6;
-	else if (host->clock <= 200000000)
+	else if (host->clock <= 208000000)
 		mclk_freq = 7;
 
 	config = readl_relaxed(host->ioaddr + msm_offset->core_dll_config);
@@ -1518,6 +1529,7 @@ static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	bool done = false;
 	u32 val = SWITCHABLE_SIGNALING_VOLTAGE;
+	struct mmc_host *mmc = host->mmc;
 	const struct sdhci_msm_offset *msm_offset =
 					msm_host->offset;
 
@@ -1573,6 +1585,13 @@ static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 				 "%s: pwr_irq for req: (%d) timed out\n",
 				 mmc_hostname(host->mmc), req_type);
 	}
+
+	if (mmc->card && mmc->ops->get_cd && !mmc->ops->get_cd(mmc) &&
+			(req_type & REQ_BUS_ON)) {
+		host->pwr = 0;
+		sdhci_writeb(host, 0, SDHCI_POWER_CONTROL);
+	}
+
 	pr_debug("%s: %s: request %d done\n", mmc_hostname(host->mmc),
 			__func__, req_type);
 }
@@ -1629,6 +1648,14 @@ static void sdhci_msm_handle_pwr_irq(struct sdhci_host *host, int irq)
 			msm_offset->core_pwrctl_clear);
 		retry--;
 		udelay(10);
+	}
+
+	if (mmc->card && mmc->ops->get_cd && !mmc->ops->get_cd(mmc) &&
+		irq_status & CORE_PWRCTL_BUS_ON) {
+		irq_ack = CORE_PWRCTL_BUS_FAIL;
+		msm_host_writel(msm_host, irq_ack, host,
+				msm_offset->core_pwrctl_ctl);
+		return;
 	}
 
 	/* Handle BUS ON/OFF*/
