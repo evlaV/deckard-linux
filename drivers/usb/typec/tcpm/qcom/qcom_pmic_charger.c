@@ -14,6 +14,8 @@
 #define BALANCE_TARGET (BALANCE_BASE + 0x41)
 #define BALANCE_PERIOD                 HZ*60
 
+#define DISABLE_CELL_BALANCING          BIT(0)
+
 enum pre_charge_current {
 	IPRE_100MA,
 	IPRE_150MA,
@@ -264,7 +266,7 @@ end:
 	schedule_delayed_work(&chg->balance_work, BALANCE_PERIOD);
 };
 
-int qcom_pmic_charger_init(struct device *dev, struct regmap *regmap)
+int qcom_pmic_charger_init(struct device *dev, struct regmap *regmap, uint32_t flags)
 {
 	int ret;
 	int vbat,vmid,delta;
@@ -298,24 +300,6 @@ int qcom_pmic_charger_init(struct device *dev, struct regmap *regmap)
 		goto enable_charger;
 	}
 
-	ret = iio_read_channel_processed(chg->vbat_ch, &vbat);
-	if (ret < 0) {
-		pr_warn("qcom-pmic: failed to read vbat\n");
-		goto enable_charger;
-	}
-
-	ret = iio_read_channel_processed(chg->vmid_ch, &vmid);
-	if (ret < 0) {
-		pr_warn("qcom-pmic: failed to read vmid\n");
-		goto enable_charger;
-	}
-
-	delta = abs( vmid - ( vbat - vmid ) ) / 1000;
-
-	if ( delta > 20 ) {
-		 pr_warn("!! WARNING !! qcom-pmic: Battery cell imbalance detected: %d mV\n", delta);
-	}
-
 	ret = sysfs_create_group(&dev->kobj, &balancing_attr_group);
 	if (ret < 0) {
 		pr_err("qcom-pmic: Can't register sysfs attr group: %d\n", ret);
@@ -339,8 +323,28 @@ enable_charger:
 	// sleep 10 seconds ??
 	regmap_write(regmap, CHGR_CHG_EN_ADDR, CHGR_CHG_EN_CHARGING_ENABLE_CMD); // enable charging
 
-	INIT_DELAYED_WORK(&chg->balance_work, balance_delayed_work_handler);
-	schedule_delayed_work(&chg->balance_work, BALANCE_PERIOD / 4);
+	if ( ( flags & DISABLE_CELL_BALANCING ) != DISABLE_CELL_BALANCING ) {
+		ret = iio_read_channel_processed(chg->vbat_ch, &vbat);
+		if (ret < 0) {
+			pr_warn("qcom-pmic: failed to read vbat\n");
+			goto enable_charger;
+		}
+
+		ret = iio_read_channel_processed(chg->vmid_ch, &vmid);
+		if (ret < 0) {
+			pr_warn("qcom-pmic: failed to read vmid\n");
+			goto enable_charger;
+		}
+
+		delta = abs( vmid - ( vbat - vmid ) ) / 1000;
+
+		if ( delta > 20 ) {
+			pr_warn("qcom-pmic: Battery cell imbalance detected: %d mV\n", delta);
+		}
+
+		INIT_DELAYED_WORK(&chg->balance_work, balance_delayed_work_handler);
+		schedule_delayed_work(&chg->balance_work, BALANCE_PERIOD / 4);
+	}
 
 	return 0;
 }
