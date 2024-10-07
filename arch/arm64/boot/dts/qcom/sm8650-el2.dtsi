@@ -13,6 +13,8 @@
  * - fix cDSP & aDSP to boot without SCM
  */
 
+#include <dt-bindings/clock/qcom,lpasscorecc-sm8550.h>
+
 / {
 	cpus {
 		/delete-node/ idle-states;
@@ -86,6 +88,108 @@
 			compatible = "qcom,pshold";
 			reg = <0 0x0c264000 0 0x4>;
 		};
+
+		audiocc: clock-controller@6bc8000 {
+			reg = <0 0x06bc8000 0 0x30000>;
+			compatible = "qcom,sm8550-audiocc";
+			clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>, // depend on lpasscc probe??
+				 <&bi_tcxo_div2>;
+			clock-names = "iface", "bi_tcxo";
+			power-domains = <&aoncc LPASS_AUDIO_HM_GDSCR>;
+			#clock-cells = <1>;
+		};
+
+		aoncc: clock-controller@6e08000 {
+			reg = <0 0x06e08000 0 0x30000>;
+			compatible = "qcom,sm8550-aoncc";
+			clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
+				 <&bi_tcxo_div2>;
+			clock-names = "iface", "bi_tcxo";
+			power-domains = <&lpass_hm LPASS_CORE_HM_GDSCR>;
+			#clock-cells = <1>;
+			#power-domain-cells = <1>;
+		};
+
+		lpasscc: clock-controller@7b08000 {
+			compatible = "qcom,sm8550-lpasscorecc";
+			reg = <0 0x07b08000 0 0x4f000>;
+			clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
+				 <&bi_tcxo_div2>;
+			clock-names = "iface", "bi_tcxo";
+			power-domains = <&lpass_hm LPASS_CORE_HM_GDSCR>;
+			#clock-cells = <1>;
+		};
+
+		lpass_hm: clock-controller@7e00000 {
+			compatible = "qcom,sm8550-lpasshm";
+			reg = <0 0x07e00000 0 0xa000>;
+			clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
+				 <&bi_tcxo_div2>;
+			clock-names = "iface", "bi_tcxo";
+			#clock-cells = <1>;
+			#power-domain-cells = <1>;
+			power-domains = <&rpmhpd RPMHPD_LCX>;
+		};
+
+		sound: lpass@6b80000 {
+			compatible = "qcom,sm8650-lpass";
+
+			// LPASS_WSA_2CH_LPA_IF: 0x06a00000
+			// LPASS_AUD_LPA_IF: 0x06a40000
+			// LPASS_RXTX_LPA_IF: 0x06b40000
+			// LPASS_WSA_LPA_IF: 0x06b80000
+			// LPASS_VA_LPA_IF: 0x06d00000
+			// LPASS_CORE_LPA_IF: 0x07d00000 (mi2s)
+
+			// LPASS_HDMITX: 0x07be8000 (lpaif)
+			// LPASS_HDMITX_CTL: 0x07b88000
+
+
+			// LPASS_CORE_LPM: 0x07C10000 + 0x8000 (32K)
+			// LPASS_AUDIO_LPM 0x06C80000 + 0x10000 (64K)
+			// LPASS_VA_LPM 0x06D40000 + 0x3000 (12K)
+
+			reg = <0 0x06b80000 0 0x29000>,
+			      <0 0x06C80000 0 0xc000>, // wrong size (0x10000)
+			      <0 0x06d00000 0 0x29000>,
+			      <0 0x06D40000 0 0x3000>,
+			      <0 0x07b88000 0 0x1000>, // wrong size?
+			      <0 0x07be8000 0 0x7000>, // wrong size?
+			      <0 0x07d00000 0 0x29000>,
+			      <0 0x07C10000 0 0x8000>;
+			reg-names = "wsa-lpaif",
+				    "wsa-lpm",
+				    "va-lpaif",
+				    "va-lpm",
+				    "hdmi-ctl",
+				    "hdmi-lpaif",
+				    "mi2s-lpaif",
+				    "hdmi-mi2s-lpm";
+
+			power-domains = <&lpass_hm LPASS_CORE_HM_GDSCR>;
+
+			clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
+				 <&lpasscc LPASS_CORE_CC_SYSNOC_MPORT_CORE_CLK>,
+				 <&lpass_wsamacro>,
+				 <&lpass_vamacro>,
+				 <&lpasscc LPASS_CORE_CC_EXT_IF2_IBIT_CLK>,
+				 <&audiocc LPASS_AUDIO_CC_EXT_IF2_IBIT_CLK>;
+			clock-names = "pcnoc-sway-clk",
+				"pcnoc-mport-clk",
+				"wsa-mclk",
+				"va-mclk",
+				"mi2s-ter-ibit",
+				"mi2s-sen-ibit";
+
+			interrupts = <GIC_SPI 179 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 268 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 160 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "wsa-lpaif",
+					  "va-lpaif",
+					  "hdmi-lpaif",
+					  "mi2s-lpaif";
+		};
 	};
 };
 
@@ -151,36 +255,38 @@
 };
 
 &lpass_wsamacro {
-	/delete-property/ clocks;
-	status = "disabled";
+	clocks = <&audiocc LPASS_AUDIO_CC_WSA_MCLK_CLK>,
+		 <&audiocc LPASS_AUDIO_CC_WSA_2X_MCLK_CLK>,
+		 <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
+		 <&lpasscc LPASS_CORE_CC_SYSNOC_MPORT_CORE_CLK>,
+		 <&aoncc LPASS_AON_CC_TX_MCLK_CLK>,
+		 <&lpass_vamacro>;
+	clock-names = "mclk",
+		      "npl",
+		      "macro",
+		      "dcodec",
+		      "va",
+		      "fsgen";
 };
 
 &lpass_vamacro {
-	/delete-property/ clocks;
-	status = "disabled";
+	clocks = <&aoncc LPASS_AON_CC_TX_MCLK_CLK>,
+		 <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
+		 <&lpasscc LPASS_CORE_CC_SYSNOC_MPORT_CORE_CLK>;
+	clock-names = "mclk",
+		      "macro",
+		      "dcodec";
 };
 
 &lpass_tlmm {
-	/delete-property/ clocks;
-	status = "disabled";
+	clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>;
+	clock-names = "core";
 };
 
 &iris {
 	video-firmware {
 		iommus = <&apps_smmu 0x1942 0x0000>;
 	};
-};
-
-&swr0 {
-	status = "disabled";
-};
-
-&swr1 {
-	status = "disabled";
-};
-
-&swr2 {
-	status = "disabled";
 };
 
 /delete-node/ &remoteproc_adsp;
