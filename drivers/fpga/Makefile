@@ -63,3 +63,4 @@ obj-$(CONFIG_FPGA_KUNIT_TESTS)		+= tests/
 
 #driver for valve fpga
 obj-y += efinix-t8f81c2.o
+obj-y += valve-fpga.o
