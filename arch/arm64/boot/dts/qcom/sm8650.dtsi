@@ -3819,6 +3819,7 @@
 
 			operating-points-v2 = <&pcie1_opp_table>;
 
+			iommus = <&apps_smmu 0x1480 0x7f>;
 			iommu-map = <0     &apps_smmu 0x1480 0x1>,
 				    <0x100 &apps_smmu 0x1481 0x1>;
 
