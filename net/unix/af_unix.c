@@ -422,6 +422,46 @@ static void unix_remove_bsd_socket(struct sock *sk)
 	}
 }
 
+#if 1
+static struct sock *__unix_find_socket_byname(struct net *net,
+					      struct sockaddr_un *sunname,
+					      int len, unsigned int hash)
+{
+	struct sock *s;
+	struct net *global_net;
+
+	sk_for_each(s, &net->unx.table.buckets[hash]) {
+		struct unix_sock *u = unix_sk(s);
+
+		if (u->addr->len == len &&
+		    !memcmp(u->addr->name, sunname, len))
+			return s;
+	}
+
+	// If we weren't able to find the socket in the local
+	// network namespace, try all global namespaces
+	down_read(&net_rwsem);
+	for_each_net(global_net)
+	{
+		if ( global_net == net )
+			continue;
+
+		sk_for_each(s, &global_net->unx.table.buckets[hash]) 
+		{
+			struct unix_sock *u = unix_sk(s);
+
+			if (u->addr->len == len && !memcmp(u->addr->name, sunname, len))
+			{
+				up_read(&net_rwsem);
+				return s;
+			}
+		}
+	}
+	up_read(&net_rwsem);
+
+	return NULL;
+}
+#else
 static struct sock *__unix_find_socket_byname(struct net *net,
 					      struct sockaddr_un *sunname,
 					      int len, unsigned int hash)
@@ -437,6 +477,7 @@ static struct sock *__unix_find_socket_byname(struct net *net,
 	}
 	return NULL;
 }
+#endif
 
 static inline struct sock *unix_find_socket_byname(struct net *net,
 						   struct sockaddr_un *sunname,
