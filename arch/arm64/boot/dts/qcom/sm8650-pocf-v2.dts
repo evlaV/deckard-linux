@@ -1232,6 +1232,40 @@
 };
 
 
+&i2c5 {
+	status = "okay";
+
+    max34417_1: max34417@12 {
+        compatible = "maxim,max34417";
+        reg = <0x12>;
+        maxim,sense-resistor = <1>;
+        vdd-supply = <&vreg_l2b_3p0>;
+        vio-supply = <&vreg_l15b_1p8>;
+        status = "okay";
+
+        // CH 1 : Kryo APC1 Cores
+        // CH 2 : Kryo APC2 Cores
+        // CH 3 : Kryo APC0 Cores
+        // CH 4 : Tensor Processor – NSP1
+        // Note: both 1.8 and 3.0V rails are always on for other sensors
+    };
+
+    max34417_2: max34417@1a {
+        compatible = "maxim,max34417";
+        reg = <0x1a>;
+        maxim,sense-resistor = <1>;
+        vdd-supply = <&vreg_l2b_3p0>;
+        vio-supply = <&vreg_l15b_1p8>;
+        status = "okay";
+
+        // CH 1 : GFX Power
+        // CH 2 : Tensor Processor – NSP2
+        // CH 3 : VPH Power
+        // CH 4 : Unused
+        // Note: both 1.8 and 3.0V rails are always on for other sensors
+    }; 
+};
+
 // nRF SPI HID Config
 
 // nRF Pins
