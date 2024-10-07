@@ -69,6 +69,7 @@ static int clk_fpga_probe(struct platform_device *pdev)
     struct clk_fpga *clk_fpga;
     const char *clk_name;
     int ret;
+    u32 rate;
 
     struct device *dev = &pdev->dev;
 
@@ -84,8 +85,15 @@ static int clk_fpga_probe(struct platform_device *pdev)
     }
     clk_fpga->nclks = ret;
 
-    //clk_set_rate(clk_fpga->clks[0].clk, 50000000);
-    clk_set_rate(clk_fpga->clks[0].clk, 33333333);
+	if (of_property_read_u32(node, "clock-frequency", &rate)) {
+        pr_err("Failed to get fpga clock frequency, default to 33MHz\n");
+        // XXX should we just return an error here? ior should we default to EV1 24MHz?
+		rate = 33333333;
+    }
+
+    pr_err("fpga clock frequency %d\n", rate);
+
+    clk_set_rate(clk_fpga->clks[0].clk, rate);
 
     clk_name = node->name;
     of_property_read_string(node, "clock-output-names", &clk_name);
