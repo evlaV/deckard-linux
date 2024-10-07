@@ -1344,6 +1344,19 @@ config QCOM_SPMI_ADC5_GEN3
 	  To compile this driver as a module, choose M here: the module will
 	  be called qcom-spmi-adc5-gen3.
 
+config QCOM_SPMI_ADC5_GEN3_HS
+	tristate "Qualcomm Technologies Inc. SPMI PMIC5 GEN3 ADC - Highspeed"
+	depends on SPMI
+	select REGMAP_SPMI
+	select QCOM_VADC_COMMON
+	help
+	  This is the IIO Voltage PMIC5 Gen3 ADC driver for Qualcomm Technologies Inc.
+
+	  This is the high speed version of this driver
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called qcom-spmi-adc5-gen3.
+
 config RCAR_GYRO_ADC
 	tristate "Renesas R-Car GyroADC driver"
 	depends on ARCH_RCAR_GEN2 || COMPILE_TEST
