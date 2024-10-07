@@ -561,6 +561,7 @@ static struct clk_regmap_mux gcc_usb3_prim_phy_pipe_clk_src = {
 };
 
 static const struct freq_tbl ftbl_gcc_gp1_clk_src[] = {
+	F(24000000, P_GCC_GPLL0_OUT_EVEN, 12.5, 0, 0),
     F(33333333, P_GCC_GPLL0_OUT_EVEN, 9, 0, 0),
 	F(50000000, P_GCC_GPLL0_OUT_EVEN, 6, 0, 0),
 	F(100000000, P_GCC_GPLL0_OUT_MAIN, 6, 0, 0),
