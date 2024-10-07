@@ -67,11 +67,11 @@
 
 		pmk8550_vadc: adc@9000 {
 			compatible = "qcom,spmi-adc5-gen3";
-			reg = <0x9000>, <0x9100>;
-			interrupts-extended = <&spmi_bus 0x0 0x90 0x1 IRQ_TYPE_EDGE_RISING>,
-					      <&spmi_bus 0x0 0x91 0x1 IRQ_TYPE_EDGE_RISING>;
+			reg = <0x9000>;
+			interrupts-extended = <&spmi_bus 0x0 0x90 0x1 IRQ_TYPE_EDGE_RISING>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+
 			#io-channel-cells = <1>;
 			#thermal-sensor-cells = <1>;
 
@@ -253,6 +253,45 @@
 				reg = <ADC5_GEN3_DIE_TEMP(PMK8550VE_SID)>;
 				label = "pm8550ve_die_temp";
 				qcom,pre-scaling = <1 1>;
+			};
+		};
+
+		pmk8550_vadc_hs: vadc@9100 {
+			compatible = "qcom,spmi-adc5-gen3-hs";
+			reg = <0x9100>;
+			qcom,debug-base = <0x7600>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			interrupt-names = "adc-hs-sdam0";
+			interrupts = <0x0 0x91 0x1 IRQ_TYPE_EDGE_RISING>;
+			#thermal-sensor-cells = <1>;
+			#io-channel-cells = <1>;
+			io-channel-ranges;
+
+			status = "okay";
+
+			// The driver is dependent on this order for user space to work correctly. 
+			// Please consult with TGoyen before changing
+			pm8550b_vbat_sns_qbg {
+				reg = <ADC5_GEN3_VBAT_SNS_QBG(7)>;
+				label = "pm8550b_vbat_sns_qbg_hs";
+				qcom,pre-scaling = <1 6>;
+			};
+
+			pm8550b_ichg_fb_hs: pm8550b_ichg_fb_hs {
+				reg = <ADC5_GEN3_ICHG_FB(7)>;
+				label = "pm8550b_ichg_fb_hs";
+			};
+
+			pm8550b_usb_sns_v_div_16 {
+				reg = <ADC5_GEN3_USB_SNS_V_16(7)>;
+				label = "pm8550b_usb_sns_v_div_16_hs";
+				qcom,pre-scaling = <1 16>;
+			};
+
+			pm8550b_iin_fb {
+				reg = <ADC5_GEN3_IIN_FB(7)>;
+				label = "pm8550b_iin_fb_hs";
 			};
 		};
 
