@@ -1231,6 +1231,19 @@
 	};
 };
 
+&i2c5 {
+	status = "okay";
+    
+    // BOOT EEPROM
+    eeprom@50 {
+        compatible  = "atmel,24c32";
+        status      = "okay";
+        label		= "core_eeprom";
+        reg         = <0x50>;
+        wp-gpios = <&tlmm 40 GPIO_ACTIVE_HIGH>;
+        vcc-supply  = <&vreg_l15b_1p8>;
+    };
+};
 
 &i2c5 {
 	status = "okay";
