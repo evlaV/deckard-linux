@@ -98,14 +98,13 @@
 	};
 
 	exp_vout_5v: regulator-exp-vout-5v {
-		compatible = "regulator-fixed";
+		compatible = "regulator-valve_5v_exp";
 		regulator-name = "exp_vout_5v";
 		regulator-min-microvolt = <5000000>;
 		regulator-max-microvolt = <5000000>;
-		gpio = <&pm8550vs_g_gpios 6 GPIO_ACTIVE_HIGH>;
+		enable-gpio = <&pm8550vs_g_gpios 6 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 		vin-supply = <&vph_pwr>;
-		regulator-always-on;
 	};
 
 	wcn7850-pmu {
