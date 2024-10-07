@@ -1231,6 +1231,28 @@
 	};
 };
 
+
+&pcie1 {
+	vdda-supply = <&vph_pwr>;
+	vddpe-3v3-supply = <&vph_pwr>; // XXX
+
+	wake-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
+	perst-gpios = <&tlmm 97 GPIO_ACTIVE_LOW>;
+
+	pinctrl-0 = <&pcie1_default_state>;
+	pinctrl-names = "default";
+
+	status = "okay";
+};
+
+&pcie1_phy {
+	vdda-phy-supply = <&vreg_l3e_0p9>;
+	vdda-pll-supply = <&vreg_l3i_1p2>;
+	vdda-qref-supply = <&vreg_l1i_0p88>;
+
+	status = "okay";
+};
+
 &i2c5 {
 	status = "okay";
     
