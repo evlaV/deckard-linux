@@ -835,8 +835,7 @@ static void *snd_dma_noncoherent_alloc(struct snd_dma_buffer *dmab, size_t size)
 {
 	void *p;
 
-	p = dma_alloc_noncoherent(dmab->dev.dev, size, &dmab->addr,
-				  dmab->dev.dir, DEFAULT_GFP);
+	p = dma_alloc_wc(dmab->dev.dev, size, &dmab->addr, DEFAULT_GFP);
 	if (p)
 		dmab->dev.need_sync = dma_need_sync(dmab->dev.dev, dmab->addr);
 	return p;
@@ -844,30 +843,32 @@ static void *snd_dma_noncoherent_alloc(struct snd_dma_buffer *dmab, size_t size)
 
 static void snd_dma_noncoherent_free(struct snd_dma_buffer *dmab)
 {
-	dma_free_noncoherent(dmab->dev.dev, dmab->bytes, dmab->area,
-			     dmab->addr, dmab->dev.dir);
+	dma_free_wc(dmab->dev.dev, dmab->bytes, dmab->area, dmab->addr);
 }
 
 static int snd_dma_noncoherent_mmap(struct snd_dma_buffer *dmab,
 				    struct vm_area_struct *area)
 {
-	area->vm_page_prot = vm_get_page_prot(area->vm_flags);
-	return dma_mmap_pages(dmab->dev.dev, area,
-			      area->vm_end - area->vm_start,
-			      virt_to_page(dmab->area));
+	int ret;
+	/* call directly to preserve vm_page_prot */
+	if (dma_mmap_from_dev_coherent(dmab->dev.dev, area, dmab->area, dmab->bytes, &ret))
+		return ret;
+	return -ENXIO;
 }
 
 static void snd_dma_noncoherent_sync(struct snd_dma_buffer *dmab,
 				     enum snd_dma_sync_mode mode)
 {
+	// call dcache_{inval,clean}_poc directly so that it works with the LPM buffer
+	// (phys_to_virt won't work on dmab->addr)
+	unsigned long start = (unsigned long)dmab->area;
+	//printk("sync %d %d %d %ld\n", mode == SNDRV_DMA_SYNC_CPU, dmab->dev.dir != DMA_TO_DEVICE, dmab->dev.dir != DMA_FROM_DEVICE, dmab->bytes);
 	if (mode == SNDRV_DMA_SYNC_CPU) {
 		if (dmab->dev.dir != DMA_TO_DEVICE)
-			dma_sync_single_for_cpu(dmab->dev.dev, dmab->addr,
-						dmab->bytes, dmab->dev.dir);
+			dcache_inval_poc(start, start + dmab->bytes);
 	} else {
 		if (dmab->dev.dir != DMA_FROM_DEVICE)
-			dma_sync_single_for_device(dmab->dev.dev, dmab->addr,
-						   dmab->bytes, dmab->dev.dir);
+			dcache_clean_poc(start, start + dmab->bytes);
 	}
 }
 

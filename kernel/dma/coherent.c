@@ -45,7 +45,7 @@ static struct dma_coherent_mem *dma_init_coherent_memory(phys_addr_t phys_addr,
 	if (!size)
 		return ERR_PTR(-EINVAL);
 
-	mem_base = memremap(phys_addr, size, MEMREMAP_WC);
+	mem_base = memremap(phys_addr, size, MEMREMAP_WB);
 	if (!mem_base)
 		return ERR_PTR(-EINVAL);
 
