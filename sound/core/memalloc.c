@@ -860,14 +860,16 @@ static int snd_dma_noncoherent_mmap(struct snd_dma_buffer *dmab,
 static void snd_dma_noncoherent_sync(struct snd_dma_buffer *dmab,
 				     enum snd_dma_sync_mode mode)
 {
+	/* call dcache_{inval,clean}_poc directly
+	 * saves some overhead and more importantly makes it work on no-map memory
+	 */
+	unsigned long start = (unsigned long)dmab->area;
 	if (mode == SNDRV_DMA_SYNC_CPU) {
 		if (dmab->dev.dir != DMA_TO_DEVICE)
-			dma_sync_single_for_cpu(dmab->dev.dev, dmab->addr,
-						dmab->bytes, dmab->dev.dir);
+			dcache_inval_poc(start, start + dmab->bytes);
 	} else {
 		if (dmab->dev.dir != DMA_FROM_DEVICE)
-			dma_sync_single_for_device(dmab->dev.dev, dmab->addr,
-						   dmab->bytes, dmab->dev.dir);
+			dcache_clean_poc(start, start + dmab->bytes);
 	}
 }
 

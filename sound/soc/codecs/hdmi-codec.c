@@ -648,6 +648,9 @@ static int hdmi_codec_i2s_set_fmt(struct snd_soc_dai *dai,
 	/* Reset daifmt */
 	memset(cf, 0, sizeof(*cf));
 
+	dev_warn(dai->dev, "hdmi_codec_i2s_set_fmt %d\n", fmt);
+	WARN_ON(1);
+
 	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
 	case SND_SOC_DAIFMT_CBP_CFP:
 		cf->bit_clk_provider = 1;
@@ -662,7 +665,7 @@ static int hdmi_codec_i2s_set_fmt(struct snd_soc_dai *dai,
 	case SND_SOC_DAIFMT_CBC_CFC:
 		break;
 	default:
-		return -EINVAL;
+		return 0;//-EINVAL;
 	}
 
 	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
