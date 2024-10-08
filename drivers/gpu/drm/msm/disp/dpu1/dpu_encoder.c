@@ -638,6 +638,7 @@ static int dpu_encoder_virt_atomic_check(
 	struct dpu_global_state *global_state;
 	struct drm_framebuffer *fb;
 	struct drm_dsc_config *dsc;
+	struct dpu_crtc_state *cstate;
 	int ret = 0;
 
 	if (!drm_enc || !crtc_state || !conn_state) {
@@ -662,6 +663,8 @@ static int dpu_encoder_virt_atomic_check(
 	dsc = dpu_encoder_get_dsc_config(drm_enc);
 
 	topology = dpu_encoder_get_topology(dpu_enc, dpu_kms, adj_mode, crtc_state, dsc);
+	cstate = to_dpu_crtc_state(crtc_state);
+	cstate->num_mixers = topology.num_lm;
 
 	/*
 	 * Use CDM only for writeback or DP at the moment as other interfaces cannot handle it.
@@ -1170,7 +1173,13 @@ static void dpu_encoder_virt_atomic_mode_set(struct drm_encoder *drm_enc,
 	}
 
 	cstate->num_dscs = num_dsc;
-	cstate->num_mixers = num_lm;
+	if (cstate->num_mixers != num_lm) {
+		if (!cstate->num_mixers)
+			DPU_ERROR_ENC(dpu_enc,
+				      "mixer number %d is not as expected %d\n",
+				      num_lm, cstate->num_mixers);
+		cstate->num_mixers = num_lm;
+	}
 
 	/*
 	 * There may be 4 PP and 2 INTF for quad pipe case, so INTF is not
