@@ -507,10 +507,11 @@ static const struct clk_parent_data gpu_cc_parent_data_4[] = {
 //this gpufreq= will be used to find the gpu freq from kernel command line
 #define GPUFREQCOMMANDLINESTR "gpufreq="
 #define GPUFREQTABLE_IDX1 1
+#define GPUFREQDEFAULTMULTIPLIER 35 /*672 MHz*/
 //do not edit this table below otherwise GPUFREQTABLEIDX 1 will not be correct thing for us to edit
 static struct freq_tbl ftbl_gpu_cc_gx_gfx3d_clk_src[] = {
 	F(19200000, P_BI_TCXO, 1, 0, 0),
-	F(47*19200000, P_GPU_CC_PLL0_OUT_MAIN, 1, 0, 0), //903MHz
+	F(GPUFREQDEFAULTMULTIPLIER * 19200000, P_GPU_CC_PLL0_OUT_MAIN, 1, 0, 0),
 	{ }
 };
 
@@ -658,7 +659,12 @@ static int gpu_cc_sm8550_probe(struct platform_device *pdev)
 			sscanf(strstr(command_line, GPUFREQCOMMANDLINESTR) + strlen(GPUFREQCOMMANDLINESTR), "%d", &gpufreq);
 			gpufreq_multiplier = clamp_val(gpufreq, 200, 903) * 10 / 192;
 			ftbl_gpu_cc_gx_gfx3d_clk_src[GPUFREQTABLE_IDX1].freq =  19200000 * gpufreq_multiplier;
-			printk(KERN_INFO "sm8650-gpucc: gpufreq : request = [ %d MHz ], actual = [ %d MHz ] \n", gpufreq, gpufreq_multiplier * 192 / 10);
+			printk(KERN_INFO "sm8650-gpucc: gpufreq : [ %d MHz ] ( %d MHz requested )\n", gpufreq_multiplier * 192 / 10, gpufreq);
+		}
+		else
+		{	
+			gpufreq_multiplier = GPUFREQDEFAULTMULTIPLIER;
+			printk(KERN_INFO "sm8650-gpucc: gpufreq : [ %d MHz ] ( default )\n", gpufreq_multiplier * 192 / 10);
 		}
 		
 		kfree(command_line);
