@@ -3671,7 +3671,8 @@ static bool blk_mq_hctx_has_requests(struct blk_mq_hw_ctx *hctx)
 	int srcu_idx;
 
 	srcu_idx = srcu_read_lock(&hctx->queue->tag_set->tags_srcu);
-	blk_mq_all_tag_iter(tags, blk_mq_has_request, &data);
+	if (tags)
+		blk_mq_all_tag_iter(tags, blk_mq_has_request, &data);
 	srcu_read_unlock(&hctx->queue->tag_set->tags_srcu, srcu_idx);
 
 	return data.has_rq;
