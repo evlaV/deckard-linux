@@ -578,6 +578,8 @@ static int qpnp_tri_led_parse_dt(struct qpnp_tri_led_chip *chip)
 static int qpnp_tri_led_probe(struct platform_device *pdev)
 {
 	struct qpnp_tri_led_chip *chip;
+	struct qpnp_led_dev *led;
+	int i;
 	int rc = 0;
 
 	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
@@ -615,6 +617,20 @@ static int qpnp_tri_led_probe(struct platform_device *pdev)
 			"Registering LED class devices failed, rc=%d\n", rc);
 		goto destroy;
 	}
+
+#if 1
+	//gabe: todo figure out better way to do this
+	//hack to make LED light up blue and "breath"
+	for (i = 0; i < chip->num_leds; i++) {
+		led = &chip->leds[i];
+		if (!strcmp(led->cdev.name,"blue"))
+		{
+			led->led_setting.brightness = 255;
+			led->led_setting.breath = 1 ;
+			qpnp_tri_led_set(led);
+		}
+	}
+#endif
 
 	dev_dbg(chip->dev, "Tri-led module with subtype 0x%x is detected\n",
 		chip->subtype);
