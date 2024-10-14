@@ -266,15 +266,17 @@ static bool slg4ax46073v_wdt_fired( struct slg4ax46073v *slg4ax46073v )
 
 static void slg4ax46073v_reset(struct slg4ax46073v *slg4ax46073v)
 {
-    pr_err("slg4a_fan: resetting fan controller\n");
+    // turn off fan pwm while resetting fan power supply
+    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC, slg4ax46073v_pwm_duty_cycle_to_reg_value(slg4ax46073v,0));
+
     // power cycle fan controller
     gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 0);
-    usleep_range(10000,15000);
+    usleep_range(100000,150000);
     gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 1);
-    usleep_range(10000,15000);
+    usleep_range(100000,150000);
 
-    // reset fan speed to 50% default TODO adjust default fan speed
-    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC, slg4ax46073v_pwm_duty_cycle_to_reg_value(slg4ax46073v,50));
+    // reset fan speed to 30%
+    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC, slg4ax46073v_pwm_duty_cycle_to_reg_value(slg4ax46073v,30));
 
     // re arm tach
     slg4ax46073v_arm_tach(slg4ax46073v);
@@ -643,11 +645,15 @@ static int slg4ax46073v_probe(struct i2c_client *client)
 
 	// Enable FAN1 VDD power
 	slg4ax46073v->bp_gpiod = devm_gpiod_get_optional(dev, "bp", GPIOD_OUT_LOW);
-    if ( slg4ax46073v->bp_gpiod ) {
-        gpiod_set_value_cansleep(slg4ax46073v->bp_gpiod, 1);
-    }
-	slg4ax46073v->en_gpiod = devm_gpiod_get_optional(dev, "en", GPIOD_OUT_LOW);
-	gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 1);
+	if ( slg4ax46073v->bp_gpiod ) {
+		gpiod_set_value_cansleep(slg4ax46073v->bp_gpiod, 1);
+	}
+	slg4ax46073v->en_gpiod = devm_gpiod_get(dev, "en", GPIOD_OUT_LOW);
+	if ( IS_ERR(slg4ax46073v->en_gpiod) ){
+		dev_err(dev, "failed to get fan en gpio %ld\n",
+			PTR_ERR(slg4ax46073v->en_gpiod));
+		return PTR_ERR(slg4ax46073v->en_gpiod);
+	}
 
 	slg4ax46073v->regmap = devm_regmap_init_i2c(client, &slg4ax46073v_regmap_config);
 	if (IS_ERR(slg4ax46073v->regmap)) {
@@ -672,9 +678,6 @@ static int slg4ax46073v_probe(struct i2c_client *client)
             }
         }
     }
-
-    // Set PWM to half-power for start up ( only required for early versions )
-    slg4ax46073v_write_reg(slg4ax46073v, SLG4AX46073V_REG_PWM_DC, 0x28);
 
     if ( slg4ax46073v->version <= VERSION_7 ) {
 
@@ -707,7 +710,7 @@ static int slg4ax46073v_probe(struct i2c_client *client)
             return err;
         }
     } else {
-        slg4ax46073v_arm_tach(slg4ax46073v);
+        slg4ax46073v_reset(slg4ax46073v);
     }
 
     // set up periodic resets of the wdt and tachometer reading
