@@ -62,6 +62,14 @@
 						remote-endpoint = <&usb_dp_qmpphy_out>;
 					};
 				};
+
+				port@2 {
+					reg = <2>;
+
+					pmic_glink_sbu: endpoint {
+						remote-endpoint = <&wcd_usbss_sbu_mux>;
+				    };
+				};
 			};
 		};
 	};
@@ -162,6 +170,7 @@
 				regulator-name = "vreg_pmu_pcie_1p8";
 			};
 		};
+	};
 };
 
 &apps_rsc {
@@ -673,7 +682,7 @@
 				reg = <0>;
 
 				wcd_usbss_sbu_mux: endpoint {
-					remote-endpoint = <&typec_controller>;
+					remote-endpoint = <&pmic_glink_sbu>;
 				};
 			};
 		};
@@ -820,6 +829,10 @@
 	status = "okay";
 };
 
+&qupv3_id_2 {
+	status = "okay";
+};
+
 &remoteproc_adsp {
 	firmware-name = "qcom/sm8650/adsp.mbn",
 			"qcom/sm8650/adsp_dtb.mbn";
@@ -870,7 +883,7 @@
 		reg = <0 0>;
 		pinctrl-0 = <&spkr_1_sd_n_active>;
 		pinctrl-names = "default";
-		powerdown-gpios = <&lpass_tlmm 21 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&lpass_tlmm 21 GPIO_ACTIVE_LOW>;
 		#sound-dai-cells = <0>;
 		sound-name-prefix = "SpkrLeft";
 		vdd-1p8-supply = <&vreg_l15b_1p8>;
@@ -893,7 +906,7 @@
 		reg = <0 1>;
 		pinctrl-0 = <&spkr_2_sd_n_active>;
 		pinctrl-names = "default";
-		powerdown-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;
 		#sound-dai-cells = <0>;
 		sound-name-prefix = "SpkrRight";
 		vdd-1p8-supply = <&vreg_l15b_1p8>;

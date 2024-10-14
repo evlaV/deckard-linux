@@ -1,0 +1,211 @@
+
+/delete-node/ &reserved_memory;
+/delete-node/ &remoteproc_mpss;
+/delete-node/ &remoteproc_adsp;
+/delete-node/ &remoteproc_cdsp;
+/delete-node/ &ipa;
+/delete-node/ &aoss_qmp;
+/delete-node/ &timer;
+
+/ {
+	/delete-node/ firmware;
+	/delete-node/ smp2p-adsp;
+	/delete-node/ smp2p-cdsp;
+	/delete-node/ smp2p-modem;
+	/delete-node/ sound;
+	/delete-node/ pmic-glink;
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		aop_mem: aop_mem@81c00000 {
+			no-map;
+			reg = <0x0 0x81c00000 0x0 0x60000>;
+		};
+
+		aop_cmd_db_mem: aop-cmd-db-region@81c60000 {
+			compatible = "qcom,cmd-db";
+			reg = <0x0 0x81c60000 0x0 0x20000>;
+			no-map;
+		};
+
+		/* merged aop_config, tme_crash_dump, tme_log */
+		aop_config_merged_mem: aop-config-merged-region@81c80000 {
+			reg = <0x0 0x81c80000 0x0 0x64000>;
+			no-map;
+		};
+
+		smem: smem@81d00000 {
+			compatible = "qcom,smem";
+			reg = <0x0 0x81d00000 0x0 0x200000>;
+			hwlocks = <&tcsr_mutex 3>;
+			no-map;
+		};
+
+		cpucp_fw_mem: cpucp-fw-region@d8040000 {
+			reg = <0x0 0xd8040000 0x0 0x1b2000>;
+			no-map;
+		};
+
+		// XXX use allocated memory instead of fixed region
+		video_mem: video@9bb00000 {
+			reg = <0 0x9bb00000 0 0x800000>;
+			no-map;
+		};
+	};
+};
+
+&apps_smmu {
+	compatible = "arm,mmu-500";
+};
+
+&gpu {
+	/delete-node/ zap-shader;
+};
+
+&lpass_aoncc {
+	status = "okay";
+};
+
+&lpass_audiocc {
+	status = "okay";
+};
+
+&lpass_corecc {
+	status = "okay";
+};
+
+&lpass_hm {
+	status = "okay";
+};
+
+&lpass_rxtx_lpaif {
+	status = "okay";
+};
+
+&lpass_wsa_lpaif {
+	status = "okay";
+};
+
+&lpass_va_lpaif {
+	status = "okay";
+};
+
+&lpass_tlmm {
+	/delete-property/ clocks;
+	/delete-property/ clocks-names;
+};
+
+&lpass_txmacro {
+	clocks = <&lpass_aoncc LPASS_AON_CC_TX_MCLK_CLK>, <&lpass_vamacro>;
+	clock-names = "mclk", "fsgen";
+};
+
+&lpass_rxmacro {
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_RX_MCLK_CLK>, <&lpass_vamacro>;
+	clock-names = "mclk", "fsgen";
+};
+
+&lpass_vamacro {
+	clocks = <&lpass_aoncc LPASS_AON_CC_TX_MCLK_CLK>;
+	clock-names = "mclk";
+};
+
+&lpass_wsamacro {
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_WSA_MCLK_CLK>, <&lpass_vamacro>;
+	clock-names = "mclk", "fsgen";
+};
+
+&lpass_wsa2macro {
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_WSA2_MCLK_CLK>, <&lpass_vamacro>;
+	clock-names = "mclk", "fsgen";
+};
+
+&pmk8550_rtc {
+	allow-set-time;
+};
+
+&tlmm {
+	/delete-property/ gpio-reserved-ranges;
+};
+
+#include <dt-bindings/usb/pd.h>
+
+&pm8550b_typec {
+	status = "okay";
+
+	vdd-pdphy-supply = <&vreg_l5b_3p1>;
+
+	connector {
+		power-role = "dual";
+		data-role = "dual";
+		try-power-role = "sink";
+		source-pdos = <PDO_FIXED(5000, 1500, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP |
+		  PDO_FIXED_USB_COMM)>;
+		sink-pdos = <PDO_FIXED(5000, 300, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP |
+		  PDO_FIXED_USB_COMM)>;
+		op-sink-microwatt = <15000000>;
+
+		altmodes {
+			displayport {
+				svid = /bits/ 16 <0xff01>;
+				vdo = <0x00001c46>;
+			};
+		};
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				pm8550b_role_switch_out: endpoint {
+					remote-endpoint = <&usb_1_dwc3_hs>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				typec_controller: endpoint {
+					remote-endpoint = <&wcd_usbss_sbu_mux>;
+				};
+			};
+
+			port@2 {
+				reg = <2>;
+
+				pm8550b_typec_mux_out: endpoint {
+					remote-endpoint = <&usb_dp_qmpphy_out>;
+				};
+			};
+		};
+	};
+
+};
+
+&pm8550b_vbus {
+	status = "okay";
+};
+
+&usb_1_dwc3_hs {
+	remote-endpoint = <&pm8550b_role_switch_out>;
+};
+
+&usb_dp_qmpphy_out {
+	remote-endpoint = <&pm8550b_typec_mux_out>;
+};
+
+/* XXX: create complete dt-bindings include for these */
+#define LPASS_RX_CODEC_DMA_0 17
+#define LPASS_RX_CODEC_DMA_1 18
+#define LPASS_RX_CODEC_DMA_2 19
+#define LPASS_RX_CODEC_DMA_3 20
+
+#define LPASS_TX_CODEC_DMA_0 49
+#define LPASS_TX_CODEC_DMA_1 50
+#define LPASS_TX_CODEC_DMA_2 51
+#define LPASS_TX_CODEC_DMA_3 52
