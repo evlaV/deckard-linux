@@ -26,6 +26,22 @@
 		stdout-path = "serial0:115200n8";
 	};
 
+	vdd_nsp: vdd-nsp {
+		compatible = "regulator-fixed-domain";
+		power-domains = <&rpmhpd RPMHPD_NSP>;
+		required-opps = <&rpmhpd_opp_nom>;
+		regulator-name = "NSP";
+		regulator-always-on;
+	};
+
+	vdd_nsp2: vdd-nsp2 {
+		compatible = "regulator-fixed-domain";
+		power-domains = <&rpmhpd RPMHPD_NSP2>;
+		required-opps = <&rpmhpd_opp_nom>;
+		regulator-name = "NSP2";
+		regulator-always-on;
+	};
+
 	sbu-mux {
 		compatible = "gpio-sbu-mux";
 
