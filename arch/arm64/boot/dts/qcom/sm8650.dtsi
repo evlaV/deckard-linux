@@ -2653,6 +2653,8 @@
 				      "memnoc",
 				      "core";
 
+			#cooling-cells = <2>;
+
 			status = "disabled";
 		};
 
