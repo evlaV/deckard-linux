@@ -195,6 +195,8 @@ static void a7xx_preempt(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
 		((1 << 8) & 0x100) | 0x1)); // usesgmem: enable GMEM save/restore across preemption (for 6XX)
 
 	a7xx_gpu->preempting = 1;
+
+	trace_msm_gpu_preemption_trigger(a7xx_gpu->cur_ring->id, ring->id);
 }
 
 static void a7xx_flush(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
@@ -1199,6 +1201,8 @@ static irqreturn_t a7xx_irq(struct msm_gpu *gpu)
 					a7xx_preempt(gpu, gpu->rb[1]);
 				}
 			}
+
+			trace_msm_gpu_preemption_irq(a7xx_gpu->cur_ring->id);
 
 			/* if switched to high priority ring, queue preemption back to low priority now
 			 * note: this only works acceptably if there is only one high priority submit at a time
