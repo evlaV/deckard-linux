@@ -34,6 +34,7 @@
 #include <linux/string_choices.h>
 #include <linux/mutex.h>
 #include <linux/unaligned.h>
+#include <linux/firmware.h>
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
@@ -2337,6 +2338,13 @@ static int qca_serdev_probe(struct serdev_device *serdev)
 	const struct qca_device_data *data;
 	int err;
 	bool power_ctrl_enabled = true;
+	const struct firmware *fw;
+
+	/* HACK: make sure firmware is available before trying to probe */
+	err = firmware_request_nowarn(&fw, "qca/hmtbtfw20.tlv", &serdev->dev);
+	if (err)
+		return -EPROBE_DEFER;
+	release_firmware(fw);
 
 	qcadev = devm_kzalloc(&serdev->dev, sizeof(*qcadev), GFP_KERNEL);
 	if (!qcadev)
