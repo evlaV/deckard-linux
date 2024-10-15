@@ -7788,6 +7788,92 @@
 			power-domains = <&rpmhpd RPMHPD_LCX>;
 		};
 		
+		_cdsp: cdsp@32300000 {
+			compatible = "qcom,sm8650-hexagon";
+			reg = <0 0x32300000 0 0x50000>;
+			reg-names = "base";//, "haltreq";
+			clocks = <&gcc GCC_TURING_CFG_AHB_CLK>;
+				 //<&gcc GCC_TURING_Q6_AXI_CLK>;
+			clock-names = "cfg_ahb";//, "q6_axi";
+
+			interrupts-extended = <&ipcc IPCC_CLIENT_CDSP 0 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_CDSP 1 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_CDSP 2 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_CDSP 3 IRQ_TYPE_EDGE_RISING>;
+			mboxes = <&ipcc IPCC_CLIENT_CDSP 0>,
+				 <&ipcc IPCC_CLIENT_CDSP 1>,
+				 <&ipcc IPCC_CLIENT_CDSP 2>,
+				 <&ipcc IPCC_CLIENT_CDSP 3>;
+
+			/* power-domains = <&rpmhpd SM8250_CX>; */
+
+			interconnects = <&nsp_noc MASTER_CDSP_PROC 0 &mc_virt SLAVE_EBI1 0>;
+			interconnect-names = "mem";
+
+			//interconnects = <&nsp_noc MASTER_CDSP_PROC 0 &mc_virt SLAVE_EBI1 0>;
+					// <&nsp_noc MASTER_VAPSS_CDSP_1 &mc_virt SLAVE_EBI1 0>;
+			//interconnect-names = "mem";//, "dma";
+
+			iommus = <&apps_smmu 0xc00 0x0>, // CDSP
+				 <&apps_smmu 0xc20 0x0>; // UBWCDMA
+
+			//core-max-rate = <1497600000>;
+		};
+
+		_adsp: adsp@6800000 {
+			compatible = "qcom,sm8650-hexagon";
+			reg = <0 0x06800000 0 0x50000>,
+			      <0 0x06eeb000 0 4>;
+			reg-names = "base", "evb_sel";
+
+			interrupts-extended = <&ipcc IPCC_CLIENT_LPASS 0 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_LPASS 1 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_LPASS 2 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_LPASS 3 IRQ_TYPE_EDGE_RISING>;
+			mboxes = <&ipcc IPCC_CLIENT_LPASS 0>,
+				 <&ipcc IPCC_CLIENT_LPASS 1>,
+				 <&ipcc IPCC_CLIENT_LPASS 2>,
+				 <&ipcc IPCC_CLIENT_LPASS 3>;
+
+			clocks = <&aoncc LPASS_AON_CC_LPI_NOC_HS_CLK>,
+				 <&aoncc LPASS_AON_CC_Q6_AXIM_CLK>;
+			clock-names = "lpi_noc_hs", "q6_axim";
+
+			// missing: power domains, icc
+			iommus =  <&apps_smmu 0x1000 0x0>, // ADSP
+				  <&apps_smmu 0x1060 0x0>, // LPMLA_0 config ?
+				  <&apps_smmu 0x1068 0x0>, // LPMLA_0 act/wgt/out ?
+				  <&apps_smmu 0x10e4 0x0>, // ASC bus client 0
+				  <&apps_smmu 0x10e5 0x0>; // ASC bus client 1
+			//core-max-rate = <1401600000>;
+
+#if 0
+			// XXX:
+			pinctrl-names = "default";
+			pinctrl-0 = <&cam_sensor_mclk0_active &cam_sensor_mclk1_active
+				 &cam_sensor_mclk2_active  &cam_sensor_mclk3_active
+				 &cam_sensor_mclk4_active  &cam_sensor_mclk5_active
+				 &cam_sensor_mclk6_active  &cam_sensor_mclk7_active>;
+			// left is MCLK4, CCI_1, CSI2
+			// right is MCLK2, CCI_2, CSI4
+#endif
+		};
+		
+		cvp: cvp@ab00000 {
+			compatible = "qcom,sm8650-xtensa";
+			reg = <0 0x0ab00000 0 0xf0000>;
+			interrupts = <GIC_SPI 234 IRQ_TYPE_LEVEL_HIGH>;
+			// watchdog interrupt: 235
+			clocks = <&gcc GCC_VIDEO_AXI1_CLK>,
+				 <&videocc VIDEO_CC_MVS1C_CLK>;
+				 //<&videocc VIDEO_CC_MVS1_CLK>; controlled by fw
+			clock-names = "iface", "core";//, "vcodec0_core";
+
+			iommus = <&apps_smmu 0x1920 0>, // nonpix? (firmware)
+				 <&apps_smmu 0x1922 0>; // firmware
+
+			// missing: power domains
+		};
 	};
 
 	thermal-zones {
