@@ -1,6 +1,7 @@
 /dts-v1/;
 
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+#include <dt-bindings/phy/phy.h>
 #include "sm8650.dtsi"
 #include "pm8010.dtsi"
 #include "pm8550.dtsi"
@@ -12,6 +13,9 @@
 #include "sm8650-el2.dtsi"
 
 / {
+	model = "SM8650 POC-F rev1 4slam 2et";
+	compatible = "qcom,sm8650-pocf", "qcom,sm8650";
+
 	aliases {
 		serial0 = &uart15;
 		serial1 = &uart14;
@@ -140,6 +144,9 @@
 			     <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
 		i2c-adapter = <&i2c4 &i2c5>;
 	};
+
+
+
 };
 
 &apps_rsc {
@@ -598,30 +605,16 @@
 	};
 };
 
+&dispcc {
+	status = "okay";
+};
+
+&gpi_dma1 {
+	status = "okay";
+};
+
+
 &gpu {
-	status = "okay";
-};
-
-&i2c4 {
-	status = "okay";
-	
-    /* FAN_I2C */
-	slg4ax46073v@8 {
-		compatible = "silego,slg4ax46073v";
-		reg = <0x08>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		//vdd-fan-1-supply = <&VBATT_2S>; not modeled in dts
-		fan-alert-gpios = <&tlmm 174 GPIO_ACTIVE_HIGH>;
-		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
-		bp-gpio = <&tlmm 139 GPIO_ACTIVE_HIGH>;
-
-		status = "ok";
-	};
-};
-
-&i2c5 {
 	status = "okay";
 };
 
@@ -635,22 +628,84 @@
 	status = "okay";
 };
 
-// Prox Sensor I2C
-&i2c_hub_8 {
+&mdss {
+	status = "okay";
+};
+
+&mdss_mdp {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&vreg_l3i_1p2>;
 	status = "okay";
 
-	light-sensor@60 {
-		compatible = "vishay,vcnl4040";
-		reg = <0x60>;
-		proximity-near-level = <220>;
-		// interrupts-extended = <&tlmm 31 IRQ_TYPE_EDGE_FALLING>;
-		// driver lacks support for regulators, l8c and l11c set to always on
+	qcom,dual-dsi-mode;
+	qcom,master-dsi;
 
-		vin0-supply = <&vreg_l2b_3p0>; 
-		vin1-supply = <&vreg_l15b_1p8>; 
 
-		status = "okay";
+	panel: panel@0 {
+		reg = <0>;
+		compatible = "pocf,jdi-lpm026m648c";
+		dual-panel;
+
+		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
+			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
+		enp-gpios = <&tlmm 32 GPIO_ACTIVE_HIGH>;
+
+		wled1-supply = <&backlight>;
+		vdda-supply = <&vreg_l12b_1p8>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				panel0_in: endpoint {
+					remote-endpoint = <&mdss_dsi0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				panel1_in: endpoint {
+					remote-endpoint = <&mdss_dsi1_out>;
+				};
+			};
+		};
 	};
+};
+
+&mdss_dsi0_out {
+	remote-endpoint = <&panel0_in>;
+	data-lanes = <0 1 2>;
+};
+
+&mdss_dsi0_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+	phy-type = <PHY_TYPE_CPHY>;
+	status = "okay";
+};
+
+&mdss_dsi1 {
+	vdda-supply = <&vreg_l3i_1p2>;
+	status = "okay";
+
+	qcom,dual-dsi-mode;
+
+	assigned-clocks = <&dispcc DISP_CC_MDSS_BYTE1_CLK_SRC>, <&dispcc DISP_CC_MDSS_PCLK1_CLK_SRC>;
+	assigned-clock-parents = <&mdss_dsi0_phy 0>, <&mdss_dsi0_phy 1>;
+};
+
+&mdss_dsi1_out {
+	remote-endpoint = <&panel1_in>;
+	data-lanes = <0 1 2>;
+};
+
+&mdss_dsi1_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+	status = "okay";
+	phy-type = <PHY_TYPE_CPHY>;
 };
 
 &pcie0 {
@@ -711,6 +766,12 @@
 	vdd3-supply = <&vreg_l5b_3p1>;
 };
 
+&pm8550ve_gpios {
+	gpio-line-names =
+		// GPIO01 - GPIO08
+		"",  "",  "",  "",  "qpd_fpga_crst",  "",  "qpd_fpga_rst",  "";
+};
+
 &pmk8550_rtc {
 	status = "okay";
 	allow-set-time;
@@ -758,6 +819,49 @@
 	clock-frequency = <32000>;
 };
 
+// nRF SPI HID
+&spi10 {
+	status = "okay";
+
+	// L, on QUP2 SE2 L3 CS
+	// expansion, CS_2=gpio_15
+	hid@2 {
+		compatible = "hid-over-spi";
+		reg = <2>;
+		interrupts-extended = <&tlmm 69 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 70 GPIO_ACTIVE_LOW>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&l_spihid_default_state>;
+	};
+
+	// R, on QUP2 SE2 L6 CS
+	// mainboard, CS_1=gpio_13
+	hid@1 {
+		compatible = "hid-over-spi";
+		reg = <1>;
+		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 137 GPIO_ACTIVE_LOW>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&r_spihid_default_state>;
+	};
+};
+
 &uart14 {
 	status = "okay";
 
@@ -776,98 +880,49 @@
 	};
 };
 
+&i2c4 {
+	status = "okay";
+	
+    /* FAN_I2C */
+	slg4ax46073v@8 {
+		compatible = "silego,slg4ax46073v";
+		reg = <0x08>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		//vdd-fan-1-supply = <&VBATT_2S>; not modeled in dts
+		fan-alert-gpios = <&tlmm 174 GPIO_ACTIVE_HIGH>;
+		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
+		bp-gpio = <&tlmm 139 GPIO_ACTIVE_HIGH>;
+
+		status = "ok";
+	};
+};
+
+&i2c5 {
+	status = "okay";
+};
+
 &uart15 {
 	status = "okay";
 };
 
-&tlmm {
-	bt_default: bt-default-state {
-		bt-en-pins {
-			pins = "gpio17";
-			function = "gpio";
-			drive-strength = <16>;
-			bias-disable;
-		};
+// Prox Sensor I2C
+&i2c_hub_8 {
+	status = "okay";
 
-		sw-ctrl-pins {
-			pins = "gpio18";
-			function = "gpio";
-			bias-pull-down;
-		};
+	light-sensor@60 {
+		compatible = "vishay,vcnl4040";
+		reg = <0x60>;
+		proximity-near-level = <220>;
+		// interrupts-extended = <&tlmm 31 IRQ_TYPE_EDGE_FALLING>;
+		// driver lacks support for regulators, l8c and l11c set to always on
+
+		vin0-supply = <&vreg_l2b_3p0>; 
+		vin1-supply = <&vreg_l15b_1p8>; 
+
+		status = "okay";
 	};
-
-	wlan_en: wlan-en-state {
-		pins = "gpio16";
-		function = "gpio";
-		drive-strength = <8>;
-		bias-pull-down;
-	};
-};
-
-&ufs_mem_hc {
-	reset-gpios = <&tlmm 210 GPIO_ACTIVE_LOW>;
-
-	vcc-supply = <&vreg_l17b_2p5>;
-	vcc-max-microamp = <1300000>;
-	vccq-supply = <&vreg_l1c_1p2>;
-	vccq-max-microamp = <1200000>;
-
-	status = "okay";
-};
-
-&ufs_mem_phy {
-	vdda-phy-supply = <&vreg_l1d_0p9>;
-	vdda-pll-supply = <&vreg_l3i_1p2>;
-
-	status = "okay";
-};
-
-&usb_1 {
-	status = "okay";
-};
-
-&usb_1_dwc3 {
-	dr_mode = "otg";
-	usb-role-switch;
-};
-
-
-&usb_1_hsphy {
-	vdd-supply = <&vreg_l1i_0p88>;
-	vdda12-supply = <&vreg_l3i_1p2>;
-
-	phys = <&pm8550b_eusb2_repeater>;
-
-	status = "okay";
-};
-
-&usb_dp_qmpphy {
-	vdda-phy-supply = <&vreg_l3i_1p2>;
-	vdda-pll-supply = <&vreg_l3g_0p91>;
-
-	orientation-switch;
-
-	status = "okay";
-};
-
-&xo_board {
-	clock-frequency = <76800000>;
-};
-
-
-/ {
-	model = "SM8650 POC-F rev1 4slam 2et";
-	compatible = "qcom,sm8650-deckard-pocf", "qcom,sm8650";
-};
-
-&i2c4 {
-	/* slg4ax46073v@8 */
-};
-
-&pm8550ve_gpios {
-	gpio-line-names =
-		// GPIO01 - GPIO08
-		"",  "",  "",  "",  "qpd_fpga_crst",  "",  "qpd_fpga_rst",  "";
 };
 
 &tlmm {
@@ -932,47 +987,90 @@
 			bias-pull-down;
 		};
 	};
+
+	bt_default: bt-default-state {
+		bt-en-pins {
+			pins = "gpio17";
+			function = "gpio";
+			drive-strength = <16>;
+			bias-disable;
+		};
+
+		sw-ctrl-pins {
+			pins = "gpio18";
+			function = "gpio";
+			bias-pull-down;
+		};
+	};
+
+	i2c4_default: i2c4-default-state {
+		pins = "gpio48", "gpio49";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
+	i2c5_default: i2c5-default-state {
+		pins = "gpio52", "gpio53";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
+	wlan_en: wlan-en-state {
+		pins = "gpio16";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-down;
+	};
 };
 
-// nRF SPI HID
-&spi10 {
+&ufs_mem_hc {
+	reset-gpios = <&tlmm 210 GPIO_ACTIVE_LOW>;
+
+	vcc-supply = <&vreg_l17b_2p5>;
+	vcc-max-microamp = <1300000>;
+	vccq-supply = <&vreg_l1c_1p2>;
+	vccq-max-microamp = <1200000>;
+
 	status = "okay";
+};
 
-	// L, on QUP2 SE2 L3 CS
-	// expansion, CS_2=gpio_15
-	hid@2 {
-		compatible = "hid-over-spi";
-		reg = <2>;
-		interrupts-extended = <&tlmm 69 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&tlmm 70 GPIO_ACTIVE_LOW>;
-		input-report-header-address = <0x1000>;
-		input-report-body-address = <0x1004>;
-		output-report-address = <0x2000>;
-		read-opcode = <0x0b>;
-		write-opcode = <0x02>;
-		hid-over-spi-flags = <0x00>;
-		post-power-on-delay-ms = <1>;
-		minimal-reset-delay-ms = <100>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&l_spihid_default_state>;
-	};
+&ufs_mem_phy {
+	vdda-phy-supply = <&vreg_l1d_0p9>;
+	vdda-pll-supply = <&vreg_l3i_1p2>;
 
-	// R, on QUP2 SE2 L6 CS
-	// mainboard, CS_1=gpio_13
-	hid@1 {
-		compatible = "hid-over-spi";
-		reg = <1>;
-		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&tlmm 137 GPIO_ACTIVE_LOW>;
-		input-report-header-address = <0x1000>;
-		input-report-body-address = <0x1004>;
-		output-report-address = <0x2000>;
-		read-opcode = <0x0b>;
-		write-opcode = <0x02>;
-		hid-over-spi-flags = <0x00>;
-		post-power-on-delay-ms = <1>;
-		minimal-reset-delay-ms = <100>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&r_spihid_default_state>;
-	};
+	status = "okay";
+};
+
+&usb_1 {
+	status = "okay";
+};
+
+&usb_1_dwc3 {
+	dr_mode = "otg";
+	usb-role-switch;
+};
+
+
+&usb_1_hsphy {
+	vdd-supply = <&vreg_l1i_0p88>;
+	vdda12-supply = <&vreg_l3i_1p2>;
+
+	phys = <&pm8550b_eusb2_repeater>;
+
+	status = "okay";
+};
+
+&usb_dp_qmpphy {
+	vdda-phy-supply = <&vreg_l3i_1p2>;
+	vdda-pll-supply = <&vreg_l3g_0p91>;
+
+	orientation-switch;
+
+	status = "okay";
+};
+
+&xo_board {
+	clock-frequency = <76800000>;
 };
