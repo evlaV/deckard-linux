@@ -1162,7 +1162,7 @@
 };
 
 &lpass_tlmm {
-	status = "ok";
+	status = "okay";
 };
 
 &tlmm {
@@ -1230,6 +1230,7 @@
 		};
 	};
 };
+
 
 
 // nRF SPI HID Config
