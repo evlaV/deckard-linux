@@ -1165,6 +1165,54 @@
 	status = "okay";
 };
 
+&lpass_vamacro {
+	pinctrl-0 = <&dmic01_default>;
+	pinctrl-names = "default";
+	vdd-micb-supply = <&vreg_l10b_1p8>;
+	qcom,dmic-sample-rate = <2400000>; /* or 3200000 */
+};
+
+&sound {
+	status = "okay";
+
+	codecs = <&left_spkr>,
+		 <&right_spkr>,
+		 <&swr0 0>,
+		 <&lpass_wsamacro 0>,
+		 <&lpass_wsamacro 1>,
+		 <&lpass_vamacro 0>;
+};
+
+&swr0 {
+	status = "okay";
+
+	/* WSA8845 */
+	left_spkr: speaker@0,0 {
+		compatible = "sdw20217020400";
+		reg = <0 0>;
+		//pinctrl-names = "default";
+		//pinctrl-0 = <&spkr_1_sd_n_active>;
+		powerdown-gpios = <&tlmm 186 GPIO_ACTIVE_LOW>; // LPASS 21
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "SpkrLeft";
+		vdd-1p8-supply = <&vreg_l15b_1p8>;
+		vdd-io-supply = <&vreg_l3c_1p2>;
+	};
+
+	/* WSA8845 */
+	right_spkr: speaker@0,1 {
+		compatible = "sdw20217020400";
+		reg = <0 1>;
+		//pinctrl-names = "default";
+		//pinctrl-0 = <&spkr_2_sd_n_active>;
+		powerdown-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "SpkrRight";
+		vdd-1p8-supply = <&vreg_l15b_1p8>;
+		vdd-io-supply = <&vreg_l3c_1p2>;
+	};
+};
+
 &tlmm {
 	// TODO verify reserved pins for 8650
 	// qcom,gpios-reserved = <36 37 38 39>;
