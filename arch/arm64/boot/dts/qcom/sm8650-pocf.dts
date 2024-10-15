@@ -981,6 +981,19 @@
 
 		status = "ok";
 	};
+
+	/* 3D Hall Sensor I2C */
+	als31300@6c {
+		compatible = "allegro,als31300";
+		reg = <0x6c>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		vdd-hall-supply = <&vreg_l2b_3p0>; 
+		//hall-alert-gpios = <&tlmm 65 GPIO_ACTIVE_LOW>; // Not Used
+
+		status = "ok";
+	};
 };
 
 &i2c5 {
