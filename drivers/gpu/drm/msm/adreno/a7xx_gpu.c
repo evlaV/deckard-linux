@@ -1086,8 +1086,10 @@ struct msm_gpu *a7xx_gpu_init(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
 	struct platform_device *pdev = priv->gpu_pdev;
+	struct adreno_platform_config *config = pdev->dev.platform_data;
 	struct a6xx_gpu *a7xx_gpu;
 	struct adreno_gpu *adreno_gpu;
+	extern int enable_preemption;
 	int ret;
 
 	a7xx_gpu = kzalloc(sizeof(*a7xx_gpu), GFP_KERNEL);
@@ -1098,7 +1100,12 @@ struct msm_gpu *a7xx_gpu_init(struct drm_device *dev)
 	adreno_gpu->registers = NULL;
 	adreno_gpu->base.hw_apriv = true;
 
-	ret = adreno_gpu_init(dev, pdev, adreno_gpu, &funcs, 1);
+	if ((enable_preemption == 1) || (enable_preemption == -1 &&
+	    (config->info->quirks & ADRENO_QUIRK_PREEMPTION)))
+		ret = adreno_gpu_init(dev, pdev, adreno_gpu, &funcs, 4);
+	else
+		ret = adreno_gpu_init(dev, pdev, adreno_gpu, &funcs, 1);
+
 	if (ret) {
 		a7xx_destroy(&(a7xx_gpu->base.base));
 		return ERR_PTR(ret);
