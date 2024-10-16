@@ -47,7 +47,7 @@ static void a7xx_set_pagetable(struct msm_gpu *gpu,
 	phys_addr_t ttbr;
 	u32 asid;
 
-	if (ctx->seqno == gpu->cur_ctx_seqno)
+	if (ctx->seqno == ring->cur_ctx_seqno)
 		return;
 
 	if (msm_iommu_pagetable_params(ctx->aspace->mmu, &ttbr, &asid))
@@ -101,7 +101,7 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 		case MSM_SUBMIT_CMD_IB_TARGET_BUF:
 			break;
 		case MSM_SUBMIT_CMD_CTX_RESTORE_BUF:
-			if (gpu->cur_ctx_seqno == submit->queue->ctx->seqno)
+			if (ring->cur_ctx_seqno == submit->queue->ctx->seqno)
 				break;
 			fallthrough;
 		case MSM_SUBMIT_CMD_BUF:
@@ -500,6 +500,7 @@ static int a7xx_hw_init(struct msm_gpu *gpu)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a7xx_gpu *a7xx_gpu = to_a7xx_gpu(adreno_gpu);
+	unsigned int i;
 	int ret;
 
 	gpu_write(gpu, REG_A7XX_RBBM_SW_RESET_CMD, 1);
@@ -611,7 +612,8 @@ static int a7xx_hw_init(struct msm_gpu *gpu)
 
 	gpu_write64(gpu, REG_A7XX_CP_RB_RPTR_ADDR, shadowptr(a7xx_gpu, gpu->rb[0]));
 
-	gpu->cur_ctx_seqno = 0;
+	for (i = 0; i < gpu->nr_rings; i++)
+		gpu->rb[i]->cur_ctx_seqno = 0;
 
 	/* Enable the SQE_to start the CP engine */
 	gpu_write(gpu, REG_A7XX_CP_SQE_CNTL, 1);
