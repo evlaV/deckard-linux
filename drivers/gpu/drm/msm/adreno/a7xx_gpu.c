@@ -123,6 +123,8 @@ static void a7xx_flush(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
 static void a6xx_emit_set_pseudo_reg(struct msm_ringbuffer *ring,
                struct a6xx_gpu *a6xx_gpu, struct msm_gpu_submitqueue *queue)
 {
+       u64 preempt_postamble;
+
        OUT_PKT7(ring, CP_SET_PSEUDO_REG, 12);
 
        OUT_RING(ring, SMMU_INFO);
@@ -146,6 +148,16 @@ static void a6xx_emit_set_pseudo_reg(struct msm_ringbuffer *ring,
        /* seems OK to set to 0 to disable it */
        OUT_RING(ring, 0);
        OUT_RING(ring, 0);
+
+       /* Emit postamble to clear perfcounters */
+       preempt_postamble = a6xx_gpu->preempt_postamble_iova;
+
+       OUT_PKT7(ring, CP_SET_AMBLE, 3);
+       OUT_RING(ring, lower_32_bits(preempt_postamble));
+       OUT_RING(ring, upper_32_bits(preempt_postamble));
+       OUT_RING(ring, CP_SET_AMBLE_2_DWORDS(
+                                a6xx_gpu->preempt_postamble_len) |
+                        CP_SET_AMBLE_2_TYPE(KMD_AMBLE_TYPE));
 }
 
 static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
