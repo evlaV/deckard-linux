@@ -227,65 +227,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #define REG_A7XX_RBBM_CLOCK_MODE_BV_GPC				0x00000288
 
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_CP(uint32_t i0) { return 0x00000300 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_RBBM(uint32_t i0) { return 0x0000031c + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_PC(uint32_t i0) { return 0x00000324 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_VFD(uint32_t i0) { return 0x00000334 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_HLSQ(uint32_t i0) { return 0x00000344 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_VPC(uint32_t i0) { return 0x00000350 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_CCU(uint32_t i0) { return 0x0000035c + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_TSE(uint32_t i0) { return 0x00000366 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_RAS(uint32_t i0) { return 0x0000036e + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_UCHE(uint32_t i0) { return 0x00000376 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_TP(uint32_t i0) { return 0x0000038e + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_SP(uint32_t i0) { return 0x000003a6 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_RB(uint32_t i0) { return 0x000003d6 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_VSC(uint32_t i0) { return 0x000003e6 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_LRZ(uint32_t i0) { return 0x000003ea + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_CMP(uint32_t i0) { return 0x000003f2 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_UFC(uint32_t i0) { return 0x000003fa + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR2_HLSQ(uint32_t i0) { return 0x00000410 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR2_CP(uint32_t i0) { return 0x0000041c + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR2_SP(uint32_t i0) { return 0x0000042a + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR2_TP(uint32_t i0) { return 0x00000442 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR2_UFC(uint32_t i0) { return 0x0000044e + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_BV_PC(uint32_t i0) { return 0x00000460 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_BV_VFD(uint32_t i0) { return 0x00000470 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_BV_VPC(uint32_t i0) { return 0x00000480 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_BV_TSE(uint32_t i0) { return 0x0000048c + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_BV_RAS(uint32_t i0) { return 0x00000494 + 0x2*i0; }
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_BV_LRZ(uint32_t i0) { return 0x0000049c + 0x2*i0; }
-
 #define REG_A7XX_RBBM_PERFCTR_CNTL				0x00000500
-
-static inline uint32_t REG_A7XX_RBBM_PERFCTR_RBBM_SEL(uint32_t i0) { return 0x00000507 + 0x1*i0; }
 
 #define REG_A7XX_RBBM_PERFCTR_GPU_BUSY_MASKED			0x0000050b
 
@@ -345,8 +287,6 @@ static inline uint32_t REG_A7XX_RBBM_PERFCTR_RBBM_SEL(uint32_t i0) { return 0x00
 
 #define REG_A7XX_CP_PROTECT_CNTL				0x0000084f
 
-static inline uint32_t REG_A7XX_CP_PROTECT_REG(uint32_t i0) { return 0x00000850 + 0x1*i0; }
-
 #define REG_A7XX_CP_CONTEXT_SWITCH_CNTL				0x000008a0
 
 #define REG_A7XX_CP_CONTEXT_SWITCH_SMMU_INFO			0x000008a1
@@ -358,10 +298,6 @@ static inline uint32_t REG_A7XX_CP_PROTECT_REG(uint32_t i0) { return 0x00000850 
 #define REG_A7XX_CP_CONTEXT_SWITCH_NON_PRIV_RESTORE_ADDR	0x000008a7
 
 #define REG_A7XX_CP_CONTEXT_SWITCH_LEVEL_STATUS			0x000008ab
-
-static inline uint32_t REG_A7XX_CP_PERFCTR_CP_SEL(uint32_t i0) { return 0x000008d0 + 0x1*i0; }
-
-static inline uint32_t REG_A7XX_CP_BV_PERFCTR_CP_SEL(uint32_t i0) { return 0x000008e0 + 0x1*i0; }
 
 #define REG_A7XX_CP_CRASH_SCRIPT_BASE				0x00000900
 
@@ -461,8 +397,6 @@ static inline uint32_t REG_A7XX_CP_BV_PERFCTR_CP_SEL(uint32_t i0) { return 0x000
 
 #define REG_A7XX_CP_LPAC_FIFO_DBG_ADDR				0x00000b40
 
-static inline uint32_t REG_A7XX_VSC_PERFCTR_VSC_SEL(uint32_t i0) { return 0x00000cd8 + 0x1*i0; }
-
 #define REG_A7XX_UCHE_MODE_CNTL					0x00000e01
 
 #define REG_A7XX_UCHE_WRITE_THRU_BASE				0x00000e07
@@ -476,8 +410,6 @@ static inline uint32_t REG_A7XX_VSC_PERFCTR_VSC_SEL(uint32_t i0) { return 0x0000
 #define REG_A7XX_UCHE_CACHE_WAYS				0x00000e17
 
 #define REG_A7XX_UCHE_CLIENT_PF					0x00000e19
-
-static inline uint32_t REG_A7XX_UCHE_PERFCTR_UCHE_SEL(uint32_t i0) { return 0x00000e1c + 0x1*i0; }
 
 #define REG_A7XX_UCHE_GBIF_GX_CONFIG				0x00000e3a
 
@@ -597,21 +529,7 @@ static inline uint32_t REG_A7XX_UCHE_PERFCTR_UCHE_SEL(uint32_t i0) { return 0x00
 
 #define REG_A7XX_GRAS_NC_MODE_CNTL				0x00008602
 
-static inline uint32_t REG_A7XX_GRAS_PERFCTR_TSE_SEL(uint32_t i0) { return 0x00008610 + 0x1*i0; }
-
-static inline uint32_t REG_A7XX_GRAS_PERFCTR_RAS_SEL(uint32_t i0) { return 0x00008614 + 0x1*i0; }
-
-static inline uint32_t REG_A7XX_GRAS_PERFCTR_LRZ_SEL(uint32_t i0) { return 0x00008618 + 0x1*i0; }
-
 #define REG_A7XX_RB_NC_MODE_CNTL				0x00008e08
-
-static inline uint32_t REG_A7XX_RB_PERFCTR_RB_SEL(uint32_t i0) { return 0x00008e10 + 0x1*i0; }
-
-static inline uint32_t REG_A7XX_RB_PERFCTR_CCU_SEL(uint32_t i0) { return 0x00008e18 + 0x1*i0; }
-
-static inline uint32_t REG_A7XX_RB_PERFCTR_CMP_SEL(uint32_t i0) { return 0x00008e2c + 0x1*i0; }
-
-static inline uint32_t REG_A7XX_RB_PERFCTR_UFC_SEL(uint32_t i0) { return 0x00008e30 + 0x1*i0; }
 
 #define REG_A7XX_RB_RB_SUB_BLOCK_SEL_CNTL_HOST			0x00008e3b
 
@@ -619,23 +537,11 @@ static inline uint32_t REG_A7XX_RB_PERFCTR_UFC_SEL(uint32_t i0) { return 0x00008
 
 #define REG_A7XX_RB_CONTEXT_SWITCH_GMEM_SAVE_RESTORE		0x00008e50
 
-static inline uint32_t REG_A7XX_VPC_PERFCTR_VPC_SEL(uint32_t i0) { return 0x0000960b + 0x1*i0; }
-
-static inline uint32_t REG_A7XX_PC_PERFCTR_PC_SEL(uint32_t i0) { return 0x00009e42 + 0x1*i0; }
-
-static inline uint32_t REG_A7XX_VFD_PERFCTR_VFD_SEL(uint32_t i0) { return 0x0000a610 + 0x1*i0; }
-
 #define REG_A7XX_SP_NC_MODE_CNTL				0x0000ae02
-
-static inline uint32_t REG_A7XX_SP_PERFCTR_HLSQ_SEL(uint32_t i0) { return 0x0000ae60 + 0x1*i0; }
 
 #define REG_A7XX_SP_READ_SEL					0x0000ae6d
 
-static inline uint32_t REG_A7XX_SP_PERFCTR_SP_SEL(uint32_t i0) { return 0x0000ae80 + 0x1*i0; }
-
 #define REG_A7XX_TPL1_NC_MODE_CNTL				0x0000b604
-
-static inline uint32_t REG_A7XX_TPL1_PERFCTR_TP_SEL(uint32_t i0) { return 0x0000b610 + 0x1*i0; }
 
 #define REG_A7XX_SP_AHB_READ_APERTURE				0x0000c000
 
