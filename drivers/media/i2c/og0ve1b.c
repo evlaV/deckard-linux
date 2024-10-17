@@ -596,7 +596,7 @@ static void og0ve1b_update_pad_format(const struct og0ve1b_mode *mode,
 {
 	fmt->width = mode->width;
 	fmt->height = mode->height;
-	fmt->code = MEDIA_BUS_FMT_SGRBG8_1X8;
+	fmt->code = MEDIA_BUS_FMT_Y8_1X8;
 	fmt->field = V4L2_FIELD_NONE;
 }
 
