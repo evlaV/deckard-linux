@@ -677,12 +677,15 @@ skip_panel2:
 	if (ret)
 		goto err_panel_add;
 
+#if 0
+	//gabe hack -- this mismatches existing dsi / dsc stuff
 	ctx->dsi[0]->dsc = &ctx->dsc_cfg;
 	ctx->dsi[0]->dsc_slice_per_pkt = 4;
 	if (ctx->is_dual_panel) {
 		ctx->dsi[1]->dsc = &ctx->dsc_cfg;
 		ctx->dsi[1]->dsc_slice_per_pkt = 4;
 	}
+#endif
 
 	ret = lpm026m648c_panel_add(ctx);
 	if (ret) {
