@@ -978,8 +978,8 @@ static irqreturn_t a7xx_irq(struct msm_gpu *gpu)
 		status &= A7XX_RBBM_INT_0_MASK_CACHE_CLEAN_TS;
 
 	/* TODO: print human friendly strings for each error ? */
-	if (status & ~A7XX_RBBM_INT_0_MASK_CACHE_CLEAN_TS)
-		dev_err_ratelimited(&gpu->pdev->dev, "unexpected irq status: 0x%8.8X\n", status);
+	//if (status & ~A7XX_RBBM_INT_0_MASK_CACHE_CLEAN_TS)
+	//	dev_err_ratelimited(&gpu->pdev->dev, "unexpected irq status: 0x%8.8X\n", status);
 
 	if (status & A7XX_RBBM_INT_0_MASK_HWERROR)
 		a7xx_cp_hw_err_irq(gpu);
