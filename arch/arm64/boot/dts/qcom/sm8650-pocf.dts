@@ -872,7 +872,50 @@
 };
 
 &pm8550b_typec {
+	status = "okay";
+
 	vdd-pdphy-supply = <&VREG_L05B_3P1>;
+
+	//io-channels = <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_SNS_CHGR>,
+	//			  <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_2S_MID_CHGR>;
+	io-channel-names = "vbat", "vmid";
+
+	connector {
+		power-role = "dual";
+		data-role = "dual";
+		try-power-role = "sink";
+		
+		source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)>;
+		
+		//sink-pdos needs to have 5000mV entry first otherwise will not probe
+		sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)
+		             PDO_FIXED(9000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM) >;
+
+		op-sink-microwatt = <15000000>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				pm8550b_role_switch_out: endpoint {
+					remote-endpoint = <&usb_1_dwc3_hs>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				tcpm_sbu_out: endpoint {
+					remote-endpoint = <&wcd_usbss_sbu_mux>;
+				};
+			};
+
+		};
+	};
+
 };
 
 &pon_pwrkey {
