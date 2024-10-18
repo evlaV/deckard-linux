@@ -982,6 +982,8 @@ int ath12k_wow_op_resume(struct ieee80211_hw *hw)
 exit:
 	if (ret) {
 		switch (ah->state) {
+		case ATH12K_HW_STATE_TM:
+			ath12k_warn(ar->ab, "******** STATE_TM\n");
 		case ATH12K_HW_STATE_ON:
 			ah->state = ATH12K_HW_STATE_RESTARTING;
 			ret = 1;
