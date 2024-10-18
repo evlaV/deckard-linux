@@ -12,6 +12,7 @@
 #include "core.h"
 #include "hif.h"
 #include "../testmode_i.h"
+#include <linux/printk.h>
 
 #define ATH12K_FTM_SEGHDR_CURRENT_SEQ		GENMASK(3, 0)
 #define ATH12K_FTM_SEGHDR_TOTAL_SEGMENTS	GENMASK(7, 4)
@@ -179,6 +180,7 @@ void ath12k_tm_process_event(struct ath12k_base *ab, u32 cmd_id,
 static int ath12k_tm_cmd_get_version(struct ath12k *ar, struct nlattr *tb[])
 {
 	struct sk_buff *skb;
+	//dump_stack();
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_TESTMODE,
 		   "testmode cmd get version_major %d version_minor %d\n",
@@ -292,13 +294,17 @@ static int ath12k_tm_cmd_testmode_start(struct ath12k *ar, struct nlattr *tb[])
 
 	mutex_lock(&ar->conf_mutex);
 
+	ath12k_warn(ar->ab, "%s\n", __func__);
+
 	if (ar->ah->state == ATH12K_HW_STATE_TM) {
 		ret = -EALREADY;
+		ath12k_warn(ar->ab, "%s ALREADY\n", __func__);
 		goto out;
 	}
 
 	if (ar->ah->state != ATH12K_HW_STATE_OFF) {
 		ret = -EBUSY;
+		ath12k_warn(ar->ab, "%s OFF\n", __func__);
 		goto out;
 	}
 
@@ -309,6 +315,8 @@ static int ath12k_tm_cmd_testmode_start(struct ath12k *ar, struct nlattr *tb[])
 		ret = -ENOMEM;
 		goto out;
 	}
+
+	ath12k_warn(ar->ab, "%s STATE=TM\n", __func__);
 
 	ar->ah->state = ATH12K_HW_STATE_TM;
 	ar->ftm_msgref = 0;
@@ -392,6 +400,8 @@ int ath12k_tm_cmd(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	struct ath12k_base *ab;
 	int ret;
 
+	printk(KERN_WARNING "************************ len: %d \n",len);
+
 	ret = nla_parse(tb, ATH_TM_ATTR_MAX, data, len, ath12k_tm_policy,
 			NULL);
 	if (ret)
@@ -409,15 +419,20 @@ int ath12k_tm_cmd(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	ab = ar->ab;
 	switch (nla_get_u32(tb[ATH_TM_ATTR_CMD])) {
 	case ATH_TM_CMD_WMI:
+		ath12k_warn(ab, "************************ ATH_TM_CMD_WMI\n");
 		return ath12k_tm_cmd_wmi(ar, tb);
 	case ATH_TM_CMD_TESTMODE_START:
+		ath12k_warn(ab, "************************ ATH_TM_CMD_TESTMODE_START\n");
 		return ath12k_tm_cmd_testmode_start(ar, tb);
 	case ATH_TM_CMD_GET_VERSION:
+		ath12k_warn(ab, "************************ ATH_TM_CMD_GET_VERSION\n");
 		return ath12k_tm_cmd_get_version(ar, tb);
 	case ATH_TM_CMD_WMI_FTM:
+		ath12k_warn(ab, "************************ ATH_TM_CMD_WMI_FTM\n");
 		set_bit(ATH12K_FLAG_FTM_SEGMENTED, &ab->dev_flags);
 		return ath12k_tm_cmd_process_ftm(ar, tb);
 	default:
+		ath12k_warn(ab, "************************ %02x NOTSUP \n",nla_get_u32(tb[ATH_TM_ATTR_CMD]));
 		return -EOPNOTSUPP;
 	}
 }
