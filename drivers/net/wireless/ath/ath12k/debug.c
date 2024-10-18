@@ -63,10 +63,8 @@ void __ath12k_dbg(struct ath12k_base *ab, enum ath12k_debug_mask mask,
 	vaf.fmt = fmt;
 	vaf.va = &args;
 
-	if (likely(ab))
-		dev_printk(KERN_DEBUG, ab->dev, "%pV", &vaf);
-	else
-		printk(KERN_DEBUG "ath12k: %pV", &vaf);
+	if (ath12k_debug_mask & mask)
+		dev_printk(KERN_DEBUG, ab->dev, "m:%X %pV", mask, &vaf);
 
 	/* TODO: trace log */
 
