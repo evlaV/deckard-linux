@@ -668,6 +668,36 @@ u32 csid_src_pad_code(struct csid_device *csid, u32 sink_code,
 	}
 }
 
+static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+{
+	struct csid_device *csid = v4l2_get_subdevdata(sd);
+
+	switch (cmd) {
+	case VIDIOC_CSID_VFE_PRV_S_REGS:
+		if(csid->res->hw_ops->set_csid_vfe_registers) {
+			return csid->res->hw_ops->set_csid_vfe_registers(csid, arg);
+		}
+		else {
+			// Operation not supported
+			return -EINVAL;
+		}
+		break;
+	case VIDIOC_CSID_VFE_PRV_G_REGS:
+		if(csid->res->hw_ops->get_csid_vfe_registers) {
+			return csid->res->hw_ops->get_csid_vfe_registers(csid, arg);
+		}
+		else {
+			// Operation not supported
+			return -EINVAL;
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 /*
  * csid_set_power - Power on/off CSID module
  * @sd: CSID V4L2 subdevice
@@ -734,6 +764,8 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 		}
 
 		csid->res->hw_ops->hw_version(csid);
+
+		csid->power_on = true;
 	} else {
 		disable_irq(csid->irq);
 		camss_disable_clocks(csid->nclocks, csid->clock);
@@ -741,6 +773,8 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 				       csid->supplies);
 		pm_runtime_put_sync(dev);
 		csid->res->parent_dev_ops->put(camss, csid->id);
+
+		csid->power_on = false;
 	}
 
 	return ret;
@@ -1316,6 +1350,7 @@ static int csid_link_setup(struct media_entity *entity,
 }
 
 static const struct v4l2_subdev_core_ops csid_core_ops = {
+	.ioctl = csid_ioctl,
 	.s_power = csid_set_power,
 	.subscribe_event = v4l2_ctrl_subdev_subscribe_event,
 	.unsubscribe_event = v4l2_event_subdev_unsubscribe,
