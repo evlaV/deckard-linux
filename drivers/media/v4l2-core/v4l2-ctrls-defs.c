@@ -1164,6 +1164,9 @@ const char *v4l2_ctrl_get_name(u32 id)
 	case V4L2_CID_TEST_PATTERN:		return "Test Pattern";
 	case V4L2_CID_DEINTERLACING_MODE:	return "Deinterlacing Mode";
 	case V4L2_CID_DIGITAL_GAIN:		return "Digital Gain";
+	case V4L2_CID_METADATA_CB_ADDR:		return "Metadata callback address";
+	case V4L2_CID_METADATA_SIZE:		return "Sensor Metadata size";
+	case V4L2_CID_SENSOR_SOF_CB_ADDR:	return "Sensor SOF callback address";
 
 	/* DV controls */
 	/* Keep the order of the 'case's the same as in v4l2-controls.h! */
@@ -1424,6 +1427,9 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 		*type = V4L2_CTRL_TYPE_MENU;
 		break;
 	case V4L2_CID_LINK_FREQ:
+	case V4L2_CID_METADATA_CB_ADDR:
+	case V4L2_CID_METADATA_SIZE:
+	case V4L2_CID_SENSOR_SOF_CB_ADDR:
 		*type = V4L2_CTRL_TYPE_INTEGER_MENU;
 		break;
 	case V4L2_CID_RDS_TX_PS_NAME:
