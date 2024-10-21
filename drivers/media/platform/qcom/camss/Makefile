@@ -29,6 +29,7 @@ qcom-camss-objs += \
 		camss-vfe-gen1.o \
 		camss-vfe-gen3.o \
 		camss-vfe-vbif.o \
-		camss-video.o
+		camss-video.o \
+		camss-metadata.o
 
 obj-$(CONFIG_VIDEO_QCOM_CAMSS) += qcom-camss.o
