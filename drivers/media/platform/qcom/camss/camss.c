@@ -3472,6 +3472,9 @@ static int camss_init_subdevices(struct camss *camss)
 		ret);
 		return ret;
 	}
+	for(i = 0; i < camss->res->metadata_num; i++) {
+		ret = msm_metadata_subdev_init(camss, &camss->metadata[i], NULL, i);
+	}
 
 	return 0;
 }
@@ -3645,16 +3648,7 @@ static int camss_register_entities(struct camss *camss)
 		}
 	}
 
-	for (i = 0; i < camss->res->csid_num; i++) {
-		ret = msm_csid_register_entity(&camss->csid[i],
-					       &camss->v4l2_dev);
-		if (ret < 0) {
-			dev_err(camss->dev,
-				"Failed to register csid%d entity: %d\n",
-				i, ret);
-			goto err_reg_csid;
-		}
-	}
+	
 
 	ret = msm_ispif_register_entities(camss->ispif,
 					  &camss->v4l2_dev);
@@ -3671,6 +3665,28 @@ static int camss_register_entities(struct camss *camss)
 				"Failed to register vfe%d entities: %d\n",
 				i, ret);
 			goto err_reg_vfe;
+		}
+	}
+
+	for (i = 0; i < camss->res->metadata_num; i++) {
+		ret = msm_metadata_register_entity(&camss->metadata[i],
+						&camss->v4l2_dev);
+		if (ret < 0) {
+			dev_err(camss->dev,
+				"Failed to register metadata%d entity: %d\n",
+				i, ret);
+			goto err_reg_csid;
+		}
+	}
+
+	for (i = 0; i < camss->res->csid_num; i++) {
+		ret = msm_csid_register_entity(&camss->csid[i],
+					       &camss->v4l2_dev);
+		if (ret < 0) {
+			dev_err(camss->dev,
+				"Failed to register csid%d entity: %d\n",
+				i, ret);
+			goto err_reg_csid;
 		}
 	}
 
@@ -3952,6 +3968,12 @@ static int camss_probe(struct platform_device *pdev)
 	if (!camss->csid)
 		return -ENOMEM;
 
+	camss->metadata = devm_kcalloc(dev, camss->res->metadata_num, sizeof(*camss->metadata),
+				  GFP_KERNEL);
+	if (!camss->metadata) {
+		return -ENOMEM;
+	}
+
 	if (camss->res->version == CAMSS_8x16 ||
 	    camss->res->version == CAMSS_8x53 ||
 	    camss->res->version == CAMSS_8x96) {
@@ -4092,6 +4114,7 @@ static const struct camss_resources msm8916_resources = {
 	.csiphy_num = ARRAY_SIZE(csiphy_res_8x16),
 	.csid_num = ARRAY_SIZE(csid_res_8x16),
 	.vfe_num = ARRAY_SIZE(vfe_res_8x16),
+	.metadata_num = 0,
 	.link_entities = camss_link_entities
 };
 
@@ -4118,6 +4141,7 @@ static const struct camss_resources msm8996_resources = {
 	.csiphy_num = ARRAY_SIZE(csiphy_res_8x96),
 	.csid_num = ARRAY_SIZE(csid_res_8x96),
 	.vfe_num = ARRAY_SIZE(vfe_res_8x96),
+	.metadata_num = 0,
 	.link_entities = camss_link_entities
 };
 
@@ -4130,6 +4154,7 @@ static const struct camss_resources sdm660_resources = {
 	.csiphy_num = ARRAY_SIZE(csiphy_res_660),
 	.csid_num = ARRAY_SIZE(csid_res_660),
 	.vfe_num = ARRAY_SIZE(vfe_res_660),
+	.metadata_num = 0,
 	.link_entities = camss_link_entities
 };
 
@@ -4153,6 +4178,7 @@ static const struct camss_resources sdm845_resources = {
 	.csiphy_num = ARRAY_SIZE(csiphy_res_845),
 	.csid_num = ARRAY_SIZE(csid_res_845),
 	.vfe_num = ARRAY_SIZE(vfe_res_845),
+	.metadata_num = 0,
 	.link_entities = camss_link_entities
 };
 
@@ -4167,6 +4193,7 @@ static const struct camss_resources sm8250_resources = {
 	.csiphy_num = ARRAY_SIZE(csiphy_res_8250),
 	.csid_num = ARRAY_SIZE(csid_res_8250),
 	.vfe_num = ARRAY_SIZE(vfe_res_8250),
+	.metadata_num = 0,
 	.link_entities = camss_link_entities
 };
 
@@ -4182,6 +4209,7 @@ static const struct camss_resources sc8280xp_resources = {
 	.csiphy_num = ARRAY_SIZE(csiphy_res_sc8280xp),
 	.csid_num = ARRAY_SIZE(csid_res_sc8280xp),
 	.vfe_num = ARRAY_SIZE(vfe_res_sc8280xp),
+	.metadata_num = 0,
 	.link_entities = camss_link_entities
 };
 
@@ -4211,6 +4239,7 @@ static const struct camss_resources sm8550_resources = {
 	.csiphy_num = ARRAY_SIZE(csiphy_res_8550),
 	.csid_num = ARRAY_SIZE(csid_res_8550),
 	.vfe_num = ARRAY_SIZE(vfe_res_8550),
+	.metadata_num = 0,
 	.link_entities = camss_link_entities
 };
 
@@ -4241,6 +4270,7 @@ static const struct camss_resources sm8650_resources = {
 	.csiphy_num = ARRAY_SIZE(csiphy_res_8650),
 	.csid_num = ARRAY_SIZE(csid_res_8650),
 	.vfe_num = ARRAY_SIZE(vfe_res_8650),
+	.metadata_num = ARRAY_SIZE(vfe_res_8650), // Each VFE has a metadata output device. This might need to be expanded per output device
 	.link_entities = camss_link_entities
 };
 
