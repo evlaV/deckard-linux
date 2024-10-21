@@ -98,6 +98,8 @@ struct a6xx_gmu {
 	unsigned long gpu_bw_table[GMU_MAX_GX_FREQS];
 	u32 gpu_ib_votes[GMU_MAX_GX_FREQS][GMU_MAX_BCMS];
 
+	struct a6xx_hfi_acd_table acd_table;
+
 	int nr_gmu_freqs;
 	unsigned long gmu_freqs[GMU_MAX_CX_FREQS];
 	u32 cx_arc_votes[GMU_MAX_CX_FREQS];
