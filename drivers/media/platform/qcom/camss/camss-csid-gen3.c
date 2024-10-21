@@ -386,6 +386,123 @@ static void csid_subdev_init(struct csid_device *csid)
 	csid->testgen.nmodes = CSID_PAYLOAD_MODE_DISABLED;
 }
 
+static int csid_vfe_set_registers(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config)
+{
+	// Register access only supported for main CSID/VFEs
+	if(csid->res->is_lite)
+		return -EINVAL;
+
+	// No register specified, return 0 (this can be used to test if the feature is supported)
+	if(regs_config->count == 0)
+		return 0;
+
+	// CSID must be powered to access the registers
+	if(!csid->power_on || regs_config->regs == NULL)
+		return -EINVAL;
+
+	u32 max_csid_offset = 0x1000;
+	u32 max_vfe_offset = 0xf000;
+	struct csid_vfe_private_register reg;
+
+	for(u32 i=0; i<regs_config->count; i++)
+	{
+		void* base;
+		u32 max_offset;
+
+		// Read the register configuration from userspace memory
+		if(copy_from_user(&reg, regs_config->regs + i, sizeof(struct csid_vfe_private_register)) != 0)
+		{
+			return -EFAULT;
+		}
+
+		if(reg.type == CSID_VFE_PRV_REG_TYPE_CSID) {
+			base = csid->base;
+			max_offset = max_csid_offset;
+		}
+		else if(reg.type == CSID_VFE_PRV_REG_TYPE_VFE) {
+			// base = csid->ife_base;
+			base = csid->res->parent_dev_ops->get_base_address(csid->camss, csid->id);
+			if(!base)
+				return -EFAULT;
+			max_offset = max_vfe_offset;
+		}
+		else {
+			// Invalid register type
+			return -EINVAL;
+		}
+
+		if(reg.offset < max_offset) {
+			writel_relaxed(reg.value, base + reg.offset);
+		}
+		else {
+			// Invalid parameter, the register address requested exceeds the mapped VFE memory range
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
+
+static int csid_vfe_get_registers(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config)
+{
+	// Register access only supported for main CSID/VFEs
+	if(csid->res->is_lite)
+		return -EINVAL;
+
+	// No register specified, return 0 (this can be used to test if the feature is supported)
+	if(regs_config->count == 0)
+		return 0;
+
+	// CSID must be powered to access the registers
+	if(!csid->power_on || regs_config->regs == NULL)
+		return -EINVAL;
+
+	u32 max_csid_offset = 0x1000;
+	u32 max_vfe_offset = 0xf000;
+	struct csid_vfe_private_register reg;
+
+	for(u32 i=0; i<regs_config->count; i++)
+	{
+		void* base;
+		u32 max_offset;
+
+		// Read the register configuration from userspace memory
+		if(copy_from_user(&reg, regs_config->regs + i, sizeof(struct csid_vfe_private_register)) != 0)
+		{
+			return -EFAULT;
+		}
+
+		if(reg.type == CSID_VFE_PRV_REG_TYPE_CSID) {
+			base = csid->base;
+			max_offset = max_csid_offset;
+		}
+		else if(reg.type == CSID_VFE_PRV_REG_TYPE_VFE) {
+			// base = csid->ife_base;
+			base = csid->res->parent_dev_ops->get_base_address(csid->camss, csid->id);
+			if(!base)
+				return -EFAULT;
+			max_offset = max_vfe_offset;
+		}
+		else {
+			// Invalid register type
+			return -EINVAL;
+		}
+
+		if(reg.offset < max_offset) {
+			// Read the value at the register address and write it back to userspace memory
+			reg.value = readl_relaxed(base + reg.offset);
+			if(copy_to_user(regs_config->regs + i, &reg,  sizeof(struct csid_vfe_private_register)) != 0)
+			{
+				return -EFAULT;
+			}
+		}
+		else {
+			// Invalid parameter, the register address requested exceeds the mapped VFE memory range
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
+
 const struct csid_hw_ops csid_ops_gen3 = {
 	.configure_stream = csid_configure_stream,
 	.configure_testgen_pattern = csid_configure_testgen_pattern,
@@ -395,4 +512,6 @@ const struct csid_hw_ops csid_ops_gen3 = {
 	.src_pad_code = csid_src_pad_code,
 	.subdev_init = csid_subdev_init,
 	.reg_update = csid_subdev_reg_update,
+	.set_csid_vfe_registers = csid_vfe_set_registers,
+	.get_csid_vfe_registers = csid_vfe_get_registers,
 };
