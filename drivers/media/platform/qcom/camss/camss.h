@@ -24,6 +24,7 @@
 #include "camss-tpg.h"
 #include "camss-vfe.h"
 #include "camss-format.h"
+#include "camss-metadata.h"
 
 #define to_camss(ptr_module)	\
 	container_of(ptr_module, struct camss, ptr_module)
@@ -116,6 +117,8 @@ struct camss_resources {
 	const unsigned int tpg_num;
 	const unsigned int csid_num;
 	const unsigned int vfe_num;
+	const unsigned int metadata_num;
+	int (*link_entities)(struct camss *camss);
 };
 
 struct camss {
@@ -126,6 +129,7 @@ struct camss {
 	struct csiphy_device *csiphy;
 	struct tpg_device *tpg;
 	struct csid_device *csid;
+	struct metadata_device *metadata;
 	struct ispif_device *ispif;
 	struct vfe_device *vfe;
 	void __iomem *csid_wrapper_base;
