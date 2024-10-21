@@ -29,6 +29,25 @@
 
 #define CSID_RESET_TIMEOUT_MS 500
 
+// iocts needed to read/write to CSID/VFE registers
+#define VIDIOC_CSID_VFE_PRV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
+#define VIDIOC_CSID_VFE_PRV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
+
+enum csid_vfe_private_register_type {
+	CSID_VFE_PRV_REG_TYPE_CSID = 0,
+	CSID_VFE_PRV_REG_TYPE_VFE = 1
+};
+struct csid_vfe_private_register {
+	enum csid_vfe_private_register_type type;
+	__u32 offset; // might be an offset from the csid or vfe base address depending on type
+	__u32 value;
+};
+
+struct csid_vfe_private_registers_config {
+	__u32 count;
+	struct csid_vfe_private_register __user *regs;
+};
+
 enum csid_testgen_mode {
 	CSID_PAYLOAD_MODE_DISABLED = 0,
 	CSID_PAYLOAD_MODE_INCREMENTING = 1,
@@ -137,6 +156,10 @@ struct csid_hw_ops {
 	 * @is_clear: Indicate if it is clearing reg update or setting reg update
 	 */
 	void (*reg_update)(struct csid_device *csid, int port_id, bool is_clear);
+
+	// Allow CSID and VFE registers read/write from userspace using ioctls
+	int (*set_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
+	int (*get_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
 };
 
 struct csid_subdev_resources {
@@ -166,6 +189,8 @@ struct csid_device {
 	struct v4l2_ctrl_handler ctrls;
 	struct v4l2_ctrl *testgen_mode;
 	const struct csid_subdev_resources *res;
+
+	bool power_on;
 };
 
 struct camss_subdev_resources;
