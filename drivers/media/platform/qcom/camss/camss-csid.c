@@ -691,6 +691,17 @@ static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 			return -EINVAL;
 		}
 		break;
+	case VIDIOC_CSID_VFE_PRV_STATS_CFG:
+		if(csid->res->parent_dev_ops->set_statistics_config)
+		{
+			return csid->res->parent_dev_ops->set_statistics_config(csid->camss, csid->id, (u32)arg);
+		}
+		else
+		{
+			// Operation not supported
+			return -EINVAL;
+		}
+		break;
 	default:
 		return -EINVAL;
 	}
