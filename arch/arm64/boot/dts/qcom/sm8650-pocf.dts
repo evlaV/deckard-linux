@@ -828,7 +828,7 @@
 	vdda-csi01-1p2-supply = <&vreg_l3i_1p2>;
 
 	ports {
-#if 0
+#if 1
 		port@0 {
 			csiphy0_ep: endpoint {
 				clock-lanes = <4>;
@@ -845,6 +845,7 @@
 			};
 		};
 #endif
+#if 0
 		port@0 {
 			csiphy0_ep: endpoint {
 				clock-lanes = <3>;
@@ -860,6 +861,7 @@
 				remote-endpoint = <&cam_6dof_ur>;
 			};
 		};
+#endif
 #if 0
 		port@2 {
 			csiphy2_ep: endpoint {
@@ -943,6 +945,7 @@
 };
 
 &cci2_i2c0 {
+	#if 0
 	sensor@3e {
 		compatible = "ovti,og0ve1b";
 		reg = <0x3e>;
@@ -967,7 +970,8 @@
 			};
 		};
 	};
-#if 0
+	#endif
+#if 1
 	sensor@60 {
 		compatible = "ovti,og01a1b";
 		reg = <0x60>;
@@ -994,6 +998,7 @@
 };
 
 &cci2_i2c1 {
+	#if 0
 	sensor@3e {
 		compatible = "ovti,og0ve1b";
 		reg = <0x3e>;
@@ -1018,7 +1023,8 @@
 			};
 		};
 	};
-#if 0
+	#endif
+#if 1
 	sensor@60 {
 		compatible = "ovti,og01a1b";
 		reg = <0x60>;
