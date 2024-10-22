@@ -118,7 +118,7 @@ struct vfe_hw_ops {
 			     struct vfe_line *line);
 	void (*vfe_wm_stop)(struct vfe_device *vfe, u8 wm);
 	void (*vfe_buf_done)(struct vfe_device *vfe, int port_id);
-	void (*vfe_wm_update)(struct vfe_device *vfe, u8 wm, u32 addr,
+	void (*vfe_wm_update)(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
 			      struct vfe_line *line);
 };
 
