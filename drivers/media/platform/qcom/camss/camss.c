@@ -2503,7 +2503,7 @@ static int camss_init_subdevices(struct camss *camss)
 		ret);
 		return ret;
 	}
-
+	dev_err(camss->dev, "camss->res->metadata_num %d\n", camss->res->metadata_num);
 	for(i = 0; i < camss->res->metadata_num; i++) {
 		ret = msm_metadata_subdev_init(camss, &camss->metadata[i], NULL, i);
 	}
@@ -2646,16 +2646,7 @@ static int camss_register_entities(struct camss *camss)
 		}
 	}
 
-	for (i = 0; i < camss->res->csid_num; i++) {
-		ret = msm_csid_register_entity(&camss->csid[i],
-					       &camss->v4l2_dev);
-		if (ret < 0) {
-			dev_err(camss->dev,
-				"Failed to register csid%d entity: %d\n",
-				i, ret);
-			goto err_reg_csid;
-		}
-	}
+	
 
 	ret = msm_ispif_register_entities(camss->ispif,
 					  &camss->v4l2_dev);
@@ -2672,6 +2663,28 @@ static int camss_register_entities(struct camss *camss)
 				"Failed to register vfe%d entities: %d\n",
 				i, ret);
 			goto err_reg_vfe;
+		}
+	}
+
+	for (i = 0; i < camss->res->metadata_num; i++) {
+		ret = msm_metadata_register_entity(&camss->metadata[i],
+						&camss->v4l2_dev);
+		if (ret < 0) {
+			dev_err(camss->dev,
+				"Failed to register metadata%d entity: %d\n",
+				i, ret);
+			goto err_reg_csid;
+		}
+	}
+
+	for (i = 0; i < camss->res->csid_num; i++) {
+		ret = msm_csid_register_entity(&camss->csid[i],
+					       &camss->v4l2_dev);
+		if (ret < 0) {
+			dev_err(camss->dev,
+				"Failed to register csid%d entity: %d\n",
+				i, ret);
+			goto err_reg_csid;
 		}
 	}
 
