@@ -168,6 +168,8 @@ static const struct camss_format_info formats_rdi_845[] = {
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 14) },
 	{ MEDIA_BUS_FMT_Y8_1X8, 8, V4L2_PIX_FMT_GREY, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 8) },
+	{ MEDIA_BUS_FMT_Y8_1X8, 8, V4L2_PIX_FMT_NV12, 1,
+	  PER_PLANE_DATA(0, 1, 1, 2, 3, 8) },
 	{ MEDIA_BUS_FMT_Y10_1X10, 10, V4L2_PIX_FMT_Y10P, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 10) },
 	{ MEDIA_BUS_FMT_Y10_2X8_PADHI_LE, 16, V4L2_PIX_FMT_Y10, 1,
@@ -478,7 +480,7 @@ void vfe_buf_done(struct vfe_device *vfe, int wm)
 
 	if (output->buf[index]) {
 		ops->vfe_wm_update(vfe, output->wm_idx[0],
-				   output->buf[index]->addr[0],
+				   output->buf[index],
 				   line);
 		ops->reg_update(vfe, line->id);
 	} else {
@@ -544,7 +546,7 @@ int vfe_enable_output_v2(struct vfe_line *line)
 			break;
 		output->gen2.active_num++;
 		ops->vfe_wm_update(vfe, output->wm_idx[0],
-				   output->buf[i]->addr[0], line);
+				   output->buf[i], line);
 		ops->reg_update(vfe, line->id);
 	}
 
@@ -579,9 +581,15 @@ int vfe_queue_buffer_v2(struct camss_video *vid,
 	if (output->state == VFE_OUTPUT_ON &&
 	    output->gen2.active_num < 2) {
 		output->buf[output->gen2.active_num++] = buf;
+<<<<<<< HEAD
 		ops->vfe_wm_update(vfe, output->wm_idx[0],
 				   buf->addr[0], line);
 		ops->reg_update(vfe, line->id);
+=======
+		vfe->res->hw_ops->vfe_wm_update(vfe, output->wm_idx[0],
+						buf, line);
+		vfe->res->hw_ops->reg_update(vfe, line->id);
+>>>>>>> 7c00c0303538 (HACK: media: qcom: camss: add support for NV12 streaming through the IPP path)
 	} else {
 		vfe_buf_add_pending(output, buf);
 	}
