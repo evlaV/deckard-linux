@@ -944,19 +944,19 @@
 
 &cci2_i2c0 {
 	sensor@3e {
-		compatible = "ovti,og0ve1b";
+		compatible = "ovti,og0ve10x";
 		reg = <0x3e>;
-		//sensor-queue-index = <1>;
-		
+		sensor-queue-index = <1>;
+		id = "upper_right";
 		clocks = <&camcc CAM_CC_MCLK5_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
 		pinctrl-0 = <&cam5_default>;
 		pinctrl-names = "default";
-		avdd-supply = <&vreg_l4m_2p8>;
-		dovdd-supply = <&vreg_6dof_1p8_ur>;
-		dvdd-supply = <&vreg_6dof_1p2_ur>;
+		AVDD-supply = <&vreg_l4m_2p8>;
+		DOVDD-supply = <&vreg_6dof_1p8_ur>;
+		DVDD-supply = <&vreg_6dof_1p2_ur>;
 
 		port {
 			cam_6dof_ur: endpoint {
@@ -971,7 +971,7 @@
 	sensor@60 {
 		compatible = "ovti,og01a1b";
 		reg = <0x60>;
-		//sensor-queue-index = <1>;
+		sensor-queue-index = <1>;
 
 		clocks = <&camcc CAM_CC_MCLK0_CLK>;
 		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
@@ -995,19 +995,19 @@
 
 &cci2_i2c1 {
 	sensor@3e {
-		compatible = "ovti,og0ve1b";
+		compatible = "ovti,og0ve10x";
 		reg = <0x3e>;
-		//sensor-queue-index = <0>;
-
+		sensor-queue-index = <0>;
+		id = "upper_left";
 		clocks = <&camcc CAM_CC_MCLK3_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 97 GPIO_ACTIVE_HIGH>;
 		pinctrl-0 = <&cam3_default>;
 		pinctrl-names = "default";
-		avdd-supply = <&vreg_l4n_2p8>;
-		dovdd-supply = <&vreg_6dof_1p8_ul>;
-		dvdd-supply = <&vreg_6dof_1p2_ul>;
+		AVDD-supply = <&vreg_l4n_2p8>;
+		DOVDD-supply = <&vreg_6dof_1p8_ul>;
+		DVDD-supply = <&vreg_6dof_1p2_ul>;
 		
 		port {
 			cam_6dof_ul: endpoint {
@@ -1022,7 +1022,7 @@
 	sensor@60 {
 		compatible = "ovti,og01a1b";
 		reg = <0x60>;
-		//sensor-queue-index = <0>;
+		sensor-queue-index = <0>;
 		
 		clocks = <&camcc CAM_CC_MCLK1_CLK>;
 		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
