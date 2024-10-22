@@ -32,6 +32,7 @@
 // iocts needed to read/write to CSID/VFE registers
 #define VIDIOC_CSID_VFE_PRV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
 #define VIDIOC_CSID_VFE_PRV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
+#define VIDIOC_CSID_VFE_PRV_STATS_CFG _IO('V', BASE_VIDIOC_PRIVATE + 3)
 
 enum csid_vfe_private_register_type {
 	CSID_VFE_PRV_REG_TYPE_CSID = 0,
@@ -160,6 +161,8 @@ struct csid_hw_ops {
 	// Allow CSID and VFE registers read/write from userspace using ioctls
 	int (*set_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
 	int (*get_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
+	// Configure which of the additional ISP output (frameheader, statistics) is streamed and provided with the metadata buffers
+	long (*set_statistics_config)(struct csid_device *csid, u32 stats_cfg);
 };
 
 struct csid_subdev_resources {
