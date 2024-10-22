@@ -441,7 +441,7 @@ u32 vfe_hw_version(struct vfe_device *vfe)
  * @vfe: VFE Device
  * @wm: Write master id
  */
-void vfe_buf_done(struct vfe_device *vfe, int wm)
+void vfe_buf_done(struct vfe_device *vfe, int wm, u32 buf_done_status)
 {
 	struct vfe_line *line = &vfe->line[vfe->wm_output_map[wm]];
 	struct camss_buffer *ready_buf;
@@ -1139,6 +1139,16 @@ void vfe_put(struct vfe_device *vfe)
 
 exit:
 	mutex_unlock(&vfe->power_lock);
+}
+
+long vfe_set_statistics_config(struct vfe_device *vfe, u32 stats_cfg)
+{
+	if(vfe->res->hw_ops->set_statistics_config) {
+		return vfe->res->hw_ops->set_statistics_config(vfe, stats_cfg);
+	}
+	else {
+		return -EINVAL;
+	}
 }
 
 /*
