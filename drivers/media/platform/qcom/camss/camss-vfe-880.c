@@ -74,6 +74,14 @@
 #define STATS_BHIST_DATA_OFFSET (STATS_BHIST_FH_DATA_OFFSET + STATS_BHIST_FH_DATA_SIZE)
 #define STATS_BHIST_DATA_SIZE ALIGN(4096, 256)
 
+#define CAM_IFE_CSID_MUL_FACTOR                 10000
+#define CAM_IFE_CSID_DIV_FACTOR                 192
+
+struct frameheader_data {
+	u64 ts;
+    u32 id;
+    u32 local_id;
+};
 
 static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 {
@@ -221,8 +229,7 @@ static void vfe_update_buffer_status(struct vfe_device *vfe, u32 buf_done_status
 	}
 }
 
-// custom buf_done is needed for 880
-// TODO: add buff done status to check for outputs FIFO and handle synchronized multi-outputs streams
+// custom buf_done is needed for 880 to handle multiple outputs and IPP path
 static void vfe_buf_done_880(struct vfe_device *vfe, int wm, u32 buf_done_status)
 {
 	struct vfe_line *line = &vfe->line[vfe->wm_output_map[wm]];
@@ -231,6 +238,14 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, u32 buf_done_status
 	unsigned long flags;
 	u32 index;
 	u64 ts = ktime_get_ns();
+	// Data buffer pointers to retrieve for the metadata output planes
+	void* sensorMetaDataBufferAddr = NULL;
+	void* frameheaderDataAddr = NULL;
+	void* ihistFHDataAddr = NULL;
+	void* ihistDataAddr = NULL;
+	void* bhistFHDataAddr = NULL;
+	void* bhistDataAddr = NULL;
+	struct frameheader_data *frameheaderData;
 
 	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
 
@@ -289,6 +304,57 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, u32 buf_done_status
 		vfe->res->hw_ops->reg_update(vfe, line->id);
 	} else
 		output->gen2.active_num--;
+
+
+	// TODO: replace once sensor metadata cb is hooked up
+	// if(vfe->get_metadata != NULL)
+	// {
+	// 	sensorMetaDataBufferAddr = vfe->get_metadata(vfe->capture_subdev );
+	// }
+	if(vfe->stats_cfg)
+	{
+		// Make buffer changes visible to CPU
+		dma_sync_single_for_cpu(vfe->camss->dev, ready_buf->extrabuffer_dma_addr, ready_buf->extrabuffer_size, DMA_BIDIRECTIONAL);
+
+
+		// If stats are enabled, use the frameheader timestamp which should be guaranteed to be properly
+		// associated with the buffer.
+		if(vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
+			frameheaderDataAddr = ready_buf->extrabuffer_vaddr + STATS_FH_DATA_OFFSET;
+			frameheaderData = (struct frameheader_data*)frameheaderDataAddr;
+			uint64_t frameheader_ts = frameheaderData->ts;
+
+			// The timestamp is 8 bits left shifted because the lower 8 bits contain virtual channel 
+			// and other information.
+			frameheader_ts >>= 8;
+
+			// Apply the same transformation as in the SOF handler
+			frameheader_ts = mul_u64_u32_div(
+				frameheader_ts,
+				CAM_IFE_CSID_MUL_FACTOR,
+				CAM_IFE_CSID_DIV_FACTOR);
+
+			// Use the existing offset to adjust the frame header timestamp
+			// TODO: uncomment once QTIME -> RAW ts is estimated
+			// frameheader_ts += isp_to_kernel_raw_ts_offset_floor;
+			// vfe->cur_sof_isp_timestamp_converted = frameheader_ts;
+		}
+		if(vfe->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
+			ihistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_FH_DATA_OFFSET;
+			ihistDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_DATA_OFFSET;
+		}
+		if(vfe->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
+			bhistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_BHIST_FH_DATA_OFFSET;
+			bhistDataAddr = ready_buf->extrabuffer_vaddr + STATS_BHIST_DATA_OFFSET;
+		}
+	}
+
+	//metadata_send(&vfe->camss->metadata[vfe->id], ts_monotonic_raw, vfe->cur_sof_isp_timestamp_converted, vfe->cur_eof_isp_timestamp_converted, vfe->last_sof_kernel_ts, ts_monotonic_raw,
+	//	ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
+	// TODO: replace with version above once we have sof ts estimated
+	metadata_send(&vfe->camss->metadata[vfe->id], ts, ts, ts, ts, ts,
+		ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
+
 
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 
