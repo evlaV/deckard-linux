@@ -162,6 +162,29 @@ static int video_buf_init(struct vb2_buffer *vb)
 		buffer->addr[i] = sg_dma_address(sgt->sgl);
 	}
 
+	// Setup an extra buffer for metadata/statistics streaming if required
+	if(video->required_extrabuffer_size)
+	{
+		buffer->extrabuffer_size = video->required_extrabuffer_size;
+		// Allocate the extra buffer
+		buffer->extrabuffer_vaddr =  kzalloc(buffer->extrabuffer_size, GFP_KERNEL);
+		if (buffer->extrabuffer_vaddr == NULL) {
+			return -ENOMEM;
+		}
+		memset(buffer->extrabuffer_vaddr, 0, buffer->extrabuffer_size);
+		// Create a DMA mapping so the buffer can be accessed by the VFE
+		buffer->extrabuffer_dma_addr = dma_map_single(video->camss->dev, buffer->extrabuffer_vaddr, buffer->extrabuffer_size, DMA_BIDIRECTIONAL);
+		if(dma_mapping_error(video->camss->dev, buffer->extrabuffer_dma_addr))
+		{
+			dev_err(video->camss->dev, "Failed to create a DMA mapping for the camss extra buffer \n");
+			buffer->extrabuffer_dma_addr = 0;
+			kfree(buffer->extrabuffer_vaddr);
+			buffer->extrabuffer_vaddr = NULL;
+			buffer->extrabuffer_size = 0;
+			return -ENOMEM;
+  		}
+ 	}
+
 	if (format->pixelformat == V4L2_PIX_FMT_NV12 ||
 			format->pixelformat == V4L2_PIX_FMT_NV21 ||
 			format->pixelformat == V4L2_PIX_FMT_NV16 ||
@@ -191,6 +214,21 @@ static int video_buf_prepare(struct vb2_buffer *vb)
 	vbuf->field = V4L2_FIELD_NONE;
 
 	return 0;
+}
+
+static void video_buf_cleanup(struct vb2_buffer *vb)
+{
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+	struct camss_video *video = vb2_get_drv_priv(vb->vb2_queue);
+	struct camss_buffer *buffer = container_of(vbuf, struct camss_buffer, vb);
+
+	// Cleanup the extra buffer if we had one
+	if(buffer->extrabuffer_vaddr && buffer->extrabuffer_dma_addr)
+	{
+		dma_unmap_single(video->camss->dev, buffer->extrabuffer_dma_addr, buffer->extrabuffer_size, DMA_BIDIRECTIONAL);
+		kfree(buffer->extrabuffer_vaddr);
+		buffer->extrabuffer_size = 0;
+	}
 }
 
 static void video_buf_queue(struct vb2_buffer *vb)
@@ -363,6 +401,7 @@ static const struct vb2_ops msm_video_vb2_q_ops = {
 	.queue_setup     = video_queue_setup,
 	.buf_init        = video_buf_init,
 	.buf_prepare     = video_buf_prepare,
+	.buf_cleanup     = video_buf_cleanup,
 	.buf_queue       = video_buf_queue,
 	.prepare_streaming = video_prepare_streaming,
 	.start_streaming = video_start_streaming,
