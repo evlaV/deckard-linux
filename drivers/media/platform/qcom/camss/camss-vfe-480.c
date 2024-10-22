@@ -209,7 +209,7 @@ static irqreturn_t vfe_isr(int irq, void *dev)
 				vfe_isr_reg_update(vfe, i);
 
 			if (status & BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i)))
-				vfe_buf_done(vfe, i);
+				vfe_buf_done(vfe, i, status);
 		}
 	}
 

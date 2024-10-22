@@ -23,6 +23,13 @@ struct camss_buffer {
 	struct vb2_v4l2_buffer vb;
 	dma_addr_t addr[3];
 	struct list_head queue;
+
+	// Keep track of the composite group DONE events received for this buffer
+	uint32_t comp_done_status;
+	// Extra buffer (used for metadata/frameheaders/statistics streaming)
+	void* extrabuffer_vaddr; 
+	dma_addr_t extrabuffer_dma_addr; 
+	uint32_t extrabuffer_size;
 };
 
 struct camss_video;
@@ -48,6 +55,9 @@ struct camss_video {
 	unsigned int line_based;
 	const struct camss_format_info *formats;
 	unsigned int nformats;
+
+	// Size requirement for the extra buffer or 0 when no buffer needs to be created
+	u32 required_extrabuffer_size;
 };
 
 int msm_video_register(struct camss_video *video, struct v4l2_device *v4l2_dev,
