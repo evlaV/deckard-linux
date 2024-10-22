@@ -253,12 +253,13 @@ static void vfe_wm_stop(struct vfe_device *vfe, u8 wm)
 	writel_relaxed(0, vfe->base + VFE_BUS_WM_CFG(wm));
 }
 
-static void vfe_wm_update(struct vfe_device *vfe, u8 wm, u32 addr,
+static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
 			  struct vfe_line *line)
 {
 	struct v4l2_pix_format_mplane *pix =
 		&line->video_out.active_fmt.fmt.pix_mp;
 	u32 stride = pix->plane_fmt[0].bytesperline;
+	u32 addr = buffer->addr[0];
 
 	writel_relaxed(addr, vfe->base + VFE_BUS_WM_IMAGE_ADDR(wm));
 	writel_relaxed(stride * pix->height, vfe->base + VFE_BUS_WM_FRAME_INC(wm));
@@ -541,7 +542,7 @@ static void vfe_isr_wm_done(struct vfe_device *vfe, u8 wm)
 	output->buf[index] = vfe_buf_get_pending(output);
 
 	if (output->buf[index])
-		vfe_wm_update(vfe, output->wm_idx[0], output->buf[index]->addr[0], line);
+		vfe_wm_update(vfe, output->wm_idx[0], output->buf[index], line);
 	else
 		output->gen2.active_num--;
 
