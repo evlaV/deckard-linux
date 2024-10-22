@@ -3824,6 +3824,7 @@ void camss_pm_domain_off(struct camss *camss, int id)
 	}
 }
 
+
 static int vfe_parent_dev_ops_get(struct camss *camss, int id)
 {
 	int ret = -EINVAL;
@@ -3860,10 +3861,22 @@ static void __iomem
 	return NULL;
 }
 
+static long vfe_parent_dev_ops_set_statistics_config(struct camss *camss, int id, u32 stats_cfg)
+{
+	if (id < camss->res->vfe_num) {
+		struct vfe_device *vfe = &camss->vfe[id];
+
+		return vfe_set_statistics_config(vfe, stats_cfg);
+	}
+
+	return 0;
+}
+
 static const struct parent_dev_ops vfe_parent_dev_ops = {
 	.get = vfe_parent_dev_ops_get,
 	.put = vfe_parent_dev_ops_put,
-	.get_base_address = vfe_parent_dev_ops_get_base_address
+	.get_base_address = vfe_parent_dev_ops_get_base_address,
+	.set_statistics_config = vfe_parent_dev_ops_set_statistics_config
 };
 
 /*
@@ -4190,14 +4203,14 @@ void camss_reg_update(struct camss *camss, int hw_id, int port_id, bool is_clear
 	}
 }
 
-void camss_buf_done(struct camss *camss, int hw_id, int port_id)
+void camss_buf_done(struct camss *camss, int hw_id, int port_id, u32 buf_done_status)
 {
 	struct vfe_device *vfe;
 
 	if (hw_id < camss->res->vfe_num) {
-		vfe = &camss->vfe[hw_id];
+		vfe = &(camss->vfe[hw_id]);
 
-		vfe->res->hw_ops->vfe_buf_done(vfe, port_id);
+		vfe->res->hw_ops->vfe_buf_done(vfe, port_id, buf_done_status);
 	}
 }
 

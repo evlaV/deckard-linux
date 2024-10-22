@@ -226,7 +226,7 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 
 	if (!enable) {
 		csid_reset(csid);
-		camss_buf_done(csid->camss, csid->id, 0);
+		camss_buf_done(csid->camss, csid->id, 0, 0);
 		usleep_range(10000, 20000);
 	}
 
@@ -311,7 +311,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		buf_done_val = readl(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 		writel(buf_done_val, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
 
-		camss_buf_done(csid->camss, csid->id, 0);
+		camss_buf_done(csid->camss, csid->id, 0, buf_done_val);
 	}
 
 	val = IRQ_CMD_CLEAR;

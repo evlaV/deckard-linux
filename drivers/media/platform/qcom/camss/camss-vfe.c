@@ -446,7 +446,7 @@ u32 vfe_hw_version(struct vfe_device *vfe)
  * @vfe: VFE Device
  * @wm: Write master id
  */
-void vfe_buf_done(struct vfe_device *vfe, int wm)
+void vfe_buf_done(struct vfe_device *vfe, int wm, u32 buf_done_status)
 {
 	struct vfe_line *line = &vfe->line[vfe->wm_output_map[wm]];
 	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
@@ -586,7 +586,7 @@ int vfe_queue_buffer_v2(struct camss_video *vid,
 	    output->gen2.active_num < 2) {
 		output->buf[output->gen2.active_num++] = buf;
 		ops->vfe_wm_update(vfe, output->wm_idx[0],
-				   buf->addr[0], line);
+				   buf, line);
 		ops->reg_update(vfe, line->id);
 	} else {
 		vfe_buf_add_pending(output, buf);
@@ -1163,6 +1163,16 @@ void vfe_put(struct vfe_device *vfe)
 
 exit:
 	mutex_unlock(&vfe->power_lock);
+}
+
+long vfe_set_statistics_config(struct vfe_device *vfe, u32 stats_cfg)
+{
+	if(vfe->res->hw_ops->set_statistics_config) {
+		return vfe->res->hw_ops->set_statistics_config(vfe, stats_cfg);
+	}
+	else {
+		return -EINVAL;
+	}
 }
 
 /*

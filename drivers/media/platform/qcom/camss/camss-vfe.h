@@ -117,9 +117,10 @@ struct vfe_hw_ops {
 	void (*vfe_wm_start)(struct vfe_device *vfe, u8 wm,
 			     struct vfe_line *line);
 	void (*vfe_wm_stop)(struct vfe_device *vfe, u8 wm);
-	void (*vfe_buf_done)(struct vfe_device *vfe, int port_id);
+	void (*vfe_buf_done)(struct vfe_device *vfe, int port_id, u32 buf_done_status);
 	void (*vfe_wm_update)(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
 			      struct vfe_line *line);
+	long (*set_statistics_config)(struct vfe_device *vfe, u32 stats_cfg);
 };
 
 struct vfe_isr_ops {
@@ -166,6 +167,10 @@ struct vfe_device {
 	struct camss_video_ops video_ops;
 	struct device *genpd;
 	struct device_link *genpd_link;
+
+	u32 required_comp_done_mask; // bitfield where the index of each mandatory comp group for frames is set
+	u32 stats_cfg; // user-provided bitfield that indicates which statistics/frameheaders must be provided in the metadata buffers
+	u32 stats_comp_done_mask; // composite group mask used to configure IRQs and test IRQ statuses
 };
 
 struct camss_subdev_resources;
@@ -250,6 +255,7 @@ extern const struct vfe_hw_ops vfe_ops_880;
 
 int vfe_get(struct vfe_device *vfe);
 void vfe_put(struct vfe_device *vfe);
+long vfe_set_statistics_config(struct vfe_device *vfe, u32 stats_cfg);
 
 /*
  * vfe_is_lite - Return if VFE is VFE lite.
@@ -281,7 +287,7 @@ int vfe_enable_v2(struct vfe_line *line);
  * @vfe: VFE Device
  * @wm: Write master id
  */
-void vfe_buf_done(struct vfe_device *vfe, int wm);
+void vfe_buf_done(struct vfe_device *vfe, int wm, u32 buf_done_status);
 
 /*
  * vfe_get_output_v2 - Get vfe output line
