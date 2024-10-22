@@ -43,6 +43,7 @@
 #ifdef NRF_UART
 		serial2 = &uart10;
 #endif
+		serial3 = &uart3;
 	};
 
 	chosen {
@@ -1089,6 +1090,10 @@
 };
 
 &qupv3_id_2 {
+	status = "okay";
+};
+
+&uart3 {
 	status = "okay";
 };
 
