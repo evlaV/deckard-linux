@@ -133,9 +133,10 @@ static void vfe_wm_stop(struct vfe_device *vfe, u8 wm)
 	writel_relaxed(0, vfe->base + VFE_BUS_WM_CFG(wm));
 }
 
-static void vfe_wm_update(struct vfe_device *vfe, u8 wm, u32 addr,
+static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
 			  struct vfe_line *line)
 {
+	u32 addr = buffer->addr[0];
 	wm = RDI_WM(wm); /* map to actual WM used (from wm=RDI index) */
 	writel_relaxed(addr, vfe->base + VFE_BUS_WM_IMAGE_ADDR(wm));
 }
