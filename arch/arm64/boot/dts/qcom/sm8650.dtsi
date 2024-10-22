@@ -5318,20 +5318,11 @@
 					  "csid_lite1",
 					  "vfe_lite1";
 			interconnects = <&gem_noc MASTER_APPSS_PROC 0 &config_noc SLAVE_CAMERA_CFG 0>,
-					<&mmss_noc MASTER_CAMNOC_HF 0 &mc_virt SLAVE_EBI1 0>,
-					<&mmss_noc MASTER_CAMNOC_SF 0 &mc_virt SLAVE_EBI1 0>,
-					<&mmss_noc MASTER_CAMNOC_ICP 0 &mc_virt SLAVE_EBI1 0>;
+					<&mmss_noc MASTER_CAMNOC_HF 0 &mc_virt SLAVE_EBI1 0>;
 			interconnect-names = "cam_ahb",
-					     "cam_hf_0_mnoc",
-					     "cam_sf_0_mnoc",
-					     "cam_sf_icp_mnoc";
+					     "cam_hf_0_mnoc";
 			iommus = <&apps_smmu 0x800 0x20>,
 				 <&apps_smmu 0x18a0 0x40>,
-				 <&apps_smmu 0x1820 0x00>,
-				 <&apps_smmu 0x18c0 0x00>,
-				 <&apps_smmu 0x1800 0x00>,
-				 <&apps_smmu 0x1840 0x00>,
-				 <&apps_smmu 0x1880 0x00>,
 				 <&apps_smmu 0x1860 0x00>;
 			power-domains = <&camcc CAM_CC_IFE_0_GDSC>,
 					<&camcc CAM_CC_IFE_1_GDSC>,

@@ -2559,16 +2559,6 @@ static const struct resources_icc icc_res_sm8650[] = {
 		.icc_bw_tbl.avg = 2097152,
 		.icc_bw_tbl.peak = 2097152,
 	},
-	{
-		.name = "cam_sf_0_mnoc",
-		.icc_bw_tbl.avg = 0,
-		.icc_bw_tbl.peak = 2097152,
-	},
-	{
-		.name = "cam_sf_icp_mnoc",
-		.icc_bw_tbl.avg = 2097152,
-		.icc_bw_tbl.peak = 2097152,
-	},
 };
 
 /*
