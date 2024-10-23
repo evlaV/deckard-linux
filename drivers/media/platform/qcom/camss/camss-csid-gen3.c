@@ -268,10 +268,10 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	if(rdi_val & 0x0010) // Test if PATH_INFO_SOF is set
 	{
 		printk("PATH_INFO_SOF is set\n");
-		if(csid->do_post_sof_work != NULL) {
-			u8 group = 0;
-			csid->do_post_sof_work(csid->capture_subdev,0, 0, group);
-		}
+		// if(csid->do_post_sof_work != NULL) {
+		// 	u8 group = 0;
+		// 	csid->do_post_sof_work(csid->capture_subdev,0, 0, group);
+		// }
 	}
 
 #if 0
