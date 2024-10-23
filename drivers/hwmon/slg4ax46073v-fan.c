@@ -726,6 +726,11 @@ static int slg4ax46073v_probe(struct i2c_client *client)
 	return PTR_ERR_OR_ZERO(hwmon_dev);;
 }
 
+static void slg4ax46073v_remove(struct i2c_client *client) {
+	struct slg4ax46073v * slg4ax46073v = dev_get_drvdata(&client->dev);
+	cancel_delayed_work(&slg4ax46073v->wdt_work);
+}
+
 static const struct i2c_device_id slg4ax46073v_i2c_ids[] = {
 	{ "slg4ax46073v", 0 },
 	{ }
@@ -745,6 +750,8 @@ static struct i2c_driver slg4ax46073v_basic_driver = {
 	},
 	.probe		= slg4ax46073v_probe,
 	.id_table	= slg4ax46073v_i2c_ids,
+	.remove     = slg4ax46073v_remove,
+	.shutdown   = slg4ax46073v_remove,
 };
 
 module_i2c_driver(slg4ax46073v_basic_driver);
