@@ -387,7 +387,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 			csid_rup_complete(csid, i);
 
 		if (buf_done_val & BIT(BUF_DONE_IRQ_STATUS_RDI_OFFSET + i))
-			camss_buf_done(csid->camss, csid->id, i);
+			camss_buf_done(csid->camss, csid->id, i, NULL);
 	}
 
 	/* Issue clear command */

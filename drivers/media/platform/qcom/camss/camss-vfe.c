@@ -22,6 +22,7 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 
+#include "camss-csid.h"
 #include "camss-vfe.h"
 #include "camss.h"
 
@@ -446,7 +447,7 @@ u32 vfe_hw_version(struct vfe_device *vfe)
  * @vfe: VFE Device
  * @wm: Write master id
  */
-void vfe_buf_done(struct vfe_device *vfe, int wm, u32 buf_done_status)
+void vfe_buf_done(struct vfe_device *vfe, int wm, struct camss_buf_done_info *buf_done_info)
 {
 	struct vfe_line *line = &vfe->line[vfe->wm_output_map[wm]];
 	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
