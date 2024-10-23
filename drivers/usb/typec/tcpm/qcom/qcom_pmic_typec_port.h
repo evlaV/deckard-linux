@@ -196,4 +196,6 @@ int qcom_pmic_typec_port_set_vbus(struct pmic_typec_port *pmic_typec_port, bool 
 
 int qcom_pmic_typec_port_legacy_cable_reset(struct pmic_typec_port *pmic_typec_port);
 
+int qcom_pmic_typec_port_disable_cc(struct pmic_typec_port *pmic_typec_port);
+
 #endif /* __QCOM_PMIC_TYPE_C_PORT_H__ */
