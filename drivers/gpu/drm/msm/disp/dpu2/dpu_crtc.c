@@ -480,78 +480,78 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 		ctl_flush |= CTL_FLUSH_LM(3);
 	} else {
 
-	struct mixercfg mixer_cfg[2] = {};
-	struct drm_rect mixer_rect[2];
-	u32 mixer_op_mode = 0;
-	unsigned i, num_mixers, num_mixercfg;
+		struct mixercfg mixer_cfg[2] = {};
+		struct drm_rect mixer_rect[2];
+		u32 mixer_op_mode = 0;
+		unsigned i, num_mixers, num_mixercfg;
 
-	if (c->is_dp || c->is_dual_dsi)
-		num_mixers = 2;
-	else
-		num_mixers = 1;
-	num_mixercfg = num_mixers;
+		if (c->is_dp || c->is_dual_dsi)
+			num_mixers = 2;
+		else
+			num_mixers = 1;
+		num_mixercfg = num_mixers;
 
-	if (num_mixercfg == 2) {
-		mixer_rect[0] = (struct drm_rect) {
-			0, 0, mode->hdisplay / 2, mode->vdisplay,
-		};
-		mixer_rect[1] = (struct drm_rect) {
-			mode->hdisplay / 2, 0, mode->hdisplay, mode->vdisplay,
-		};
-	} else {
-		mixer_rect[0] = (struct drm_rect) {
-			0, 0, mode->hdisplay, mode->vdisplay,
-		};
-	}
-
-	drm_atomic_crtc_for_each_plane(plane, crtc) {
-		u32 stage = plane->state->normalized_zpos;
-
-		// TODO: should be per mixer for dual HW planes
-		mixer_op_mode |= 1 << (stage + 1); /* + 1 to skip base stage */
-
-		for (i = c->lm; i < c->lm + num_mixers; i++)
-			mixer_set_blendfunc(dpu, i, stage);
-
-		for (i = 0; i < num_mixercfg; i++) {
-			u32 id = to_dpu_plane(plane)->id * 8  + i;
-			struct drm_plane_state s = *plane->state;
-			if (!drm_rect_clip_scaled(&s.src, &s.dst, &mixer_rect[i]))
-				continue;
-
-			s.dst.x1 -= mixer_rect[i].x1;
-			s.dst.x2 -= mixer_rect[i].x1;
-
-			/* mapping sspp to mixer stages */
-			mixercfg_set_sspp_stage(&mixer_cfg[i], id, stage);
-
-			/* sspp state */
-			dpu_plane_update(dpu, id, &s);
-			ctl_flush |= CTL_FLUSH_SSPP(id);
-
-			if (id >= 4)
-				fetch_pipe_active |= BIT(id - 4);
-			else
-				fetch_pipe_active |= BIT(id + 16);
+		if (num_mixercfg == 2) {
+			mixer_rect[0] = (struct drm_rect) {
+				0, 0, mode->hdisplay / 2, mode->vdisplay,
+			};
+			mixer_rect[1] = (struct drm_rect) {
+				mode->hdisplay / 2, 0, mode->hdisplay, mode->vdisplay,
+			};
+		} else {
+			mixer_rect[0] = (struct drm_rect) {
+				0, 0, mode->hdisplay, mode->vdisplay,
+			};
 		}
-	}
 
-	// XXX skip this for CWB, doesn't use a mixer
-	for (i = c->lm; i < c->lm + num_mixers; i++) {
-		u32 cfg_index = i - c->lm;//num_mixercfg > 1 ? (i >= c->lm + num_mixers/2) : 0;
-		u32 op_mode = mixer_op_mode;
+		drm_atomic_crtc_for_each_plane(plane, crtc) {
+			u32 stage = plane->state->normalized_zpos;
 
-		/* right mixer bit for paired mixers */
-		if ((i & 1) && (num_mixers != num_mixercfg))
-			op_mode |= BIT(31);
+			// TODO: should be per mixer for dual HW planes
+			mixer_op_mode |= 1 << (stage + 1); /* + 1 to skip base stage */
 
-		dpu_write(dpu, LAYER_OUT_SIZE(i), mode->vdisplay << 16 | (mode->hdisplay / num_mixers));
-		dpu_write(dpu, LAYER_OP_MODE(i), op_mode);
+			for (i = c->lm; i < c->lm + num_mixers; i++)
+				mixer_set_blendfunc(dpu, i, stage);
 
-		ctl_set_mixercfg(dpu, c->ctl, i, &mixer_cfg[cfg_index]);
+			for (i = 0; i < num_mixercfg; i++) {
+				u32 id = to_dpu_plane(plane)->id * 8  + i;
+				struct drm_plane_state s = *plane->state;
+				if (!drm_rect_clip_scaled(&s.src, &s.dst, &mixer_rect[i]))
+					continue;
 
-		ctl_flush |= CTL_FLUSH_LM(i);
-	}
+				s.dst.x1 -= mixer_rect[i].x1;
+				s.dst.x2 -= mixer_rect[i].x1;
+
+				/* mapping sspp to mixer stages */
+				mixercfg_set_sspp_stage(&mixer_cfg[i], id, stage);
+
+				/* sspp state */
+				dpu_plane_update(dpu, id, &s);
+				ctl_flush |= CTL_FLUSH_SSPP(id);
+
+				if (id >= 4)
+					fetch_pipe_active |= BIT(id - 4);
+				else
+					fetch_pipe_active |= BIT(id + 16);
+			}
+		}
+
+		// XXX skip this for CWB, doesn't use a mixer
+		for (i = c->lm; i < c->lm + num_mixers; i++) {
+			u32 cfg_index = i - c->lm;//num_mixercfg > 1 ? (i >= c->lm + num_mixers/2) : 0;
+			u32 op_mode = mixer_op_mode;
+
+			/* right mixer bit for paired mixers */
+			if ((i & 1) && (num_mixers != num_mixercfg))
+				op_mode |= BIT(31);
+
+			dpu_write(dpu, LAYER_OUT_SIZE(i), mode->vdisplay << 16 | (mode->hdisplay / num_mixers));
+			dpu_write(dpu, LAYER_OP_MODE(i), op_mode);
+
+			ctl_set_mixercfg(dpu, c->ctl, i, &mixer_cfg[cfg_index]);
+
+			ctl_flush |= CTL_FLUSH_LM(i);
+		}
 
 	}
 
