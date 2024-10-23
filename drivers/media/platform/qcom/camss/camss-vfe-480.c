@@ -211,7 +211,10 @@ static irqreturn_t vfe_isr(int irq, void *dev)
 		/* Loop through all WMs IRQs */
 		for (i = 0; i < MSM_VFE_IMAGE_MASTERS_NUM; i++) {
 			if (status & BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i)))
-				vfe_buf_done(vfe, i, status);
+				struct camss_buf_done_info buf_done_info;
+				memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
+				vfe_buf_done(vfe, i, &buf_done_info);
+			}
 		}
 	}
 
@@ -273,7 +276,7 @@ static void vfe_violation_read(struct vfe_device *vfe)
 	/* nop */
 }
 
-static void vfe_buf_done_480(struct vfe_device *vfe, int port_id)
+static void vfe_buf_done_480(struct vfe_device *vfe, int port_id, struct camss_buf_done_info *info)
 {
 	/* nop */
 }

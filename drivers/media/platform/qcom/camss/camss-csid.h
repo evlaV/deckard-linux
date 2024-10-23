@@ -92,6 +92,16 @@ struct csid_phy_config {
 	u8 need_vc_update;
 };
 
+struct camss_buf_done_info {
+	u32 status; // reg
+	u64 sof_isp_ts_conv;
+	u64 eof_isp_ts_conv;
+	u64 isp_to_kernel_raw_ts_offset;
+	u64 sof_kernel_ts;
+	void* sensor_metadata_buffer_addr;
+	size_t sensor_metadata_buffer_size;
+};
+
 struct csid_device;
 
 struct csid_hw_ops {
@@ -199,6 +209,12 @@ struct csid_device {
 	size_t metadata_size;
 	void* (*get_metadata) (struct v4l2_subdev*);
 	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp, u8 group);
+	u64 last_sof_isp_timestamp_converted;
+	u64 cur_sof_isp_timestamp_converted;
+	u64 cur_eof_isp_timestamp_converted;
+	u64 last_sof_kernel_ts;
+	u64 last_eof_kernel_ts;
+	u64 isp_to_kernel_raw_ts_offset;
 };
 
 struct camss_subdev_resources;
