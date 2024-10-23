@@ -172,7 +172,7 @@ void camss_pm_domain_off(struct camss *camss, int id);
 int camss_vfe_get(struct camss *camss, int id);
 void camss_vfe_put(struct camss *camss, int id);
 void camss_delete(struct camss *camss);
-void camss_buf_done(struct camss *camss, int hw_id, int port_id, u32 buf_done_status);
+void camss_buf_done(struct camss *camss, int hw_id, int port_id, struct camss_buf_done_info *buf_done_info);
 void camss_reg_update(struct camss *camss, int hw_id,
 		      int port_id, bool is_clear);
 
