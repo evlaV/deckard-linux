@@ -194,6 +194,11 @@ struct csid_device {
 	const struct csid_subdev_resources *res;
 
 	bool power_on;
+
+	struct v4l2_subdev *capture_subdev;
+	size_t metadata_size;
+	void* (*get_metadata) (struct v4l2_subdev*);
+	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp, u8 group);
 };
 
 struct camss_subdev_resources;
@@ -232,6 +237,10 @@ int msm_csid_register_entity(struct csid_device *csid,
 void msm_csid_unregister_entity(struct csid_device *csid);
 
 void msm_csid_get_csid_id(struct media_entity *entity, u8 *id);
+
+int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size, struct v4l2_subdev **sd);
+int get_post_sof_cb_address(struct media_entity *entity, u64 *addr);
+static int csid_set_metadata_callbacks(struct csid_device *csid);
 
 extern const char * const csid_testgen_modes[];
 
