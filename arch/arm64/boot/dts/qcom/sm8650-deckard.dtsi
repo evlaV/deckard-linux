@@ -691,25 +691,19 @@
 	vdda-csi01-1p2-supply = <&vreg_l3i_1p2>;
 
 	ports {
-#if 0
 		port@0 {
-			csiphy0_ep: endpoint {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csiphy0_ep: endpoint@0 {
+				reg = <0>;
 				clock-lanes = <4>;
 				data-lanes = <0 1>;
 				remote-endpoint = <&cam_6dof_l>;
 			};
-		};
 
-		port@1 {
-			csiphy1_ep: endpoint {
-				clock-lanes = <4>;
-				data-lanes = <0 1>;
-				remote-endpoint = <&cam_6dof_r>;
-			};
-		};
-#endif
-		port@0 {
-			csiphy0_ep: endpoint {
+			csiphy0_combo_ep: endpoint@1 {
+				reg = <1>;
 				clock-lanes = <3>;
 				data-lanes = <2>;
 				remote-endpoint = <&cam_6dof_ul>;
@@ -717,12 +711,24 @@
 		};
 
 		port@1 {
-			csiphy1_ep: endpoint {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csiphy1_ep: endpoint@0 {
+				reg = <0>;
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_6dof_r>;
+			};
+
+			csiphy1_combo_ep: endpoint@1 {
+				reg = <1>;
 				clock-lanes = <3>;
 				data-lanes = <2>;
 				remote-endpoint = <&cam_6dof_ur>;
 			};
 		};
+
 #if 0
 		port@2 {
 			csiphy2_ep: endpoint {
@@ -824,11 +830,11 @@
 				clock-lanes = <3>;
 				data-lanes = <2>;
 				link-frequencies = /bits/ 64 <500000000>;
-				remote-endpoint = <&csiphy1_ep>;
+				remote-endpoint = <&csiphy1_combo_ep>;
 			};
 		};
 	};
-#if 0
+
 	sensor@60 {
 		compatible = "ovti,og01a1b";
 		reg = <0x60>;
@@ -849,7 +855,6 @@
 			};
 		};
 	};
-#endif
 };
 
 &cci2_i2c1 {
@@ -871,11 +876,11 @@
 				clock-lanes = <3>;
 				data-lanes = <2>;
 				link-frequencies = /bits/ 64 <500000000>;
-				remote-endpoint = <&csiphy0_ep>;
+				remote-endpoint = <&csiphy0_combo_ep>;
 			};
 		};
 	};
-#if 0
+
 	sensor@60 {
 		compatible = "ovti,og01a1b";
 		reg = <0x60>;
@@ -897,7 +902,6 @@
 			};
 		};
 	};
-#endif
 };
 
 &gpu {
