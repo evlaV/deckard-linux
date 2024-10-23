@@ -71,14 +71,6 @@ static void do_msm_poweroff(void)
 {
 	struct pm8916_pon *pon = pon_global;
 
-	printk("do_msm_poweroff: %ld\n", pon->code);
-
-	/* not a reboot: */
-	if (pon->code == SYS_HALT || pon->code == SYS_POWER_OFF)
-		pon_set_mode(pon, PON_PS_HOLD_TYPE_SHUTDOWN);
-	else
-		pon_set_mode(pon, PON_PS_HOLD_TYPE_HARD_RESET);
-
 	writel(0, pon->ps_hold);
 	mdelay(10000);
 }
@@ -98,7 +90,14 @@ static int pon_reboot_notify(struct notifier_block *nb, unsigned long code, void
 
 	wmb();
 
-	do_msm_poweroff();
+	/* not a reboot: */
+	if (pon->code == SYS_HALT || pon->code == SYS_POWER_OFF) {
+		pon_set_mode(pon, PON_PS_HOLD_TYPE_SHUTDOWN);
+	}
+	else {
+		pon_set_mode(pon, PON_PS_HOLD_TYPE_HARD_RESET);
+		do_msm_poweroff();
+	}
 	return 0;
 }
 
@@ -166,7 +165,11 @@ static int pm8916_pon_probe(struct platform_device *pdev)
 	WARN_ON(pon_global);
 	pon_global = pon;
 
-	pm_power_off = do_msm_poweroff;
+	error = register_platform_power_off(&do_msm_poweroff);
+	if (error) {
+		dev_err(&pdev->dev, "failed to register poweroff: %d\n", error);
+		return error;
+	}
 
 	/*
 	* 0x09 -> `reboot` w/ USB connected
