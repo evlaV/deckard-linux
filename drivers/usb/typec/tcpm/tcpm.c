@@ -34,6 +34,8 @@
 
 #include <uapi/linux/sched/types.h>
 
+#include <linux/reboot.h>
+
 #define FOREACH_STATE(S)			\
 	S(INVALID_STATE),			\
 	S(TOGGLING),			\
@@ -7806,6 +7808,17 @@ static enum hrtimer_restart send_discover_timer_handler(struct hrtimer *timer)
 	return HRTIMER_NORESTART;
 }
 
+static int tcpm_power_off_handler(struct sys_off_data *data)
+{
+	struct tcpm_port *port = data->cb_data;
+
+	tcpm_tcpc_reset(port);
+	port->tcpc->disable_pd(port->tcpc);
+
+	mdelay(100);
+	return notifier_from_errno(-ETIME);
+}
+
 struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 {
 	struct tcpm_port *port;
@@ -7916,6 +7929,24 @@ struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 	mutex_lock(&port->lock);
 	tcpm_init(port);
 	mutex_unlock(&port->lock);
+
+	err = devm_register_sys_off_handler(port->dev,
+				     SYS_OFF_MODE_POWER_OFF_PREPARE,
+				     SYS_OFF_PRIO_DEFAULT,
+				     &tcpm_power_off_handler,
+				     port);
+	if (err) {
+		dev_err(port->dev, "register power off prepare failed: %d\n", err);
+	}
+
+	err = devm_register_sys_off_handler(port->dev,
+				     SYS_OFF_MODE_RESTART_PREPARE,
+				     SYS_OFF_PRIO_DEFAULT,
+				     &tcpm_power_off_handler,
+				     port);
+	if (err) {
+		dev_err(port->dev, "register restart prepare failed: %d\n", err);
+	}
 
 	tcpm_log(port, "%s: registered", dev_name(dev));
 	return port;
