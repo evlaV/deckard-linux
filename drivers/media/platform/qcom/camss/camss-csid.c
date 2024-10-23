@@ -682,7 +682,6 @@ static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		}
 		break;
 	case VIDIOC_CSID_VFE_PRV_G_REGS:
-		printk("VIDIOC_CSID_VFE_PRV_G_REGS\n");
 		if(csid->res->hw_ops->get_csid_vfe_registers) {
 			return csid->res->hw_ops->get_csid_vfe_registers(csid, arg);
 		}
@@ -1531,8 +1530,8 @@ int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size
 		qm.index = v4l2_ctrl_g_ctrl(ctrl);
 
 		v4l2_querymenu(subdev->ctrl_handler, &qm);
-		size = (size_t*)qm.value;
-		printk("metadata size: %zu\n", size);
+		*size = (size_t*)qm.value;
+		printk("metadata size: %zu\n", *size);
 	}
 
 
