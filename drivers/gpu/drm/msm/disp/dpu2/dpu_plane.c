@@ -110,6 +110,7 @@ void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer *fb)
 			addr[1] += ALIGN(pitch[3] * meta_height, 4096);
 		}
 	} else if (fb->modifier == DRM_FORMAT_MOD_QCOM_COMPRESSED) {
+		/*  always hit in CAC test */
 		/*
 		 * UBWC plane in addr[2]/pitch[2], but comes before in memory
 		 *
@@ -126,16 +127,21 @@ void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer *fb)
 
 	// for multirect on CAC unpack planes
 	if (reg == SSPP_SRC0_ADDR(16) || reg == SSPP_SRC0_ADDR(17)) {
+		/*  always hit in CAC test */
 		addr[1] = addr[0];
 		addr[3] = addr[2];
 		pitch[1] = pitch[0];
 		pitch[3] = pitch[2];
 	}
 
+	/* write to SSPP_SRC0_ADDR and SRC1/2/3 */
 	dpu_write(dpu, reg + 0,  addr[0]);
 	dpu_write(dpu, reg + 4,  addr[1]);
 	dpu_write(dpu, reg + 8,  addr[2]);
 	dpu_write(dpu, reg + 12, addr[3]);
+
+	/* tested that pitch value: 0/1:17408 2/3:320 */
+	/* write to SSPP_SRC_YSTRIDE0 and SSPP_SRC_YSTRIDE1 */
 	dpu_write(dpu, reg + 16, pitch[0] | pitch[1] << 16);
 	dpu_write(dpu, reg + 20, pitch[2] | pitch[3] << 16);
 }

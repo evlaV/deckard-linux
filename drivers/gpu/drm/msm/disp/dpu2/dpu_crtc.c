@@ -449,6 +449,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 			unsigned rotation = drm_rotation_simplify(plane->state->rotation,
 				DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X |  DRM_MODE_REFLECT_Y);
 
+			/* set buffer addr for SSPP DMA0/1 that fetch all r/g/b for other SSPP */
 			set_framebuffer(dpu, SSPP_SRC0_ADDR(16), fb);
 			set_framebuffer(dpu, SSPP_SRC0_ADDR(17), fb);
 
@@ -748,30 +749,37 @@ static const struct CAC_BLOB cac_default[4] = {
 	{
 	.dst_r = { 0, 0x8700438 }, .dst_g = { 0, 0x8700438 }, .dst_b = { 0, 0x8700438 },
 	.src_r = { 0, 0x8700438 }, .src_g = { 0, 0x8700438 }, .src_b = { 0, 0x8700438 },
+	/* src_unpack x offset for rect0 */
 	.src_unpack = { 0, 0x8700438 },
 	.phase_step_r_h = 0x80000000, .phase_step_r_v = 0x80000000,
 	.phase_step_b_h = 0x80000000, .phase_step_b_v = 0x80000000,
 	}, {
 	.dst_r = { 0, 0x8700438 }, .dst_g = { 0, 0x8700438 }, .dst_b = { 0, 0x8700438 },
 	.src_r = { 0, 0x8700438 }, .src_g = { 0, 0x8700438 }, .src_b = { 0, 0x8700438 },
+	/* src_unpack x offset for rect0 */
 	.src_unpack = { 2160, 0x8700438 },
 	.phase_step_r_h = 0x80000000, .phase_step_r_v = 0x80000000,
 	.phase_step_b_h = 0x80000000, .phase_step_b_v = 0x80000000,
 	}, {
+	/* dst x offset are 1080 for later 2 SSPP/LM ??? */
 	.dst_r = { 1080, 0x8700438 }, .dst_g = { 1080, 0x8700438 }, .dst_b = { 1080, 0x8700438 },
 	.src_r = { 0, 0x8700438 }, .src_g = { 0, 0x8700438 }, .src_b = { 0, 0x8700438 },
+	/* src_unpack x offset for rect1 */
 	.src_unpack = { 1080, 0x8700438 },
 	.phase_step_r_h = 0x80000000, .phase_step_r_v = 0x80000000,
 	.phase_step_b_h = 0x80000000, .phase_step_b_v = 0x80000000,
 	}, {
 	.dst_r = { 1080, 0x8700438 }, .dst_g = { 1080, 0x8700438 }, .dst_b = { 1080, 0x8700438 },
 	.src_r = { 0, 0x8700438 }, .src_g = { 0, 0x8700438 }, .src_b = { 0, 0x8700438 },
+	/* src_unpack x offset for rect1 */
 	.src_unpack = { 3240, 0x8700438 },
 	.phase_step_r_h = 0x80000000, .phase_step_r_v = 0x80000000,
 	.phase_step_b_h = 0x80000000, .phase_step_b_v = 0x80000000,
 	},
 };
 
+#define XY_SIZE(x) (0xffff & x.size), (x.size >> 16), (0xffff & x.xy), (x.xy >> 16)
+#define XY(x) (0xffff & (x)), ((x) >> 16)
 static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
 {
 	int i, j;
@@ -781,9 +789,26 @@ static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
 	// cac[i].src_unpack.size==cac[i^2].src_unpack.size
 	//
 
+	/* VIG 0 rec0/rec1 fetch from the DMA0 rec0 internal memory, scaled separately and combined */
 	for (i = 0; i < 4; i++, cac++) {
+		DRM_DEBUG_DRIVER("config qseed and SSPP %d rec0: src_r %dx%d+%d+%d, dst_r %dx%d+%d+%d\n",
+				 i, XY_SIZE(cac->src_r), XY_SIZE(cac->dst_r));
+		DRM_DEBUG_DRIVER("config qseed and SSPP %d rec1: src_b %dx%d+%d+%d\n",
+				 i, XY_SIZE(cac->src_b));
+		DRM_DEBUG_DRIVER("config qseed: dst_b %dx%d+%d+%d and dst b/r off %dx%d\n",
+				 XY_SIZE(cac->dst_b), XY(cac->dst_b.xy - cac->dst_r.xy));
+		DRM_DEBUG_DRIVER("cac phase step r_h 0x%x r_v 0x%x, b_h 0x%x b_v 0x%x\n",
+				 cac->phase_step_r_h, cac->phase_step_r_v,
+				 cac->phase_step_b_h, cac->phase_step_b_v);
+		DRM_DEBUG_DRIVER("cac phase init r_h 0x%x r_v 0x%x, b_h 0x%x b_v 0x%x\n",
+				 cac->phase_init_r_h, cac->phase_init_r_v,
+				 cac->phase_init_b_h, cac->phase_init_b_v);
+		DRM_DEBUG_DRIVER("config SSPP %d image size with src_unpack %dx%d+%d+%d\n",
+				 i, XY_SIZE(cac->src_unpack));
+
 		dpu_write(dpu, SSPP_SRC_IMG_SIZE(i), cac->src_unpack.size);
 
+		/* all SSPP rec0 is for red, rec1 for blue */
 		dpu_write(dpu, SSPP_SRC_SIZE(i), cac->src_r.size);
 		dpu_write(dpu, SSPP_SRC_XY(i), cac->src_r.xy);
 		dpu_write(dpu, SSPP_OUT_SIZE(i), cac->dst_r.size);
@@ -809,26 +834,36 @@ static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
 		dpu_write(dpu, QSEED3_DST_UV_SIZE(i), cac->dst_b.size);
 		dpu_write(dpu, QSEED3_DST_LE_OFFSET(i), cac->dst_b.xy - cac->dst_r.xy);
 
+		/* No scaling for blue, use SSPP DMA 2/3(18/19) */
 		j = 18 + (i & 1);
-		if ((i & 2) == 0) {
+		DRM_DEBUG_DRIVER("config SSPP %d rec%c with src_g %dx%d+%d+%d dst_g %dx%d+%d+%d\n",
+				 j,   (i & 2) == 0 ? '0' : '1',
+				 XY_SIZE(cac->src_g), XY_SIZE(cac->dst_g));
+		if ((i & 2) == 0) { /* i=0,1, so j=18,19 */
+			DRM_DEBUG_DRIVER("config SSPP %d image size with src_unpack %dx%d+%d+%d\n",
+					 j, XY_SIZE(cac->src_unpack));
 			dpu_write(dpu, SSPP_SRC_IMG_SIZE(j), cac->src_unpack.size);
 
 			dpu_write(dpu, SSPP_SRC_SIZE(j), cac->src_g.size);
 			dpu_write(dpu, SSPP_SRC_XY(j), cac->src_g.xy);
 			dpu_write(dpu, SSPP_OUT_SIZE(j), cac->dst_g.size);
 			dpu_write(dpu, SSPP_OUT_XY(j), cac->dst_g.xy);
-		} else {
+		} else { /* i=2,3, so j=18,19.  DMA2/3 is for green channel that has output */
 			dpu_write(dpu, SSPP_SRC_SIZE_REC1(j), cac->src_g.size);
 			dpu_write(dpu, SSPP_SRC_XY_REC1(j), cac->src_g.xy);
 			dpu_write(dpu, SSPP_OUT_SIZE_REC1(j), cac->dst_g.size);
 			dpu_write(dpu, SSPP_OUT_XY_REC1(j), cac->dst_g.xy);
 		}
 
+		/* SSPP DMA 0/1(16/17) to fetch all r/g/b channel data */
 		j = 16 + (i & 1);
-		if ((i & 2) == 0) {
+		DRM_DEBUG_DRIVER("config SSPP %d rec%c with src_unpack %dx%d+%d+%d\n\n",
+				 j,   (i & 2) == 0 ? '0' : '1',
+				 XY_SIZE(cac->src_unpack));
+		if ((i & 2) == 0) { /* i=0,1, j=16,17 for DMA0/DMA1 that fetch data from DDR */
 			dpu_write(dpu, SSPP_SRC_SIZE(j), cac->src_unpack.size);
 			dpu_write(dpu, SSPP_SRC_XY(j), cac->src_unpack.xy);
-		} else {
+		} else { /* i = 2,3, j=16,17 */
 			dpu_write(dpu, SSPP_SRC_SIZE_REC1(j), cac->src_unpack.size);
 			dpu_write(dpu, SSPP_SRC_XY_REC1(j), cac->src_unpack.xy);
 		}
@@ -870,6 +905,7 @@ void dpu_set_static_regs(struct dpu_kms *dpu)
 	mixercfg_set_sspp_stage     (&mixer_cfg[2], 7, 1); // green for lm2
 	mixercfg_set_sspp_stage_rec1(&mixer_cfg[2], 7, 1); // green for lm3
 
+	/* configure 4 mixer blending stage */
 	ctl_set_mixercfg(dpu, 0, 0, &mixer_cfg[0]);
 	ctl_set_mixercfg(dpu, 0, 1, &mixer_cfg[0]);
 	ctl_set_mixercfg(dpu, 0, 2, &mixer_cfg[2]);
@@ -968,6 +1004,7 @@ crtc_atomic_set_property(struct drm_crtc *crtc, struct drm_crtc_state *state, st
 	blob = drm_property_lookup_blob(crtc->dev, (uint32_t) val);
 	if (!blob)
 		return -EINVAL;
+	DRM_DEBUG_DRIVER("Set CAC blob property: id %lld length %ld\n", val, blob->length);
 	if (blob->length != sizeof(struct CAC_BLOB)*4) {
 		drm_property_blob_put(blob);
 		return -EINVAL;
