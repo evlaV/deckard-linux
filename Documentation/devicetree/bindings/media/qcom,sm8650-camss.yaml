@@ -142,9 +142,51 @@ properties:
         $ref: /schemas/graph.yaml#/$defs/port-base
         unevaluatedProperties: false
         description:
-          Input port for receiving CSI data.
+          Input port for receiving CSI data from CSIPHY0.
 
         properties:
+          endpoint@0:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the first camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 0
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
+          endpoint@1:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the second camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 1
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
           endpoint:
             $ref: video-interfaces.yaml#
             unevaluatedProperties: false
@@ -160,14 +202,63 @@ properties:
             required:
               - clock-lanes
               - data-lanes
+
+        anyOf:
+          - required:
+              - endpoint
+          - required:
+              - endpoint@0
+              - endpoint@1
 
       port@1:
         $ref: /schemas/graph.yaml#/$defs/port-base
         unevaluatedProperties: false
         description:
-          Input port for receiving CSI data.
+          Input port for receiving CSI data from CSIPHY1.
 
         properties:
+          endpoint@0:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the first camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 0
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
+          endpoint@1:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the second camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 1
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
           endpoint:
             $ref: video-interfaces.yaml#
             unevaluatedProperties: false
@@ -183,14 +274,63 @@ properties:
             required:
               - clock-lanes
               - data-lanes
+
+        anyOf:
+          - required:
+              - endpoint
+          - required:
+              - endpoint@0
+              - endpoint@1
 
       port@2:
         $ref: /schemas/graph.yaml#/$defs/port-base
         unevaluatedProperties: false
         description:
-          Input port for receiving CSI data.
+          Input port for receiving CSI data from CSIPHY2.
 
         properties:
+          endpoint@0:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the first camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 0
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
+          endpoint@1:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the second camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 1
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
           endpoint:
             $ref: video-interfaces.yaml#
             unevaluatedProperties: false
@@ -206,14 +346,63 @@ properties:
             required:
               - clock-lanes
               - data-lanes
+
+        anyOf:
+          - required:
+              - endpoint
+          - required:
+              - endpoint@0
+              - endpoint@1
 
       port@3:
         $ref: /schemas/graph.yaml#/$defs/port-base
         unevaluatedProperties: false
         description:
-          Input port for receiving CSI data.
+          Input port for receiving CSI data from CSIPHY3.
 
         properties:
+          endpoint@0:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the first camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 0
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
+          endpoint@1:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the second camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 1
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
           endpoint:
             $ref: video-interfaces.yaml#
             unevaluatedProperties: false
@@ -229,14 +418,63 @@ properties:
             required:
               - clock-lanes
               - data-lanes
+
+        anyOf:
+          - required:
+              - endpoint
+          - required:
+              - endpoint@0
+              - endpoint@1
 
       port@4:
         $ref: /schemas/graph.yaml#/$defs/port-base
         unevaluatedProperties: false
         description:
-          Input port for receiving CSI data.
+          Input port for receiving CSI data from CSIPHY4.
 
         properties:
+          endpoint@0:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the first camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 0
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
+          endpoint@1:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the second camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 1
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
           endpoint:
             $ref: video-interfaces.yaml#
             unevaluatedProperties: false
@@ -252,14 +490,63 @@ properties:
             required:
               - clock-lanes
               - data-lanes
+
+        anyOf:
+          - required:
+              - endpoint
+          - required:
+              - endpoint@0
+              - endpoint@1
 
       port@5:
         $ref: /schemas/graph.yaml#/$defs/port-base
         unevaluatedProperties: false
         description:
-          Input port for receiving CSI data.
+          Input port for receiving CSI data from CSIPHY5.
 
         properties:
+          endpoint@0:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the first camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 0
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
+          endpoint@1:
+            $ref: video-interfaces.yaml#
+            unevaluatedProperties: false
+            description: Endpoint of the second camera sensor on CSI bus.
+
+            properties:
+              reg:
+                const: 1
+
+              clock-lanes:
+                maxItems: 1
+
+              data-lanes:
+                minItems: 1
+                maxItems: 4
+
+            required:
+              - reg
+              - clock-lanes
+              - data-lanes
+
           endpoint:
             $ref: video-interfaces.yaml#
             unevaluatedProperties: false
@@ -275,6 +562,13 @@ properties:
             required:
               - clock-lanes
               - data-lanes
+
+        anyOf:
+          - required:
+              - endpoint
+          - required:
+              - endpoint@0
+              - endpoint@1
 
   vdda-csi01-0p9-supply:
     description:
