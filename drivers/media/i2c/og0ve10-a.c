@@ -640,7 +640,6 @@ static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp,
 {
 	printk("do_post_sof_work: sof_timestamp: %llx, sof_isr_timestamp: %llx, group: %d\n", sof_timestamp, sof_isr_timestamp, group);
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
-	return;
 	sensor->last_sof_ts = sof_timestamp;
 	sensor->last_sof_isr_ts = sof_isr_timestamp;
 	if (sensor_workqueues[sensor->queue_index] != NULL) {
@@ -1379,6 +1378,30 @@ static int og0ve10_probe(struct i2c_client *client)
 	}
 
 	last_time_in_sync_og0VE10 = 0;
+
+	// TODO: remove that, this is handled by og01a1b-a as a shared workqueue
+	if(sensor->queue_index == 0) {
+		for (int i = 0; i < 2; i++) {
+            sensor_workqueues[i] = alloc_workqueue("sensor_workqueue%d", WQ_UNBOUND | WQ_HIGHPRI | WQ_SYSFS, 1, i);
+
+            // Define workqueue attributes
+            struct workqueue_attrs *attrs;
+            attrs = alloc_workqueue_attrs();
+            if (!attrs) {
+                // Handle allocation failure
+                return -ENOMEM;
+            }
+            cpumask_set_cpu(i + 2, attrs->cpumask); // Set CPU affinity to CPU 2 and 3
+
+            // Apply workqueue attributes
+            if (apply_workqueue_attrs(sensor_workqueues[i], attrs)) {
+                // Handle attribute application failure
+                free_workqueue_attrs(attrs);
+                return -EINVAL;
+            }
+            free_workqueue_attrs(attrs);
+        }
+	}
 
 	return 0;
 

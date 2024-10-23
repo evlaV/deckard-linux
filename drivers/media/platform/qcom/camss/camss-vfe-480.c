@@ -208,8 +208,11 @@ static irqreturn_t vfe_isr(int irq, void *dev)
 			if (status & BUS_IRQ_MASK_0_RDI_RUP(vfe, i))
 				vfe_isr_reg_update(vfe, i);
 
-			if (status & BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i)))
-				vfe_buf_done(vfe, i, status);
+			if (status & BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i))) {
+				struct camss_buf_done_info buf_done_info;
+				memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
+				vfe_buf_done(vfe, i, &buf_done_info);
+			}
 		}
 	}
 
