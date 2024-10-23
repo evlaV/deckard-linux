@@ -447,37 +447,59 @@ int qcom_pmic_typec_pdphy_get_current_limit(struct pmic_typec_pdphy *pmic_typec_
 #define VOLT_22P0								0x11
 
 #define USBIN_CONT_AICL_THRESHOLD_REG			(USBIN_BASE + 0x62)
-#define FORCE_AICL_4P7V							0x06
-#define FORCE_AICL_4P8V							0x07
-#define FORCE_AICL_8P6V							0x1A
-#define FORCE_AICL_8P8V							0x1B
-#define FORCE_AICL_11P6V						0x29
-#define FORCE_AICL_11P8V						0x2A
-#define FORCE_AICL_14P4V						0x33
-#define FORCE_AICL_14P8V						0x34
+// #define FORCE_AICL_4P7V							0x06
+// #define FORCE_AICL_4P8V							0x07
+// #define FORCE_AICL_8P6V							0x1A
+// #define FORCE_AICL_8P8V							0x1B
+// #define FORCE_AICL_11P6V						0x29
+// #define FORCE_AICL_11P8V						0x2A
+// #define FORCE_AICL_14P4V						0x33
+// #define FORCE_AICL_14P8V						0x34
 
 int qcom_pmic_typec_pdphy_set_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy,
 					u32 max_ma, u32 mv)
 {
 	// NOTE If we want to allow more than 15 Volts, 0x2940 must be updated from 0x08 -> 0x0C
 
+	// AICL Threshold is from PD Spec.
+	// 95/100 is -5% tolernace allowed on output voltage.
+	// 1000 is mV drop, PD spec is 750 mV at connecter. Since we have another 80 mOhms in headstrap, we can drop another 250 mV at 3 Amps.
+	u32 aicl_threshold_mv = mv * 95 / 100 - 1000 * max_ma / 3000;
+	u8 cont_aicl_thres_reg = 0;
+
+	if (aicl_threshold_mv > 19200) {
+		// Upper Bound
+		cont_aicl_thres_reg = 63;
+
+	} else if (aicl_threshold_mv > 12800) {
+		// 400 mV steps
+		cont_aicl_thres_reg = (aicl_threshold_mv - 12800) / 400 + 47;
+
+	} else if (aicl_threshold_mv > 4800) {
+		cont_aicl_thres_reg = (aicl_threshold_mv - 4800) / 200 + 7;
+
+	} else if (aicl_threshold_mv > 4100) {
+		cont_aicl_thres_reg = (aicl_threshold_mv - 4100) / 100;
+
+	} // else Min Threshold
+
 	// Set max allowed voltage and AICL
 	if (mv >= 15000) {
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, CONTINUOUS);
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_17P2);
-		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_14P4V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, cont_aicl_thres_reg);
 	} else if (mv >= 12000) {
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_12V);
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_14P2);
-		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_11P6V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, cont_aicl_thres_reg);
 	} else if (mv >= 9000) {
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_9V);
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_14P2);
-		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_8P6V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, cont_aicl_thres_reg);
 	} else {
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_5V);
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_14P2);
-		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_4P7V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, cont_aicl_thres_reg);
 	}
 
 	// Set the max allowed input current
