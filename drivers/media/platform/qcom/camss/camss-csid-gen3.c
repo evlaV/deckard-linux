@@ -265,7 +265,7 @@ static void csid_subdev_reg_update(struct csid_device *csid, int port_id, bool c
 static irqreturn_t csid_isr(int irq, void *dev)
 {
 	struct csid_device *csid = dev;
-	u32 top_val, val, buf_done_val;
+	u32 top_val, val, buf_done_val, rdi_val;
 	u8 reset_done;
 	int i = 0;
 
@@ -276,8 +276,17 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	val = readl(csid->base + CSID_CSI2_RX_IRQ_STATUS);
 	writel(val, csid->base + CSID_CSI2_RX_IRQ_CLEAR);
 
-	val = readl(csid->base + CSID_CSI2_RDIN_IRQ_STATUS(i));
-	writel(val, csid->base + CSID_CSI2_RDIN_IRQ_CLEAR(i));
+	rdi_val = readl(csid->base + CSID_CSI2_RDIN_IRQ_STATUS(i));
+	writel(rdi_val, csid->base + CSID_CSI2_RDIN_IRQ_CLEAR(i));
+
+	if(rdi_val & 0x0010) // Test if PATH_INFO_SOF is set
+	{
+		printk("PATH_INFO_SOF is set\n");
+		// if(csid->do_post_sof_work != NULL) {
+		// 	u8 group = 0;
+		// 	csid->do_post_sof_work(csid->capture_subdev,0, 0, group);
+		// }
+	}
 
 #if 0
 	if (val & 0x1000) {
@@ -310,7 +319,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	if (top_val & 0x2000) {
 		buf_done_val = readl(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 		writel(buf_done_val, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
-
+		printk("buf_done_val: %x\n", buf_done_val);
 		camss_buf_done(csid->camss, csid->id, 0, buf_done_val);
 	}
 
@@ -377,6 +386,7 @@ static int csid_reset(struct csid_device *csid)
 	val = 0x1010;
 	//val = 0x10881004;
 	writel_relaxed(val, csid->base + CSID_CSI2_RDIN_IRQ_MASK(csid->id));
+	writel_relaxed(val, csid->base + 0xb0); // PPP SOF
 
 	return 0;
 }
