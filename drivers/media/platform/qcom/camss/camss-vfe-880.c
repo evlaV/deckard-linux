@@ -230,14 +230,14 @@ static void vfe_update_buffer_status(struct vfe_device *vfe, u32 buf_done_status
 }
 
 // custom buf_done is needed for 880 to handle multiple outputs and IPP path
-static void vfe_buf_done_880(struct vfe_device *vfe, int wm, u32 buf_done_status)
+static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_done_info *buf_done_info)
 {
 	struct vfe_line *line = &vfe->line[vfe->wm_output_map[wm]];
 	struct camss_buffer *ready_buf;
 	struct vfe_output *output;
 	unsigned long flags;
 	u32 index;
-	u64 ts = ktime_get_ns();
+	u64 ts_monotonic_raw = ktime_get_raw_ns();
 	// Data buffer pointers to retrieve for the metadata output planes
 	void* sensorMetaDataBufferAddr = NULL;
 	void* frameheaderDataAddr = NULL;
@@ -246,6 +246,7 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, u32 buf_done_status
 	void* bhistFHDataAddr = NULL;
 	void* bhistDataAddr = NULL;
 	struct frameheader_data *frameheaderData;
+	u64 sof_isp_timestamp_converted = buf_done_info->sof_isp_ts_conv;
 
 	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
 
@@ -265,7 +266,7 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, u32 buf_done_status
 	}
 
 	// Update the buffer status with the bus status to keep track of which composite groups are done 
-	vfe_update_buffer_status(vfe, buf_done_status);
+	vfe_update_buffer_status(vfe, buf_done_info->status);
 
 	// If we have received anything for the buffer 1 we need to skip buffer 0
 	// We won't be able to send out buffer 0 in any case since it needs frame data stored by the sensor and
@@ -287,7 +288,7 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, u32 buf_done_status
 	}
 
 	ready_buf = output->buf[0];
-	ready_buf->vb.vb2_buf.timestamp = ts;
+	ready_buf->vb.vb2_buf.timestamp = ts_monotonic_raw;
 	ready_buf->vb.sequence = output->sequence++;
 
 	index = 0;
@@ -306,11 +307,10 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, u32 buf_done_status
 		output->gen2.active_num--;
 
 
-	// TODO: replace once sensor metadata cb is hooked up
-	// if(vfe->get_metadata != NULL)
-	// {
-	// 	sensorMetaDataBufferAddr = vfe->get_metadata(vfe->capture_subdev );
-	// }
+	if(buf_done_info->sensor_metadata_buffer_addr != NULL)
+	{
+		sensorMetaDataBufferAddr = buf_done_info->sensor_metadata_buffer_addr;
+	}
 	if(vfe->stats_cfg)
 	{
 		// Make buffer changes visible to CPU
@@ -335,9 +335,8 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, u32 buf_done_status
 				CAM_IFE_CSID_DIV_FACTOR);
 
 			// Use the existing offset to adjust the frame header timestamp
-			// TODO: uncomment once QTIME -> RAW ts is estimated
-			// frameheader_ts += isp_to_kernel_raw_ts_offset_floor;
-			// vfe->cur_sof_isp_timestamp_converted = frameheader_ts;
+			frameheader_ts += buf_done_info->isp_to_kernel_raw_ts_offset;
+			sof_isp_timestamp_converted = frameheader_ts;
 		}
 		if(vfe->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
 			ihistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_FH_DATA_OFFSET;
@@ -349,12 +348,8 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, u32 buf_done_status
 		}
 	}
 
-	//metadata_send(&vfe->camss->metadata[vfe->id], ts_monotonic_raw, vfe->cur_sof_isp_timestamp_converted, vfe->cur_eof_isp_timestamp_converted, vfe->last_sof_kernel_ts, ts_monotonic_raw,
-	//	ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
-	// TODO: replace with version above once we have sof ts estimated
-	metadata_send(&vfe->camss->metadata[vfe->id], ts, ts, ts, ts, ts,
+	metadata_send(&vfe->camss->metadata[vfe->id], ts_monotonic_raw, sof_isp_timestamp_converted, buf_done_info->eof_isp_ts_conv, buf_done_info->sof_kernel_ts, ts_monotonic_raw,
 		ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
-
 
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 
