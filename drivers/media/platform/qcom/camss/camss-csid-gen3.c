@@ -100,7 +100,7 @@ static int csid_reset(struct csid_device *csid);
 static inline int reg_update_rdi(struct csid_device *csid, int n)
 {
 	/*  RUP_RDI0 | AUP_RDI0 | MUP */
-	return BIT(n + 4) + BIT(20 + n) + BIT(28 + n);
+	return BIT(n + 4) + BIT(20 + n) + BIT(28);
 }
 #define REG_UPDATE_RDI			reg_update_rdi
 
@@ -200,7 +200,6 @@ static void __csid_configure_rdi_stream(struct csid_device *csid, u8 enable, u8 
 	val |= 1 << RDI_CFG1_CROP_H_EN;
 	val |= 1 << RDI_CFG1_CROP_V_EN;
 
-	val = 0x00040000;
 	writel(val, csid->base + CSID_RDI_CFG1(vc));
 
 	val = 0;
