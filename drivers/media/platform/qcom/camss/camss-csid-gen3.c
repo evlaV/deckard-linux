@@ -264,7 +264,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	writel(val, csid->base + CSID_CSI2_RX_IRQ_CLEAR);
 
 	rdi_val = readl(csid->base + CSID_CSI2_RDIN_IRQ_STATUS(i));
-	writel(val, csid->base + CSID_CSI2_RDIN_IRQ_CLEAR(i));
+	writel(rdi_val, csid->base + CSID_CSI2_RDIN_IRQ_CLEAR(i));
 
 	if(rdi_val & 0x0010) // Test if PATH_INFO_SOF is set
 	{
