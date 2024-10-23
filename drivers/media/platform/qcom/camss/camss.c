@@ -3753,6 +3753,61 @@ struct media_pad *camss_find_sensor_pad(struct media_entity *entity)
 	}
 }
 
+/*
+ * camss_find_sensor_from_csid - Find a linked media entity which represents a sensor
+ * @entity: Media entity to start searching from
+ *
+ * Return a pointer to sensor media entity or NULL if not found
+ */
+struct media_entity *camss_find_sensor_from_csid(struct media_entity *entity)
+{
+	struct media_pad *pad, *remote_pad, *sensor_link_pad, *sensor_pad;
+	// We know that the pad which is connected is the 0th pad on the csid entity
+	pad = &entity->pads[0];
+	if (!(pad->flags & MEDIA_PAD_FL_SINK))
+		return NULL;
+	// This gets the pad on the csiphy device
+	struct media_link *link;
+	remote_pad = NULL;
+	//u32 found_index = 0;
+	remote_pad = media_pad_remote_pad_first(pad);
+	if(remote_pad==NULL) {
+		return NULL;
+	}
+
+	//something is wrong the csid should not be at pad0 on the csiphy
+	if(remote_pad->index == 0) {
+		return NULL;
+	}
+	sensor_link_pad = remote_pad;
+	// By convention the sensor pad is the pad before the csid pad
+	sensor_link_pad = media_pad_remote_pad_first(&sensor_link_pad->entity->pads[remote_pad->index-1]);
+	if(sensor_link_pad == NULL) {
+		return NULL;
+	}
+
+	sensor_pad = media_pad_remote_pad_first(sensor_link_pad);
+
+	entity = sensor_pad->entity;
+	if (entity->function == MEDIA_ENT_F_CAM_SENSOR) {
+		return entity;
+	}
+	else {	
+		//return camss_find_sensor(entity);
+		pad = media_pad_remote_pad_first(&entity->pads[remote_pad->index-1]);
+		if (pad->entity->function == MEDIA_ENT_F_CAM_SENSOR) {
+			entity = pad->entity;
+			return entity;
+		}
+		else {
+			printk("Didn't find sensor at: %d",remote_pad->index-1);
+		}
+	}
+
+	return NULL;
+
+}
+
 /**
  * camss_get_link_freq - Get link frequency from sensor
  * @entity: Media entity in the current pipeline
