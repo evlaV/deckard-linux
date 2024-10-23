@@ -638,7 +638,9 @@ static void *get_metadata(struct v4l2_subdev *sd)
 static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp,
 			     u64 sof_isr_timestamp, u8 group)
 {
+	printk("do_post_sof_work: sof_timestamp: %llx, sof_isr_timestamp: %llx, group: %d\n", sof_timestamp, sof_isr_timestamp, group);
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
+	return;
 	sensor->last_sof_ts = sof_timestamp;
 	sensor->last_sof_isr_ts = sof_isr_timestamp;
 	if (sensor_workqueues[sensor->queue_index] != NULL) {
