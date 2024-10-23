@@ -774,6 +774,8 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 			return ret;
 		}
 
+		csid_set_metadata_callbacks(csid);
+
 		csid->res->hw_ops->hw_version(csid);
 
 		csid->power_on = true;
@@ -1523,6 +1525,7 @@ int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size
 
 		v4l2_querymenu(subdev->ctrl_handler, &qm);
 		*addr = qm.value;
+		printk("metadata cb address: %llx\n", *addr);
 	}
 
 	{
@@ -1534,6 +1537,7 @@ int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size
 
 		v4l2_querymenu(subdev->ctrl_handler, &qm);
 		size = (size_t*)qm.value;
+		printk("metadata size: %zu\n", size);
 	}
 
 
@@ -1567,6 +1571,7 @@ int get_post_sof_cb_address(struct media_entity *entity, u64 *addr) {
 
 		v4l2_querymenu(subdev->ctrl_handler, &qm);
 		*addr = qm.value;
+		printk("post sof cb address: %llx\n", *addr);
 	}
 	return 0;
 
@@ -1583,6 +1588,8 @@ static int csid_set_metadata_callbacks(struct csid_device *csid) {
 	size_t metadata_size;
 	int ret = get_metadata_cb_address(&csid->subdev.entity,
 					&addr, &metadata_size, &sd);
+	printk("metadata cb addressa: %llx\n", addr);
+	printk("metadata sizea: %zu\n", metadata_size);
 	if(ret) {
 		return -1;
 	}
