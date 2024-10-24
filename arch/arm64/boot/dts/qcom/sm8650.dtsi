@@ -3517,7 +3517,7 @@
 			pinctrl-0 = <&cci2_0_default &cci2_1_default>;
 			pinctrl-1 = <&cci2_0_sleep &cci2_1_sleep>;
 			pinctrl-names = "default", "sleep";
-			status = "disabled";
+			// status = "disabled";
 			#address-cells = <1>;
 			#size-cells = <0>;
 

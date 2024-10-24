@@ -804,7 +804,8 @@ static void csiphy_gen1_config_lanes(struct csiphy_device *csiphy,
 }
 
 static void csiphy_gen2_config_lanes(struct csiphy_device *csiphy,
-				     u8 settle_cnt)
+				     u8 settle_cnt,
+				     u8 combo_mode)
 {
 	struct csiphy_device_regs *csiphy_regs = csiphy->data;
 	const struct csiphy_lane_regs *r = csiphy_regs->lane_regs;
@@ -894,7 +895,7 @@ static void csiphy_lanes_enable(struct csiphy_device *csiphy,
 		       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 0));
 
 	if (csiphy_is_gen2(csiphy->camss->res->version))
-		csiphy_gen2_config_lanes(csiphy, settle_cnt);
+		csiphy_gen2_config_lanes(csiphy, settle_cnt, 1);
 	else
 		csiphy_gen1_config_lanes(csiphy, cfg, settle_cnt);
 

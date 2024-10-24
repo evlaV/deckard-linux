@@ -1379,30 +1379,6 @@ static int og0ve10_probe(struct i2c_client *client)
 
 	last_time_in_sync_og0VE10 = 0;
 
-	// TODO: remove that, this is handled by og01a1b-a as a shared workqueue
-	if(sensor->queue_index == 0) {
-		for (int i = 0; i < 2; i++) {
-            sensor_workqueues[i] = alloc_workqueue("sensor_workqueue%d", WQ_UNBOUND | WQ_HIGHPRI | WQ_SYSFS, 1, i);
-
-            // Define workqueue attributes
-            struct workqueue_attrs *attrs;
-            attrs = alloc_workqueue_attrs();
-            if (!attrs) {
-                // Handle allocation failure
-                return -ENOMEM;
-            }
-            cpumask_set_cpu(i + 2, attrs->cpumask); // Set CPU affinity to CPU 2 and 3
-
-            // Apply workqueue attributes
-            if (apply_workqueue_attrs(sensor_workqueues[i], attrs)) {
-                // Handle attribute application failure
-                free_workqueue_attrs(attrs);
-                return -EINVAL;
-            }
-            free_workqueue_attrs(attrs);
-        }
-	}
-
 	return 0;
 
 free_ctrls:

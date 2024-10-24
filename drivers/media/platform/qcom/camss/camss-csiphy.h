@@ -19,7 +19,9 @@
 
 #define MSM_CSIPHY_PAD_SINK 0
 #define MSM_CSIPHY_PAD_SRC 1
-#define MSM_CSIPHY_PADS_NUM 2
+#define MSM_CSIPHY_PAD_SINK2 2
+#define MSM_CSIPHY_PAD_SRC2 3
+#define MSM_CSIPHY_PADS_NUM 4
 
 struct csiphy_lane {
 	u8 pos;
@@ -40,6 +42,7 @@ struct csiphy_config {
 	u8 combo_mode;
 	u8 csid_id;
 	struct csiphy_csi2_cfg *csi2;
+	struct csiphy_csi2_cfg *csi2_sec;
 };
 
 struct csiphy_format_info {
@@ -98,6 +101,7 @@ struct csiphy_device {
 	struct v4l2_mbus_framefmt fmt[MSM_CSIPHY_PADS_NUM];
 	const struct csiphy_subdev_resources *res;
 	void *data;
+	unsigned stream_on_count;
 };
 
 struct camss_subdev_resources;
