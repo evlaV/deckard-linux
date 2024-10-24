@@ -42,7 +42,7 @@
 #define SLG4AX46073V_PWM_FREQ_MAX         33000
 // this rate also defines the tach read rate for versions >= 7.
 // at 3 Hz the minimum readable RPM is 540
-#define SLG4AX56073V_WDT_RESET_RATE       HZ/3
+#define SLG4AX56073V_WDT_RESET_RATE       HZ*3
 
 // Version 7 chnages
 #define SLG4AX46073V_REG_VIRTUAL_INPUT        0x4C /* Output enable registger */
@@ -60,6 +60,10 @@
 
 #define TOGGLE_BIT(VAR, MASK) VAR = (VAR & ~MASK) | ((VAR ^ MASK) & MASK);
 
+#define SLG4AX46073V_I2C_FAILURE   0x01
+#define SLG4AX46073V_RPM_FAILURE   0x02
+#define SLG4AX46073V_TACH_FAILURE  0x04
+
 /*
  * struct slg4ax46073v - device data
  * @regmap:	Register map.
@@ -71,6 +75,8 @@ struct slg4ax46073v {
 	struct gpio_desc *en_gpiod;
     int fan_alert_gpio_irq;
 	uint16_t fan_rpm; // stores most recent rpm calculation
+    unsigned int fan_alarm; // stores fan alarm state
+    unsigned int reset_attempts;
 	struct delayed_work wdt_work;
 	const struct attribute_group *attr_groups;
     unsigned int version;
@@ -266,20 +272,32 @@ static bool slg4ax46073v_wdt_fired( struct slg4ax46073v *slg4ax46073v )
 
 static void slg4ax46073v_reset(struct slg4ax46073v *slg4ax46073v)
 {
-    // turn off fan pwm while resetting fan power supply
-    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC, slg4ax46073v_pwm_duty_cycle_to_reg_value(slg4ax46073v,0));
+    unsigned int regval;
+    // disable Oscillator, disable WDT, disable tach
+    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT, SLG4AX46073V_VI_DISABLE_PWM_CLK0);
 
-    // power cycle fan controller
+    // cycle fan power supply
     gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 0);
     usleep_range(100000,150000);
     gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 1);
     usleep_range(100000,150000);
+
+    // Set PWM frequency to default 25 kHz
+    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_PERIOD, SLG4AX46073V_PWM_PERIOD_DEFAULT);
 
     // reset fan speed to 30%
     regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC, slg4ax46073v_pwm_duty_cycle_to_reg_value(slg4ax46073v,30));
 
     // re arm tach
     slg4ax46073v_arm_tach(slg4ax46073v);
+
+    // reset wdt
+    slg4ax46073v_reset_wdt( slg4ax46073v );
+
+    // Enable Oscillator
+    regmap_read(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT, &regval);
+    regval &= ~SLG4AX46073V_VI_DISABLE_PWM_CLK0;
+    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT, regval);
 }
 
 static irqreturn_t fan_alert_irq_handler_top(int irq, void *dev_id)
@@ -316,14 +334,17 @@ static void slg4ax46073v_delayed_work_handler(struct work_struct *work)
 {
     unsigned int tach_reg;
 	unsigned int reg_val;
+    unsigned int pwm;
+    unsigned int alarm = 0;
 	int ret;
 
 	struct slg4ax46073v *slg4ax46073v = container_of((struct delayed_work *)work,struct slg4ax46073v, wdt_work);
 
-    // first check i2c communiction to the device.  if i2c fails try a hardware reset
+    // first check i2c communiction to the device.
     if ( slg4ax46073v_get_version(slg4ax46073v, &reg_val) < 0 ) {
-        pr_err("slg4a_fan: i2c comms failed, attempt hardware reset\n");
-        slg4ax46073v_reset(slg4ax46073v);
+        if ( !( slg4ax46073v->fan_alarm & SLG4AX46073V_I2C_FAILURE ))
+            pr_err("slg4ax46073v: i2c comms failed, setting alarm\n");
+        slg4ax46073v->fan_alarm |= SLG4AX46073V_I2C_FAILURE;
     } else if ( slg4ax46073v->version >= VERSION_7 ) {
         if ( slg4ax46073v_wdt_fired( slg4ax46073v ) ) {
             pr_err( "slg4ax46073v: wdt fired, resetting in work handler\n" );
@@ -331,18 +352,47 @@ static void slg4ax46073v_delayed_work_handler(struct work_struct *work)
         }
         slg4ax46073v_pet_wdt( slg4ax46073v );
 
+        // get current pwm setting 
+        ret = regmap_read(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC, &reg_val);
+        pwm = slg4ax46073v_pwm_reg_value_to_duty_cycle(slg4ax46073v, reg_val);
+
         // read tach armed register to see if there is a settled value
         regmap_read( slg4ax46073v->regmap, SLG4AX46073V_REG_TACH_ARMED, &tach_reg );
         if ( !(tach_reg & SLG4AX46073V_TACH_ARMED) ) {
             // Read tachometer register
             ret = regmap_bulk_read( slg4ax46073v->regmap, SLG4AX46073V_REG_TACH, &tach_reg, 2 );
             if (ret) {
-                pr_err("slg4a_fan: Failed to read slg4a tach register");
+                pr_err("slg4ax46073v: Failed to read slg4a tach register");
             } else {
                 slg4ax46073v->fan_rpm = slg4ax46073v_rpm_from_tach( slg4ax46073v, (uint16_t)tach_reg );
             }
             slg4ax46073v_arm_tach( slg4ax46073v );
-        }        
+        } else if ( pwm > 0 ) {
+            pr_err("slg4ax46073v: tach did not complete in expected period\n");
+            alarm |= SLG4AX46073V_TACH_FAILURE;
+        }
+
+        // check for valid fan rpm reading if fan pwm is set
+        if(pwm > 0 && slg4ax46073v->fan_rpm < 100) {
+            pr_err("slg4ax46073v: invalid fan rpm ( %d ) for pwm setting ( %d ), attempting reset\n", slg4ax46073v->fan_rpm, pwm);
+            alarm |= SLG4AX46073V_RPM_FAILURE;
+        }
+
+        if (alarm && !slg4ax46073v->reset_attempts) {
+            pr_err("slg4ax46073v: detected alarm %x, attempting reset\n", alarm);
+            // attempt to reset the fan controller before raising an alarm
+            slg4ax46073v_reset(slg4ax46073v);
+            slg4ax46073v->reset_attempts = 1;
+        } else if ( alarm ){
+            pr_err("slg4ax46073v: reset unsuccessful, raising alarm\n");
+            // keep attempting reset
+            slg4ax46073v_reset(slg4ax46073v);
+            slg4ax46073v->fan_alarm = alarm;
+        } else {
+            // all clear
+            slg4ax46073v->reset_attempts = 0;
+            slg4ax46073v->fan_alarm = 0;
+        }
     } else {
         // To pet ( reset ) the WDT we have to write a 0 and then 1 to the SLG4AX46073V_OUT_WDT_RESET bit
         ret = slg4ax46073v_read_reg(slg4ax46073v, SLG4AX46073V_REG_OUT_EN, &reg_val);
@@ -435,6 +485,7 @@ static umode_t slg4ax46073v_is_visible(const void *dvrdata,
         case hwmon_fan:
             switch (attr) {
             case hwmon_fan_input:
+            case hwmon_fan_alarm:
                 return 0444;
             }
 		break;
@@ -450,9 +501,6 @@ static int slg4ax46073v_read_temp(struct device *dev, u32 attr, int channel,
 	return -EOPNOTSUPP;
 }
 
-// TODO tach value can only be read when INT pin is high, 
-//      so we need to move this to an interrupt and store the value locally
-//      for on demand retrieval
 static int slg4ax46073v_read_fan(struct device *dev, u32 attr, int channel,
 			     long *val)
 {
@@ -461,6 +509,9 @@ static int slg4ax46073v_read_fan(struct device *dev, u32 attr, int channel,
 	switch (attr) {
 	case hwmon_fan_input:
 		*val = slg4ax46073v->fan_rpm;
+		break;
+	case hwmon_fan_alarm:
+		*val = slg4ax46073v->fan_alarm;
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -609,7 +660,7 @@ static const struct hwmon_channel_info slg4ax46073v_pwm = {
 };
 
 static u32 slg4ax46073v_fan_config[] = {
-	HWMON_F_INPUT,
+	HWMON_F_INPUT | HWMON_F_ALARM,
 	0
 };
 
@@ -645,7 +696,10 @@ static int slg4ax46073v_probe(struct i2c_client *client)
 
 	// Enable FAN1 VDD power
 	slg4ax46073v->bp_gpiod = devm_gpiod_get_optional(dev, "bp", GPIOD_OUT_LOW);
-	if ( slg4ax46073v->bp_gpiod ) {
+	if ( IS_ERR(slg4ax46073v->bp_gpiod ) ) {
+		dev_err(dev, "failed to get fan bp gpio %ld\n",
+			PTR_ERR(slg4ax46073v->bp_gpiod));
+	} else {
 		gpiod_set_value_cansleep(slg4ax46073v->bp_gpiod, 1);
 	}
 	slg4ax46073v->en_gpiod = devm_gpiod_get(dev, "en", GPIOD_OUT_LOW);
@@ -653,7 +707,9 @@ static int slg4ax46073v_probe(struct i2c_client *client)
 		dev_err(dev, "failed to get fan en gpio %ld\n",
 			PTR_ERR(slg4ax46073v->en_gpiod));
 		return PTR_ERR(slg4ax46073v->en_gpiod);
-	}
+	} else {
+        gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 1);
+    }
 
 	slg4ax46073v->regmap = devm_regmap_init_i2c(client, &slg4ax46073v_regmap_config);
 	if (IS_ERR(slg4ax46073v->regmap)) {
@@ -678,6 +734,9 @@ static int slg4ax46073v_probe(struct i2c_client *client)
             }
         }
     }
+
+    // set up periodic resets of the wdt and tachometer reading
+    slg4ax46073v_wdt_work_init(slg4ax46073v);
 
     if ( slg4ax46073v->version <= VERSION_7 ) {
 
@@ -713,9 +772,6 @@ static int slg4ax46073v_probe(struct i2c_client *client)
         slg4ax46073v_reset(slg4ax46073v);
     }
 
-    // set up periodic resets of the wdt and tachometer reading
-    slg4ax46073v_wdt_work_init(slg4ax46073v);
-
 	hwmon_dev = devm_hwmon_device_register_with_info(dev, client->name,
 							 slg4ax46073v,
 							 &slg4ax46073v_chip_info,
@@ -732,6 +788,7 @@ static int slg4ax46073v_probe(struct i2c_client *client)
 static void slg4ax46073v_remove(struct i2c_client *client) {
 	struct slg4ax46073v * slg4ax46073v = dev_get_drvdata(&client->dev);
 	cancel_delayed_work(&slg4ax46073v->wdt_work);
+	slg4ax46073v_pet_wdt( slg4ax46073v );
 }
 
 static const struct i2c_device_id slg4ax46073v_i2c_ids[] = {
