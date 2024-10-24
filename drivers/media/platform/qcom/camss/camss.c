@@ -3898,6 +3898,7 @@ static int camss_of_parse_endpoint_node(struct device *dev,
 	}
 
 	csd->interface.csiphy_id = vep.base.port;
+	csd->interface.combo_id = vep.base.id;
 
 	mipi_csi2 = &vep.bus.mipi_csi2;
 	lncfg->clk.pos = mipi_csi2->clock_lane;
@@ -3923,7 +3924,7 @@ static int camss_of_parse_endpoint_node(struct device *dev,
  * @dev: Device
  * @notifier: v4l2_device notifier data
  *
- * Return number of "port" nodes found in "ports" node
+ * Return number of endpoint nodes
  */
 static int camss_of_parse_ports(struct camss *camss)
 {
@@ -4094,6 +4095,25 @@ static int camss_link_entities(struct camss *camss)
 					       camss->csiphy[i].subdev.entity.name,
 					       camss->csid[j].subdev.entity.name,
 					       ret);
+				return ret;
+			}
+
+			/*
+			if (!camss->csiphy[i].combo_mode)
+				continue;
+			*/
+
+			ret = media_create_pad_link(&camss->csiphy[i].subdev.entity,
+						    MSM_CSIPHY_PAD_SRC + 2,
+						    &camss->csid[j].subdev.entity,
+						    MSM_CSID_PAD_SINK,
+						    0);
+			if (ret < 0) {
+				dev_err(camss->dev,
+					"Failed to link %s->%s entities: %d\n",
+					camss->csiphy[i].subdev.entity.name,
+					camss->csid[j].subdev.entity.name,
+					ret);
 				return ret;
 			}
 		}
@@ -4285,8 +4305,16 @@ static int camss_subdev_notifier_bound(struct v4l2_async_notifier *async,
 		container_of(asd, struct camss_async_subdev, asd);
 	u8 id = csd->interface.csiphy_id;
 	struct csiphy_device *csiphy = &camss->csiphy[id];
+	struct csiphy_config *cfg = &csiphy->cfg;
 
-	csiphy->cfg.csi2 = &csd->interface.csi2;
+	if (csd->interface.combo_id) {
+		csiphy->combo_mode = true;
+		cfg = &csiphy->cfg2;
+	}
+
+	cfg->csi2 = &csd->interface.csi2;
+	cfg->combo_id = csd->interface.combo_id;
+
 	subdev->host_priv = csiphy;
 
 	return 0;
@@ -4301,6 +4329,7 @@ static int camss_subdev_notifier_complete(struct v4l2_async_notifier *async)
 	list_for_each_entry(sd, &v4l2_dev->subdevs, list) {
 		struct csiphy_device *csiphy = sd->host_priv;
 		struct media_entity *input, *sensor;
+		unsigned int pad_sink = MSM_CSIPHY_PAD_SINK;
 		unsigned int i;
 		int ret;
 
@@ -4320,8 +4349,13 @@ static int camss_subdev_notifier_complete(struct v4l2_async_notifier *async)
 			return -EINVAL;
 		}
 
-		ret = media_create_pad_link(sensor, i, input,
-					    MSM_CSIPHY_PAD_SINK,
+		if (!strncmp(sensor->name, "og0ve1b", 7)) {
+			printk(KERN_ERR "%s: apply combo mode hack to '%s'\n",
+					__func__, sensor->name);
+			pad_sink += 2;
+		}
+
+		ret = media_create_pad_link(sensor, i, input, pad_sink,
 					    MEDIA_LNK_FL_IMMUTABLE | MEDIA_LNK_FL_ENABLED);
 		if (ret < 0) {
 			camss_link_err(camss, sensor->name, input->name, ret);
