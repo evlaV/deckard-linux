@@ -779,6 +779,7 @@ static const struct CAC_BLOB cac_default[4] = {
 };
 
 #define XY_SIZE(x) (0xffff & x.size), (x.size >> 16), (0xffff & x.xy), (x.xy >> 16)
+#define SIZE(x) (0xffff & x.size), (x.size >> 16)
 #define XY(x) (0xffff & (x)), ((x) >> 16)
 static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
 {
@@ -791,11 +792,11 @@ static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
 
 	/* VIG 0 rec0/rec1 fetch from the DMA0 rec0 internal memory, scaled separately and combined */
 	for (i = 0; i < 4; i++, cac++) {
-		DRM_DEBUG_DRIVER("config qseed and SSPP %d rec0: src_r %dx%d+%d+%d, dst_r %dx%d+%d+%d\n",
+		DRM_DEBUG_DRIVER("config SSPP %d rec0 size/xy and qseed size: src_r %dx%d+%d+%d, dst_r %dx%d+%d+%d\n",
 				 i, XY_SIZE(cac->src_r), XY_SIZE(cac->dst_r));
-		DRM_DEBUG_DRIVER("config qseed and SSPP %d rec1: src_b %dx%d+%d+%d\n",
+		DRM_DEBUG_DRIVER("config SSPP %d rec1 size/xy and qseed size: src_b %dx%d+%d+%d\n",
 				 i, XY_SIZE(cac->src_b));
-		DRM_DEBUG_DRIVER("config qseed: dst_b %dx%d+%d+%d and dst b/r off %dx%d\n",
+		DRM_DEBUG_DRIVER("config qseed: dst_b %dx%d+%d+%d and dst b-r off %dx%d\n",
 				 XY_SIZE(cac->dst_b), XY(cac->dst_b.xy - cac->dst_r.xy));
 		DRM_DEBUG_DRIVER("cac phase step r_h 0x%x r_v 0x%x, b_h 0x%x b_v 0x%x\n",
 				 cac->phase_step_r_h, cac->phase_step_r_v,
@@ -803,8 +804,8 @@ static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
 		DRM_DEBUG_DRIVER("cac phase init r_h 0x%x r_v 0x%x, b_h 0x%x b_v 0x%x\n",
 				 cac->phase_init_r_h, cac->phase_init_r_v,
 				 cac->phase_init_b_h, cac->phase_init_b_v);
-		DRM_DEBUG_DRIVER("config SSPP %d image size with src_unpack %dx%d+%d+%d\n",
-				 i, XY_SIZE(cac->src_unpack));
+		DRM_DEBUG_DRIVER("config SSPP %d image size with src_unpack size %dx%d\n",
+				 i, SIZE(cac->src_unpack));
 
 		dpu_write(dpu, SSPP_SRC_IMG_SIZE(i), cac->src_unpack.size);
 
@@ -840,8 +841,8 @@ static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
 				 j,   (i & 2) == 0 ? '0' : '1',
 				 XY_SIZE(cac->src_g), XY_SIZE(cac->dst_g));
 		if ((i & 2) == 0) { /* i=0,1, so j=18,19 */
-			DRM_DEBUG_DRIVER("config SSPP %d image size with src_unpack %dx%d+%d+%d\n",
-					 j, XY_SIZE(cac->src_unpack));
+			DRM_DEBUG_DRIVER("config SSPP %d image size with src_unpack size %dx%d\n",
+					 j, SIZE(cac->src_unpack));
 			dpu_write(dpu, SSPP_SRC_IMG_SIZE(j), cac->src_unpack.size);
 
 			dpu_write(dpu, SSPP_SRC_SIZE(j), cac->src_g.size);
