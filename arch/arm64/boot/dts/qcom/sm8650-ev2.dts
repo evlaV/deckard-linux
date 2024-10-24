@@ -1606,6 +1606,7 @@
 	clock-frequency = <32764>;
 };
 
+#ifndef NRF_UART
 // nRF SPI HID
 &spi10 {
 	status = "okay";
@@ -1648,6 +1649,7 @@
 		pinctrl-0 = <&r_spihid_default_state>;
 	};
 };
+#endif
 
 &uart14 {
 	status = "okay";
