@@ -7635,7 +7635,16 @@ struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 				     &tcpm_power_off_handler,
 				     port);
 	if (err) {
-		dev_err(port->dev, "register restart handler failed: %d\n", err);
+		dev_err(port->dev, "register power off prepare failed: %d\n", err);
+	}
+
+	err = devm_register_sys_off_handler(port->dev,
+				     SYS_OFF_MODE_RESTART_PREPARE,
+				     SYS_OFF_PRIO_DEFAULT,
+				     &tcpm_power_off_handler,
+				     port);
+	if (err) {
+		dev_err(port->dev, "register restart prepare failed: %d\n", err);
 	}
 
 	tcpm_log(port, "%s: registered", dev_name(dev));

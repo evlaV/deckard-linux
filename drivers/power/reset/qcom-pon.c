@@ -70,11 +70,19 @@ static void pon_set_mode(struct pm8916_pon *pon, unsigned reset_type)
 static void do_msm_poweroff(void)
 {
 	struct pm8916_pon *pon = pon_global;
-
+	printk("do_msm_poweroff: %ld\n", pon->code);
 	writel(0, pon->ps_hold);
 	mdelay(10000);
 }
 
+static int msm_restart_handler(struct sys_off_data *data)
+{
+	do_msm_poweroff();
+	// Should not get here
+	return -EPERM;
+}
+
+// Sets up reboot or power off, called before sys off handlers
 static int pon_reboot_notify(struct notifier_block *nb, unsigned long code, void *cmd)
 {
 	struct pm8916_pon *pon = container_of(nb, struct pm8916_pon, reboot_notifier);
@@ -96,7 +104,6 @@ static int pon_reboot_notify(struct notifier_block *nb, unsigned long code, void
 	}
 	else {
 		pon_set_mode(pon, PON_PS_HOLD_TYPE_HARD_RESET);
-		do_msm_poweroff();
 	}
 	return 0;
 }
@@ -165,12 +172,18 @@ static int pm8916_pon_probe(struct platform_device *pdev)
 	WARN_ON(pon_global);
 	pon_global = pon;
 
+	// Last fuction before power off
 	error = register_platform_power_off(&do_msm_poweroff);
 	if (error) {
 		dev_err(&pdev->dev, "failed to register poweroff: %d\n", error);
 		return error;
 	}
-
+	// Last fuction before restart
+	error = devm_register_restart_handler(&pdev->dev, &msm_restart_handler, NULL);
+	if (error) {
+		dev_err(&pdev->dev, "failed to register restart handler: %d\n", error);
+		return error;
+	}
 	/*
 	* 0x09 -> `reboot` w/ USB connected
 	* 0x01 -> `reboot` w/o USB
