@@ -1297,6 +1297,12 @@ static u32 csid_get_lane_assign(struct csiphy_lanes_cfg *lane_cfg)
 	u32 lane_assign = 0;
 	int i;
 
+	printk("csid has lane_cfg->num_data=%d\n", lane_cfg->num_data);
+	for (i = 0; i < lane_cfg->num_data; i++)
+			printk("csid has lane_cfg->data[%d].pos=%d\n", i, lane_cfg->data[i].pos);
+
+
+
 	for (i = 0; i < lane_cfg->num_data; i++)
 		lane_assign |= lane_cfg->data[i].pos << (i * 4);
 
@@ -1347,11 +1353,13 @@ static int csid_link_setup(struct media_entity *entity,
 		if (!cfg)
 			return -EPERM;
 
+		printk("csid(%d) will use csiphy %d\n", csid->id, csiphy->id);
 		csid->phy.csiphy_id = csiphy->id;
 
 		lane_cfg = &cfg->lane_cfg;
 		csid->phy.lane_cnt = lane_cfg->num_data;
 		csid->phy.lane_assign = csid_get_lane_assign(lane_cfg);
+
 	}
 	/* Decide which virtual channels to enable based on which source pads are enabled */
 	if (local->flags & MEDIA_PAD_FL_SOURCE) {

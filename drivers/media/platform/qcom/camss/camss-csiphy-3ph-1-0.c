@@ -829,15 +829,16 @@ static void csiphy_gen2_config_lanes(struct csiphy_device *csiphy,
 
 static u8 csiphy_get_lane_mask(struct csiphy_lanes_cfg *lane_cfg)
 {
-	u8 lane_mask;
-	int i;
+	// u8 lane_mask;
+	// int i;
 
-	lane_mask = CSIPHY_3PH_CMN_CSI_COMMON_CTRL5_CLK_ENABLE;
+	// lane_mask = CSIPHY_3PH_CMN_CSI_COMMON_CTRL5_CLK_ENABLE;
 
-	for (i = 0; i < lane_cfg->num_data; i++)
-		lane_mask |= 1 << lane_cfg->data[i].pos;
+	// for (i = 0; i < lane_cfg->num_data; i++)
+	// 	lane_mask |= 1 << lane_cfg->data[i].pos;
 
-	return lane_mask;
+	// return lane_mask;
+	return 0; // passed to csiphy_lanes_enable which doesn't use it
 }
 
 static bool csiphy_is_gen2(u32 version)

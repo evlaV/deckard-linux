@@ -128,6 +128,8 @@ static void __csid_configure_rx(struct csid_device *csid,
 {
 	int val;
 
+	printk("csid(%d) setting config with phy->lane_cnt=%d, phy->lane_assign=%d, phy->csiphy_id=%d\n", csid->id, phy->lane_cnt, phy->lane_assign, phy->csiphy_id);
+
 	val = (phy->lane_cnt - 1) << CSI2_RX_CFG0_NUM_ACTIVE_LANES;
 	val |= phy->lane_assign << CSI2_RX_CFG0_DL0_INPUT_SEL;
 	val |= (phy->csiphy_id + CSI2_RX_CFG0_PHY_SEL_BASE_IDX) << CSI2_RX_CFG0_PHY_NUM_SEL;
@@ -301,6 +303,11 @@ static irqreturn_t csid_isr(int irq, void *dev)
 
 	ipp_status = readl(csid->base + 0xac);
 	writel(ipp_status, csid->base + 0xb4);
+
+	printk("csid(%d) top_val 0x%x\n", csid->id, top_val);
+	printk("csid(%d) val 0x%x\n", csid->id, val);
+	printk("csid(%d) rdi_status 0x%x\n", csid->id, rdi_status);
+	printk("csid(%d) ipp_status 0x%x\n", csid->id, ipp_status);
 
 	if((rdi_status & 0x0010) || (ipp_status & 0x0010)) // Test if PATH_INFO_SOF is set
 	{

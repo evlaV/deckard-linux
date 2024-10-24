@@ -447,6 +447,14 @@ static int call_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	int ret;
 
+	// Arcturus 2024.3.26
+	// Change this warning to be more informative and avoid confusion with other errors that actually cause problems
+	if(!!sd->s_stream_enabled == !!enable)
+	{
+		dev_warn(sd->dev, "Double on / off detected for device:%s enable:%d sd->enabled_streams:%d\n",sd->name, enable, sd->s_stream_enabled);
+		return 0;
+	}
+
 	/*
 	 * The .s_stream() operation must never be called to start or stop an
 	 * already started or stopped subdev. Catch offenders but don't return
