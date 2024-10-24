@@ -130,6 +130,7 @@ struct camss {
 
 struct camss_camera_interface {
 	u8 csiphy_id;
+	u8 combo_id;
 	struct csiphy_csi2_cfg csi2;
 };
 
