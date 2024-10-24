@@ -287,7 +287,7 @@ static int csiphy_stream_on(struct csiphy_device *csiphy)
 
 	if (csiphy->base_clk_mux) {
 		val = readl_relaxed(csiphy->base_clk_mux);
-		if (cfg->combo_mode && (lane_mask & 0x18) == 0x18) {
+		if (csiphy->combo_mode && (lane_mask & 0x18) == 0x18) {
 			val &= ~0xf0;
 			val |= cfg->csid_id << 4;
 		} else {
@@ -374,7 +374,7 @@ static void csiphy_try_format(struct csiphy_device *csiphy,
 {
 	unsigned int i;
 
-	switch (pad) {
+	switch (pad & 1) {
 	case MSM_CSIPHY_PAD_SINK:
 		/* Set format on sink pad */
 
@@ -398,7 +398,7 @@ static void csiphy_try_format(struct csiphy_device *csiphy,
 		/* Set and return a format same as sink pad */
 
 		*fmt = *__csiphy_get_format(csiphy, sd_state,
-					    MSM_CSID_PAD_SINK,
+					    pad - 1,
 					    which);
 
 		break;
@@ -419,7 +419,7 @@ static int csiphy_enum_mbus_code(struct v4l2_subdev *sd,
 	struct csiphy_device *csiphy = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	if (code->pad == MSM_CSIPHY_PAD_SINK) {
+	if ((code->pad & 1) == MSM_CSIPHY_PAD_SINK) {
 		if (code->index >= csiphy->res->formats->nformats)
 			return -EINVAL;
 
@@ -429,7 +429,7 @@ static int csiphy_enum_mbus_code(struct v4l2_subdev *sd,
 			return -EINVAL;
 
 		format = __csiphy_get_format(csiphy, sd_state,
-					     MSM_CSIPHY_PAD_SINK,
+					     code->pad - 1,
 					     code->which);
 
 		code->code = format->code;
@@ -523,13 +523,13 @@ static int csiphy_set_format(struct v4l2_subdev *sd,
 	*format = fmt->format;
 
 	/* Propagate the format from sink to source */
-	if (fmt->pad == MSM_CSIPHY_PAD_SINK) {
+	if ((fmt->pad & 1) == MSM_CSIPHY_PAD_SINK) {
 		format = __csiphy_get_format(csiphy, sd_state,
-					     MSM_CSIPHY_PAD_SRC,
+					     fmt->pad + 1,
 					     fmt->which);
 
 		*format = fmt->format;
-		csiphy_try_format(csiphy, sd_state, MSM_CSIPHY_PAD_SRC,
+		csiphy_try_format(csiphy, sd_state, fmt->pad + 1,
 				  format,
 				  fmt->which);
 	}
@@ -549,6 +549,9 @@ static int csiphy_set_format(struct v4l2_subdev *sd,
 static int csiphy_init_formats(struct v4l2_subdev *sd,
 			       struct v4l2_subdev_fh *fh)
 {
+	struct csiphy_device *csiphy = v4l2_get_subdevdata(sd);
+	int ret;
+
 	struct v4l2_subdev_format format = {
 		.pad = MSM_CSIPHY_PAD_SINK,
 		.which = fh ? V4L2_SUBDEV_FORMAT_TRY :
@@ -560,6 +563,11 @@ static int csiphy_init_formats(struct v4l2_subdev *sd,
 		}
 	};
 
+	ret = csiphy_set_format(sd, fh ? fh->state : NULL, &format);
+	if (ret || !csiphy->combo_mode)
+		return ret;
+
+	format.pad += 2;
 	return csiphy_set_format(sd, fh ? fh->state : NULL, &format);
 }
 
@@ -591,7 +599,7 @@ int msm_csiphy_subdev_init(struct camss *camss,
 
 	csiphy->camss = camss;
 	csiphy->id = id;
-	csiphy->cfg.combo_mode = 0;
+	csiphy->combo_mode = false;
 	csiphy->res = &res->csiphy;
 
 	ret = csiphy->res->hw_ops->init(csiphy);
@@ -756,6 +764,12 @@ static int csiphy_link_setup(struct media_entity *entity,
 	return 0;
 }
 
+static bool csiphy_has_pad_interdep(struct media_entity *entity,
+				    unsigned int pad0, unsigned int pad1)
+{
+	return ((pad0 | 1) == (pad1 | 1));
+}
+
 static const struct v4l2_subdev_core_ops csiphy_core_ops = {
 	.s_power = csiphy_set_power,
 };
@@ -784,6 +798,7 @@ static const struct v4l2_subdev_internal_ops csiphy_v4l2_internal_ops = {
 static const struct media_entity_operations csiphy_media_ops = {
 	.link_setup = csiphy_link_setup,
 	.link_validate = v4l2_subdev_link_validate,
+	.has_pad_interdep = csiphy_has_pad_interdep,
 };
 
 /*
@@ -799,6 +814,7 @@ int msm_csiphy_register_entity(struct csiphy_device *csiphy,
 	struct v4l2_subdev *sd = &csiphy->subdev;
 	struct media_pad *pads = csiphy->pads;
 	struct device *dev = csiphy->camss->dev;
+	unsigned int pads_num = 2;
 	int ret;
 
 	v4l2_subdev_init(sd, &csiphy_v4l2_ops);
@@ -817,11 +833,18 @@ int msm_csiphy_register_entity(struct csiphy_device *csiphy,
 	pads[MSM_CSIPHY_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 	pads[MSM_CSIPHY_PAD_SRC].flags = MEDIA_PAD_FL_SOURCE;
 
+	/* csiphy->combo_mode is not yet set at this point */
+	if (true) {
+		pads[MSM_CSIPHY_PAD_SINK + 2].flags = MEDIA_PAD_FL_SINK;
+		pads[MSM_CSIPHY_PAD_SRC + 2].flags = MEDIA_PAD_FL_SOURCE;
+		pads_num += 2;
+	}
+
 	sd->entity.function = MEDIA_ENT_F_PROC_VIDEO_PIXEL_FORMATTER;
 	sd->entity.ops = &csiphy_media_ops;
-	ret = media_entity_pads_init(&sd->entity, MSM_CSIPHY_PADS_NUM, pads);
+	ret = media_entity_pads_init(&sd->entity, pads_num, pads);
 	if (ret < 0) {
-		dev_err(dev, "Failed to init media entity: %d\n", ret);
+		dev_err(dev, "Failed to init csiphy media entity: %d\n", ret);
 		return ret;
 	}
 
