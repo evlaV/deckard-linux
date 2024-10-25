@@ -27,16 +27,18 @@
  * Cmdstream submission:
  */
 
-struct msm_gem_submit *submit_create(struct drm_device *dev,
+static struct msm_gem_submit *submit_create(struct drm_device *dev,
 		struct msm_gpu *gpu,
-		struct msm_gpu_submitqueue *queue, uint32_t nr_cmds)
+		struct msm_gpu_submitqueue *queue, uint32_t nr_bos,
+		uint32_t nr_cmds)
 {
 	static atomic_t ident = ATOMIC_INIT(0);
 	struct msm_gem_submit *submit;
 	uint64_t sz;
 	int ret;
 
-	sz = struct_size(submit, cmd, nr_cmds);
+	sz = struct_size(submit, bos, nr_bos) +
+			((u64)nr_cmds * sizeof(submit->cmd[0]));
 
 	if (sz > SIZE_MAX)
 		return ERR_PTR(-ENOMEM);
@@ -63,6 +65,7 @@ struct msm_gem_submit *submit_create(struct drm_device *dev,
 	submit->dev = dev;
 	submit->aspace = queue->ctx->aspace;
 	submit->gpu = gpu;
+	submit->cmd = (void *)&submit->bos[nr_bos];
 	submit->queue = queue;
 	submit->pid = get_pid(task_pid(current));
 	submit->ring = gpu->rb[queue->ring_nr];
@@ -80,6 +83,7 @@ void __msm_gem_submit_destroy(struct kref *kref)
 {
 	struct msm_gem_submit *submit =
 			container_of(kref, struct msm_gem_submit, ref);
+	unsigned i;
 
 	if (submit->fence_id) {
 		spin_lock(&submit->queue->idr_lock);
@@ -105,13 +109,83 @@ void __msm_gem_submit_destroy(struct kref *kref)
 	put_pid(submit->pid);
 	msm_submitqueue_put(submit->queue);
 
+	for (i = 0; i < submit->nr_cmds; i++)
+		kfree(submit->cmd[i].relocs);
+
 	kfree(submit);
+}
+
+static int submit_lookup_objects(struct msm_gem_submit *submit,
+		struct drm_msm_gem_submit *args, struct drm_file *file)
+{
+	unsigned i;
+	int ret = 0;
+
+	for (i = 0; i < args->nr_bos; i++) {
+		struct drm_msm_gem_submit_bo submit_bo;
+		void __user *userptr =
+			u64_to_user_ptr(args->bos + (i * sizeof(submit_bo)));
+
+		/* make sure we don't have garbage flags, in case we hit
+		 * error path before flags is initialized:
+		 */
+		submit->bos[i].flags = 0;
+
+		if (copy_from_user(&submit_bo, userptr, sizeof(submit_bo))) {
+			ret = -EFAULT;
+			i = 0;
+			goto out;
+		}
+
+/* at least one of READ and/or WRITE flags should be set: */
+#define MANDATORY_FLAGS (MSM_SUBMIT_BO_READ | MSM_SUBMIT_BO_WRITE)
+
+		if ((submit_bo.flags & ~MSM_SUBMIT_BO_FLAGS) ||
+			!(submit_bo.flags & MANDATORY_FLAGS)) {
+			SUBMIT_ERROR(submit, "invalid flags: %x\n", submit_bo.flags);
+			ret = -EINVAL;
+			i = 0;
+			goto out;
+		}
+
+		submit->bos[i].handle = submit_bo.handle;
+		submit->bos[i].flags = submit_bo.flags;
+	}
+
+	spin_lock(&file->table_lock);
+
+	for (i = 0; i < args->nr_bos; i++) {
+		struct drm_gem_object *obj;
+
+		/* normally use drm_gem_object_lookup(), but for bulk lookup
+		 * all under single table_lock just hit object_idr directly:
+		 */
+		obj = idr_find(&file->object_idr, submit->bos[i].handle);
+		if (!obj) {
+			SUBMIT_ERROR(submit, "invalid handle %u at index %u\n", submit->bos[i].handle, i);
+			ret = -EINVAL;
+			goto out_unlock;
+		}
+
+		drm_gem_object_get(obj);
+
+		submit->bos[i].obj = obj;
+	}
+
+out_unlock:
+	spin_unlock(&file->table_lock);
+
+out:
+	submit->nr_bos = i;
+
+	return ret;
 }
 
 static int submit_lookup_cmds(struct msm_gem_submit *submit,
 		struct drm_msm_gem_submit *args, struct drm_file *file)
 {
 	unsigned i;
+	size_t sz;
 	int ret = 0;
 
 	for (i = 0; i < args->nr_cmds; i++) {
@@ -128,8 +202,8 @@ static int submit_lookup_cmds(struct msm_gem_submit *submit,
 		/* validate input from userspace: */
 		switch (submit_cmd.type) {
 		case MSM_SUBMIT_CMD_BUF:
-		//case MSM_SUBMIT_CMD_IB_TARGET_BUF:
-		//case MSM_SUBMIT_CMD_CTX_RESTORE_BUF:
+		case MSM_SUBMIT_CMD_IB_TARGET_BUF:
+		case MSM_SUBMIT_CMD_CTX_RESTORE_BUF:
 			break;
 		default:
 			SUBMIT_ERROR(submit, "invalid type: %08x\n", submit_cmd.type);
@@ -145,18 +219,28 @@ static int submit_lookup_cmds(struct msm_gem_submit *submit,
 
 		submit->cmd[i].type = submit_cmd.type;
 		submit->cmd[i].size = submit_cmd.size / 4;
-		// submit->cmd[i].iova = submit_cmd.submit_iova_lo | (u64) submit_cmd.submit_iova_hi << 32;
-		{
-			struct drm_msm_gem_submit_bo submit_bo;
-			void __user *userptr =
-				u64_to_user_ptr(args->bos + (submit_cmd.submit_idx * sizeof(submit_bo)));
+		submit->cmd[i].offset = submit_cmd.submit_offset / 4;
+		submit->cmd[i].idx  = submit_cmd.submit_idx;
+		submit->cmd[i].nr_relocs = submit_cmd.nr_relocs;
 
-			if (copy_from_user(&submit_bo, userptr, sizeof(submit_bo))) {
-				ret = -EFAULT;
-				goto out;
-			}
+		userptr = u64_to_user_ptr(submit_cmd.relocs);
 
-			submit->cmd[i].iova = submit_bo.presumed + submit_cmd.submit_offset;
+		sz = array_size(submit_cmd.nr_relocs,
+				sizeof(struct drm_msm_gem_submit_reloc));
+		/* check for overflow: */
+		if (sz == SIZE_MAX) {
+			ret = -ENOMEM;
+			goto out;
+		}
+		submit->cmd[i].relocs = kmalloc(sz, GFP_KERNEL | __GFP_NOWARN);
+		if (!submit->cmd[i].relocs) {
+			ret = -ENOMEM;
+			goto out;
+		}
+		ret = copy_from_user(submit->cmd[i].relocs, userptr, sz);
+		if (ret) {
+			ret = -EFAULT;
+			goto out;
 		}
 	}
 
@@ -164,8 +248,235 @@ out:
 	return ret;
 }
 
+/* This is where we make sure all the bo's are reserved and pin'd: */
+static int submit_lock_objects(struct msm_gem_submit *submit)
+{
+	int ret;
+
+	drm_exec_init(&submit->exec, DRM_EXEC_INTERRUPTIBLE_WAIT, submit->nr_bos);
+
+	drm_exec_until_all_locked (&submit->exec) {
+		for (unsigned i = 0; i < submit->nr_bos; i++) {
+			struct drm_gem_object *obj = submit->bos[i].obj;
+			ret = drm_exec_prepare_obj(&submit->exec, obj, 1);
+			drm_exec_retry_on_contention(&submit->exec);
+			if (ret)
+				goto error;
+		}
+	}
+
+	return 0;
+
+error:
+	return ret;
+}
+
+static int submit_fence_sync(struct msm_gem_submit *submit)
+{
+	int i, ret = 0;
+
+	for (i = 0; i < submit->nr_bos; i++) {
+		struct drm_gem_object *obj = submit->bos[i].obj;
+		bool write = submit->bos[i].flags & MSM_SUBMIT_BO_WRITE;
+
+		/* Otherwise userspace can ask for implicit sync to be
+		 * disabled on specific buffers.  This is useful for internal
+		 * usermode driver managed buffers, suballocation, etc.
+		 */
+		if (submit->bos[i].flags & MSM_SUBMIT_BO_NO_IMPLICIT)
+			continue;
+
+		ret = drm_sched_job_add_implicit_dependencies(&submit->base,
+							      obj,
+							      write);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
+static int submit_pin_objects(struct msm_gem_submit *submit)
+{
+	struct msm_drm_private *priv = submit->dev->dev_private;
+	int i, ret = 0;
+
+	for (i = 0; i < submit->nr_bos; i++) {
+		struct drm_gem_object *obj = submit->bos[i].obj;
+		struct msm_gem_vma *vma;
+
+		/* if locking succeeded, pin bo: */
+		vma = msm_gem_get_vma_locked(obj, submit->aspace);
+		if (IS_ERR(vma)) {
+			ret = PTR_ERR(vma);
+			break;
+		}
+
+		ret = msm_gem_pin_vma_locked(obj, vma);
+		if (ret)
+			break;
+
+		submit->bos[i].iova = vma->iova;
+	}
+
+	/*
+	 * A second loop while holding the LRU lock (a) avoids acquiring/dropping
+	 * the LRU lock for each individual bo, while (b) avoiding holding the
+	 * LRU lock while calling msm_gem_pin_vma_locked() (which could trigger
+	 * get_pages() which could trigger reclaim.. and if we held the LRU lock
+	 * could trigger deadlock with the shrinker).
+	 */
+	mutex_lock(&priv->lru.lock);
+	for (i = 0; i < submit->nr_bos; i++) {
+		msm_gem_pin_obj_locked(submit->bos[i].obj);
+	}
+	mutex_unlock(&priv->lru.lock);
+
+	submit->bos_pinned = true;
+
+	return ret;
+}
+
+static void submit_unpin_objects(struct msm_gem_submit *submit)
+{
+	if (!submit->bos_pinned)
+		return;
+
+	for (int i = 0; i < submit->nr_bos; i++) {
+		struct drm_gem_object *obj = submit->bos[i].obj;
+
+		msm_gem_unpin_locked(obj);
+	}
+
+	submit->bos_pinned = false;
+}
+
+static void submit_attach_object_fences(struct msm_gem_submit *submit)
+{
+	int i;
+
+	for (i = 0; i < submit->nr_bos; i++) {
+		struct drm_gem_object *obj = submit->bos[i].obj;
+
+		if (submit->bos[i].flags & MSM_SUBMIT_BO_WRITE)
+			dma_resv_add_fence(obj->resv, submit->user_fence,
+					   DMA_RESV_USAGE_WRITE);
+		else if (submit->bos[i].flags & MSM_SUBMIT_BO_READ)
+			dma_resv_add_fence(obj->resv, submit->user_fence,
+					   DMA_RESV_USAGE_READ);
+	}
+}
+
+static int submit_bo(struct msm_gem_submit *submit, uint32_t idx,
+		struct drm_gem_object **obj, uint64_t *iova)
+{
+	if (idx >= submit->nr_bos) {
+		SUBMIT_ERROR(submit, "invalid buffer index: %u (out of %u)\n",
+			     idx, submit->nr_bos);
+		return -EINVAL;
+	}
+
+	if (obj)
+		*obj = submit->bos[idx].obj;
+	if (iova)
+		*iova = submit->bos[idx].iova;
+
+	return 0;
+}
+
+/* process the reloc's and patch up the cmdstream as needed: */
+static int submit_reloc(struct msm_gem_submit *submit, struct drm_gem_object *obj,
+		uint32_t offset, uint32_t nr_relocs, struct drm_msm_gem_submit_reloc *relocs)
+{
+	uint32_t i, last_offset = 0;
+	uint32_t *ptr;
+	int ret = 0;
+
+	if (offset % 4) {
+		SUBMIT_ERROR(submit, "non-aligned cmdstream buffer: %u\n", offset);
+		return -EINVAL;
+	}
+
+	/* For now, just map the entire thing.  Eventually we probably
+	 * to do it page-by-page, w/ kmap() if not vmap()d..
+	 */
+	ptr = msm_gem_get_vaddr_locked(obj);
+
+	if (IS_ERR(ptr)) {
+		ret = PTR_ERR(ptr);
+		DBG("failed to map: %d", ret);
+		return ret;
+	}
+
+	for (i = 0; i < nr_relocs; i++) {
+		struct drm_msm_gem_submit_reloc submit_reloc = relocs[i];
+		uint32_t off;
+		uint64_t iova;
+
+		if (submit_reloc.submit_offset % 4) {
+			SUBMIT_ERROR(submit, "non-aligned reloc offset: %u\n",
+				     submit_reloc.submit_offset);
+			ret = -EINVAL;
+			goto out;
+		}
+
+		/* offset in dwords: */
+		off = submit_reloc.submit_offset / 4;
+
+		if ((off >= (obj->size / 4)) ||
+				(off < last_offset)) {
+			SUBMIT_ERROR(submit, "invalid offset %u at reloc %u\n", off, i);
+			ret = -EINVAL;
+			goto out;
+		}
+
+		ret = submit_bo(submit, submit_reloc.reloc_idx, NULL, &iova);
+		if (ret)
+			goto out;
+
+		iova += submit_reloc.reloc_offset;
+
+		if (submit_reloc.shift < 0)
+			iova >>= -submit_reloc.shift;
+		else
+			iova <<= submit_reloc.shift;
+
+		ptr[off] = iova | submit_reloc.or;
+
+		last_offset = off;
+	}
+
+out:
+	msm_gem_put_vaddr_locked(obj);
+
+	return ret;
+}
+
+/* Cleanup submit at end of ioctl.  In the error case, this also drops
+ * references, unpins, and drops active refcnt.  In the non-error case,
+ * this is done when the submit is retired.
+ */
+static void submit_cleanup(struct msm_gem_submit *submit, bool error)
+{
+	if (error) {
+		submit_unpin_objects(submit);
+		/* job wasn't enqueued to scheduler, so early retirement: */
+		msm_submit_retire(submit);
+	}
+
+	if (submit->exec.objects)
+		drm_exec_fini(&submit->exec);
+}
+
 void msm_submit_retire(struct msm_gem_submit *submit)
 {
+	int i;
+
+	for (i = 0; i < submit->nr_bos; i++) {
+		struct drm_gem_object *obj = submit->bos[i].obj;
+
+		drm_gem_object_put(obj);
+	}
 }
 
 struct msm_submit_post_dep {
@@ -391,14 +702,14 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		}
 	}
 
-	submit = submit_create(dev, gpu, queue, args->nr_cmds);
+	submit = submit_create(dev, gpu, queue, args->nr_bos, args->nr_cmds);
 	if (IS_ERR(submit)) {
 		ret = PTR_ERR(submit);
 		goto out_post_unlock;
 	}
 
 	trace_msm_gpu_submit(pid_nr(submit->pid), ring->id, submit->ident,
-		0, args->nr_cmds);
+		args->nr_bos, args->nr_cmds);
 
 	ret = mutex_lock_interruptible(&queue->lock);
 	if (ret)
@@ -444,11 +755,63 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		}
 	}
 
+	ret = submit_lookup_objects(submit, args, file);
+	if (ret)
+		goto out;
+
 	ret = submit_lookup_cmds(submit, args, file);
 	if (ret)
 		goto out;
 
-	submit->nr_cmds = args->nr_cmds;
+	/* copy_*_user while holding a ww ticket upsets lockdep */
+	ret = submit_lock_objects(submit);
+	if (ret)
+		goto out;
+
+	if (!(args->flags & MSM_SUBMIT_NO_IMPLICIT)) {
+		ret = submit_fence_sync(submit);
+		if (ret)
+			goto out;
+	}
+
+	ret = submit_pin_objects(submit);
+	if (ret)
+		goto out;
+
+	for (i = 0; i < args->nr_cmds; i++) {
+		struct drm_gem_object *obj;
+		uint64_t iova;
+
+		ret = submit_bo(submit, submit->cmd[i].idx, &obj, &iova);
+		if (ret)
+			goto out;
+
+		if (!submit->cmd[i].size ||
+			((submit->cmd[i].size + submit->cmd[i].offset) >
+				obj->size / 4)) {
+			SUBMIT_ERROR(submit, "invalid cmdstream size: %u\n", submit->cmd[i].size * 4);
+			ret = -EINVAL;
+			goto out;
+		}
+
+		submit->cmd[i].iova = iova + (submit->cmd[i].offset * 4);
+
+		if (likely(!submit->cmd[i].nr_relocs))
+			continue;
+
+		if (!gpu->allow_relocs) {
+			SUBMIT_ERROR(submit, "relocs not allowed\n");
+			ret = -EINVAL;
+			goto out;
+		}
+
+		ret = submit_reloc(submit, obj, submit->cmd[i].offset * 4,
+				submit->cmd[i].nr_relocs, submit->cmd[i].relocs);
+		if (ret)
+			goto out;
+	}
+
+	submit->nr_cmds = i;
 
 	idr_preload(GFP_KERNEL);
 
@@ -514,8 +877,11 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 			args->fence_fd = out_fence_fd;
 		}
 	}
+
 	if (ret)
 		goto out;
+
+	submit_attach_object_fences(submit);
 
 	/* The scheduler owns a ref now: */
 	msm_gem_submit_get(submit);
@@ -533,6 +899,7 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 
 
 out:
+	submit_cleanup(submit, !!ret);
 out_unlock:
 	mutex_unlock(&queue->lock);
 out_post_unlock:

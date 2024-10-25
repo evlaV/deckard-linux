@@ -21,7 +21,6 @@
 /* Additional internal-use only BO flags: */
 #define MSM_BO_STOLEN        0x10000000    /* try to use stolen/splash memory */
 #define MSM_BO_MAP_PRIV      0x20000000    /* use IOMMU_PRIV when mapping */
-#define MSM_VBO_NO_MAP_ZERO  0x40000000    /* don't map zero page in vbo */
 
 struct msm_gem_address_space {
 	const char *name;
@@ -68,7 +67,7 @@ struct msm_gem_vma {
 };
 
 struct msm_gem_vma *msm_gem_vma_new(struct msm_gem_address_space *aspace);
-int msm_gem_vma_init(struct msm_gem_vma *vma, int size, uint32_t align,
+int msm_gem_vma_init(struct msm_gem_vma *vma, int size,
 		u64 range_start, u64 range_end);
 void msm_gem_vma_purge(struct msm_gem_vma *vma);
 int msm_gem_vma_map(struct msm_gem_vma *vma, int prot, struct sg_table *sgt, int size);
@@ -78,6 +77,13 @@ struct msm_gem_object {
 	struct drm_gem_object base;
 
 	uint32_t flags;
+
+	/**
+	 * madv: are the backing pages purgeable?
+	 *
+	 * Protected by obj lock and LRU lock
+	 */
+	uint8_t madv;
 
 	/**
 	 * count of active vmap'ing
@@ -106,12 +112,20 @@ struct msm_gem_object {
 	/* userspace metadata backchannel */
 	void *metadata;
 	u32 metadata_size;
+
+	/**
+	 * pin_count: Number of times the pages are pinned
+	 *
+	 * Protected by LRU lock.
+	 */
+	int pin_count;
 };
 #define to_msm_bo(x) container_of(x, struct msm_gem_object, base)
 
 uint64_t msm_gem_mmap_offset(struct drm_gem_object *obj);
 int msm_gem_pin_vma_locked(struct drm_gem_object *obj, struct msm_gem_vma *vma);
 void msm_gem_unpin_locked(struct drm_gem_object *obj);
+void msm_gem_unpin_active(struct drm_gem_object *obj);
 struct msm_gem_vma *msm_gem_get_vma_locked(struct drm_gem_object *obj,
 					   struct msm_gem_address_space *aspace);
 int msm_gem_get_iova(struct drm_gem_object *obj,
@@ -207,6 +221,33 @@ msm_gem_assert_locked(struct drm_gem_object *obj)
 	);
 }
 
+/* imported/exported objects are not purgeable: */
+static inline bool is_unpurgeable(struct msm_gem_object *msm_obj)
+{
+	return msm_obj->base.import_attach || msm_obj->pin_count;
+}
+
+static inline bool is_purgeable(struct msm_gem_object *msm_obj)
+{
+	return (msm_obj->madv == MSM_MADV_DONTNEED) && msm_obj->sgt &&
+			!is_unpurgeable(msm_obj);
+}
+
+static inline bool is_vunmapable(struct msm_gem_object *msm_obj)
+{
+	msm_gem_assert_locked(&msm_obj->base);
+	return (msm_obj->vmap_count == 0) && msm_obj->vaddr;
+}
+
+static inline bool is_unevictable(struct msm_gem_object *msm_obj)
+{
+	return is_unpurgeable(msm_obj) || msm_obj->vaddr;
+}
+
+void msm_gem_purge(struct drm_gem_object *obj);
+void msm_gem_evict(struct drm_gem_object *obj);
+void msm_gem_vunmap(struct drm_gem_object *obj);
+
 /* Created per submit-ioctl, to track bo's and cmdstream bufs, etc,
  * associated with the cmdstream submission for synchronization (and
  * make it easier to unwind when things go wrong, etc).
@@ -218,6 +259,7 @@ struct msm_gem_submit {
 	struct msm_gpu *gpu;
 	struct msm_gem_address_space *aspace;
 	struct list_head node;   /* node in ring submit list */
+	struct drm_exec exec;
 	uint32_t seqno;		/* Sequence number of the submit on the ring */
 
 	/* Hw fence, which is created when the scheduler executes the job, and
@@ -230,7 +272,6 @@ struct msm_gem_submit {
 	 */
 	struct dma_fence *user_fence;
 
-	uint32_t timestamp; /* queue timestamp */
 	int fence_id;       /* key into queue->fence_idr */
 	struct msm_gpu_submitqueue *queue;
 	struct pid *pid;    /* submitting process */
@@ -239,12 +280,25 @@ struct msm_gem_submit {
 	bool in_rb : 1;     /* "sudo" mode, copy cmds into RB */
 	struct msm_ringbuffer *ring;
 	unsigned int nr_cmds;
+	unsigned int nr_bos;
 	u32 ident;	   /* A "identifier" for the submit for logging */
 	struct {
 		uint32_t type;
 		uint32_t size;  /* in dwords */
 		uint64_t iova;
-	} cmd[];  /* array of size nr_cmds */
+		uint32_t offset;/* in dwords */
+		uint32_t idx;   /* cmdstream buffer idx in bos[] */
+		uint32_t nr_relocs;
+		struct drm_msm_gem_submit_reloc *relocs;
+	} *cmd;  /* array of size nr_cmds */
+	struct {
+		uint32_t flags;
+		union {
+			struct drm_gem_object *obj;
+			uint32_t handle;
+		};
+		uint64_t iova;
+	} bos[];
 };
 
 static inline struct msm_gem_submit *to_msm_submit(struct drm_sched_job *job)
@@ -273,17 +327,7 @@ static inline bool
 should_dump(struct msm_gem_submit *submit, int idx)
 {
 	extern bool rd_full;
-	return rd_full;
+	return rd_full || (submit->bos[idx].flags & MSM_SUBMIT_BO_DUMP);
 }
-
-struct drm_gem_object *msm_gem_vbo_new(struct drm_device *dev, u64 size, u32 flags,
-		struct msm_gem_address_space *aspace);
-int msm_gem_is_vbo(struct drm_gem_object *obj);
-int msm_gem_vbo_get_iova(struct drm_gem_object *obj,
-		struct msm_gem_address_space *aspace, uint64_t *iova);
-void msm_gem_vbo_bind(struct drm_gem_object *vbo, struct drm_gem_object *obj,
-		u64 src_offset, u64 dst_offset, u64 length);
-void msm_gem_vbo_unbind(struct drm_gem_object *vbo, struct drm_gem_object *obj, u64 offset, u64 length);
-
 
 #endif /* __MSM_GEM_H__ */

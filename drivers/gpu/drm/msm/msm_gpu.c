@@ -58,7 +58,11 @@ static int disable_pwrrail(struct msm_gpu *gpu)
 static int enable_clk(struct msm_gpu *gpu)
 {
 	if (gpu->core_clk && gpu->fast_rate)
-		clk_set_rate(gpu->core_clk, gpu->fast_rate);
+		dev_pm_opp_set_rate(&gpu->pdev->dev, gpu->fast_rate);
+
+	/* Set the RBBM timer rate to 19.2Mhz */
+	if (gpu->rbbmtimer_clk)
+		clk_set_rate(gpu->rbbmtimer_clk, 19200000);
 
 	return clk_bulk_prepare_enable(gpu->nr_clocks, gpu->grp_clks);
 }
@@ -66,6 +70,17 @@ static int enable_clk(struct msm_gpu *gpu)
 static int disable_clk(struct msm_gpu *gpu)
 {
 	clk_bulk_disable_unprepare(gpu->nr_clocks, gpu->grp_clks);
+
+	/*
+	 * Set the clock to a deliberately low rate. On older targets the clock
+	 * speed had to be non zero to avoid problems. On newer targets this
+	 * will be rounded down to zero anyway so it all works out.
+	 */
+	if (gpu->core_clk)
+		dev_pm_opp_set_rate(&gpu->pdev->dev, 27000000);
+
+	if (gpu->rbbmtimer_clk)
+		clk_set_rate(gpu->rbbmtimer_clk, 0);
 
 	return 0;
 }
@@ -392,27 +407,35 @@ static void recover_worker(struct kthread_work *work)
 	for (i = 0; i < gpu->nr_rings; i++) {
 		struct msm_ringbuffer *ring = gpu->rb[i];
 
+		uint32_t fence = ring->memptrs->fence;
+
 		/*
-		 * Update all fences to the last one to pretend all submits completed
+		 * For the current (faulting?) ring/submit advance the fence by
+		 * one more to clear the faulting submit
 		 */
-		msm_update_fence(ring->fctx, ring->fctx->last_fence);
+		if (ring == cur_ring)
+			ring->memptrs->fence = ++fence;
+
+		msm_update_fence(ring->fctx, fence);
 	}
 
-	if (true) { //msm_gpu_active(gpu)) {
-		/* retire all submits */
+	if (msm_gpu_active(gpu)) {
+		/* retire completed submits, plus the one that hung: */
 		retire_submits(gpu);
 
 		gpu->funcs->recover(gpu);
 
 		/*
-		 * Make sure all submits were retired
+		 * Replay all remaining submits starting with highest priority
+		 * ring
 		 */
 		for (i = 0; i < gpu->nr_rings; i++) {
 			struct msm_ringbuffer *ring = gpu->rb[i];
 			unsigned long flags;
 
 			spin_lock_irqsave(&ring->submit_lock, flags);
-			WARN_ON(!list_empty(&ring->submits));
+			list_for_each_entry(submit, &ring->submits, node)
+				gpu->funcs->submit(gpu, submit);
 			spin_unlock_irqrestore(&ring->submit_lock, flags);
 		}
 	}
@@ -489,36 +512,31 @@ static void hangcheck_handler(struct timer_list *t)
 {
 	struct msm_gpu *gpu = from_timer(gpu, t, hangcheck_timer);
 	struct drm_device *dev = gpu->dev;
-	int i;
+	struct msm_ringbuffer *ring = gpu->funcs->active_ring(gpu);
+	uint32_t fence = ring->memptrs->fence;
 
-	for (i = 0; i < gpu->nr_rings; i++) {
-		struct msm_ringbuffer *ring = gpu->rb[i];
-		uint32_t fence = ring->memptrs->fence;
+	if (fence != ring->hangcheck_fence) {
+		/* some progress has been made.. ya! */
+		ring->hangcheck_fence = fence;
+		ring->hangcheck_progress_retries = 0;
+	} else if (fence_before(fence, ring->fctx->last_fence) &&
+			!made_progress(gpu, ring)) {
+		/* no progress and not done.. hung! */
+		ring->hangcheck_fence = fence;
+		ring->hangcheck_progress_retries = 0;
+		DRM_DEV_ERROR(dev->dev, "%s: hangcheck detected gpu lockup rb %d!\n",
+				gpu->name, ring->id);
+		DRM_DEV_ERROR(dev->dev, "%s:     completed fence: %u\n",
+				gpu->name, fence);
+		DRM_DEV_ERROR(dev->dev, "%s:     submitted fence: %u\n",
+				gpu->name, ring->fctx->last_fence);
 
-		if (fence != ring->hangcheck_fence) {
-			/* some progress has been made.. ya! */
-			ring->hangcheck_fence = fence;
-			ring->hangcheck_progress_retries = 0;
-		} else if (fence_before(fence, ring->fctx->last_fence) &&
-				!made_progress(gpu, ring)) {
-			/* no progress and not done.. hung! */
-			ring->hangcheck_fence = fence;
-			ring->hangcheck_progress_retries = 0;
-			DRM_DEV_ERROR(dev->dev, "%s: hangcheck detected gpu lockup rb %d!\n",
-					gpu->name, ring->id);
-			DRM_DEV_ERROR(dev->dev, "%s:     completed fence: %u\n",
-					gpu->name, fence);
-			DRM_DEV_ERROR(dev->dev, "%s:     submitted fence: %u\n",
-					gpu->name, ring->fctx->last_fence);
-
-			kthread_queue_work(gpu->worker, &gpu->recover_work);
-			break;
-		}
-
-		/* if still more pending work, reset the hangcheck timer: */
-		if (fence_after(ring->fctx->last_fence, ring->hangcheck_fence))
-			hangcheck_timer_reset(gpu);
+		kthread_queue_work(gpu->worker, &gpu->recover_work);
 	}
+
+	/* if still more pending work, reset the hangcheck timer: */
+	if (fence_after(ring->fctx->last_fence, ring->hangcheck_fence))
+		hangcheck_timer_reset(gpu);
 
 	/* workaround for missing irq: */
 	msm_gpu_retire(gpu);
@@ -633,8 +651,6 @@ static void retire_submit(struct msm_gpu *gpu, struct msm_ringbuffer *ring,
 	volatile struct msm_gpu_submit_stats *stats;
 	u64 elapsed, clock = 0, cycles;
 	unsigned long flags;
-
-	msm_submitqueue_retire_timestamp(submit->queue, submit->timestamp);
 
 	stats = &ring->memptrs->stats[index];
 	/* Convert 19.2Mhz alwayson ticks to nanoseconds for elapsed time */
@@ -766,7 +782,6 @@ void msm_gpu_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 
 	gpu->funcs->submit(gpu, submit);
 	gpu->cur_ctx_seqno = submit->queue->ctx->seqno;
-	submit->queue->last_fence_submitted = submit->fence_id;
 
 	pm_runtime_put(&gpu->pdev->dev);
 	hangcheck_timer_reset(gpu);
@@ -871,7 +886,6 @@ int msm_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 	timer_setup(&gpu->hangcheck_timer, hangcheck_handler, 0);
 
 	spin_lock_init(&gpu->perf_lock);
-	spin_lock_init(&gpu->id_lock);
 
 
 	/* Map registers: */

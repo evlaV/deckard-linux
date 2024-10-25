@@ -309,7 +309,6 @@ void msm_rd_debugfs_cleanup(struct msm_drm_private *priv)
 	priv->hangrd = NULL;
 }
 
-#if 0
 static void snapshot_buf(struct msm_rd_state *rd,
 		struct msm_gem_submit *submit, int idx,
 		uint64_t iova, uint32_t size, bool full)
@@ -349,7 +348,6 @@ static void snapshot_buf(struct msm_rd_state *rd,
 
 	msm_gem_put_vaddr_locked(obj);
 }
-#endif
 
 /* called under gpu->lock */
 void msm_rd_dump_submit(struct msm_rd_state *rd, struct msm_gem_submit *submit,
@@ -388,7 +386,6 @@ void msm_rd_dump_submit(struct msm_rd_state *rd, struct msm_gem_submit *submit,
 
 	rd_write_section(rd, RD_CMD, msg, ALIGN(n, 4));
 
-#if 0
 	for (i = 0; i < submit->nr_bos; i++)
 		snapshot_buf(rd, submit, i, 0, 0, should_dump(submit, i));
 
@@ -401,7 +398,6 @@ void msm_rd_dump_submit(struct msm_rd_state *rd, struct msm_gem_submit *submit,
 					submit->cmd[i].iova, szd * 4, true);
 		}
 	}
-#endif
 
 	for (i = 0; i < submit->nr_cmds; i++) {
 		uint64_t iova = submit->cmd[i].iova;

@@ -21,7 +21,6 @@ MODULE_PARM_DESC(allow_vram_carveout, "Allow using VRAM Carveout, in place of IO
 module_param_named(allow_vram_carveout, allow_vram_carveout, bool, 0600);
 
 static const struct adreno_info gpulist[] = {
-#if 0
 	{
 		.chip_ids = ADRENO_CHIP_IDS(0x02000000),
 		.family = ADRENO_2XX_GEN1,
@@ -539,48 +538,49 @@ static const struct adreno_info gpulist[] = {
 			{ 178, 2 },
 			{ 142, 3 },
 		),
-	},
-#endif
-	{
-		.chip_ids = ADRENO_CHIP_IDS(0x07000001),
-		.revn = 730,
+	}, {
+		.chip_ids = ADRENO_CHIP_IDS(0x07030001),
+		.family = ADRENO_7XX_GEN1,
 		.fw = {
 			[ADRENO_FW_SQE] = "a730_sqe.fw",
+			[ADRENO_FW_GMU] = "gmu_gen70000.bin",
 		},
 		.gmem = SZ_2M,
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
 		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
 			  ADRENO_QUIRK_HAS_HW_APRIV,
-		.init = a7xx_gpu_init,
-		.zapfw = "a730_zap.mbn",
+		.init = a6xx_gpu_init,
+		.zapfw = "a730_zap.mdt",
 		.hwcg = a730_hwcg,
 		.address_space_size = SZ_16G,
 	}, {
-		.chip_ids = ADRENO_CHIP_IDS(0x07020001),
-		.revn = 740,
+		.chip_ids = ADRENO_CHIP_IDS(0x43050a01), /* "C510v2" */
+		.family = ADRENO_7XX_GEN2,
 		.fw = {
 			[ADRENO_FW_SQE] = "a740_sqe.fw",
+			[ADRENO_FW_GMU] = "gmu_gen70200.bin",
 		},
 		.gmem = 3 * SZ_1M,
-		.inactive_period = 30000, // 30 seconds
+		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
 		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
-			ADRENO_QUIRK_HAS_HW_APRIV,
-		.init = a7xx_gpu_init,
-		.zapfw = "a740_zap.mbn",
+			  ADRENO_QUIRK_HAS_HW_APRIV,
+		.init = a6xx_gpu_init,
+		.zapfw = "a740_zap.mdt",
 		.hwcg = a740_hwcg,
 		.address_space_size = SZ_16G,
 	}, {
-		.chip_ids = ADRENO_CHIP_IDS(0x07090000),
-		.revn = 750,
+		.chip_ids = ADRENO_CHIP_IDS(0x43051401), /* "C520v2" */
+		.family = ADRENO_7XX_GEN3,
 		.fw = {
-			[ADRENO_FW_SQE] = "a750_sqe.fw",
+			[ADRENO_FW_SQE] = "gen70900_sqe.fw",
+			[ADRENO_FW_GMU] = "gmu_gen70900.bin",
 		},
 		.gmem = 3 * SZ_1M,
-		.inactive_period = 3600*1000,
+		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
 		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
-			ADRENO_QUIRK_HAS_HW_APRIV,
-		.init = a7xx_gpu_init,
-		.zapfw = "a750_zap.mbn",
+			  ADRENO_QUIRK_HAS_HW_APRIV,
+		.init = a6xx_gpu_init,
+		.zapfw = "gen70900_zap.mbn",
 		.address_space_size = SZ_16G,
 	},
 };

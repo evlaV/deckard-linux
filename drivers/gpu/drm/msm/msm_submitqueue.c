@@ -50,6 +50,15 @@ void __msm_file_private_destroy(struct kref *kref)
 {
 	struct msm_file_private *ctx = container_of(kref,
 		struct msm_file_private, ref);
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(ctx->entities); i++) {
+		if (!ctx->entities[i])
+			continue;
+
+		drm_sched_entity_destroy(ctx->entities[i]);
+		kfree(ctx->entities[i]);
+	}
 
 	msm_gem_address_space_put(ctx->aspace);
 	kfree(ctx->comm);
@@ -61,90 +70,31 @@ void msm_submitqueue_destroy(struct kref *kref)
 {
 	struct msm_gpu_submitqueue *queue = container_of(kref,
 		struct msm_gpu_submitqueue, ref);
-	struct kgsl_fence *fence, *tmp;
-
-	list_for_each_entry_safe(fence, tmp, &queue->fences, node) {
-		dma_fence_signal(&fence->base);
-		dma_fence_put(&fence->base);
-	}
 
 	idr_destroy(&queue->fence_idr);
 
 	msm_file_private_put(queue->ctx);
 
-	spin_lock(&queue->gpu->id_lock);
-	queue->gpu->id_map[queue->id >> 6] &= ~(1ull << (~queue->id&63));
-	spin_unlock(&queue->gpu->id_lock);
-
 	kfree(queue);
-}
-
-int wait_fence(struct msm_gpu_submitqueue *queue, uint32_t fence_id, signed long timeout);
-
-static void msm_submitqueue_wait_idle(struct msm_gpu_submitqueue *queue)
-{
-	int ret;
-	long timeout;
-
-	/* wait for any submits to finish, to block until GEM objects are unused */
-	do {
-		ret = wait_fence(queue, queue->last_fence_submitted, 5 * HZ);
-	} while (ret == -ERESTARTSYS);
-	if (ret)
-		printk("msm_submitqueue_wait_idle timed out %d\n", ret);
-
-	do {
-		timeout = wait_event_interruptible_timeout(queue->waitqueue,
-				queue->timestamp_retired >= queue->timestamp,
-				5 * HZ);
-	} while (timeout == -ERESTARTSYS);
-	WARN_ON(timeout == 0);
-}
-
-void msm_submitqueue_retire_timestamp(struct msm_gpu_submitqueue *queue, u32 timestamp)
-{
-	struct kgsl_fence *fence, *tmp;
-	unsigned long flags;
-
-	spin_lock_irqsave(&queue->fence_lock, flags);
-	list_for_each_entry_safe(fence, tmp, &queue->fences, node) {
-		if (timestamp < fence->timestamp)
-			continue;
-		dma_fence_signal(&fence->base);
-		dma_fence_put(&fence->base);
-		list_del(&fence->node);
-	}
-	WARN_ON(timestamp < queue->timestamp_retired);
-	queue->timestamp_retired = timestamp;
-	spin_unlock_irqrestore(&queue->fence_lock, flags);
-
-	wmb(); /* make sure timestamp_retired write goes through */
-	wake_up_interruptible(&queue->waitqueue);
 }
 
 struct msm_gpu_submitqueue *msm_submitqueue_get(struct msm_file_private *ctx,
 		u32 id)
 {
-	struct msm_gpu_submitqueue *entry = NULL;
-	int i;
+	struct msm_gpu_submitqueue *entry;
 
 	if (!ctx)
 		return NULL;
 
 	read_lock(&ctx->queuelock);
 
-	for (i = 0; i < ARRAY_SIZE(ctx->queue); i++) {
-		if (ctx->queue[i] && ctx->queue[i]->id == id) {
-			entry = ctx->queue[i];
-			break;
+	list_for_each_entry(entry, &ctx->submitqueues, node) {
+		if (entry->id == id) {
+			kref_get(&entry->ref);
+			read_unlock(&ctx->queuelock);
+
+			return entry;
 		}
-	}
-
-	if (entry) {
-		kref_get(&entry->ref);
-		read_unlock(&ctx->queuelock);
-
-		return entry;
 	}
 
 	read_unlock(&ctx->queuelock);
@@ -153,33 +103,17 @@ struct msm_gpu_submitqueue *msm_submitqueue_get(struct msm_file_private *ctx,
 
 void msm_submitqueue_close(struct msm_file_private *ctx)
 {
-	struct msm_gpu_submitqueue *entry;
-	u32 i;
+	struct msm_gpu_submitqueue *entry, *tmp;
 
 	if (!ctx)
 		return;
-
-	/* cancel all jobs from this context that aren't yet submitted to HW */
-	for (i = 0; i < ARRAY_SIZE(ctx->entities); i++) {
-		if (!ctx->entities[i])
-			continue;
-
-		drm_sched_entity_destroy(ctx->entities[i]);
-		kfree(ctx->entities[i]);
-	}
 
 	/*
 	 * No lock needed in close and there won't
 	 * be any more user ioctls coming our way
 	 */
-	for (i = 0; i < ARRAY_SIZE(ctx->queue); i++) {
-		entry = ctx->queue[i];
-		ctx->queue[i] = NULL;
-		if (!entry)
-			continue;
-
-		/* wait outside of destroy so it doesn't get deferred to submit retire */
-		msm_submitqueue_wait_idle(entry);
+	list_for_each_entry_safe(entry, tmp, &ctx->submitqueues, node) {
+		list_del(&entry->node);
 		msm_submitqueue_put(entry);
 	}
 }
@@ -221,16 +155,13 @@ get_sched_entity(struct msm_file_private *ctx, struct msm_ringbuffer *ring,
 	return ctx->entities[idx];
 }
 
-void a7xx_reset_memstore(struct msm_gpu *gpu, uint32_t ctx_id);
-
 int msm_submitqueue_create(struct drm_device *drm, struct msm_file_private *ctx,
 		u32 prio, u32 flags, u32 *id)
 {
 	struct msm_drm_private *priv = drm->dev_private;
-	struct msm_gpu *gpu = priv->gpu;
 	struct msm_gpu_submitqueue *queue;
 	enum drm_sched_priority sched_prio;
-	unsigned ring_nr, i;
+	unsigned ring_nr;
 	int ret;
 
 	if (!ctx)
@@ -263,48 +194,44 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_file_private *ctx,
 	write_lock(&ctx->queuelock);
 
 	queue->ctx = msm_file_private_get(ctx);
+	queue->id = ctx->queueid++;
+
+	if (id)
+		*id = queue->id;
 
 	idr_init(&queue->fence_idr);
 	spin_lock_init(&queue->idr_lock);
 	mutex_init(&queue->lock);
 
-	queue->timestamp = 0;
-	queue->timestamp_retired = 0;
-	spin_lock_init(&queue->fence_lock);
-	INIT_LIST_HEAD(&queue->fences);
-	init_waitqueue_head(&queue->waitqueue);
-
-	for (i = 0; i < ARRAY_SIZE(ctx->queue); i++) {
-		if (ctx->queue[i])
-			continue;
-
-		ctx->queue[i] = queue;
-		queue->id = -1;
-		queue->gpu = gpu;
-		spin_lock(&gpu->id_lock);
-		for (i = 0; i < ARRAY_SIZE(gpu->id_map); i++) {
-			if (gpu->id_map[i] == ~0ull)
-				continue;
-
-			queue->id = __builtin_clzll(~gpu->id_map[i]);
-			gpu->id_map[i] |= 1ull << (~queue->id & 63);
-			queue->id += i*64;
-			break;
-		}
-		spin_unlock(&gpu->id_lock);
-		WARN_ON (queue->id == -1); // XXX
-
-		a7xx_reset_memstore(gpu, queue->id);
-
-		if (id)
-			*id = queue->id;
-		break;
-	}
-	WARN_ON(i == ARRAY_SIZE(ctx->queue)); // XXX
+	list_add_tail(&queue->node, &ctx->submitqueues);
 
 	write_unlock(&ctx->queuelock);
 
 	return 0;
+}
+
+/*
+ * Create the default submit-queue (id==0), used for backwards compatibility
+ * for userspace that pre-dates the introduction of submitqueues.
+ */
+int msm_submitqueue_init(struct drm_device *drm, struct msm_file_private *ctx)
+{
+	struct msm_drm_private *priv = drm->dev_private;
+	int default_prio, max_priority;
+
+	if (!priv->gpu)
+		return -ENODEV;
+
+	max_priority = (priv->gpu->nr_rings * NR_SCHED_PRIORITIES) - 1;
+
+	/*
+	 * Pick a medium priority level as default.  Lower numeric value is
+	 * higher priority, so round-up to pick a priority that is not higher
+	 * than the middle priority level.
+	 */
+	default_prio = DIV_ROUND_UP(max_priority, 2);
+
+	return msm_submitqueue_create(drm, ctx, default_prio, 0, NULL);
 }
 
 static int msm_submitqueue_query_faults(struct msm_gpu_submitqueue *queue,
@@ -350,27 +277,28 @@ int msm_submitqueue_query(struct drm_device *drm, struct msm_file_private *ctx,
 
 int msm_submitqueue_remove(struct msm_file_private *ctx, u32 id)
 {
-	struct msm_gpu_submitqueue *entry = NULL;
-	int i;
+	struct msm_gpu_submitqueue *entry;
 
 	if (!ctx)
 		return 0;
 
+	/*
+	 * id 0 is the "default" queue and can't be destroyed
+	 * by the user
+	 */
+	if (!id)
+		return -ENOENT;
+
 	write_lock(&ctx->queuelock);
 
-	for (i = 0; i < ARRAY_SIZE(ctx->queue); i++) {
-		if (ctx->queue[i] && ctx->queue[i]->id == id) {
-			entry = ctx->queue[i];
-			ctx->queue[i] = NULL;
-			break;
+	list_for_each_entry(entry, &ctx->submitqueues, node) {
+		if (entry->id == id) {
+			list_del(&entry->node);
+			write_unlock(&ctx->queuelock);
+
+			msm_submitqueue_put(entry);
+			return 0;
 		}
-	}
-
-	if (entry) {
-		write_unlock(&ctx->queuelock);
-
-		msm_submitqueue_put(entry);
-		return 0;
 	}
 
 	write_unlock(&ctx->queuelock);

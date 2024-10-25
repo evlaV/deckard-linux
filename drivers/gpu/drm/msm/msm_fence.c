@@ -185,18 +185,11 @@ msm_fence_alloc(void)
 }
 
 void
-msm_fence_init(struct dma_fence *fence, struct msm_fence_context *fctx, bool submit_is_empty)
+msm_fence_init(struct dma_fence *fence, struct msm_fence_context *fctx)
 {
 	struct msm_fence *f = to_msm_fence(fence);
-	u64 seqno;
 
 	f->fctx = fctx;
-
-	/* HACK to skip empty submits: don't increment seqno */
-	if (submit_is_empty)
-		seqno = fctx->last_fence;
-	else
-		seqno = ++fctx->last_fence;
 
 	/*
 	 * Until this point, the fence was just some pre-allocated memory,
@@ -205,5 +198,5 @@ msm_fence_init(struct dma_fence *fence, struct msm_fence_context *fctx, bool sub
 	WARN_ON(kref_read(&fence->refcount));
 
 	dma_fence_init(&f->base, &msm_fence_ops, &fctx->spinlock,
-		       fctx->context, seqno);
+		       fctx->context, ++fctx->last_fence);
 }

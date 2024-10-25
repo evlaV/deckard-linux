@@ -82,7 +82,7 @@ bool msm_fence_completed(struct msm_fence_context *fctx, uint32_t fence);
 void msm_update_fence(struct msm_fence_context *fctx, uint32_t fence);
 
 struct dma_fence * msm_fence_alloc(void);
-void msm_fence_init(struct dma_fence *fence, struct msm_fence_context *fctx, bool submit_is_empty);
+void msm_fence_init(struct dma_fence *fence, struct msm_fence_context *fctx);
 
 static inline bool
 fence_before(uint32_t a, uint32_t b)
