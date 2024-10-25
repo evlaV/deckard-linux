@@ -24,6 +24,5 @@ iris-objs += iris_buffer.o \
              iris_vpu3.o \
              iris_vpu_buffer.o \
              iris_vpu_common.o \
-	     firmware_no_tz.o \
 
 obj-$(CONFIG_VIDEO_QCOM_IRIS) += iris.o
