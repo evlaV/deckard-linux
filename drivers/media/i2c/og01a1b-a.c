@@ -1237,7 +1237,7 @@ xclk_off:
 static void og01a1b_set_power_off(struct og01a1b_dev *sensor)
 {
 	regulator_bulk_disable(og01a1b_NUM_SUPPLIES, sensor->supplies);
-	clk_disable_unprepare(sensor->xclk);
+	//clk_disable_unprepare(sensor->xclk);
 }
 
 static int og01a1b_set_power(struct og01a1b_dev *sensor, bool on)
@@ -1921,6 +1921,7 @@ static void update_groups_work_fn(struct work_struct *Wq)
 
 static int og01a1b_probe(struct i2c_client *client)
 {
+	printk("og01a1b_probe\n");
 	struct device *dev = &client->dev;
 	struct fwnode_handle *endpoint;
 	struct og01a1b_dev *sensor;
@@ -2080,7 +2081,7 @@ static int og01a1b_probe(struct i2c_client *client)
 	mutex_init(&sensor->mutex);
 	ret = og01a1b_init_controls(sensor);
 	if (ret) {
-		dev_err(&client->dev, "failed to init controls: %d", ret);
+		dev_err(&client->dev, "failed to init control: %d", ret);
 		goto entity_cleanup;
 	}
 
