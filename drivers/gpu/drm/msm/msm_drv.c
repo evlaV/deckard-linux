@@ -59,8 +59,8 @@ static bool modeset = true;
 MODULE_PARM_DESC(modeset, "Use kernel modesetting [KMS] (1=on (default), 0=disable)");
 module_param(modeset, bool, 0600);
 
-DECLARE_FAULT_ATTR(fail_gem_alloc);
-DECLARE_FAULT_ATTR(fail_gem_iova);
+//DECLARE_FAULT_ATTR(fail_gem_alloc);
+//DECLARE_FAULT_ATTR(fail_gem_iova);
 
 static int msm_drm_uninit(struct device *dev)
 {
@@ -451,8 +451,10 @@ static int msm_ioctl_gem_new(struct drm_device *dev, void *data,
 		flags |= MSM_BO_WC;
 	}
 
+#if 0
 	if (should_fail(&fail_gem_alloc, args->size))
 		return -ENOMEM;
+#endif
 
 	return msm_gem_new_handle(dev, file, args->size,
 			args->flags, &args->handle, NULL);
@@ -515,8 +517,10 @@ static int msm_ioctl_gem_info_iova(struct drm_device *dev,
 	if (!priv->gpu)
 		return -EINVAL;
 
+#if 0
 	if (should_fail(&fail_gem_iova, obj->size))
 		return -ENOMEM;
+#endif
 
 	/*
 	 * Don't pin the memory here - just get an address so that userspace can
@@ -539,8 +543,10 @@ static int msm_ioctl_gem_info_set_iova(struct drm_device *dev,
 	if (priv->gpu->aspace == ctx->aspace)
 		return -EOPNOTSUPP;
 
+#if 0
 	if (should_fail(&fail_gem_iova, obj->size))
 		return -ENOMEM;
+#endif
 
 	return msm_gem_set_iova(obj, ctx->aspace, iova);
 }

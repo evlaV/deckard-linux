@@ -383,7 +383,7 @@ static int dp_display_bind(struct device *dev, struct device *master, void *data
 
 	platform_set_drvdata(pdev, dp);
 
-	priv->dp = dp;
+	priv->dp[0] = dp;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
@@ -491,7 +491,7 @@ static void dp_display_unbind(struct device *dev, struct device *master,
 	dp_write(dp, REG_DP_INTR_STATUS, 0);
 	dp_write(dp, REG_DP_INTR_STATUS2, 0);
 
-	priv->dp = NULL;
+	priv->dp[0] = NULL;
 }
 
 static const struct component_ops dp_display_comp_ops = {

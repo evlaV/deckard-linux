@@ -11,6 +11,7 @@
 #include "msm_kms.h"
 #include "msm_mmu.h"
 #include "msm_gem.h"
+#include "../mdp_format.h"
 
 #include "dpu_hw_regs.h"
 

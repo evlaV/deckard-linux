@@ -17,7 +17,7 @@ dpu_encoder_mode_set(struct drm_encoder *encoder,
 	struct msm_drm_private *priv = encoder->dev->dev_private;
 
 	if (encoder->encoder_type == DRM_MODE_ENCODER_TMDS)
-		msm_dp_display_mode_set(priv->dp, encoder, mode, adj_mode);
+		msm_dp_display_mode_set(priv->dp[0], encoder, mode, adj_mode);
 }
 
 static void
@@ -263,7 +263,7 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		}
 	}
 
-	rc = msm_dp_modeset_init(priv->dp, dev, &dpu->encoder[1]);
+	rc = msm_dp_modeset_init(priv->dp[0], dev, &dpu->encoder[1]);
 	if (rc) {
 		DRM_ERROR("modeset_init failed for DP, rc = %d\n", rc);
 		return rc; // XXX proper free path

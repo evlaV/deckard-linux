@@ -376,7 +376,10 @@ static inline const char *msm_dsi_get_te_source(struct msm_dsi *msm_dsi)
 int __init msm_dp_register(void);
 void __exit msm_dp_unregister(void);
 int msm_dp_modeset_init(struct msm_dp *dp_display, struct drm_device *dev,
-			 struct drm_encoder *encoder, bool yuv_supported);
+			 struct drm_encoder *encoder);
+void msm_dp_display_mode_set(struct msm_dp *dp, struct drm_encoder *encoder,
+				const struct drm_display_mode *mode,
+				const struct drm_display_mode *adjusted_mode);
 void msm_dp_snapshot(struct msm_disp_state *disp_state, struct msm_dp *dp_display);
 bool msm_dp_is_yuv_420_enabled(const struct msm_dp *dp_display,
 			       const struct drm_display_mode *mode);

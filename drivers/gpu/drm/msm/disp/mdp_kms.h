@@ -13,6 +13,7 @@
 
 #include "msm_drv.h"
 #include "msm_kms.h"
+#include "mdp_format.h"
 #include "mdp_common.xml.h"
 
 struct mdp_kms;

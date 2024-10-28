@@ -94,8 +94,10 @@ void msm_disp_state_print(struct msm_disp_state *state, struct drm_printer *p)
 
 	drm_printf(p, "===================dpu drm state================\n");
 
+#if 0
 	if (state->atomic_state)
 		drm_atomic_print_new_state(state->atomic_state, p);
+#endif
 }
 
 static void msm_disp_capture_atomic_state(struct msm_disp_state *disp_state)

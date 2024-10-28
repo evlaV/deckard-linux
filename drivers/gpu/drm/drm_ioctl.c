@@ -759,9 +759,6 @@ EXPORT_SYMBOL(drm_ioctl_kernel);
  * Zero on success, negative error code on failure.
  */
 
-#define KGSL_IOC_TYPE 0x09
-long kgsl_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
-
 long drm_ioctl(struct file *filp,
 	      unsigned int cmd, unsigned long arg)
 {
@@ -782,8 +779,6 @@ long drm_ioctl(struct file *filp,
 		return -ENODEV;
 
 	if (DRM_IOCTL_TYPE(cmd) != DRM_IOCTL_BASE) {
-		if (DRM_IOCTL_TYPE(cmd) == KGSL_IOC_TYPE)
-			return kgsl_ioctl(filp, cmd, arg);
 		return -ENOTTY;
 	}
 

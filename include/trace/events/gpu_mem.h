@@ -13,6 +13,7 @@
 
 #include <linux/tracepoint.h>
 
+#if 0
 /*
  * The gpu_memory_total event indicates that there's an update to either the
  * global or process total gpu memory counters.
@@ -50,6 +51,7 @@ TRACE_EVENT(gpu_mem_total,
 		__entry->pid,
 		__entry->size)
 );
+#endif
 
 #endif /* _TRACE_GPU_MEM_H */
 
