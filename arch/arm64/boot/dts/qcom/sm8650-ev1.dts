@@ -87,6 +87,87 @@
 		regulator-boot-on;
 	};
 
+
+	vreg_6dof_1p8_r: r0-1p8-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_6dof_1p8_r";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		gpio = <&tlmm 36 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_l5m_1p8>;
+		enable-active-high;
+	};
+
+	vreg_6dof_1p8_ur: r1-1p8-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_6dof_1p8_ur";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		gpio = <&tlmm 12 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_l5m_1p8>;
+		enable-active-high;
+	};
+
+	vreg_6dof_1p8_l: l0-1p8-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_6dof_1p8_l";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		gpio = <&tlmm 36 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_l5n_1p8>;
+		enable-active-high;
+	};
+
+	vreg_6dof_1p8_ul: l1-1p8-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_6dof_1p8_ul";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		gpio = <&tlmm 12 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_l5n_1p8>;
+		enable-active-high;
+	};
+
+	vreg_6dof_1p2_r: r0-1p2-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_6dof_1p2_r";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		gpio = <&tlmm 37 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_l2m_1p2>;
+		enable-active-high;
+	};
+
+	vreg_6dof_1p2_ur: r1-1p2-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_6dof_1p2_ur";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		gpio = <&tlmm 15 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_l2m_1p2>;
+		enable-active-high;
+	};
+
+	vreg_6dof_1p2_l: l0-1p2-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_6dof_1p2_l";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		gpio = <&tlmm 37 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_l2n_1p2>;
+		enable-active-high;
+	};
+
+	vreg_6dof_1p2_ul: l1-1p2-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_6dof_1p2_ul";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		gpio = <&tlmm 15 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_l2n_1p2>;
+		enable-active-high;
+	};
+
 	eyetck_dovdd_1v8: eyetck_dovdd_1v8 {
 		compatible = "regulator-fixed";
 		regulator-name = "eyetck_dovdd_1v8";
@@ -607,7 +688,7 @@
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
 
-			regulator-always-on; // CSI PHY
+			//regulator-always-on; // CSI PHY
 		};
 
 		vreg_l3i_1p2: ldo3 {
@@ -619,7 +700,7 @@
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
 
-			regulator-always-on; // CSI PHY
+			//regulator-always-on; // CSI PHY
 		};
 	};
 
@@ -758,6 +839,262 @@
 	status = "okay";
 };
 
+
+&camss {
+	status = "okay";
+
+	vdda-csi01-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi01-1p2-supply = <&vreg_l3i_1p2>;
+
+	ports {
+#if 0		
+		port@0 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csiphy0_ep: endpoint@0 {
+				reg = <0>;
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_6dof_l>;
+			};
+
+			csiphy0_combo_ep: endpoint@1 {
+				reg = <1>;
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&cam_6dof_ul>;
+			};
+		};
+
+		port@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csiphy1_ep: endpoint@0 {
+				reg = <0>;
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_6dof_r>;
+			};
+
+			csiphy1_combo_ep: endpoint@1 {
+				reg = <1>;
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&cam_6dof_ur>;
+			};
+		};
+#endif
+
+#if 0
+		port@2 {
+			csiphy2_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&cam_et_l>;
+			};
+		};
+
+		port@4 {
+			csiphy4_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&cam_et_r>;
+			};
+		};
+#endif
+	};
+};
+
+&cci0 {
+	status = "okay";
+};
+
+&cci0_i2c1 {
+#if 0
+	sensor@60 {
+		compatible = "ovti,ov6211";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK4_CLK>;
+		reset-gpios = <&tlmm 7 GPIO_ACTIVE_LOW>;
+		pinctrl-0 = <&cam4_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l6n_2p8>;
+		DOVDD-supply = <&eyetck_dovdd_1v8>;
+		DVDD-supply = <&vreg_l1n_1p1>;
+
+		port {
+			cam_et_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&csiphy2_ep>;
+			};
+		};
+	};
+#endif
+};
+
+&cci1 {
+	pinctrl-0 = <&cci1_0_default>;
+	pinctrl-1 = <&cci1_0_sleep>;
+	status = "okay";
+};
+
+&cci1_i2c0 {
+#if 0
+	sensor@60 {
+		compatible = "ovti,ov6211";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK2_CLK>;
+		reset-gpios = <&tlmm 3 GPIO_ACTIVE_LOW>;
+		pinctrl-0 = <&cam2_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l6m_2p8>;
+		DOVDD-supply = <&eyetck_dovdd_1v8>;
+		DVDD-supply = <&vreg_l1m_1p1>;
+
+		port {
+			cam_et_r: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&csiphy4_ep>;
+			};
+		};
+	};
+#endif
+};
+
+&cci2 {
+	status = "okay";
+};
+
+
+&cci2_i2c0 {
+/*FIXUP THE BELOW EV1 CAMERA SENSOR NODES*/
+#if 0
+	cam@60 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		clock-names = "xclk";
+
+
+
+		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 123 GPIO_ACTIVE_HIGH>;
+		sensor-queue-index = <0>;
+		ircontrol-gpios = <&tlmm 200 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam_sensor_mclk1_active>; // <&cam_6dof_l_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&VREG_6DOF_2P8_L>;
+		DOVDD-supply = <&VREG_6DOF_1V8_L>;
+		DVDD-supply = <&VREG_6DOF_1V2_L>;
+		id = "slam_left";
+
+		dual-i2c-available = <1>;
+		dual-i2c-main = <1>;
+		
+		port {
+			cam_6dof_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&csiphy0_ep>;
+			};
+		};
+	};
+
+	cam@36 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x36>;
+		clocks = <&camcc CAM_CC_MCLK0_CLK>;
+		clock-names = "xclk";
+
+		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 121 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam_sensor_mclk0_active>; // <&cam_6dof_r_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&VREG_6DOF_2P8_R>;
+		DOVDD-supply = <&VREG_6DOF_1V8_R>;
+		DVDD-supply = <&VREG_6DOF_1V2_R>;
+
+		id = "slam_right";
+		sensor-queue-index = <0>;
+
+		dual-i2c-available = <1>;
+		dual-i2c-main = <0>;
+		
+		port {
+			cam_6dof_r: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&csiphy1_ep>;
+			};
+		};
+	};
+#endif
+};
+
+&cci2_i2c1 {
+/*FIXUP THE BELOW EV1 CAMERA SENSOR NODES*/
+#if 0
+	cam_u@60 {
+		compatible = "ovti,og0ve10x";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		clock-names = "xclk";
+		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 28 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam_sensor_mclk3_active>; // <&cam_6dof_ul_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&VREG_6DOF_2P8_UL>;
+		DOVDD-supply = <&VREG_6DOF_1V8_UL>;
+		DVDD-supply = <&VREG_6DOF_1V2_UL>;
+		sensor-queue-index = <1>;
+		id = "upper_left";
+	
+		dual-i2c-available = <1>;
+		dual-i2c-main = <1>;
+		
+		port {
+			cam_6dof_ul: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&csiphy0_combo_ep>;
+			};
+		};
+	};
+
+	cam_u@3e {
+		compatible = "ovti,og0ve10x";
+		reg = <0x3E>;
+		clocks = <&camcc CAM_CC_MCLK5_CLK>;
+		clock-names = "xclk";
+		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 68 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam_sensor_mclk5_active>; // <&cam_6dof_ur_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&VREG_6DOF_2P8_UR>;
+		DOVDD-supply = <&VREG_6DOF_1V8_UR>;
+		DVDD-supply = <&VREG_6DOF_1V2_UR>;
+
+		sensor-queue-index = <1>;
+		id = "upper_right";
+
+		dual-i2c-available = <1>;
+		dual-i2c-main = <0>;
+
+		port {
+			cam_6dof_ur: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&csiphy1_combo_ep>;
+			};
+		};
+	};
+#endif
+
+};
 
 &gpu {
 	status = "okay";
