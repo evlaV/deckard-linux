@@ -318,6 +318,7 @@ dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-qrd.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-pocf.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-pocf-v2.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev1.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev1-psci.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8750-mtp.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8750-qrd.dtb
 x1e001de-devkit-el2-dtbs	:= x1e001de-devkit.dtb x1-el2.dtbo
