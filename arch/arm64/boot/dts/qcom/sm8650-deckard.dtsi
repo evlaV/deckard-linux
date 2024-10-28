@@ -10,7 +10,6 @@
 /delete-node/ &remoteproc_mpss;
 /delete-node/ &remoteproc_adsp;
 /delete-node/ &remoteproc_cdsp;
-/delete-node/ &aoss_qmp;
 /delete-node/ &timer;
 
 #include "pm8010.dtsi"
@@ -48,15 +47,6 @@
 
 	chosen {
 		stdout-path = "serial0:115200n8";
-	};
-
-	vdd_gfx: vdd-gfx {
-		compatible = "regulator-fixed-domain";
-		power-domains = <&rpmhpd RPMHPD_GFX>;
-		required-opps = <&rpmhpd_opp_nom>; //supports up to ~830MHz
-		//required-opps = <&rpmhpd_opp_turbo>; //903MHz
-		regulator-name = "GFX";
-		regulator-always-on;
 	};
 
 	vdd_mxc: vdd-mxc {
