@@ -2381,7 +2381,7 @@ static long vfe_parent_dev_ops_set_statistics_config(struct camss *camss, int id
 		return vfe_set_statistics_config(vfe, stats_cfg);
 	}
 
-	return NULL;
+	return 0;
 }
 
 static const struct parent_dev_ops vfe_parent_dev_ops = {

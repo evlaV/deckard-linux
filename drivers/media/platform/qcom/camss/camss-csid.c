@@ -1535,7 +1535,7 @@ int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size
 		qm.index = v4l2_ctrl_g_ctrl(ctrl);
 
 		v4l2_querymenu(subdev->ctrl_handler, &qm);
-		*size = (size_t*)qm.value;
+		*size = (size_t) qm.value;
 		printk("metadata size: %zu\n", *size);
 	}
 
