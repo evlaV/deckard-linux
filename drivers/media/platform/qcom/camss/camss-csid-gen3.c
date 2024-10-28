@@ -529,7 +529,7 @@ static int csid_reset(struct csid_device *csid)
 
 	val = 0x1010;
 	//val = 0x10881004;
-	writel_relaxed(val, csid->base + CSID_CSI2_RDIN_IRQ_MASK(csid->id));
+	writel_relaxed(val, csid->base + CSID_CSI2_RDIN_IRQ_MASK(0));
 	writel_relaxed(val, csid->base + 0xb0); // IPP SOF
 
 	return 0;
