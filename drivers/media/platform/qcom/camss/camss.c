@@ -4432,7 +4432,7 @@ static int camss_subdev_notifier_complete(struct v4l2_async_notifier *async)
 			return -EINVAL;
 		}
 
-		if (!strncmp(sensor->name, "og0ve1b", 7)) {
+		if (!strncmp(sensor->name, "og0ve10", 7)) {
 			printk(KERN_ERR "%s: apply combo mode hack to '%s'\n",
 					__func__, sensor->name);
 			pad_sink += 2;
