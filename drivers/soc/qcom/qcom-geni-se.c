@@ -10,6 +10,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/firmware.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/pinctrl/consumer.h>
@@ -95,6 +96,7 @@ struct geni_wrapper {
 	void __iomem *base;
 	struct clk_bulk_data clks[MAX_CLKS];
 	unsigned int num_clks;
+	const struct firmware *firmware;	
 };
 
 /**
@@ -105,6 +107,23 @@ struct geni_wrapper {
 struct geni_se_desc {
 	unsigned int num_clks;
 	const char * const *clks;
+};
+
+#define GENI_SE_FW_MAGIC	0x57464553UL
+
+struct __packed geni_se_fw_hdr
+{
+    u32 magic;               /* = 'SEFW' */
+    u32 version;             /* Structure version number =  */
+    u32 core_version;        /* QUPV3_HW_VERSION */
+    u16 serial_protocol;     /* Programmed into GENI_FW_REVISION */
+    u16 fw_version;          /* Programmed into GENI_FW_REVISION */
+    u16 cfg_version;         /* Programmed into GENI_INIT_CFG_REVISION */
+    u16 fw_size_in_items;    /* Number of (uint32) GENI_FW_RAM words */
+    u16 fw_offset;           /* Byte offset of GENI_FW_RAM array */
+    u16 cfg_size_in_items;   /* Number of GENI_FW_CFG index/value pairs */
+    u16 cfg_idx_offset;      /* Byte offset of GENI_FW_CFG indexes array */
+    u16 cfg_val_offset;      /* Byte offset of GENI_FW_CFG values array */
 };
 
 static const char * const icc_path_names[] = {"qup-core", "qup-config",
@@ -119,6 +138,8 @@ static const char * const icc_path_names[] = {"qup-core", "qup-config",
 #define GENI_CGC_CTRL			0x28
 #define GENI_CLK_CTRL_RO		0x60
 #define GENI_FW_S_REVISION_RO		0x6c
+#define GENI_DFS_IF_CFG			0x80
+#define GENI_CFG_REG(i)			(0x100 + ((i) * 4))
 #define SE_GENI_BYTE_GRAN		0x254
 #define SE_GENI_TX_PACKING_CFG0		0x260
 #define SE_GENI_TX_PACKING_CFG1		0x264
@@ -148,9 +169,18 @@ static const char * const icc_path_names[] = {"qup-core", "qup-config",
 #define SE_GSI_EVENT_EN			0xe18
 #define SE_IRQ_EN			0xe1c
 #define SE_DMA_GENERAL_CFG		0xe30
+#define SE_GENI_FW_REVISION		0x1000
+#define SE_GENI_S_FW_REVISION		0x1004
+#define SE_GENI_CFG_RAM(i)		(0x1010 + ((i) * 4))
+#define SE_GENI_CLK_CTRL		0x2000
+#define SE_GENI_DMA_IF_EN		0x2004
+#define SE_GENI_FIFO_IF_DISABLE		0x2008
 
 /* GENI_OUTPUT_CTRL fields */
 #define DEFAULT_IO_OUTPUT_CTRL_MSK	GENMASK(6, 0)
+
+/* GENI_DFS_IF_CFG */
+#define DFS_IF_EN			BIT(0)
 
 /* GENI_CGC_CTRL fields */
 #define CFG_AHB_CLK_CGC_ON		BIT(0)
@@ -176,6 +206,12 @@ static const char * const icc_path_names[] = {"qup-core", "qup-config",
 #define GENI_M_IRQ_EN			BIT(2)
 #define GENI_S_IRQ_EN			BIT(3)
 
+/* SE_DMA_TX_ATTR */
+#define GENI_SE_DMA_DONE_EN		BIT(0)
+#define GENI_SE_DMA_EOT_EN		BIT(1)
+#define GENI_SE_DMA_AHB_ERR_EN		BIT(2)
+#define GENI_SE_DMA_EOT_BUF		BIT(0)
+
 /* SE_DMA_GENERAL_CFG */
 #define DMA_RX_CLK_CGC_ON		BIT(0)
 #define DMA_TX_CLK_CGC_ON		BIT(1)
@@ -185,6 +221,23 @@ static const char * const icc_path_names[] = {"qup-core", "qup-config",
 #define RX_DMA_ZERO_PADDING_EN		BIT(5)
 #define RX_DMA_IRQ_DELAY_MSK		GENMASK(8, 6)
 #define RX_DMA_IRQ_DELAY_SHFT		6
+
+/* SE_DMA_RX_IRQ_EN */
+#define GENI_SE_DMA_DONE_EN		BIT(0)
+#define GENI_SE_DMA_EOT_EN		BIT(1)
+#define GENI_SE_DMA_AHB_ERR_EN		BIT(2)
+#define GENI_SE_DMA_RESET_DONE_EN_SET	BIT(3)
+#define GENI_SE_DMA_FLUSH_DONE_EN_SET	BIT(4)
+
+/* SE_GENI_FW_REVISION */
+#define SE_FW_SERIAL_PROTOCOL		GENMASK(15, 8)
+#define SE_FW_VERSION			GENMASK(7, 0)
+
+/* SE_GENI_CLK_CTRL */
+#define SER_CLK_SEL 			BIT(0)
+
+/* SE_GENI_DMA_IF_EN */
+#define DMA_IF_EN			BIT(0)
 
 /**
  * geni_se_get_qup_hw_version() - Read the QUP wrapper Hardware version
@@ -272,6 +325,202 @@ void geni_se_init(struct geni_se *se, u32 rx_wm, u32 rx_rfr)
 	writel_relaxed(val, se->base + SE_GENI_S_IRQ_EN);
 }
 EXPORT_SYMBOL_GPL(geni_se_init);
+
+static int geni_se_find_firmware(struct geni_wrapper *wrapper,
+				 enum geni_se_protocol_type proto,
+				 u32 qupv3_hw_ver,
+				 const struct geni_se_fw_hdr **se_fw)
+{
+	const struct elf32_phdr *phdrs;
+	const struct elf32_phdr *phdr;
+	const struct elf32_hdr *ehdr;
+	struct geni_se_fw_hdr *fw;
+	const char *fw_name;
+	int ret, i;
+
+	if (!wrapper->firmware) {
+		ret = of_property_read_string(wrapper->dev->of_node, "firmware-name",
+					      &fw_name);
+		if (ret) {
+			dev_err(wrapper->dev, "missing firmware-name property\n");
+			return ret;
+		}
+
+		ret = request_firmware(&wrapper->firmware, fw_name, wrapper->dev);
+		if (ret) {
+			dev_err(wrapper->dev, "unable to load firmware\n");
+			return ret;
+		}
+	}
+
+	ehdr = (struct elf32_hdr *)wrapper->firmware->data;
+	phdrs = (struct elf32_phdr *)(ehdr + 1);
+
+	for (i = 0; i < ehdr->e_phnum; i++) {
+		phdr = &phdrs[i];
+
+		if (phdr->p_type != PT_LOAD)
+			continue;
+
+		if (phdr->p_offset > wrapper->firmware->size)
+			continue;
+
+		fw = (void *)(wrapper->firmware->data + phdr->p_offset);
+		if (fw->magic != GENI_SE_FW_MAGIC ||
+		    fw->serial_protocol != proto ||
+		    fw->core_version < qupv3_hw_ver)
+			continue;
+
+		*se_fw = fw;
+
+		return 0;
+	}
+
+	dev_err(wrapper->dev, "Unable to find firmware for protocol %d and QUP version %x\n",
+		proto, qupv3_hw_ver);
+
+	return -EINVAL;
+}
+
+int geni_se_load_firmware(struct geni_se *se, enum geni_se_protocol_type proto)
+{
+	struct geni_wrapper *wrapper = se->wrapper;	
+	const struct geni_se_fw_hdr *fw;
+	u32 *fw_val_arr, *cfg_val_arr;
+	u8 *cfg_idx_arr;
+	u32 fifo_depth;
+	int ret, i;
+
+	ret = geni_se_find_firmware(wrapper, proto,
+				    geni_se_get_qup_hw_version(se),
+				    &fw);
+	if (ret)
+		return ret;
+
+	fw_val_arr  = (u32 *)((u8 *)fw + fw->fw_offset);
+	cfg_idx_arr = (u8 *)fw + fw->cfg_idx_offset;
+	cfg_val_arr = (u32 *)((u8 *)fw + fw->cfg_val_offset);
+
+	writel(0, se->base + GENI_OUTPUT_CTRL);
+
+	writel(readl_relaxed(se->base + GENI_DFS_IF_CFG) & ~DFS_IF_EN,
+	       se->base + GENI_DFS_IF_CFG);
+
+	writel(readl_relaxed(se->base + GENI_CGC_CTRL) |
+	       PROG_RAM_HCLK_OFF |
+	       PROG_RAM_SCLK_OFF,
+	       se->base + GENI_CGC_CTRL);
+	writel(0, se->base + SE_GENI_CLK_CTRL);
+	writel(readl_relaxed(se->base + GENI_CGC_CTRL) &
+	       ~(PROG_RAM_HCLK_OFF | PROG_RAM_SCLK_OFF),
+	       se->base + GENI_CGC_CTRL);
+
+	/* GENI_FW_REVISION / GENI_S_FW_REVISION */
+	writel(FIELD_PREP(SE_FW_SERIAL_PROTOCOL, fw->serial_protocol) |
+	       FIELD_PREP(SE_FW_VERSION, fw->fw_version),
+	       se->base + SE_GENI_FW_REVISION);
+	writel(FIELD_PREP(SE_FW_SERIAL_PROTOCOL, fw->serial_protocol) |
+	       FIELD_PREP(SE_FW_VERSION, fw->fw_version),
+	       se->base + SE_GENI_S_FW_REVISION);
+
+	/* GENI_CFG_RAM */
+	for (i = 0; i < fw->fw_size_in_items; i++)
+		writel(fw_val_arr[i], se->base + SE_GENI_CFG_RAM(i));
+
+	writel(fw->cfg_version, se->base + GENI_INIT_CFG_REVISION);
+	writel(fw->cfg_version, se->base + GENI_S_INIT_CFG_REVISION);
+
+	for (i = 0; i < fw->cfg_size_in_items; i++)
+		writel(cfg_val_arr[i], se->base + GENI_CFG_REG(cfg_idx_arr[i]));
+
+	fifo_depth = FIELD_GET(RX_FIFO_DEPTH_MSK, readl_relaxed(se->base + SE_HW_PARAM_1));
+	writel(fifo_depth - 2, se->base + SE_GENI_RX_RFR_WATERMARK_REG);
+
+	writel(FORCE_DEFAULT, se->base + GENI_FORCE_DEFAULT_REG);
+	writel(DEFAULT_IO_OUTPUT_CTRL_MSK, se->base + GENI_OUTPUT_CTRL);
+
+	writel(AHB_SEC_SLV_CLK_CGC_ON |
+	       DMA_AHB_SLV_CFG_ON |
+	       DMA_TX_CLK_CGC_ON |
+	       DMA_RX_CLK_CGC_ON,
+	       se->base + SE_DMA_GENERAL_CFG);
+
+	writel(readl_relaxed(se->base + GENI_CGC_CTRL) |
+	       EXT_CLK_CGC_ON |
+	       RX_CLK_CGC_ON |
+	       TX_CLK_CGC_ON |
+	       SCLK_CGC_ON |
+	       DATA_AHB_CLK_CGC_ON |
+	       CFG_AHB_WR_ACLK_CGC_ON |
+	       CFG_AHB_CLK_CGC_ON,
+	       se->base + GENI_CGC_CTRL);
+
+	writel(GENI_DMA_MODE_EN, se->base + SE_GENI_DMA_MODE_EN);
+
+	writel(DMA_RX_IRQ_EN |
+	       DMA_TX_IRQ_EN |
+	       GENI_M_IRQ_EN |
+	       GENI_S_IRQ_EN,
+	       se->base + SE_IRQ_EN);
+	writel(DMA_RX_EVENT_EN |
+	       DMA_TX_EVENT_EN |
+	       GENI_M_EVENT_EN |
+	       GENI_S_EVENT_EN, se->base + SE_GSI_EVENT_EN);
+
+	writel(M_CMD_OVERRUN_EN |
+	       M_ILLEGAL_CMD_EN |
+	       M_CMD_FAILURE_EN |
+	       M_CMD_CANCEL_EN |
+	       M_CMD_ABORT_EN |
+	       M_TIMESTAMP_EN |
+	       M_IO_DATA_ASSERT_EN |
+	       M_IO_DATA_DEASSERT_EN |
+	       M_RX_FIFO_WR_ERR_EN |
+	       M_RX_FIFO_RD_ERR_EN |
+	       M_TX_FIFO_WR_ERR_EN |
+	       M_TX_FIFO_RD_ERR_EN,
+	       se->base + SE_GENI_M_IRQ_EN);
+
+	writel(S_CMD_OVERRUN_EN |
+	       S_ILLEGAL_CMD_EN |
+	       S_CMD_CANCEL_EN |
+	       S_CMD_ABORT_EN |
+	       S_GP_IRQ_0_EN |
+	       S_GP_IRQ_1_EN |
+	       S_GP_IRQ_2_EN |
+	       S_GP_IRQ_3_EN |
+	       S_RX_FIFO_WR_ERR_EN |
+	       S_RX_FIFO_RD_ERR_EN,
+	       se->base + SE_GENI_S_IRQ_EN);
+
+	writel(GENI_SE_DMA_RESET_DONE_EN_SET |
+	       GENI_SE_DMA_AHB_ERR_EN |
+	       GENI_SE_DMA_DONE_EN,
+	       se->base + SE_DMA_TX_IRQ_EN_SET);
+	writel(GENI_SE_DMA_FLUSH_DONE_EN_SET |
+	       GENI_SE_DMA_RESET_DONE_EN_SET |
+	       GENI_SE_DMA_AHB_ERR_EN |
+	       GENI_SE_DMA_DONE_EN,
+	       se->base + SE_DMA_RX_IRQ_EN_SET);
+
+	writel(FORCE_DEFAULT, se->base + GENI_FORCE_DEFAULT_REG);
+	writel(readl_relaxed(se->base + GENI_CGC_CTRL) |
+	       PROG_RAM_HCLK_OFF |
+	       PROG_RAM_SCLK_OFF,
+	       se->base + GENI_CGC_CTRL);
+	writel(SER_CLK_SEL, se->base + SE_GENI_CLK_CTRL);
+	writel(readl_relaxed(se->base + GENI_CGC_CTRL) &
+	       ~(PROG_RAM_HCLK_OFF | PROG_RAM_SCLK_OFF),
+	       se->base + GENI_CGC_CTRL);
+
+	writel(DMA_IF_EN, se->base + SE_GENI_DMA_IF_EN);
+	writel(0, se->base + SE_GENI_FIFO_IF_DISABLE);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(geni_se_load_firmware);
+
+#define GENI_DMA_MODE_EN		BIT(0)
 
 static void geni_se_select_fifo_mode(struct geni_se *se)
 {
@@ -657,11 +906,6 @@ int geni_se_clk_freq_match(struct geni_se *se, unsigned long req_freq,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(geni_se_clk_freq_match);
-
-#define GENI_SE_DMA_DONE_EN BIT(0)
-#define GENI_SE_DMA_EOT_EN BIT(1)
-#define GENI_SE_DMA_AHB_ERR_EN BIT(2)
-#define GENI_SE_DMA_EOT_BUF BIT(0)
 
 /**
  * geni_se_tx_init_dma() - Initiate TX DMA transfer on the serial engine

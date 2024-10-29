@@ -36,6 +36,7 @@ enum geni_se_protocol_type {
 	GENI_SE_I2C,
 	GENI_SE_I3C,
 	GENI_SE_SPI_SLAVE,
+	GENI_SE_UNPROGRAMMED = 255,
 };
 
 struct geni_wrapper;
@@ -493,6 +494,8 @@ static inline u32 geni_se_get_rx_fifo_depth(struct geni_se *se)
 }
 
 void geni_se_init(struct geni_se *se, u32 rx_wm, u32 rx_rfr);
+
+int geni_se_load_firmware(struct geni_se *se, enum geni_se_protocol_type proto);
 
 void geni_se_select_mode(struct geni_se *se, enum geni_se_xfer_mode mode);
 
