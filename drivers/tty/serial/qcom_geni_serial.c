@@ -1145,6 +1145,12 @@ static int qcom_geni_serial_port_setup(struct uart_port *uport)
 	int ret;
 
 	proto = geni_se_read_proto(&port->se);
+	if (proto == GENI_SE_UNPROGRAMMED) {
+		ret = geni_se_load_firmware(&port->se, GENI_SE_UART);
+		if (ret)
+			return ret;
+		proto = geni_se_read_proto(&port->se);
+	}
 	if (proto != GENI_SE_UART) {
 		dev_err(uport->dev, "Invalid FW loaded, proto: %d\n", proto);
 		return -ENXIO;
