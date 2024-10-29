@@ -79,6 +79,9 @@ properties:
 
   dma-coherent: true
 
+  firmware-name:
+    $ref: /schemas/types.yaml#/definitions/string-array
+
 required:
   - compatible
   - reg
