@@ -388,6 +388,15 @@ int qcom_pmic_typec_pdphy_set_roles(struct pmic_typec_pdphy *pmic_typec_pdphy,
 #define MIN_USBIN_CURRENT_MA					0
 #define USBIN_CURRENT_STEP_MA					50
 
+#define USBIN_CURRENT_LIMIT_OVERRIDE_REG		(USBIN_BASE + 0x51)
+#define ICL_OVERRIDE_ENABLED_AFTER_APSD			0x10
+
+#define USBIN_AICL_CFG_REG						(USBIN_BASE + 0x60)
+#define USBIN_AICL_ENABLED						BIT(7)
+#define USBIN_AICL_QWLS_BD_TRIG_EN				BIT(6)
+#define USBIN_AICL_HDC_EN						BIT(5)
+#define USBIN_AICL_START_AT_MAX					BIT(4)
+
 int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int icl_ma)
 {
 	int val_u = icl_ma;
@@ -403,6 +412,9 @@ int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int
 
 	val_raw = (val_u - MIN_USBIN_CURRENT_MA) / USBIN_CURRENT_STEP_MA;
 
+
+	regmap_write(pmic_typec_pdphy->regmap, USBIN_AICL_CFG_REG, USBIN_AICL_ENABLED | USBIN_AICL_HDC_EN);
+	regmap_write(pmic_typec_pdphy->regmap, USBIN_CURRENT_LIMIT_OVERRIDE_REG, ICL_OVERRIDE_ENABLED_AFTER_APSD);
 	return regmap_write(pmic_typec_pdphy->regmap, USBIN_CURRENT_LIMIT_CFG_REG, val_raw);
 }
 
