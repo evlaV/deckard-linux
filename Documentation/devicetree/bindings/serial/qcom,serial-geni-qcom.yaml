@@ -56,6 +56,9 @@ properties:
   reg:
     maxItems: 1
 
+  firmware-name:
+    $ref: /schemas/types.yaml#/definitions/string-array
+
 required:
   - compatible
   - clocks
