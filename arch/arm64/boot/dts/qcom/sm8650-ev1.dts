@@ -252,7 +252,7 @@
 
 	backlight: backlight {
 		compatible = "mpq3367-backlight";
-		preboost-gpio = <&tlmm 41 GPIO_ACTIVE_HIGH>;
+		preboost-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
 		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>,
 			   <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
 		bias-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>,
@@ -303,10 +303,10 @@
 
 &apps_rsc {
     regulators-6 {
-        vdd-l6-supply = <&VREG_BOB2>;
+        vdd-l6-supply = <&vreg_bob2>;
     };
     regulators-7 {
-        vdd-l6-supply = <&VREG_BOB2>;
+        vdd-l6-supply = <&vreg_bob2>;
     };
 };
 
@@ -1302,12 +1302,6 @@
 
 };
 
-&pm8550ve_gpios {
-	gpio-line-names =
-		// GPIO01 - GPIO08
-		"",  "",  "",  "",  "qpd_fpga_crst",  "",  "qpd_fpga_rst",  "";
-};
-
 &pmk8550_rtc {
 	status = "okay";
 	allow-set-time;
@@ -1433,7 +1427,7 @@
 		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
 		// bp pin removed in ev1
 
-		status = "ok";
+		status = "okay";
 	};
 
 	/* 3D Hall Sensor I2C */
@@ -1446,7 +1440,7 @@
 		vdd-hall-supply = <&vreg_l2b_3p0>; 
 		//hall-alert-gpios = <&tlmm 65 GPIO_ACTIVE_LOW>; // Not Used
 
-		status = "ok";
+		status = "okay";
 	};
 };
 
@@ -1473,17 +1467,6 @@
 		vin1-supply = <&vreg_l15b_1p8>; 
 
 		status = "okay";
-	};
-};
-
-// FPGA SPI and Pin setup
-&spi7 {
-	status = "okay";
-	cspi@0 {
-		status = "okay";
-		compatible = "linux,spidev";
-		spi-max-frequency = <8000000>;
-		reg = <0>;
 	};
 };
 
@@ -1545,30 +1528,32 @@
 	// qcom,gpios-reserved = <36 37 38 39>;
 	gpio-line-names =
 		// GPIO000 - GPIO015
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "nrf_time_sync",  "",  "",  "",  "",
+		"",  "",  "",  "",  "",  "",  "",  "fpga_rst",  "",  "",  "",  "nrf_time_sync",  "",  "",  "",  "",
 		// GPIO016 - GPIO031
 		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO032 - GPIO047
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		"",  "",  "",  "fpga_spi_cs",  "",  "",  "",  "fpga_crst",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO048 - GPIO063
-		"",  "",  "nrf_swdio",  "nrf_swclk",  "",  "",  "",  "",  "",  "",  "qpd_fpga_qspi_cs",  "",  "",  "",  "",  "qpd_fpga_spi_cs",
+		"",  "",  "nrf_swdio",  "nrf_swclk",  "",  "",  "",  "",  "fpga_cam0_strobe",  "fpga_cam1_strobe",  "",  "",  "",  "",  "",  "",
 		// GPIO064 - GPIO079
-		"",  "",  "",  "",  "",  "",  "",  "",  "qpd_fpga_cdone",  "",  "",  "",  "",  "",  "",  "",
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO080 - GPIO095
 		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO096 - GPIO111
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cam1_frame_sync",  "",
 		// GPIO112 - GPIO127
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cam0_frame_sync",  "",  "",  "",
 		// GPIO128 - GPIO143
 		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO144 - GPIO159
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cdone",  "",  "",  "fpga_cready",  "",
 		// GPIO160 - GPIO175
 		"",  "",  "",  "",  "nrf_reset",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
-		// GPIO176 - GPIO180
-		"",  "",  "",  "",  "", "", "", "", "", "", "", "", "", "qpd_fpga_dready";
+		// GPIO176 - GPIO189
+		"",  "",  "",  "",  "", "", "", "", "", "", "", "", "", "";
+};
 
+&tlmm {
 	FPGA_clk_pins {
 		FPGA_clk_default: fpga_clk_default {
 			mux {
@@ -1629,8 +1614,6 @@
 };
 
 &i2c5 {
-	status = "okay";
-    
     // BOOT EEPROM
     eeprom@50 {
         compatible  = "atmel,24c32";
@@ -1643,8 +1626,6 @@
 };
 
 &i2c5 {
-	status = "okay";
-
     max34417_1: max34417@12 {
         compatible = "maxim,max34417";
         reg = <0x12>;
@@ -1711,12 +1692,6 @@
 		"",  "",  "",  "",  "",  "",  "",  "";
 };
 
-// FPGA SPI and Pin setup
-// Disable SPI7 from base POCF config
-&spi7 {
-	status = "disabled";
-};
-
 &spi0 {
 	status = "okay";
 
@@ -1726,43 +1701,14 @@
 	cspi@0 {
 		status = "okay";
 		compatible = "linux,spidev";
-		spi-max-frequency = <8000000>;
+		spi-max-frequency = <11000000>;
 		reg = <0>;
 	};
 };
 
-&tlmm {
-	// TODO verify reserved pins for 8650
-	// qcom,gpios-reserved = <36 37 38 39>;
-	gpio-line-names =
-		// GPIO000 - GPIO015
-		"",  "",  "",  "",  "",  "",  "",  "fpga_rst",  "",  "",  "",  "nrf_time_sync",  "",  "",  "",  "",
-		// GPIO016 - GPIO031
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
-		// GPIO032 - GPIO047
-		"",  "",  "",  "fpga_spi_cs",  "",  "",  "",  "fpga_crst",  "",  "",  "",  "",  "",  "",  "",  "",
-		// GPIO048 - GPIO063
-		"",  "",  "nrf_swdio",  "nrf_swclk",  "",  "",  "",  "",  "fpga_cam0_strobe",  "fpga_cam1_strobe",  "",  "",  "",  "",  "",  "",
-		// GPIO064 - GPIO079
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
-		// GPIO080 - GPIO095
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
-		// GPIO096 - GPIO111
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cam1_frame_sync",  "",
-		// GPIO112 - GPIO127
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cam0_frame_sync",  "",  "",  "",
-		// GPIO128 - GPIO143
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
-		// GPIO144 - GPIO159
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cdone",  "",  "",  "fpga_cready",  "",
-		// GPIO160 - GPIO175
-		"",  "",  "",  "",  "nrf_reset",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
-		// GPIO176 - GPIO189
-		"",  "",  "",  "",  "", "", "", "", "", "", "", "", "", "";
-};
 
 &tlmm {
-	status = "ok";
+	status = "okay";
 
 	// FPGA Pins
 	fpga_rst: fpga_rst {
@@ -1774,7 +1720,9 @@
 		config {
 			pins = "gpio7";
 			bias-disable = <0>;
-			input-enable;
+			drive-strength = <2>;
+			output-enable;
+			ouput-high;
 		};
 	};
 
@@ -1833,36 +1781,6 @@
 		};
 	};
 };
-
-// nRF Pins
-&tlmm {
-	// nRF CS
-	qup_spi10_cs_nrf: qup-spi10-cs-state-nrf {
-		pins = "gpio13";
-		function = "qup2_se2";
-		drive-strength = <6>;
-		bias-disable;
-	};
-
-	// nRF SPI interrupt and reset pins
-	host_spihid_default_state: host-spihid-default {
-		irq0 {
-			pins = "gpio66";
-			function = "gpio";
-			bias-pull-up;
-		};
-
-		reset0 {
-			pins = "gpio137";
-			function = "gpio";
-			drive-strength = <2>;
-			output-low;
-			bias-pull-down;
-		};
-	};
-};
-
-// nRF SPI HID Config
 
 // nRF Pins
 &tlmm {
