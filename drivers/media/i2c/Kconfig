@@ -361,6 +361,24 @@ config VIDEO_OG0VE1B
 	  To compile this driver as a module, choose M here: the
 	  module will be called og0ve1b.
 
+config VIDEO_OG01A1B_A
+	tristate "OmniVision OG01A1B sensor support"
+	help
+	  This is a Video4Linux2 sensor driver for the OmniVision
+	  OG01A1B camera with advanced features.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called og01a1b.
+
+config VIDEO_OG0VE10_A
+	tristate "OmniVision OG0VE1B sensor support"
+	help
+	  This is a Video4Linux2 sensor driver for the OmniVision
+	  OG0VE1B camera with advanced features.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called og0ve10.
+
 config VIDEO_OV01A10
 	tristate "OmniVision OV01A10 sensor support"
 	help
