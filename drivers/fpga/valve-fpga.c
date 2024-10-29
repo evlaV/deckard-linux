@@ -134,7 +134,7 @@ static int valve_fpga_probe(struct platform_device *pdev)
         return ret;
     }
 
-    printk("valve probe done\n");
+    printk("valve,fpga probe done\n");
 
     return 0;
 }
