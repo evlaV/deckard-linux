@@ -1419,7 +1419,7 @@
 		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
 		bp-gpio = <&tlmm 139 GPIO_ACTIVE_HIGH>;
 
-		status = "ok";
+		status = "okay";
 	};
 
 	/* 3D Hall Sensor I2C */
@@ -1432,7 +1432,7 @@
 		vdd-hall-supply = <&vreg_l2b_3p0>; 
 		//hall-alert-gpios = <&tlmm 65 GPIO_ACTIVE_LOW>; // Not Used
 
-		status = "ok";
+		status = "okay";
 	};
 };
 
