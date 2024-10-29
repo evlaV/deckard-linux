@@ -664,6 +664,13 @@ static int spi_geni_init(struct spi_geni_master *mas)
 	pm_runtime_get_sync(mas->dev);
 
 	proto = geni_se_read_proto(se);
+	if (proto == GENI_SE_UNPROGRAMMED) {
+		/* TOFIX load GENI_SE_SPI_SLAVE */
+		ret = geni_se_load_firmware(se, GENI_SE_SPI);
+		if (ret)
+			return ret;
+		proto = geni_se_read_proto(se);
+	}
 
 	if (spi->target) {
 		if (proto != GENI_SE_SPI_SLAVE) {
