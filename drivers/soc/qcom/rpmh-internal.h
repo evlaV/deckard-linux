@@ -134,6 +134,7 @@ struct rsc_drv {
 	struct device *dev;
 	struct rsc_ver ver;
 	u32 *regs;
+	int memfreq;
 };
 
 int rpmh_rsc_send_data(struct rsc_drv *drv, const struct tcs_request *msg);
