@@ -74,6 +74,7 @@ struct lpm026m648c_ctx {
 
 	struct gpio_descs *reset_gpios;
 	struct gpio_desc *enp_gpio;
+	struct gpio_desc *enn_gpio;
 
 	struct backlight_device *backlight;
 	struct mipi_dsi_device *dsi[2];
@@ -320,7 +321,12 @@ static int lpm026m648c_power_on(struct lpm026m648c_ctx *ctx)
 		return ret;
 
 	usleep_range(1000, 2000);
+    // turn on AVDD
 	gpiod_set_value(ctx->enp_gpio, 1);
+
+    // turn on AVEE
+	gpiod_set_value(ctx->enn_gpio, 1);
+	
 	msleep(20);
 	gpiod_set_value(ctx->reset_gpios->desc[0], 1);
 	gpiod_set_value(ctx->reset_gpios->desc[1], 1);
@@ -332,7 +338,15 @@ static int lpm026m648c_power_off(struct lpm026m648c_ctx *ctx)
 	gpiod_set_value(ctx->reset_gpios->desc[0], 0);
 	gpiod_set_value(ctx->reset_gpios->desc[1], 0);
 	msleep(25);
+    // turn off AVEE
+	gpiod_set_value(ctx->enn_gpio, 0);
+
+    // wait > 1 msec
+	usleep_range(10000, 20000);
+
+    // turn off AVDD
 	gpiod_set_value(ctx->enp_gpio, 0);
+
 	msleep(20);
 
 	return regulator_bulk_disable(ARRAY_SIZE(ctx->power_supplies),
@@ -594,6 +608,13 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 		DRM_DEV_ERROR(dev, "cannot get enp gpio %ld\n",
 			PTR_ERR(ctx->enp_gpio));
 		return PTR_ERR(ctx->enp_gpio);
+	}
+
+	ctx->enn_gpio = devm_gpiod_get(dev, "enn", GPIOD_OUT_LOW);
+	if (IS_ERR(ctx->enn_gpio)) {
+		DRM_DEV_ERROR(dev, "cannot get enn gpio %ld\n",
+			PTR_ERR(ctx->enn_gpio));
+		return PTR_ERR(ctx->enn_gpio);
 	}
 
 	memset(&bl_props, 0, sizeof(bl_props));
