@@ -2558,7 +2558,6 @@ static int camss_init_subdevices(struct camss *camss)
 		ret);
 		return ret;
 	}
-	dev_err(camss->dev, "camss->res->metadata_num %d\n", camss->res->metadata_num);
 	for(i = 0; i < camss->res->metadata_num; i++) {
 		ret = msm_metadata_subdev_init(camss, &camss->metadata[i], NULL, i);
 	}

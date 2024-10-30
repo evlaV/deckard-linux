@@ -1477,7 +1477,6 @@ static int og01a1b_init_controls(struct og01a1b_dev *sensor)
 						   sensor->sof_cb_address);
 
 	sensor->metadata_size[0] = sizeof(struct SensorMetaData);
-	printk("metadata size: %d\n", sizeof(struct SensorMetaData));
 	if (size_control)
 		size_control->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 
@@ -1690,13 +1689,11 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
 				else {
 					last_time_in_sync = min_t(u64, last_time_in_sync, ktime_get_raw_ns());
 				}
-				printk("last_time_in_sync: %lld\n", last_time_in_sync);
 			}
 			else
 			{
 				// Means we can't use dual i2c mode right now
 				last_time_in_sync = 0;
-				printk("last_time_in_sync: %lld\n", last_time_in_sync);
 			}
 			break;
 		}
@@ -1921,7 +1918,6 @@ static void update_groups_work_fn(struct work_struct *Wq)
 
 static int og01a1b_probe(struct i2c_client *client)
 {
-	printk("og01a1b_probe\n");
 	struct device *dev = &client->dev;
 	struct fwnode_handle *endpoint;
 	struct og01a1b_dev *sensor;

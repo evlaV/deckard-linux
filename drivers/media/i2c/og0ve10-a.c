@@ -638,7 +638,6 @@ static void *get_metadata(struct v4l2_subdev *sd)
 static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp,
 			     u64 sof_isr_timestamp, u8 group)
 {
-	printk("do_post_sof_work: sof_timestamp: %llx, sof_isr_timestamp: %llx, group: %d\n", sof_timestamp, sof_isr_timestamp, group);
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
 	sensor->last_sof_ts = sof_timestamp;
 	sensor->last_sof_isr_ts = sof_isr_timestamp;
@@ -660,7 +659,6 @@ static int og0ve10_init_controls(struct og0ve10_dev *sensor)
 	ctrl_hdlr = &sensor->ctrl_handler;
 
 	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 2);
-	printk("og0ve10_init_controls: v4l2_ctrl_handler_init ret = %d\n", ret);
 	if (ret)
 		return ret;
 
@@ -668,31 +666,25 @@ static int og0ve10_init_controls(struct og0ve10_dev *sensor)
 
 	v4l2_ctrl_new_std(ctrl_hdlr, &og0ve10_ctrl_ops, V4L2_CID_ANALOGUE_GAIN,
 			  0, 30000, 1, 0x10);
-	printk("og0ve10_init_controls: v4l2_ctrl_new_std V4L2_CID_ANALOGUE_GAIN\n");
 
 	v4l2_ctrl_new_std(ctrl_hdlr, &og0ve10_ctrl_ops, V4L2_CID_BRIGHTNESS, 0,
 			  0xffffff, 1, 0);
-	printk("og0ve10_init_controls: v4l2_ctrl_new_std V4L2_CID_BRIGHTNESS\n");
 
 	v4l2_ctrl_new_std(ctrl_hdlr, &og0ve10_ctrl_ops, V4L2_CID_HUE,
 			  -2147483648, 2147483647, 1, 0);
-	printk("og0ve10_init_controls: v4l2_ctrl_new_std V4L2_CID_HUE\n");
 
 	v4l2_ctrl_new_std(ctrl_hdlr, &og0ve10_ctrl_ops, V4L2_CID_SATURATION, 0,
 			  2, 1, 0);
-	printk("og0ve10_init_controls: v4l2_ctrl_new_std V4L2_CID_SATURATION\n");
 
 	v4l2_ctrl_new_std_compound(ctrl_hdlr, &og0ve10_ctrl_ops,
 				   V4L2_CID_COLORIMETRY_HDR10_CLL_INFO,
 				   v4l2_ctrl_ptr_create(NULL));
-	printk("og0ve10_init_controls: v4l2_ctrl_new_std_compound V4L2_CID_COLORIMETRY_HDR10_CLL_INFO\n");
 
 	size = ARRAY_SIZE(link_freq_menu_items);
 
 	link_freq = v4l2_ctrl_new_int_menu(ctrl_hdlr, &og0ve10_ctrl_ops,
 					   V4L2_CID_LINK_FREQ, size - 1, 0,
 					   link_freq_menu_items);
-	printk("og0ve10_init_controls: v4l2_ctrl_new_int_menu V4L2_CID_LINK_FREQ\n");
 	if (link_freq)
 		link_freq->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 	size = ARRAY_SIZE(sensor->metadata_cb_address);
@@ -700,32 +692,27 @@ static int og0ve10_init_controls(struct og0ve10_dev *sensor)
 	v4l2_ctrl_new_int_menu(ctrl_hdlr, &og0ve10_ctrl_ops,
 			       V4L2_CID_METADATA_CB_ADDR, size - 1, 0,
 			       sensor->metadata_cb_address);
-	printk("og0ve10_init_controls: v4l2_ctrl_new_int_menu V4L2_CID_METADATA_CB_ADDR\n");
 	sensor->metadata_cb_address[0] = (s64)(get_metadata);
 	size = ARRAY_SIZE(sensor->metadata_size);
 	size_control = v4l2_ctrl_new_int_menu(ctrl_hdlr, &og0ve10_ctrl_ops,
 					      V4L2_CID_METADATA_SIZE, size - 1,
 					      0, sensor->metadata_size);
-	printk("og0ve10_init_controls: v4l2_ctrl_new_int_menu V4L2_CID_METADATA_SIZE\n");
 	sensor->sof_cb_address[0] = (s64)(do_post_sof_work);
 	size = ARRAY_SIZE(sensor->sof_cb_address);
 	v4l2_ctrl_new_int_menu(ctrl_hdlr, &og0ve10_ctrl_ops,
 			       V4L2_CID_SENSOR_SOF_CB_ADDR, size - 1, 0,
 			       sensor->sof_cb_address);
-	printk("og0ve10_init_controls: v4l2_ctrl_new_int_menu V4L2_CID_SENSOR_SOF_CB_ADDR\n");
 
 	sensor->metadata_size[0] = sizeof(struct SensorMetaData);
 	if (size_control)
 		size_control->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 
 	if (ctrl_hdlr->error) {
-		printk("og0ve10_init_controls: ctrl_hdlr->error = %d\n", ctrl_hdlr->error);
 		return ctrl_hdlr->error;
 	}
 
 	sensor->sd.ctrl_handler = ctrl_hdlr;
 
-	printk("og0ve10_init_controls: completed successfully\n");
 	return 0;
 }
 
@@ -769,10 +756,8 @@ static int og0ve10_s_power(struct v4l2_subdev *sd, int on)
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
 	int ret = 0;
 	static char *gpionames[] = { "ira", "irb" };
-	printk("og0ve10_s_power: on = %d\n", on);
 	mutex_lock(&sensor->lock);
 	reset_groups_og0VE10(sensor);
-	printk("og0ve10_s_power: reset_groups_og0VE10 completed successfully\n");
 
 	/*
 	 * If the power count is modified from 0 to != 0 or from != 0 to 0,
@@ -916,7 +901,6 @@ static int og0ve10_set_fmt(struct v4l2_subdev *sd,
 			   struct v4l2_subdev_state *sd_state,
 			   struct v4l2_subdev_format *fmt)
 {
-	printk("og0ve10_set_fmt: fmt->format.width = %d, fmt->format.height = %d\n", fmt->format.width, fmt->format.height);
 	int ret = 0;
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
 	struct i2c_client *client = sensor->i2c_client;
@@ -1358,7 +1342,6 @@ static int og0ve10_probe(struct i2c_client *client)
 		sensor->queue_index = 0;
 		//return ret;
 	}
-	printk("og0ve10_probe: sensor-queue-index = %d\n", sensor->queue_index);
 
 	u32 dual_i2c_available_val, dual_i2c_main_val;
 
