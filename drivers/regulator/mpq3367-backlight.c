@@ -16,7 +16,6 @@ struct mpq3367_backlight {
 
 	struct gpio_desc *preboost_gpio;
 	struct gpio_desc *en_gpio[2];
-	struct gpio_desc *bias_gpio[2];
 
 	uint8_t required_reinit;
 	struct delayed_work backlight_work;
@@ -327,11 +326,6 @@ backlight_probe(struct platform_device *pdev)
 		bl->en_gpio[i] = devm_gpiod_get_index(dev, "en", i, GPIOD_OUT_LOW);
 		if (IS_ERR(bl->en_gpio[i]))
 			return PTR_ERR(bl->en_gpio[i]);
-
-		// GPIOD_OUT_HIGH: set bias gpios to be always on
-		bl->bias_gpio[i] = devm_gpiod_get_index(dev, "bias", i, GPIOD_OUT_HIGH);
-		if (IS_ERR(bl->bias_gpio[i]))
-			return PTR_ERR(bl->bias_gpio[i]);
 	}
 
 	for (i = 0; i < 2; i++) {
