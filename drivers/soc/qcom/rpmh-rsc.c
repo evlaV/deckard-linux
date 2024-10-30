@@ -644,6 +644,20 @@ int rpmh_rsc_send_data(struct rsc_drv *drv, const struct tcs_request *msg)
 	struct tcs_group *tcs;
 	int tcs_id;
 
+	u32 dataval = 0x6fffffff; //default, dataval[31:28] = must be 0x6, dataval[27:14] = peak mem val, dataval[13:0] = avg mem val
+
+	if(drv->memfreq != -1) {
+		u32 convertedfreq = clamp_val(drv->memfreq, 200, 4200) * 34/10; //conversion is 3.4 * target_freq_MHz
+		dataval = 0x60000000 | (convertedfreq << 14) | convertedfreq;
+	}
+
+	for (int i = 0; i < msg->num_cmds; i++) {
+		struct tcs_cmd *cmd = &msg->cmds[i];
+		if (cmd->addr == 0x50000) {
+			cmd->data = dataval;
+		}
+	}
+
 	might_sleep();
 
 	tcs = get_tcs_for_msg(drv, msg);
@@ -1028,6 +1042,50 @@ static int rpmh_probe_tcs_config(struct platform_device *pdev, struct rsc_drv *d
 	return 0;
 }
 
+static ssize_t rpmh_mem_freq_show(struct device *dev,
+						struct device_attribute *attr,
+						char *buf)
+{
+	struct rsc_drv *drv = dev_get_drvdata(dev);
+
+	if(drv->memfreq == -1)
+		return sysfs_emit(buf, "%s\n", "default");
+	else
+		return sysfs_emit(buf, "%d\n", drv->memfreq);
+}
+
+static ssize_t rpmh_mem_freq_store(struct device *dev,
+						 struct device_attribute *attr,
+						 const char *buf, size_t n)
+{
+	s32 value;
+	struct rsc_drv *drv = dev_get_drvdata(dev);
+
+	if (kstrtos32(buf, 0, &value) == 0) {
+		if (value < 0)
+			return -EINVAL;
+	} else {
+		if (sysfs_streq(buf, "default"))
+			value = -1;
+		else
+			return -EINVAL;
+	}
+
+	drv->memfreq = value;
+	return n;
+}
+
+static DEVICE_ATTR_RW(rpmh_mem_freq);
+
+static struct attribute *attrs[] = {
+	&dev_attr_rpmh_mem_freq.attr,
+	NULL,
+};
+
+static struct attribute_group sysfs_group = {
+	.attrs = attrs,
+};
+
 static int rpmh_rsc_probe(struct platform_device *pdev)
 {
 	struct device_node *dn = pdev->dev.of_node;
@@ -1118,6 +1176,13 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	spin_lock_init(&drv->client.cache_lock);
 	INIT_LIST_HEAD(&drv->client.cache);
 	INIT_LIST_HEAD(&drv->client.batch_cache);
+
+	//use -1 to mean "default"
+	drv->memfreq = -1;
+
+	ret = sysfs_create_group(&pdev->dev.kobj, &sysfs_group);
+	if (ret)
+		return ret;
 
 	dev_set_drvdata(&pdev->dev, drv);
 	drv->dev = &pdev->dev;
