@@ -8443,7 +8443,7 @@
 			};
 		};
 
-		gpuss0-thermal {
+		gpuss-0-thermal {
 			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens2 1>;
@@ -8476,7 +8476,7 @@
 			};
 		};
 
-		gpuss1-thermal {
+		gpuss-1-thermal {
 			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens2 2>;
@@ -8509,7 +8509,7 @@
 			};
 		};
 
-		gpuss2-thermal {
+		gpuss-2-thermal {
 			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens2 3>;
@@ -8542,7 +8542,7 @@
 			};
 		};
 
-		gpuss3-thermal {
+		gpuss-3-thermal {
 			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens2 4>;
@@ -8575,7 +8575,7 @@
 			};
 		};
 
-		gpuss4-thermal {
+		gpuss-4-thermal {
 			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens2 5>;
@@ -8608,7 +8608,7 @@
 			};
 		};
 
-		gpuss5-thermal {
+		gpuss-5-thermal {
 			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens2 6>;
@@ -8641,7 +8641,7 @@
 			};
 		};
 
-		gpuss6-thermal {
+		gpuss-6-thermal {
 			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens2 7>;
@@ -8674,7 +8674,7 @@
 			};
 		};
 
-		gpuss7-thermal {
+		gpuss-7-thermal {
 			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens2 8>;
