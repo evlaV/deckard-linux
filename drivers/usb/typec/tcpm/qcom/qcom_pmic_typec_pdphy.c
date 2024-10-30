@@ -409,14 +409,15 @@ int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int
 #define USBIN_ADAPTER_USB_OVP_CTRL_REG		(USBIN_BASE + 0xA8)
 #define USBIN_ADAPTER_USB_OVP_CTRL_MASK		(BIT(2) | BIT(1) | BIT(0))
 #define USBIN_ADAPTER_USB_OVP_CTRL_13P5V	0x01
+#define USBIN_ADAPTER_USB_OVP_CTRL_16P4V	0x02
 
 static int qcom_pmic_typec_pdphy_set_over_voltage_protection(struct pmic_typec_pdphy *pmic_typec_pdphy)
 {
 	int ret;
 
-	// Just hardcode to 13.5 Volts for now, default is 6.9 Volts
+	// Just hardcode to 16.4 Volts for now, default is 6.9 Volts
 	ret = regmap_update_bits(pmic_typec_pdphy->regmap, USBIN_ADAPTER_USB_OVP_CTRL_REG,
-		USBIN_ADAPTER_USB_OVP_CTRL_MASK, USBIN_ADAPTER_USB_OVP_CTRL_13P5V);
+		USBIN_ADAPTER_USB_OVP_CTRL_MASK, USBIN_ADAPTER_USB_OVP_CTRL_16P4V);
 
 	return ret;
 }
@@ -439,21 +440,43 @@ int qcom_pmic_typec_pdphy_get_current_limit(struct pmic_typec_pdphy *pmic_typec_
 #define FORCE_5V								BIT(0)
 #define FORCE_NULL								0
 
+#define USBIN_HVOV_SEL							(USBIN_BASE + 0x42)
+#define VOLT_14P2								0x00
+#define VOLT_17P2								0x01
+#define VOLT_20P2								0x10
+#define VOLT_22P0								0x11
+
 #define USBIN_CONT_AICL_THRESHOLD_REG			(USBIN_BASE + 0x62)
 #define FORCE_AICL_4P7V							0x06
 #define FORCE_AICL_4P8V							0x07
 #define FORCE_AICL_8P6V							0x1A
 #define FORCE_AICL_8P8V							0x1B
+#define FORCE_AICL_11P6V						0x29
+#define FORCE_AICL_11P8V						0x2A
+#define FORCE_AICL_14P4V						0x33
+#define FORCE_AICL_14P8V						0x34
 
 int qcom_pmic_typec_pdphy_set_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy,
 					u32 max_ma, u32 mv)
 {
+	// NOTE If we want to allow more than 15 Volts, 0x2940 must be updated from 0x08 -> 0x0C
+
 	// Set max allowed voltage and AICL
-	if (mv == 9000) {
+	if (mv >= 15000) {
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, CONTINUOUS);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_17P2);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_14P4V);
+	} else if (mv >= 12000) {
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_12V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_14P2);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_11P6V);
+	} else if (mv >= 9000) {
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_9V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_14P2);
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_8P6V);
 	} else {
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_5V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_14P2);
 		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_4P7V);
 	}
 
