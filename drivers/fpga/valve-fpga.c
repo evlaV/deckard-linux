@@ -37,10 +37,11 @@ static int valve_fpga_suspend(struct platform_device * dev, pm_message_t state)
 static int valve_fpga_resume(struct platform_device * dev)
 {
     struct valve_fpga *valve = platform_get_drvdata(dev);
+    int ret;
     // Power on and enable clock
-    regulator_enable(valve->v1v1);
+    ret = regulator_enable(valve->v1v1);
     gpiod_set_value(valve->pwren_gpio, 1); // needs to be enabled within 10msec of 1v1
-    clk_prepare_enable(valve->clk);
+    ret = clk_prepare_enable(valve->clk);
     return 0;
 }
 
@@ -70,9 +71,9 @@ enable_store(struct device *dev, struct device_attribute *attr,
 
     if (enable){
         // Power on and enable clock
-        regulator_enable(valve->v1v1);
+        ret = regulator_enable(valve->v1v1);
         gpiod_set_value(valve->pwren_gpio, 1); // needs to be enabled within 10msec of 1v1
-        clk_prepare_enable(valve->clk);
+        ret = clk_prepare_enable(valve->clk);
     }
     else{
         // Power off and disable clock
