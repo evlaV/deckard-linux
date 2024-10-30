@@ -59,6 +59,7 @@ struct rad {
 	//struct gpio_desc *backlight_gpio;
 	//struct gpio_desc *backlight2_gpio;
 	struct gpio_desc *enp_gpio;
+	struct gpio_desc *enn_gpio;
 
 	struct backlight_device *backlight;
 
@@ -603,7 +604,9 @@ static int truly_35597_power_on(struct rad *ctx)
 
     // turn on AVDD
 	gpiod_set_value(ctx->enp_gpio, 1);
-	// AVEE is enabled when 1V8 is enabled?
+
+    // turn on AVEE
+	gpiod_set_value(ctx->enn_gpio, 1);
 
 	//gpiod_set_value(ctx->reset_gpio, 0);
 	//gpiod_set_value(ctx->reset2_gpio, 0);
@@ -626,6 +629,12 @@ static int rad_power_off(struct rad *ctx)
 
     // wait > 25 msec
     usleep_range(25000, 26000);
+
+    // turn off AVEE
+	gpiod_set_value(ctx->enn_gpio, 0);
+
+    // wait > 1 msec
+	usleep_range(10000, 20000);
 
     // turn off AVDD
 	gpiod_set_value(ctx->enp_gpio, 0);
@@ -880,27 +889,18 @@ static int rad_panel_add(struct rad *ctx)
 		return PTR_ERR(ctx->reset2_gpio);
 	};
 
-#if 0
-	ctx->backlight_gpio = devm_gpiod_get_optional(dev, "backlight", GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->backlight_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get reset gpio %ld\n",
-			PTR_ERR(ctx->backlight_gpio));
-		return PTR_ERR(ctx->backlight_gpio);
-	};
-
-	ctx->backlight2_gpio = devm_gpiod_get_optional(dev, "backlight2", GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->backlight2_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get reset gpio %ld\n",
-			PTR_ERR(ctx->backlight2_gpio));
-		return PTR_ERR(ctx->backlight2_gpio);
-	};
-#endif
-
 	ctx->enp_gpio = devm_gpiod_get(dev, "enp", GPIOD_OUT_LOW);
 	if (IS_ERR(ctx->enp_gpio)) {
 		DRM_DEV_ERROR(dev, "cannot get enp gpio %ld\n",
 			PTR_ERR(ctx->enp_gpio));
 		return PTR_ERR(ctx->enp_gpio);
+	}
+
+	ctx->enn_gpio = devm_gpiod_get(dev, "enn", GPIOD_OUT_LOW);
+	if (IS_ERR(ctx->enn_gpio)) {
+		DRM_DEV_ERROR(dev, "cannot get enn gpio %ld\n",
+			PTR_ERR(ctx->enn_gpio));
+		return PTR_ERR(ctx->enn_gpio);
 	}
 
 	memset(&bl_props, 0, sizeof(bl_props));
