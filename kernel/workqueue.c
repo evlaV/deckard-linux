@@ -7596,6 +7596,16 @@ int workqueue_sysfs_register(struct workqueue_struct *wq)
 	struct wq_device *wq_dev;
 	int ret;
 
+	/*
+	 * Adjusting max_active breaks ordering guarantee.  Disallow exposing
+	 * ordered workqueues.
+	 */
+	if(!(wq->flags & __WQ_FORCE_ALLOW_SYSFS))  //override
+	{
+		if (WARN_ON(wq->flags & __WQ_ORDERED))
+			return -EINVAL;
+	}
+
 	wq->wq_dev = wq_dev = kzalloc_obj(*wq_dev);
 	if (!wq_dev)
 		return -ENOMEM;
