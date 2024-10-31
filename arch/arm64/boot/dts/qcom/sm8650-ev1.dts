@@ -1525,6 +1525,14 @@
 	status = "disabled";
 };
 
+&mdss_dsi0 {
+	panel: panel@0 {
+		// backlight ramp setup
+		backlight_ramp_step_size = <10>;
+		backlight_ramp_step_time_msec = <50>;
+	};
+};
+
 &tlmm {
 	// TODO verify reserved pins for 8650
 	// qcom,gpios-reserved = <36 37 38 39>;
