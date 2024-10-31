@@ -322,21 +322,29 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 		if(vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
 			frameheaderDataAddr = ready_buf->extrabuffer_vaddr + STATS_FH_DATA_OFFSET;
 			frameheaderData = (struct frameheader_data*)frameheaderDataAddr;
-			uint64_t frameheader_ts = frameheaderData->ts;
 
-			// The timestamp is 8 bits left shifted because the lower 8 bits contain virtual channel 
-			// and other information.
-			frameheader_ts >>= 8;
+			// TODO: We have problem after booting where randomly the Full_Y WM frameheaders would not be filled on
+			// a single camera (but others frameheader like the image histogram would one work).
+			// Right now we make sure that the ts is correct to avoid outputing bad SOF in the metadata but we
+			// figure out what's going on
+			if(frameheaderData->ts)
+			{
+				uint64_t frameheader_ts = frameheaderData->ts;
 
-			// Apply the same transformation as in the SOF handler
-			frameheader_ts = mul_u64_u32_div(
-				frameheader_ts,
-				CAM_IFE_CSID_MUL_FACTOR,
-				CAM_IFE_CSID_DIV_FACTOR);
+				// The timestamp is 8 bits left shifted because the lower 8 bits contain virtual channel 
+				// and other information.
+				frameheader_ts >>= 8;
 
-			// Use the existing offset to adjust the frame header timestamp
-			frameheader_ts += buf_done_info->isp_to_kernel_raw_ts_offset;
-			sof_isp_timestamp_converted = frameheader_ts;
+				// Apply the same transformation as in the SOF handler
+				frameheader_ts = mul_u64_u32_div(
+					frameheader_ts,
+					CAM_IFE_CSID_MUL_FACTOR,
+					CAM_IFE_CSID_DIV_FACTOR);
+
+				// Use the existing offset to adjust the frame header timestamp
+				frameheader_ts += buf_done_info->isp_to_kernel_raw_ts_offset;
+				sof_isp_timestamp_converted = frameheader_ts;
+			}
 		}
 		if(vfe->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
 			ihistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_FH_DATA_OFFSET;
