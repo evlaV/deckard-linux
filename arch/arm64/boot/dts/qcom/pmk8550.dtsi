@@ -295,6 +295,20 @@
 			};
 		};
 
+		pmk8550_sdam_21: sdam@8400 {
+				compatible = "qcom,spmi-sdam";
+				reg = <0x8400>;
+
+				status = "okay";
+		};
+
+		pmk8550_sdam_22: sdam@8500 {
+				compatible = "qcom,spmi-sdam";
+				reg = <0x8500>;
+
+				status = "okay";
+		};
+
 		pmk8550_gpios: gpio@b800 {
 			compatible = "qcom,pmk8550-gpio", "qcom,spmi-gpio";
 			reg = <0xb800>;
