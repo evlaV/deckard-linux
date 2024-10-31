@@ -141,8 +141,12 @@ static int reg_enable(struct regulator_dev *rdev)
 	int ret;
 	int loopctr=0;
 
+	dev_err(dev, "mpq3367: disable blacklight driver\n");
+	gpiod_set_value(bl->en_gpio[0], 0);
+	gpiod_set_value(bl->en_gpio[1], 0);
+
 	//the BOOST_CYCLE_COUNT is here to help the preboost boot up faster to the target voltage
-	#define BOOST_CYCLE_COUNT 20
+	#define BOOST_CYCLE_COUNT 40
 	dev_err(dev, "mpq3367: starting preboost: cycle count = %d\n", BOOST_CYCLE_COUNT);
 	for(int i=0; i < BOOST_CYCLE_COUNT; i++) {
 		//these times are fairly tightly tuned
@@ -155,9 +159,9 @@ static int reg_enable(struct regulator_dev *rdev)
 	dev_err(dev, "mpq3367: preboost startup done\n");
 	//we need to delay to wait for hiccup mode to exit --
 	//at a minimum it is about 70ms we need to wait here...
-	usleep_range(200000, 250000);
+	usleep_range(400000, 450000);
 
-	dev_err(dev, "mpq3367: gpio enable\n");
+	dev_err(dev, "mpq3367: enable blacklight driver\n");
 	gpiod_set_value(bl->en_gpio[0], 1);
 	gpiod_set_value(bl->en_gpio[1], 1);
 
@@ -291,12 +295,35 @@ static ssize_t mpq_reinit_store(struct device *dev, struct device_attribute *att
 	return count;
 }
 
+static ssize_t mpq_preboost_enable_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct mpq3367_backlight * bl = dev_get_drvdata(dev);
+	int ret;
+	int input;
+
+	ret = sscanf(buf, "%d", &input);
+	if(input == 0)
+	{
+		printk("Disabling Preboost\n");
+		gpiod_set_value(bl->preboost_gpio, 0);
+	}
+	else
+	{
+		printk("Enabling Preboost\n");
+		gpiod_set_value(bl->preboost_gpio, 1);
+	}
+
+	return count;
+}
+
 static DEVICE_ATTR_RO(mpq_status);
 static DEVICE_ATTR_RW(mpq_reinit);
+static DEVICE_ATTR_WO(mpq_preboost_enable);
 
 static struct attribute *mpq_attrs[] = {
 	&dev_attr_mpq_status.attr,
 	&dev_attr_mpq_reinit.attr,
+	&dev_attr_mpq_preboost_enable.attr,
 	NULL,
 };
 
