@@ -75,4 +75,16 @@ config LEDS_MT6370_RGB
 	  This driver can also be built as a module. If so, the module
 	  will be called "leds-mt6370-rgb".
 
+config LEDS_QTI_TRI_LED
+	tristate "LED support for Qualcomm Technologies, Inc. TRI_LED"
+	depends on LEDS_CLASS && SPMI && PWM && OF
+	help
+	  This driver supports the TRI_LED module found in Qualcomm
+	  Technologies, Inc. PMIC chips. TRI_LED supports 3 LED drivers
+	  at max and each is controlled by a PWM channel used for dimming
+	  or blinking.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called leds-qti-tri-led.
+
 endif # LEDS_CLASS_MULTICOLOR
