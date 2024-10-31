@@ -409,6 +409,8 @@ enum wq_flags {
 	__WQ_ORDERED		= 1 << 17, /* internal: workqueue is ordered */
 	__WQ_LEGACY		= 1 << 18, /* internal: create*_workqueue() */
 
+	__WQ_FORCE_ALLOW_SYSFS		= 1 << 19, /* internal: allow workqueue_sysfs_register when using __WQ_ORDERED */
+	
 	/* BH wq only allows the following flags */
 	__WQ_BH_ALLOWS		= WQ_BH | WQ_HIGHPRI | WQ_PERCPU,
 };
