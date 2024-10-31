@@ -647,6 +647,13 @@ int rpmh_rsc_send_data(struct rsc_drv *drv, const struct tcs_request *msg)
 	struct tcs_group *tcs;
 	int tcs_id;
 
+	for (int i = 0; i < msg->num_cmds; i++) {
+		struct tcs_cmd *cmd = &msg->cmds[i];
+		if (cmd->addr == 0x50000) {
+			cmd->data = 0x60000001;
+		}
+	}
+
 	might_sleep();
 
 	tcs = get_tcs_for_msg(drv, msg);
