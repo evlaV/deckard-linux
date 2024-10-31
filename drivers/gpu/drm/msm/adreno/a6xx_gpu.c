@@ -2233,6 +2233,8 @@ static int a6xx_gmu_pm_resume(struct msm_gpu *gpu)
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 	int ret;
 
+	printk(KERN_INFO "gpu: a6xx_gmu_pm_resume");
+	
 	gpu->needs_hw_init = true;
 
 	trace_msm_gpu_resume(0);
@@ -2263,6 +2265,8 @@ static int a6xx_pm_resume(struct msm_gpu *gpu)
 	unsigned long freq = gpu->fast_rate;
 	struct dev_pm_opp *opp;
 	int ret;
+
+	printk(KERN_INFO "gpu: a6xx_pm_resume");
 
 	gpu->needs_hw_init = true;
 
@@ -2320,6 +2324,7 @@ static int a6xx_gmu_pm_suspend(struct msm_gpu *gpu)
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 	int i, ret;
 
+	printk(KERN_INFO "gpu: a6xx_gmu_pm_suspend");
 	trace_msm_gpu_suspend(0);
 
 	a6xx_llc_deactivate(a6xx_gpu);
@@ -2348,6 +2353,7 @@ static int a6xx_pm_suspend(struct msm_gpu *gpu)
 	struct a6xx_gmu *gmu = &a6xx_gpu->gmu;
 	int i;
 
+	printk(KERN_INFO "gpu: a6xx_pm_suspend");
 	trace_msm_gpu_suspend(0);
 
 	a6xx_llc_deactivate(a6xx_gpu);
