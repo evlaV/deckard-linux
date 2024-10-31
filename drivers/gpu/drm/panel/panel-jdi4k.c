@@ -73,6 +73,12 @@ struct rad {
 	rad_modes_t current_mode;
 
 	struct drm_dsc_config dsc_cfg;
+
+	struct delayed_work wdt_work;
+	int backlight_ramp_percentage;
+	int backlight_ramp_step_size;
+	int backlight_ramp_step_time_msec;
+
 };
 
 static inline struct rad *panel_to_ctx(struct drm_panel *panel)
@@ -692,6 +698,40 @@ static int rad_unprepare(struct drm_panel *panel)
 	return ret;
 }
 
+// 20 msec period, conversion is not precise and ends up being closer to 50 msec
+#define RAD_BACKLIGHT_WORK_PERIOD msecs_to_jiffies(ctx->backlight_ramp_step_time_msec)
+
+static void rad_backlight_delayed_work_handler(struct work_struct *work)
+{
+	struct rad *ctx = container_of((struct delayed_work *)work, struct rad, wdt_work);
+	int backlight_setting;
+	int backlight_ramp_max = ( ( ctx->backlight->props.max_brightness * ctx->backlight_ramp_percentage ) / 100 );
+
+	// bump the allowed backlight setting
+	ctx->backlight_ramp_percentage += ctx->backlight_ramp_step_size;
+
+	backlight_setting =  backlight_ramp_max < ctx->backlight->props.brightness ? backlight_ramp_max : ctx->backlight->props.brightness;
+
+	set_brightness(ctx, backlight_setting, ctx->backlight->props.pulse_offset_rows);
+
+	printk("jdi4k: set brightness to %d ( %d )\n", backlight_setting, ctx->backlight->props.brightness );
+
+	if ( ctx->backlight_ramp_percentage <= 100 ) {
+		schedule_delayed_work(&ctx->wdt_work, RAD_BACKLIGHT_WORK_PERIOD);
+	} else {
+		printk("jdi4k backlight ramp complete\n");
+	}
+}
+
+static void rad_backlight_work_init(struct rad *ctx)
+{
+	if ( ctx->backlight_ramp_step_size && ctx->backlight_ramp_step_time_msec ){
+		ctx->backlight_ramp_percentage = 0;
+		INIT_DELAYED_WORK(&ctx->wdt_work, rad_backlight_delayed_work_handler);
+		schedule_delayed_work(&ctx->wdt_work, RAD_BACKLIGHT_WORK_PERIOD);
+	}
+}
+
 static int rad_prepare(struct drm_panel *panel)
 {
 	struct rad *ctx = panel_to_ctx(panel);
@@ -725,7 +765,7 @@ static int rad_prepare(struct drm_panel *panel)
 	}
 
 	ctx->backlight->props.pulse_offset_rows = 233;
-	set_brightness(ctx, ctx->backlight->props.brightness, ctx->backlight->props.pulse_offset_rows);
+	rad_backlight_work_init(ctx);
 
 	ctx->prepared = true;
 
@@ -902,6 +942,11 @@ static int rad_panel_add(struct rad *ctx)
 			PTR_ERR(ctx->enn_gpio));
 		return PTR_ERR(ctx->enn_gpio);
 	}
+
+    of_property_read_u32(dev->of_node, "backlight_ramp_step_size", &ctx->backlight_ramp_step_size);
+    of_property_read_u32(dev->of_node, "backlight_ramp_step_time_msec", &ctx->backlight_ramp_step_time_msec);
+    printk("backlight_ramp_step_size = %d", ctx->backlight_ramp_step_size);
+    printk("backlight_ramp_step_time_msec = %d", ctx->backlight_ramp_step_time_msec);
 
 	memset(&bl_props, 0, sizeof(bl_props));
 	bl_props.type = BACKLIGHT_RAW;
