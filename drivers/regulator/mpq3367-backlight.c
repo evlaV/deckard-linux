@@ -108,6 +108,10 @@ static void backlight_delayed_work_handler(struct work_struct *work)
 		{
 			ret = mpq_write(bl, 0x00, 0xa6);
 
+			if( ret == 0 ) {
+				break;
+			}
+
 			if(loopctr++ > 0) {
 				usleep_range(50000, 100000);
 				printk("mpq3367: i2c write fail, retrying... [%d]\n", loopctr);
@@ -392,10 +396,21 @@ backlight_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	i = 0;
 	ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VPOS, 0x11); //+5.7V
+	while(++i<10 && ret) {
+		usleep_range(10000, 20000);
+		ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VPOS, 0x11); //+5.7V
+	}
 	if (ret)
 		dev_err(dev, "failed to write VPOS (ret=%d)\n", ret);
+
+	i = 0;
 	ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VNEG, 0x11); //-5.7V
+	while(++i<10 && ret) {
+		usleep_range(10000, 20000);
+		ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VPOS, 0x11); //+5.7V
+	}
 	if (ret)
 		dev_err(dev, "failed to write VNEG (ret=%d)\n", ret);
 
