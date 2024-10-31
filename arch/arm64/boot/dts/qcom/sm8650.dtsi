@@ -7978,6 +7978,10 @@
 				  <&apps_smmu 0x10e5 0x0>; // ASC bus client 1
 			//core-max-rate = <1401600000>;
 
+			// AON CAM ADSP TEST: gpio102/104 to mclk function
+			pinctrl-names = "default";
+			pinctrl-0 = <&cam2_default &cam4_default>;
+
 #if 0
 			// XXX:
 			pinctrl-names = "default";
