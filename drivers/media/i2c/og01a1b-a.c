@@ -1237,7 +1237,7 @@ xclk_off:
 static void og01a1b_set_power_off(struct og01a1b_dev *sensor)
 {
 	regulator_bulk_disable(og01a1b_NUM_SUPPLIES, sensor->supplies);
-	//clk_disable_unprepare(sensor->xclk);
+	clk_disable_unprepare(sensor->xclk);
 }
 
 static int og01a1b_set_power(struct og01a1b_dev *sensor, bool on)
