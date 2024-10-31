@@ -150,6 +150,11 @@ struct workqueue_attrs {
 	int nice;
 
 	/**
+	 * @nice: prio level
+	 */
+	int prio;
+
+	/**
 	 * @cpumask: allowed CPUs
 	 *
 	 * Work items in this workqueue are affine to these CPUs and not allowed
