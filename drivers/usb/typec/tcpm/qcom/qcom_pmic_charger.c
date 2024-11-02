@@ -363,7 +363,7 @@ int qcom_pmic_charger_init(struct device *dev, struct regmap *regmap, uint32_t f
 #if 1
 	// just print the bootloader charging settings
 	// expected: ipre=300mA, ichg=750mA, vflt=4350mV, term=300mA
-#define PRINT_REG(x) ({ int ret, val; ret = regmap_read(regmap, x, &val); if (!ret) printk(#x "=%.2x", val); })
+#define PRINT_REG(x) ({ int ret, val; ret = regmap_read(regmap, x, &val); if (!ret) printk(KERN_INFO "qcom-pmic: " #x "=%.2x", val); })
 	PRINT_REG(CHGR_IPRE_CFG_ADDR);
 	PRINT_REG(CHGR_ICHG_CFG_ADDR);
 	PRINT_REG(CHGR_VFLT_CFG_ADDR);
