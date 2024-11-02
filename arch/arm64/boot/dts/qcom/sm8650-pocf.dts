@@ -671,6 +671,8 @@
 			regulator-allow-set-load;
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
+
+			//regulator-always-on; // CSI PHY
 		};
 
 		vreg_l3i_1p2: ldo3 {
@@ -681,6 +683,8 @@
 			regulator-allow-set-load;
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
+
+			//regulator-always-on; // CSI PHY
 		};
 	};
 
@@ -904,7 +908,8 @@
 		AVDD-supply = <&vreg_l6n_2p8>;
 		DOVDD-supply = <&eyetck_dovdd_1v8>;
 		DVDD-supply = <&vreg_l1n_1p1>;
-
+		sensor-queue-index = <1>;
+		
 		port {
 			cam_et_l: endpoint {
 				clock-lanes = <4>;
@@ -968,6 +973,9 @@
 		DVDD-supply = <&vreg_6dof_1p2_ur>;
 		id = "upper_right";
 
+		dual-i2c-available = <0>;
+		dual-i2c-main = <0>;
+
 		port {
 			cam_6dof_ur: endpoint {
 				clock-lanes = <3>;
@@ -995,6 +1003,9 @@
 		id = "slam_right";
 		sensor-queue-index = <1>;
 
+		dual-i2c-available = <0>;
+		dual-i2c-main = <0>;
+		
 		port {
 			cam_6dof_r: endpoint {
 				data-lanes = <1 2>;
@@ -1024,6 +1035,9 @@
 		sensor-queue-index = <0>;
 		id = "upper_left";
 
+		dual-i2c-available = <0>;
+		dual-i2c-main = <0>;
+
 		port {
 			cam_6dof_ul: endpoint {
 				clock-lanes = <3>;
@@ -1051,6 +1065,9 @@
 		DVDD-supply = <&vreg_6dof_1p2_l>;
 		sensor-queue-index = <0>;
 		id = "slam_left";
+
+		dual-i2c-available = <0>;
+		dual-i2c-main = <0>;
 
 		port {
 			cam_6dof_l: endpoint {
