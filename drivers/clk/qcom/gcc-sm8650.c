@@ -3874,6 +3874,20 @@ static int gcc_sm8650_probe(struct platform_device *pdev)
 {
 	struct regmap *regmap;
 	int ret;
+#if 0
+	static int defer;
+
+	if (defer++ < 8) {
+		printk(KERN_INFO "gcc_sm8650_probe defer %d",defer);
+		return -EPROBE_DEFER;
+	}
+	else
+	{
+		printk(KERN_INFO "gcc_sm8650_probe continue");
+	}
+#else
+	printk(KERN_INFO "gcc_sm8650_probe start");
+#endif	
 
 	regmap = qcom_cc_map(pdev, &gcc_sm8650_desc);
 	if (IS_ERR(regmap))
@@ -3900,7 +3914,9 @@ static int gcc_sm8650_probe(struct platform_device *pdev)
 	/* Clear GDSC_SLEEP_ENA_VOTE to stop votes being auto-removed in sleep. */
 	regmap_write(regmap, 0x52150, 0x0);
 
-	return qcom_cc_really_probe(&pdev->dev, &gcc_sm8650_desc, regmap);
+	ret = qcom_cc_really_probe(&pdev->dev, &gcc_sm8650_desc, regmap);
+	printk(KERN_INFO "gcc_sm8650_probe done");
+	return ret;
 }
 
 static struct platform_driver gcc_sm8650_driver = {
