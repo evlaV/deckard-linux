@@ -1684,7 +1684,7 @@
 	status = "okay";
 	max17320@36 {
 		compatible  = "maxim,max17320";
-		status				= "disabled";
+		status				= "okay";
 		reg         = <0x36>;
 		rsense      = <25>;      /* 100's of microOhms */
 		// talrt-min   = <0>;       /* DegreeC */
