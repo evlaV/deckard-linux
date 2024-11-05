@@ -252,12 +252,43 @@
 		};
 	};
 
-	backlight: backlight {
-		compatible = "mpq3367-backlight";
-		preboost-gpio = <&tlmm 41 GPIO_ACTIVE_HIGH>;
-		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>,
-			   <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
-		i2c-adapter = <&i2c4 &i2c5>;
+	BACKLIGHT_PREBOOST: backlight_preboost {
+		compatible = "mps,mp9184";
+		en-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
+	};
+
+	// lcd bias power supplies
+	LCD_BIAS: lcd_bias {
+		compatible = "kinetic,ktd2151";
+		status = "okay";
+		// left i2c, right i2c
+		i2c-adapter = <&i2c5 &i2c4>;
+
+		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+
+		regulators {
+			vpos_r: vposr{
+				regulator-name = "lcdr_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vneg_r: vnegr{
+				regulator-name = "lcdr_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vpos_l: vposl{
+				regulator-name = "lcdl_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vneg_l: vnegl{
+				regulator-name = "lcdl_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+		};
 	};
 
 	FPGA_clk: FPGA_clk {
@@ -1129,12 +1160,16 @@
 		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
 			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
 
-		//Bias supplies enabled via GPIO, but controlled by
-		//same I2C as defined for backlights
-		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
-		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+		//Bias supplies enabled via GPIO
+		left-pos-supply = <&vpos_l>;
+		left-neg-supply = <&vneg_l>;
+		right-pos-supply = <&vpos_r>;
+		right-neg-supply = <&vneg_r>;
 
-		wled1-supply = <&backlight>;
+		preboost-supply = <&BACKLIGHT_PREBOOST>;
+		backlight-left-supply = <&backlight_left>;
+		backlight-right-supply = <&backlight_right>;
+
 		vdda-supply = <&vreg_l12b_1p8>;
 
 		ports {
@@ -1460,10 +1495,38 @@
 
 		status = "okay";
 	};
+
+	// right backlight
+	mpq3367_right@38 {
+		compatible = "mps,mpq3367";
+		reg = <0x38>;
+		status = "okay";
+		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+		mode = "pwm";
+		regulator {
+			backlight_right: backlight{
+				regulator-name = "backlight_right";
+			};
+		};
+	};
 };
 
+// left display power and backlight
 &i2c5 {
 	status = "okay";
+	// left backlight
+	mpq3367@38 {
+		compatible = "mps,mpq3367";
+		reg = <0x38>;
+		status = "okay";
+		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+		mode = "pwm";
+		regulator {
+			backlight_left: backlight{
+				regulator-name = "backlight_left";
+			};
+		};
+	};
 };
 
 &uart15 {
