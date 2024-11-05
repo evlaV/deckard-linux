@@ -74,7 +74,6 @@ struct lpm026m648c_ctx {
 
 	struct gpio_descs *reset_gpios;
 	struct gpio_desc *enp_gpio;
-	struct gpio_desc *enn_gpio;
 
 	struct backlight_device *backlight;
 	struct mipi_dsi_device *dsi[2];
@@ -85,11 +84,6 @@ struct lpm026m648c_ctx {
 	bool is_dual_panel;
 	bool prepared;
 	bool enabled;
-
-	struct delayed_work wdt_work;
-	int backlight_ramp_percentage;
-	int backlight_ramp_step_size;
-	int backlight_ramp_step_time_msec;
 };
 
 static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
@@ -326,12 +320,7 @@ static int lpm026m648c_power_on(struct lpm026m648c_ctx *ctx)
 		return ret;
 
 	usleep_range(1000, 2000);
-    // turn on AVDD
 	gpiod_set_value(ctx->enp_gpio, 1);
-
-    // turn on AVEE
-	gpiod_set_value(ctx->enn_gpio, 1);
-	
 	msleep(20);
 	gpiod_set_value(ctx->reset_gpios->desc[0], 1);
 	gpiod_set_value(ctx->reset_gpios->desc[1], 1);
@@ -343,15 +332,7 @@ static int lpm026m648c_power_off(struct lpm026m648c_ctx *ctx)
 	gpiod_set_value(ctx->reset_gpios->desc[0], 0);
 	gpiod_set_value(ctx->reset_gpios->desc[1], 0);
 	msleep(25);
-    // turn off AVEE
-	gpiod_set_value(ctx->enn_gpio, 0);
-
-    // wait > 1 msec
-	usleep_range(10000, 20000);
-
-    // turn off AVDD
 	gpiod_set_value(ctx->enp_gpio, 0);
-
 	msleep(20);
 
 	return regulator_bulk_disable(ARRAY_SIZE(ctx->power_supplies),
@@ -399,40 +380,6 @@ static int lpm026m648c_unprepare(struct drm_panel *panel)
 	return ret;
 }
 
-// 20 msec period, conversion is not precise and ends up being closer to 50 msec
-#define LPM026M648C_BACKLIGHT_WORK_PERIOD msecs_to_jiffies(ctx->backlight_ramp_step_time_msec)
-
-static void lpm026m648c_backlight_delayed_work_handler(struct work_struct *work)
-{
-	struct lpm026m648c_ctx *ctx = container_of((struct delayed_work *)work, struct lpm026m648c_ctx, wdt_work);
-	int backlight_setting;
-	int backlight_ramp_max = ( ( ctx->backlight->props.max_brightness * ctx->backlight_ramp_percentage ) / 100 );
-
-	// bump the allowed backlight setting
-	ctx->backlight_ramp_percentage += ctx->backlight_ramp_step_size;
-
-	backlight_setting =  backlight_ramp_max < ctx->backlight->props.brightness ? backlight_ramp_max : ctx->backlight->props.brightness;
-
-	set_brightness(ctx, backlight_setting, ctx->backlight->props.pulse_offset_rows);
-
-	printk("jdi4k: set brightness to %d ( %d )\n", backlight_setting, ctx->backlight->props.brightness );
-
-	if ( ctx->backlight_ramp_percentage <= 100 ) {
-		schedule_delayed_work(&ctx->wdt_work, LPM026M648C_BACKLIGHT_WORK_PERIOD);
-	} else {
-		printk("jdi4k backlight ramp complete\n");
-	}
-}
-
-static void lpm026m648c_backlight_work_init(struct lpm026m648c_ctx *ctx)
-{
-	if ( ctx->backlight_ramp_step_size && ctx->backlight_ramp_step_time_msec ){
-		ctx->backlight_ramp_percentage = 0;
-		INIT_DELAYED_WORK(&ctx->wdt_work, lpm026m648c_backlight_delayed_work_handler);
-		schedule_delayed_work(&ctx->wdt_work, LPM026M648C_BACKLIGHT_WORK_PERIOD);
-	}
-}
-
 static int lpm026m648c_prepare(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
@@ -461,7 +408,8 @@ static int lpm026m648c_prepare(struct drm_panel *panel)
 		goto power_off;
 
 	ctx->backlight->props.pulse_offset_rows = GPO1_TES1;
-	lpm026m648c_backlight_work_init(ctx);
+	set_brightness(ctx, ctx->backlight->props.brightness,
+		       ctx->backlight->props.pulse_offset_rows);
 
 	ctx->prepared = true;
 
@@ -647,18 +595,6 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 			PTR_ERR(ctx->enp_gpio));
 		return PTR_ERR(ctx->enp_gpio);
 	}
-
-	ctx->enn_gpio = devm_gpiod_get(dev, "enn", GPIOD_OUT_LOW);
-	if (IS_ERR(ctx->enn_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get enn gpio %ld\n",
-			PTR_ERR(ctx->enn_gpio));
-		return PTR_ERR(ctx->enn_gpio);
-	}
-
-    of_property_read_u32(dev->of_node, "backlight_ramp_step_size", &ctx->backlight_ramp_step_size);
-    of_property_read_u32(dev->of_node, "backlight_ramp_step_time_msec", &ctx->backlight_ramp_step_time_msec);
-    printk("backlight_ramp_step_size = %d", ctx->backlight_ramp_step_size);
-    printk("backlight_ramp_step_time_msec = %d", ctx->backlight_ramp_step_time_msec);
 
 	memset(&bl_props, 0, sizeof(bl_props));
 	bl_props.type = BACKLIGHT_RAW;

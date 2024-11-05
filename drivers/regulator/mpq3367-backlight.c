@@ -16,6 +16,7 @@ struct mpq3367_backlight {
 
 	struct gpio_desc *preboost_gpio;
 	struct gpio_desc *en_gpio[2];
+	struct gpio_desc *bias_gpio[2];
 
 	uint8_t required_reinit;
 	struct delayed_work backlight_work;
@@ -108,10 +109,6 @@ static void backlight_delayed_work_handler(struct work_struct *work)
 		{
 			ret = mpq_write(bl, 0x00, 0xa6);
 
-			if( ret == 0 ) {
-				break;
-			}
-
 			if(loopctr++ > 0) {
 				usleep_range(50000, 100000);
 				printk("mpq3367: i2c write fail, retrying... [%d]\n", loopctr);
@@ -145,12 +142,8 @@ static int reg_enable(struct regulator_dev *rdev)
 	int ret;
 	int loopctr=0;
 
-	dev_err(dev, "mpq3367: disable blacklight driver\n");
-	gpiod_set_value(bl->en_gpio[0], 0);
-	gpiod_set_value(bl->en_gpio[1], 0);
-
 	//the BOOST_CYCLE_COUNT is here to help the preboost boot up faster to the target voltage
-	#define BOOST_CYCLE_COUNT 40
+	#define BOOST_CYCLE_COUNT 20
 	dev_err(dev, "mpq3367: starting preboost: cycle count = %d\n", BOOST_CYCLE_COUNT);
 	for(int i=0; i < BOOST_CYCLE_COUNT; i++) {
 		//these times are fairly tightly tuned
@@ -163,9 +156,9 @@ static int reg_enable(struct regulator_dev *rdev)
 	dev_err(dev, "mpq3367: preboost startup done\n");
 	//we need to delay to wait for hiccup mode to exit --
 	//at a minimum it is about 70ms we need to wait here...
-	usleep_range(400000, 450000);
+	usleep_range(200000, 250000);
 
-	dev_err(dev, "mpq3367: enable blacklight driver\n");
+	dev_err(dev, "mpq3367: gpio enable\n");
 	gpiod_set_value(bl->en_gpio[0], 1);
 	gpiod_set_value(bl->en_gpio[1], 1);
 
@@ -299,35 +292,12 @@ static ssize_t mpq_reinit_store(struct device *dev, struct device_attribute *att
 	return count;
 }
 
-static ssize_t mpq_preboost_enable_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct mpq3367_backlight * bl = dev_get_drvdata(dev);
-	int ret;
-	int input;
-
-	ret = sscanf(buf, "%d", &input);
-	if(input == 0)
-	{
-		printk("Disabling Preboost\n");
-		gpiod_set_value(bl->preboost_gpio, 0);
-	}
-	else
-	{
-		printk("Enabling Preboost\n");
-		gpiod_set_value(bl->preboost_gpio, 1);
-	}
-
-	return count;
-}
-
 static DEVICE_ATTR_RO(mpq_status);
 static DEVICE_ATTR_RW(mpq_reinit);
-static DEVICE_ATTR_WO(mpq_preboost_enable);
 
 static struct attribute *mpq_attrs[] = {
 	&dev_attr_mpq_status.attr,
 	&dev_attr_mpq_reinit.attr,
-	&dev_attr_mpq_preboost_enable.attr,
 	NULL,
 };
 
@@ -357,6 +327,11 @@ backlight_probe(struct platform_device *pdev)
 		bl->en_gpio[i] = devm_gpiod_get_index(dev, "en", i, GPIOD_OUT_LOW);
 		if (IS_ERR(bl->en_gpio[i]))
 			return PTR_ERR(bl->en_gpio[i]);
+
+		// GPIOD_OUT_HIGH: set bias gpios to be always on
+		bl->bias_gpio[i] = devm_gpiod_get_index(dev, "bias", i, GPIOD_OUT_HIGH);
+		if (IS_ERR(bl->bias_gpio[i]))
+			return PTR_ERR(bl->bias_gpio[i]);
 	}
 
 	for (i = 0; i < 2; i++) {
@@ -396,21 +371,10 @@ backlight_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	i = 0;
 	ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VPOS, 0x11); //+5.7V
-	while(++i<10 && ret) {
-		usleep_range(10000, 20000);
-		ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VPOS, 0x11); //+5.7V
-	}
 	if (ret)
 		dev_err(dev, "failed to write VPOS (ret=%d)\n", ret);
-
-	i = 0;
 	ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VNEG, 0x11); //-5.7V
-	while(++i<10 && ret) {
-		usleep_range(10000, 20000);
-		ret = i2c_write_both(bl, KTD_I2C_ADDR, KTD_REGISTER_VPOS, 0x11); //+5.7V
-	}
 	if (ret)
 		dev_err(dev, "failed to write VNEG (ret=%d)\n", ret);
 
