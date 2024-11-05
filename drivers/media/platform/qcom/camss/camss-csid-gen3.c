@@ -17,6 +17,9 @@
 #include "camss-csid.h"
 #include "camss-csid-gen3.h"
 
+#define CREATE_TRACE_POINTS
+#include "trace.h"
+
 #define CSID_TOP_IO_PATH_CFG0(csid)	(0x4 * (csid))
 #define		OUTPUT_IFE_EN			0x100
 #define		INTERNAL_CSID			1
@@ -278,6 +281,8 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	void *sof_addr_lower, *sof_addr_upper, *eof_addr_lower, *eof_addr_upper;
 	int i = 0;
 
+	trace_csid_isr(0, csid->id);
+
 	// if IPP path is enabled use it as the source for SOF/EOF timestamps
 	if(readl(csid->base +0x300) & BIT(31)) {
 		sof_addr_upper = csid->base + 0x39c; // CSID_IPP0_TIMESTAMP_CURR1_SOF
@@ -382,6 +387,8 @@ static irqreturn_t csid_isr(int irq, void *dev)
 			csid->last_sof_kernel_ts = ts_monotonic_raw;
 			csid->cur_sof_isp_timestamp_converted = 0;
 		}
+
+		trace_csid_isr_sof(1, csid->id);
 	}
 
 #if 0
@@ -436,7 +443,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 			buf_done_info.sensor_metadata_buffer_addr = csid->get_metadata(csid->capture_subdev );
 			buf_done_info.sensor_metadata_buffer_size = csid->metadata_size;
 		}
-
+		trace_csid_isr_wm_done(0, csid->id);
 		camss_buf_done(csid->camss, csid->id, 0, &buf_done_info);
 	}
 
