@@ -457,6 +457,10 @@ static inline int msm_gpu_convert_priority(struct msm_gpu *gpu, int prio,
 {
 	unsigned rn, sp;
 
+	//XXX: mesa-valve will use 0 for low prio and 3 for high prio
+	//convert to what upstream mesa would send instead.
+	prio = prio == 0 ? 3 : 0;
+
 	rn = div_u64_rem(prio, NR_SCHED_PRIORITIES, &sp);
 
 	/* invert sched priority to map to higher-numeric-is-higher-
