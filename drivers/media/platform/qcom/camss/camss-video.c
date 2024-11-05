@@ -124,6 +124,32 @@ static int video_queue_setup(struct vb2_queue *q,
 						&video->active_fmt.fmt.pix_mp;
 	unsigned int i;
 
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(video->has_extended_cfg)
+	{
+		// Check provided config if any
+		if (*num_planes) {
+			if (*num_planes != video->extended_cfg.plane_count)
+				return -EINVAL;
+
+			for (i = 0; i < *num_planes; i++)
+				if (sizes[i] < video->extended_cfg.plane_sizes[i])
+					return -EINVAL;
+
+			return 0;
+		}
+
+		*num_planes = video->extended_cfg.plane_count;
+
+		for (i = 0; i < *num_planes; i++)
+			sizes[i] = video->extended_cfg.plane_sizes[i];
+
+		return 0;
+	}
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+
 	if (*num_planes) {
 		if (*num_planes != format->num_planes)
 			return -EINVAL;
@@ -153,6 +179,48 @@ static int video_buf_init(struct vb2_buffer *vb)
 						&video->active_fmt.fmt.pix_mp;
 	struct sg_table *sgt;
 	unsigned int i;
+
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(video->has_extended_cfg)
+	{
+		for (i = 0; i < CAMSS_EXT_VFE_OUTPUT_TYPE_MAX; i++) {
+			buffer->ext_addr[i] = 0;
+			buffer->ext_fh_addr[i] = 0;
+		}
+
+		for (i = 0; i < CAMSS_EXT_VFE_OUTPUT_TYPE_MAX; i++) {
+			if(!video->extended_cfg.vfe_output_configs[i].en)
+				continue;
+
+			u32 plane_idx = video->extended_cfg.vfe_output_configs[i].plane_idx;
+			sgt = vb2_dma_sg_plane_desc(vb, plane_idx);
+			if (!sgt)
+				return -EFAULT;
+
+            // store the metadata plane sg_table needed to copy sensor metadata into it afterward
+            if(i == CAMSS_EXT_VFE_OUTPUT_TYPE_META) {
+                buffer->ext_metadata_sgt = sgt;
+            }
+
+			buffer->ext_addr[i] = sg_dma_address(sgt->sgl) + video->extended_cfg.vfe_output_configs[i].offset;
+
+			if(video->extended_cfg.vfe_output_configs[i].frameheader_en)
+			{
+				u32 fh_plane_idx = video->extended_cfg.vfe_output_configs[i].frameheader_plane_idx;
+				sgt = vb2_dma_sg_plane_desc(vb, fh_plane_idx);
+				if (!sgt)
+					return -EFAULT;
+
+				buffer->ext_fh_addr[i] = sg_dma_address(sgt->sgl) + video->extended_cfg.vfe_output_configs[i].frameheader_offset;
+			}
+
+			// Note that metadata are written by the kernel so we need to copy data into the sglist using sg_copy_from_buffer
+		}
+		return 0;
+	}
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
 
 	for (i = 0; i < format->num_planes; i++) {
 		sgt = vb2_dma_sg_plane_desc(vb, i);
@@ -204,6 +272,23 @@ static int video_buf_prepare(struct vb2_buffer *vb)
 						&video->active_fmt.fmt.pix_mp;
 	unsigned int i;
 
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(video->has_extended_cfg)
+	{
+		for (i = 0; i < video->extended_cfg.plane_count; i++) {
+			if (video->extended_cfg.plane_sizes[i] > vb2_plane_size(vb, i))
+				return -EINVAL;
+
+			vb2_set_plane_payload(vb, i, video->extended_cfg.plane_sizes[i]);
+		}
+		vbuf->field = V4L2_FIELD_NONE;
+
+		return 0;
+	}
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+
 	for (i = 0; i < format->num_planes; i++) {
 		if (format->plane_fmt[i].sizeimage > vb2_plane_size(vb, i))
 			return -EINVAL;
@@ -248,6 +333,16 @@ static int video_check_format(struct camss_video *video)
 	struct v4l2_pix_format_mplane *sd_pix = &format.fmt.pix_mp;
 	int ret;
 
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(video->has_extended_cfg)
+	{
+		// Ignore this check when using the extended configuration for now
+		return 0;
+	}
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+
 	sd_pix->pixelformat = pix->pixelformat;
 	ret = video_get_subdev_format(video, &format);
 	if (ret < 0)
@@ -271,6 +366,16 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
 	int ret, i;
+
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(video->has_extended_cfg)
+	{
+		// We need to provide the CSID path configuration before calling s_stream
+		// csid->acquire_extended_config_paths()
+	}
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
 
 	ret = video_device_pipeline_alloc_start(vdev);
 	if (ret < 0) {
@@ -334,6 +439,16 @@ static void video_stop_streaming(struct vb2_queue *q)
 	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
 	int ret, i;
+
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(video->has_extended_cfg)
+	{
+		// We need to provide the CSID path configuration before calling s_stream
+		// csid->acquire_extended_config_paths()
+	}
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
 
 	entity = &vdev->entity;
 	pad = &entity->pads[0];
@@ -623,6 +738,183 @@ static int video_s_input(struct file *file, void *fh, unsigned int input)
 	return input == 0 ? 0 : -EINVAL;
 }
 
+static struct vfe_device* video_get_vfe_device(struct camss_video *video)
+{
+	struct media_pad *vfe_src_pad = media_entity_remote_source_pad_unique(&video->vdev.entity);
+	if(IS_ERR(vfe_src_pad)) {
+		dev_err(video->camss->dev, "Failed to get vfe source pad");
+		return (void*)vfe_src_pad;
+	}
+
+	struct v4l2_subdev *vfe_subdev = media_entity_to_v4l2_subdev(vfe_src_pad->entity);
+	if(!vfe_subdev) {
+		dev_err(video->camss->dev, "Failed to get vfe v4l2 subdev");
+		return ERR_PTR(-ENODEV);
+	}
+
+	struct vfe_device *vfe = v4l2_get_subdevdata(vfe_subdev);
+	if(!vfe) {
+		dev_err(video->camss->dev, "Failed to get vfe subdev data");
+		return ERR_PTR(-ENODEV);
+	}
+
+	return vfe;
+}
+
+static struct csid_device* video_get_csid_device(struct camss_video *video, int* csid_pad_index)
+{
+	struct media_pad *vfe_src_pad = media_entity_remote_source_pad_unique(&video->vdev.entity);
+	if(IS_ERR(vfe_src_pad)) {
+		dev_err(video->camss->dev, "Failed to get vfe source pad");
+		return (void*)vfe_src_pad;
+	}
+
+	struct media_pad *csid_src_pad = media_entity_remote_source_pad_unique(vfe_src_pad->entity);
+	if(IS_ERR(csid_src_pad)) {
+		dev_err(video->camss->dev, "Failed to get csid source pad");
+		return (void*)csid_src_pad;
+	}
+
+	struct v4l2_subdev *csid_subdev = media_entity_to_v4l2_subdev(csid_src_pad->entity);
+	if(!csid_subdev) {
+		dev_err(video->camss->dev, "Failed to get csid v4l2 subdev");
+		return ERR_PTR(-ENODEV);
+	}
+
+	struct csid_device *csid = v4l2_get_subdevdata(csid_subdev);
+	if(!csid) {
+		dev_err(video->camss->dev, "Failed to get csid subdev data");
+		return ERR_PTR(-ENODEV);
+	}
+
+	// write the pad index if possible
+	if(csid_pad_index)
+		*csid_pad_index = csid_src_pad->index;
+
+	return csid;
+}
+
+static int __video_set_ext_cfg(struct camss_video *video, struct camss_ext_config *config)
+{
+	// Validate the configuration:
+	//	- all memory access must be valid, (output.offset + (output.width * output.stride)) < plane_sizes[plane_idx]
+	//	- same for frameheaders, counting a frameheader needs 64 bytes
+	//  - frameheader not enabled on DS4/DS16/META
+	//  - if RDI0 is enabled it must be the only output
+	//  - if any other is enabled then it needs Full_Y and Full_C (IPP path)
+	for(int i=0; i<CAMSS_EXT_VFE_OUTPUT_TYPE_MAX; i++)
+	{
+		u32 plane_size = 0;
+		u32 output_size = 0;
+
+		if(config->vfe_output_configs[i].plane_idx >= config->plane_count)
+		{
+			dev_err(video->camss->dev, "set_fmt_ext: invalid plane index %u\n", config->vfe_output_configs[i].plane_idx);
+			return -EINVAL;
+		}
+
+		plane_size = config->plane_sizes[config->vfe_output_configs[i].plane_idx];
+		output_size = config->vfe_output_configs[i].stride * config->vfe_output_configs[i].height;
+		if((config->vfe_output_configs[i].offset + output_size) > plane_size)
+		{
+			dev_err(video->camss->dev, "set_fmt_ext: invalid output memory range [%u, %u] (plane size = %u)\n",
+				config->vfe_output_configs[i].offset, config->vfe_output_configs[i].offset + output_size, plane_size);
+			return -EINVAL;
+		}
+
+		if(config->vfe_output_configs[i].frameheader_en)
+		{
+			if(config->vfe_output_configs[i].frameheader_plane_idx >= config->plane_count)
+			{
+				dev_err(video->camss->dev, "set_fmt_ext: invalid frameheader plane index %u\n", config->vfe_output_configs[i].frameheader_plane_idx);
+				return -EINVAL;
+			}
+			plane_size = config->plane_sizes[config->vfe_output_configs[i].frameheader_plane_idx];
+			if((config->vfe_output_configs[i].frameheader_offset + 64) > plane_size)
+			{
+				dev_err(video->camss->dev, "set_fmt_ext: invalid frameheader memory range [%u, %u] (plane size = %u)\n",
+					config->vfe_output_configs[i].frameheader_offset, config->vfe_output_configs[i].frameheader_offset + 64, plane_size);
+				return -EINVAL;
+			}
+		}
+	}
+
+	video->has_extended_cfg = true;
+	video->extended_cfg = *config;
+	// TODO: no way to provide that to the CSID easily? do we need an additional CSID configuration ioctl for vc, acquired path, etc?
+
+	int csid_pad_idx = -1;
+	struct csid_device *csid = video_get_csid_device(video, &csid_pad_idx);
+	if(IS_ERR(csid)) {
+		dev_err(video->camss->dev, "Failed to get the csid from the video device");
+		return PTR_ERR(csid);
+	}
+
+	if(csid->res->hw_ops->set_extended_config_for_pad) {
+		int ret = csid->res->hw_ops->set_extended_config_for_pad(csid, &video->extended_cfg, csid_pad_idx);
+		if(ret) {
+			dev_err(video->camss->dev, "Failed to set the csid extended path configuration");
+			return ret;
+		}
+	}
+	else {
+		return -EINVAL; // not supported
+	}
+
+	dev_warn(video->camss->dev, "camss-video: extended configuration applied\n");
+
+	return 0;
+}
+
+static long video_ioctl(struct file *file, void *fh, bool valid_prio, unsigned int cmd, void *arg)
+{
+	struct camss_video *video = video_drvdata(file);
+	long ret = 0;
+
+	// Grab the vfe and csid device since these are needed for the extended
+	// configuration and to get/set hardware registers
+	struct vfe_device *vfe = video_get_vfe_device(video);
+	if(IS_ERR(vfe)) {
+		dev_err(video->camss->dev, "Failed to get the vfe from the video device");
+		return PTR_ERR(vfe);
+	}
+
+	struct csid_device *csid = video_get_csid_device(video, NULL);
+	if(IS_ERR(csid)) {
+		dev_err(video->camss->dev, "Failed to get the csid from the video device");
+		return PTR_ERR(csid);
+	}
+
+	switch(cmd)
+	{
+		case VIDIOC_PRIV_S_EXT_CFG:
+			ret = __video_set_ext_cfg(video, (void*)arg);
+			break;
+		case VIDIOC_PRIV_S_REGS:
+			if(csid->res->hw_ops->set_csid_vfe_registers) {
+				ret = csid->res->hw_ops->set_csid_vfe_registers(csid, arg);
+			}
+			else {
+				// Operation not supported
+				return -EINVAL;
+			}
+			break;
+		case VIDIOC_PRIV_G_REGS:
+			if(csid->res->hw_ops->get_csid_vfe_registers) {
+				ret = csid->res->hw_ops->get_csid_vfe_registers(csid, arg);
+			}
+			else {
+				// Operation not supported
+				return -EINVAL;
+			}
+			break;
+		default:
+			ret = -ENOTTY;
+	}
+
+	return ret;
+}
+
 static const struct v4l2_ioctl_ops msm_vid_ioctl_ops = {
 	.vidioc_querycap		= video_querycap,
 	.vidioc_enum_fmt_vid_cap	= video_enum_fmt,
@@ -642,6 +934,7 @@ static const struct v4l2_ioctl_ops msm_vid_ioctl_ops = {
 	.vidioc_enum_input		= video_enum_input,
 	.vidioc_g_input			= video_g_input,
 	.vidioc_s_input			= video_s_input,
+	.vidioc_default			= video_ioctl,
 };
 
 /* -----------------------------------------------------------------------------
@@ -691,6 +984,10 @@ error_alloc:
 static int video_release(struct file *file)
 {
 	struct video_device *vdev = video_devdata(file);
+	struct camss_video *video = video_drvdata(file);
+
+	// clear temporary extended configuration when fd is closed
+	video->has_extended_cfg = false;
 
 	vb2_fop_release(file);
 

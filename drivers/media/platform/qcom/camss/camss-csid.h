@@ -18,6 +18,8 @@
 #include <media/v4l2-mediabus.h>
 #include <media/v4l2-subdev.h>
 
+#include "camss-video.h"
+
 #define MSM_CSID_PAD_SINK 0
 #define MSM_CSID_PAD_FIRST_SRC 1
 #define MSM_CSID_PADS_NUM 5
@@ -119,7 +121,7 @@ struct camss_buf_done_info {
 	u32 status; // reg
 	u64 sof_isp_ts_conv;
 	u64 eof_isp_ts_conv;
-	u64 isp_to_kernel_raw_ts_offset;
+	s64 isp_to_kernel_raw_ts_offset;
 	u64 sof_kernel_ts;
 	void* sensor_metadata_buffer_addr;
 	size_t sensor_metadata_buffer_size;
@@ -196,6 +198,7 @@ struct csid_hw_ops {
 	int (*get_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
 	// Configure which of the additional ISP output (frameheader, statistics) is streamed and provided with the metadata buffers
 	long (*set_statistics_config)(struct csid_device *csid, u32 stats_cfg);
+	int (*set_extended_config_for_pad)(struct csid_device *csid, struct camss_ext_config *config, int src_pad_idx);
 };
 
 struct csid_subdev_resources {
@@ -203,6 +206,17 @@ struct csid_subdev_resources {
 	const struct csid_hw_ops *hw_ops;
 	const struct parent_dev_ops *parent_dev_ops;
 	const struct csid_formats *formats;
+};
+
+struct csid_path_config
+{
+	bool en;
+	u32 owner_stream_idx; // src stream idx
+	u32 vc;
+	u32 dt_id;
+	bool multi_vcdt_en;
+	u32 multi_vcdt_vc;
+	bool trigger_post_sof_work;
 };
 
 struct csid_device {
@@ -232,12 +246,15 @@ struct csid_device {
 	size_t metadata_size;
 	void* (*get_metadata) (struct v4l2_subdev*);
 	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp, u8 group);
-	u64 last_sof_isp_timestamp_converted;
-	u64 cur_sof_isp_timestamp_converted;
-	u64 cur_eof_isp_timestamp_converted;
-	u64 last_sof_kernel_ts;
-	u64 last_eof_kernel_ts;
-	u64 isp_to_kernel_raw_ts_offset;
+
+	// keep track of sof per-path otherwise non-synced stream going through the same csid won't have the right sof metadata
+	u64 path_cur_sof_isp_timestamp_converted[CAMSS_EXT_CSID_PATH_TYPE_MAX];
+	u64 path_last_sof_kernel_ts[CAMSS_EXT_CSID_PATH_TYPE_MAX];
+
+	u32 stream_count; // multiple stream can use a single csid, keep track of that to know when to reset
+
+	bool has_extended_cfg;
+	struct csid_path_config extended_cfg_paths[CAMSS_EXT_CSID_PATH_TYPE_MAX];
 };
 
 struct camss_subdev_resources;

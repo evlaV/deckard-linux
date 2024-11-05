@@ -787,6 +787,10 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 		csid->res->parent_dev_ops->put(camss, csid->id);
 
 		csid->power_on = false;
+
+		// Always clear extended configuration during power off
+		csid->has_extended_cfg = false;
+		memset(csid->extended_cfg_paths, 0, sizeof(csid->extended_cfg_paths));
 	}
 
 	return ret;

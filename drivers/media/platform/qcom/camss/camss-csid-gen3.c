@@ -38,12 +38,6 @@
 #define CSID_CSI2_RX_IRQ_CLEAR		0xA4
 #define CSID_CSI2_RX_IRQ_SET		0xA8
 
-#define CSID_CSI2_RDIN_IRQ_STATUS(rdi)	(0xEC + 0x10 * (rdi))
-
-#define CSID_CSI2_RDIN_IRQ_MASK(rdi)	(0xF0 + 0x10 * (rdi))
-#define CSID_CSI2_RDIN_IRQ_CLEAR(rdi)	(0xF4 + 0x10 * (rdi))
-#define CSID_CSI2_RDIN_IRQ_SET(rdi)	(0xF8 + 0x10 * (rdi))
-
 #define CSID_TOP_IRQ_STATUS		0x7C
 #define		 TOP_IRQ_STATUS_RESET_DONE	0
 
@@ -75,28 +69,28 @@
 #define		CSI2_RX_CFG1_VC_MODE		2
 #define		CSI2_RX_CFG1_MISR_EN		6
 
-#define CSID_RDI_CFG0(rdi)		(0x500 + 0x100 * (rdi))
-#define		RDI_CFG0_TIMESTAMP_EN		6
-#define		RDI_CFG0_TIMESTAMP_STB_SEL	8
-#define		RDI_CFG0_DECODE_FORMAT		12
-#define		RDI_CFG0_DT			16
-#define		RDI_CFG0_VC			22
-#define		RDI_CFG0_DT_ID			27
-#define		RDI_CFG0_EN			31
+#define		PATH_CFG0_TIMESTAMP_EN		6
+#define		PATH_CFG0_TIMESTAMP_STB_SEL	8
+#define		PATH_CFG0_DECODE_FORMAT		12
+#define		PATH_CFG0_DT			16
+#define		PATH_CFG0_VC			22
+#define		PATH_CFG0_DT_ID			27
+#define		PATH_CFG0_EN			31
 
-#define CSID_RDI_CFG1(rdi)		(0x510 + 0x100 * (rdi))
-#define		RDI_CFG1_DROP_H_EN		5
-#define		RDI_CFG1_DROP_V_EN		6
-#define		RDI_CFG1_CROP_H_EN		7
-#define		RDI_CFG1_CROP_V_EN		8
-#define		RDI_CFG1_PIX_STORE		10
-#define		RDI_CFG1_PACKING_FORMAT		15
+#define		PATH_CFG1_DROP_H_EN		5
+#define		PATH_CFG1_DROP_V_EN		6
+#define		PATH_CFG1_CROP_H_EN		7
+#define		PATH_CFG1_CROP_V_EN		8
+#define		PATH_CFG1_PIX_STORE		10
+#define		PATH_CFG1_PACKING_FORMAT		15
 
-#define CSID_RDI_CTRL(rdi)		(0x504 + 0x100 * (rdi))
-#define		RDI_CTRL_START_CMD		0
+#define		PATH_CTRL_START_CMD		0
 
-#define CSID_RDI_IRQ_SUBSAMPLE_PATTERN(rdi)	(0x548 + 0x100 * (rdi))
-#define CSID_RDI_IRQ_SUBSAMPLE_PERIOD(rdi)	(0x54C + 0x100 * (rdi))
+#define 	PATH_MULTI_VCDT_CFG0_EN				0
+#define 	PATH_MULTI_VCDT_CFG0_VC				2
+#define 	PATH_MULTI_VCDT_CFG0_DT				7
+#define 	PATH_MULTI_VCDT_CFG0_TS_COMB_EN		13
+#define 	PATH_MULTI_VCDT_CFG0_DECODE_FORMAT	16
 
 #define CAM_IFE_CSID_MUL_FACTOR                 10000
 #define CAM_IFE_CSID_DIV_FACTOR                 192
@@ -116,6 +110,61 @@ u64 isp_to_kernel_raw_ts_offset_counter;
 u32 isp_to_kernel_raw_ts_offset_refinement_vote_cnt;
 s64 isp_to_kernel_raw_ts_offset_floor;
 
+static void update_isp_to_kernel_raw_ts_offset_estimate(u64 ts_monotonic_raw, u64 sof_isp_timestamp)
+{
+	s64 detected_isp_to_kernel_raw_ts_offset = ts_monotonic_raw - sof_isp_timestamp;
+
+	isp_to_kernel_raw_ts_offset_counter++;
+	
+	// Handle estimation state change
+	if(isp_to_kernel_raw_ts_offset_counter == MAX_NUM_OFFSETS)
+	{
+		if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
+		{
+			isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_REFINE;
+		}
+		else
+		{
+			// If the a percentage of the recent offsets disagreed with the current floor
+			// reset the floor and go back to INIT state
+			if(isp_to_kernel_raw_ts_offset_refinement_vote_cnt < VOTE_COUNT_THRESHOLD_FOR_OFFSET_RESET)
+			{
+				isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_INIT;
+				isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
+			}
+		}
+		isp_to_kernel_raw_ts_offset_counter = 0;
+		isp_to_kernel_raw_ts_offset_refinement_vote_cnt = 0;
+	}
+
+	// Compute the difference in nanoseconds between the current floor and the detected offset
+	s64 offsets_delta = (detected_isp_to_kernel_raw_ts_offset > isp_to_kernel_raw_ts_offset_floor) ?
+		(detected_isp_to_kernel_raw_ts_offset - isp_to_kernel_raw_ts_offset_floor) :
+		(isp_to_kernel_raw_ts_offset_floor - detected_isp_to_kernel_raw_ts_offset);
+
+	// In INIT just update the floor with the latest measurement if lower
+	if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
+	{
+		if(detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor)
+		{
+			isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
+		}
+	}
+	else if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_REFINE)
+	{
+		// Update the vote counter if detected offset is close to the current floor
+		if(offsets_delta < MAX_OFFSET_DELTA_FOR_VOTE_IN_NS)
+		{
+			isp_to_kernel_raw_ts_offset_refinement_vote_cnt++;
+		}
+
+		// If detected value is lower and very close to the current floor we adjust to it
+		if((detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor) && (offsets_delta < MAX_OFFSET_DELTA_FOR_ADJUSTMENT_IN_NS))
+		{
+			isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
+		}
+	}
+}
 
 static int csid_reset(struct csid_device *csid);
 
@@ -127,7 +176,7 @@ static inline int reg_update_rdi(struct csid_device *csid, int n)
 #define REG_UPDATE_RDI			reg_update_rdi
 
 static void __csid_configure_rx(struct csid_device *csid,
-				struct csid_phy_config *phy, int vc)
+				struct csid_phy_config *phy, u32 vc_mode)
 {
 	int val;
 
@@ -139,22 +188,23 @@ static void __csid_configure_rx(struct csid_device *csid,
 
 	val = 1 << CSI2_RX_CFG1_ECC_CORRECTION_EN;
 	val |= 1 << CSI2_RX_CFG1_MISR_EN;
-	if (vc > 3)
-		val |= 1 << CSI2_RX_CFG1_VC_MODE;
+	val |= vc_mode << CSI2_RX_CFG1_VC_MODE;
 	writel(val, csid->base + CSID_CSI2_RX_CFG1);
 }
 
-static void __csid_ctrl_rdi(struct csid_device *csid, int enable, u8 rdi)
+static void __csid_ctrl_path(struct csid_device *csid, int enable, enum camss_ext_csid_path_type path_type)
 {
 	int val = 0;
 
 	if (enable)
-		val = 1 << RDI_CTRL_START_CMD;
+		val = 1 << PATH_CTRL_START_CMD;
 
-	writel(val, csid->base + CSID_RDI_CTRL(rdi));
+	writel(val, csid->base + csid_path_regs[path_type].ctrl);
 
-	/* HACK */
-	camss_reg_update(csid->camss, 0, 0, true);
+	if(path_type == CAMSS_EXT_CSID_PATH_IPP0)
+		camss_reg_update(csid->camss, 0, -4, true);
+	else
+		camss_reg_update(csid->camss, 0, 0, true);
 }
 
 static void __csid_configure_top(struct csid_device *csid)
@@ -174,18 +224,18 @@ static void __csid_configure_top(struct csid_device *csid)
 	writel(val, csid->camss->csid_top_base + CSID_TOP_IO_PATH_CFG0(csid->id));
 }
 
-static void __csid_configure_rdi_stream(struct csid_device *csid, u8 enable, u8 vc)
+static void __csid_configure_path_stream(struct csid_device *csid, u8 enable, enum camss_ext_csid_path_type path_type, struct csid_path_config *path_config)
 {
 	u32 val;
-	u8 lane_cnt = csid->phy.lane_cnt;
+	u32 decode_format;
 	/* Source pads matching RDI channels on hardware. Pad 1 -> RDI0, Pad 2 -> RDI1, etc. */
-	struct v4l2_mbus_framefmt *input_format = &csid->fmt[MSM_CSID_PAD_FIRST_SRC + vc];
+	struct v4l2_mbus_framefmt *input_format = &csid->fmt[MSM_CSID_PAD_FIRST_SRC + path_config->owner_stream_idx];
 	const struct csid_format_info *format = csid_get_fmt_entry(csid->res->formats->formats,
 								   csid->res->formats->nformats,
 								   input_format->code);
 
-	if (!lane_cnt)
-		lane_cnt = 4;
+	// payload-only for RDI paths
+	decode_format = (path_type == CAMSS_EXT_CSID_PATH_IPP0) ? format->decode_format : DECODE_FORMAT_PAYLOAD_ONLY;
 
 	/*
 	 * DT_ID is a two bit bitfield that is concatenated with
@@ -199,50 +249,71 @@ static void __csid_configure_rdi_stream(struct csid_device *csid, u8 enable, u8 
 	 *
 	 * CID   : VC 3:0 << 2 | DT_ID 1:0
 	 */
-	u8 dt_id = vc & 0x03;
 
-	val = 1 << RDI_CFG0_TIMESTAMP_EN;
+	val = 1 << PATH_CFG0_TIMESTAMP_EN;
 	/*
 	val |= 1 << RDI_CFG0_TIMESTAMP_STB_SEL;
 	*/
 	/* RDI_CFG0_SOF_RETIME_DIS */
 	val |= 1 << 5;
-	/* note: for non-RDI path, this should be format->decode_format */
-	val |= DECODE_FORMAT_PAYLOAD_ONLY << RDI_CFG0_DECODE_FORMAT;
-	val |= vc << RDI_CFG0_VC;
-	val |= format->data_type << RDI_CFG0_DT;
-	val |= dt_id << RDI_CFG0_DT_ID;
+	val |= decode_format << PATH_CFG0_DECODE_FORMAT;
+	val |= path_config->vc << PATH_CFG0_VC;
+	val |= format->data_type << PATH_CFG0_DT;
+	val |= path_config->dt_id << PATH_CFG0_DT_ID;
 
-	writel(val, csid->base + CSID_RDI_CFG0(vc));
+	writel(val, csid->base + csid_path_regs[path_type].cfg0);
 
-	val = 1 << RDI_CFG1_PACKING_FORMAT;
-	val |= 1 << RDI_CFG1_PIX_STORE;
-	val |= 1 << RDI_CFG1_DROP_H_EN;
-	val |= 1 << RDI_CFG1_DROP_V_EN;
-	val |= 1 << RDI_CFG1_CROP_H_EN;
-	val |= 1 << RDI_CFG1_CROP_V_EN;
+	val = 1 << PATH_CFG1_PACKING_FORMAT;
+	val |= 1 << PATH_CFG1_PIX_STORE;
+	val |= 1 << PATH_CFG1_DROP_H_EN;
+	val |= 1 << PATH_CFG1_DROP_V_EN;
+	val |= 1 << PATH_CFG1_CROP_H_EN;
+	val |= 1 << PATH_CFG1_CROP_V_EN;
 
-	writel(val, csid->base + CSID_RDI_CFG1(vc));
+	writel(val, csid->base + csid_path_regs[path_type].cfg1);
+
+	if(path_config->multi_vcdt_en) {
+		val = 0x1 << PATH_MULTI_VCDT_CFG0_EN;
+		val |= path_config->multi_vcdt_vc << PATH_MULTI_VCDT_CFG0_VC;
+		val |= format->data_type << PATH_MULTI_VCDT_CFG0_DT;
+		val |= decode_format << PATH_MULTI_VCDT_CFG0_DECODE_FORMAT;
+		val |= 0x1 << PATH_MULTI_VCDT_CFG0_TS_COMB_EN;
+		writel(val, csid->base + csid_path_regs[path_type].multi_vcdt_cfg0);
+	}
 
 	val = 0;
-	writel(val, csid->base + CSID_RDI_IRQ_SUBSAMPLE_PERIOD(vc));
+	writel(val, csid->base + csid_path_regs[path_type].irq_subsample_period);
 
 	val = 1;
-	writel(val, csid->base + CSID_RDI_IRQ_SUBSAMPLE_PATTERN(vc));
+	writel(val, csid->base + csid_path_regs[path_type].irq_subsample_pattern);
 
 	val = 0;
-	writel(val, csid->base + CSID_RDI_CTRL(vc));
+	writel(val, csid->base + csid_path_regs[path_type].ctrl);
 
-	val = readl(csid->base + CSID_RDI_CFG0(vc));
+	val = readl(csid->base + csid_path_regs[path_type].cfg0);
 
 	if (enable)
-		val |= 1 << RDI_CFG0_EN;
-	writel(val, csid->base + CSID_RDI_CFG0(vc));
+		val |= 1 << PATH_CFG0_EN;
+	writel(val, csid->base + csid_path_regs[path_type].cfg0);
+
+	// enable SOF IRQs for this path
+	val = 0x1010; // PATH_INFO_SOF | CAMIF_SOF
+	writel_relaxed(val, csid->base + csid_path_regs[path_type].irq_mask);
 }
 
 static void csid_configure_stream(struct csid_device *csid, u8 enable)
 {
 	u8 i;
+
+	csid->stream_count += (enable ? 1 : -1);
+
+	if((enable && csid->stream_count!=1) || (!enable && (csid->stream_count!=0))) {
+		// NOTE: Taking a big shortcut here, we totally ignore configure_stream calls that are not the first enable
+		// or the last disable request. We don't know for which source pad the stream was started or stopped
+		// so we have to assume that we have the full config when the first CSID user call STREAMON. If we knew which stream 
+		// started/stopped we could dynamically enable/disable CSID paths, be more flexible and avoid wasting resources... 
+		return;
+	}
 
 	if (!enable) {
 		csid_reset(csid);
@@ -255,14 +326,59 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	if (enable)
 		__csid_configure_top(csid);
 
-	/* Loop through all enabled VCs and configure stream for each */
-	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++)
-		//csid->phy.en_vc = 1;
-		if (csid->phy.en_vc & BIT(i)) {
-			__csid_configure_rdi_stream(csid, enable, i);
-			__csid_configure_rx(csid, &csid->phy, i);
-			__csid_ctrl_rdi(csid, enable, i);
+	if(enable && isp_to_kernel_raw_ts_offset_stream_cnt == 0) {
+		// reset isp->monotonic_raw offset estimation data (shared between csids since all csid hw use the same clock)
+		isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_INIT;
+		isp_to_kernel_raw_ts_offset_counter = 0;
+		isp_to_kernel_raw_ts_offset_refinement_vote_cnt = 0;
+		isp_to_kernel_raw_ts_offset_floor = LONG_MAX;
+	}
+	isp_to_kernel_raw_ts_offset_stream_cnt += (enable ? 1 : -1);
+
+	// If we don't have the extended configuration fill the paths config with a default one based on the active media links
+	if(!csid->has_extended_cfg) {
+		memset(csid->extended_cfg_paths, 0, sizeof(csid->extended_cfg_paths));
+		for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++) {
+			//csid->phy.en_vc = 1;
+			if (csid->phy.en_vc & BIT(i)) {
+				enum camss_ext_csid_path_type path = CAMSS_EXT_CSID_PATH_RDI0 + i;
+				struct csid_path_config path_cfg = {0};
+				path_cfg.en = true;
+				path_cfg.owner_stream_idx = i;
+				path_cfg.vc = i;
+				path_cfg.dt_id = i & 0x3;
+				// TODO: HACK FOR XRSERVICE COMPAT, remove when appropriate
+				if(path == CAMSS_EXT_CSID_PATH_RDI0) {
+					path_cfg.multi_vcdt_en = true;
+					path_cfg.multi_vcdt_vc = 1;
+				}
+				path_cfg.trigger_post_sof_work = true; // always trigger sof work by default
+				csid->extended_cfg_paths[path] = path_cfg;
+			}
 		}
+	}
+
+	for(int i=0; i<CAMSS_EXT_CSID_PATH_TYPE_MAX; i++) {
+		if(csid->extended_cfg_paths[i].en) {
+			__csid_configure_path_stream(csid, enable, i, &csid->extended_cfg_paths[i]);
+		}
+	}
+
+	// we need this extra loop since we cannot configure paths while one is active
+	for(int i=0; i<CAMSS_EXT_CSID_PATH_TYPE_MAX; i++) {
+		if(csid->extended_cfg_paths[i].en) {
+			__csid_ctrl_path(csid, enable, i);
+		}
+	}
+
+	u32 vc_mode = 0;
+	for(int i=0; i<CAMSS_EXT_CSID_PATH_TYPE_MAX; i++) {
+		if(csid->extended_cfg_paths[i].en && (csid->extended_cfg_paths[i].vc > 3 || 
+			(csid->extended_cfg_paths[i].multi_vcdt_en && csid->extended_cfg_paths[i].multi_vcdt_vc > 3))) {
+			vc_mode = 1;
+		}
+	}
+	__csid_configure_rx(csid, &csid->phy, vc_mode);
 }
 
 /*
@@ -278,23 +394,9 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	u32 top_val, val, buf_done_val, rdi_status, ipp_status;
 	u8 reset_done;
 	u64 ts_monotonic_raw = ktime_get_raw_ns();
-	void *sof_addr_lower, *sof_addr_upper, *eof_addr_lower, *eof_addr_upper;
 	int i = 0;
 
 	trace_csid_isr(0, csid->id);
-
-	// if IPP path is enabled use it as the source for SOF/EOF timestamps
-	if(readl(csid->base +0x300) & BIT(31)) {
-		sof_addr_upper = csid->base + 0x39c; // CSID_IPP0_TIMESTAMP_CURR1_SOF
-		sof_addr_lower = csid->base + 0x398; // CSID_IPP0_TIMESTAMP_CURR0_SOF
-		eof_addr_upper = csid->base + 0x3ac; // CSID_IPP0_TIMESTAMP_CURR1_EOF
-		eof_addr_lower = csid->base + 0x3a8; // CSID_IPP0_TIMESTAMP_CURR0_EOF
-	} else {
-		sof_addr_upper = csid->base + 0x598; // CSID_RDI0_TIMESTAMP_CURR1_SOF
-		sof_addr_lower = csid->base + 0x594; // CSID_RDI0_TIMESTAMP_CURR0_SOF
-		eof_addr_upper = csid->base + 0x5a8; // CSID_RDI0_TIMESTAMP_CURR1_EOF
-		eof_addr_lower = csid->base + 0x5a4; // CSID_RDI0_TIMESTAMP_CURR0_EOF
-	}
 
 	top_val = readl(csid->base + CSID_TOP_IRQ_STATUS);
 	writel(top_val, csid->base + CSID_TOP_IRQ_CLEAR);
@@ -303,92 +405,46 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	val = readl(csid->base + CSID_CSI2_RX_IRQ_STATUS);
 	writel(val, csid->base + CSID_CSI2_RX_IRQ_CLEAR);
 
-	rdi_status = readl(csid->base + CSID_CSI2_RDIN_IRQ_STATUS(i));
-	writel(rdi_status, csid->base + CSID_CSI2_RDIN_IRQ_CLEAR(i));
+	for(int path_type=0; path_type<CAMSS_EXT_CSID_PATH_TYPE_MAX; path_type++) {
+		// always check IPP0 for compatibility with apps that used this assumption
+		// TODO: HACK FOR XRSERVICE COMPAT, remove IPP0 check
+		if(csid->extended_cfg_paths[path_type].en || (path_type == CAMSS_EXT_CSID_PATH_IPP0)) {
+			// read irq status
+			u32 path_status = readl(csid->base + csid_path_regs[path_type].irq_status);
+			writel(path_status, csid->base + csid_path_regs[path_type].irq_clear);
 
-	ipp_status = readl(csid->base + 0xac);
-	writel(ipp_status, csid->base + 0xb4);
+			if(path_status & 0x0010) { // Test if PATH_INFO_SOF is set
+				u32 sof_timestamp_lower = readl_relaxed(csid->base + csid_path_regs[path_type].curr_sof_lower);
+				u32 sof_timestamp_upper = readl_relaxed(csid->base + csid_path_regs[path_type].curr_sof_upper);
+				u64 sof_isp_timestamp = ((u64)sof_timestamp_upper) << 32 | sof_timestamp_lower;
 
-	if((rdi_status & 0x0010) || (ipp_status & 0x0010)) // Test if PATH_INFO_SOF is set
-	{
-		u32 sof_timestamp_lower = readl_relaxed(sof_addr_lower);
-		u32 sof_timestamp_upper = readl_relaxed(sof_addr_upper);
-		u64 sof_isp_timestamp = ((u64)sof_timestamp_upper) << 32 | sof_timestamp_lower;
+				sof_isp_timestamp = mul_u64_u32_div(
+					sof_isp_timestamp,
+					CAM_IFE_CSID_MUL_FACTOR,
+					CAM_IFE_CSID_DIV_FACTOR);
 
-		sof_isp_timestamp = mul_u64_u32_div(
-			sof_isp_timestamp,
-			CAM_IFE_CSID_MUL_FACTOR,
-			CAM_IFE_CSID_DIV_FACTOR);
+				if(sof_isp_timestamp != 0) {
+					// update the isp->kernel_raw timestamp offset estimate with the new SOF measurement
+					update_isp_to_kernel_raw_ts_offset_estimate(ts_monotonic_raw, sof_isp_timestamp);
 
-		if(sof_isp_timestamp != 0) {
-			s64 detected_isp_to_kernel_raw_ts_offset = ts_monotonic_raw - sof_isp_timestamp;
+					csid->path_cur_sof_isp_timestamp_converted[path_type] = sof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
 
-			isp_to_kernel_raw_ts_offset_counter++;
-			
-			// Handle estimation state change
-			if(isp_to_kernel_raw_ts_offset_counter == MAX_NUM_OFFSETS)
-			{
-				if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
-				{
-					isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_REFINE;
+					if(csid->do_post_sof_work != NULL && (csid->extended_cfg_paths[path_type].trigger_post_sof_work || path_type == CAMSS_EXT_CSID_PATH_IPP0)) {
+						u8 group = (sof_timestamp_lower & 1) ? 1 : 0;
+						csid->do_post_sof_work(csid->capture_subdev, csid->path_cur_sof_isp_timestamp_converted[path_type], ts_monotonic_raw, group);
+					}
+
+					csid->path_last_sof_kernel_ts[path_type] = ts_monotonic_raw;
 				}
 				else
 				{
-					// If the a percentage of the recent offsets disagreed with the current floor
-					// reset the floor and go back to INIT state
-					if(isp_to_kernel_raw_ts_offset_refinement_vote_cnt < VOTE_COUNT_THRESHOLD_FOR_OFFSET_RESET)
-					{
-						isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_INIT;
-						isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
-					}
-				}
-				isp_to_kernel_raw_ts_offset_counter = 0;
-				isp_to_kernel_raw_ts_offset_refinement_vote_cnt = 0;
-			}
-
-			// Compute the difference in nanoseconds between the current floor and the detected offset
-			s64 offsets_delta = (detected_isp_to_kernel_raw_ts_offset > isp_to_kernel_raw_ts_offset_floor) ?
-				(detected_isp_to_kernel_raw_ts_offset - isp_to_kernel_raw_ts_offset_floor) :
-				(isp_to_kernel_raw_ts_offset_floor - detected_isp_to_kernel_raw_ts_offset);
-
-			// In INIT just update the floor with the latest measurement if lower
-			if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
-			{
-				if(detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor)
-				{
-					isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
-				}
-			}
-			else if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_REFINE)
-			{
-				// Update the vote counter if detected offset is close to the current floor
-				if(offsets_delta < MAX_OFFSET_DELTA_FOR_VOTE_IN_NS)
-				{
-					isp_to_kernel_raw_ts_offset_refinement_vote_cnt++;
+					csid->path_last_sof_kernel_ts[path_type] = ts_monotonic_raw;
+					csid->path_cur_sof_isp_timestamp_converted[path_type] = 0;
 				}
 
-				// If detected value is lower and very close to the current floor we adjust to it
-				if((detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor) && (offsets_delta < MAX_OFFSET_DELTA_FOR_ADJUSTMENT_IN_NS))
-				{
-					isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
-				}
+				trace_csid_isr_sof(1, csid->id);
 			}
-
-			csid->cur_sof_isp_timestamp_converted = sof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
-			if(csid->do_post_sof_work != NULL) {
-				u8 group = (sof_timestamp_lower & 1) ? 1 : 0;
-				csid->do_post_sof_work(csid->capture_subdev, csid->cur_sof_isp_timestamp_converted, ts_monotonic_raw, group);
-			}
-
-			csid->last_sof_kernel_ts = ts_monotonic_raw;
 		}
-		else
-		{
-			csid->last_sof_kernel_ts = ts_monotonic_raw;
-			csid->cur_sof_isp_timestamp_converted = 0;
-		}
-
-		trace_csid_isr_sof(1, csid->id);
 	}
 
 #if 0
@@ -417,34 +473,65 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	if (top_val & 0x2000) {
 		buf_done_val = readl(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 		writel(buf_done_val, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
+		// printk("got buf_done_val 0x%x\n", buf_done_val);
 
-		u32 eof_timestamp_lower = readl_relaxed(eof_addr_lower);
-		u32 eof_timestamp_upper = readl_relaxed(eof_addr_upper);
-		u64 eof_isp_timestamp = ((u64)eof_timestamp_upper) << 32 | eof_timestamp_lower;
+		// check all paths to see if the buf_done status corresponds to one of it output
+		// if that's the case fill up the eof info and trigger the vfe wm_done with only
+		// the relevant bits in the buf_done_info.status variable
+		for(int path_type=0; path_type<CAMSS_EXT_CSID_PATH_TYPE_MAX; path_type++) {
 
-		eof_isp_timestamp = mul_u64_u32_div(
-			eof_isp_timestamp,
-			CAM_IFE_CSID_MUL_FACTOR,
-			CAM_IFE_CSID_DIV_FACTOR);
+			// skip disabled paths
+			// TODO: HACK FOR XRSERVICE COMPAT, remove IPP0 check
+			if(csid->extended_cfg_paths[path_type].en || (path_type==CAMSS_EXT_CSID_PATH_IPP0))
+			{
+				u32 comp_grp_test_mask = 0;
+				u32 path_buf_done_val = 0;
+				if(!csid_is_lite(csid) && path_type == CAMSS_EXT_CSID_PATH_IPP0) {
+					comp_grp_test_mask = 0x3fff;
+				}
+				else {
+					u32 rdi_idx = path_type - CAMSS_EXT_CSID_PATH_RDI0;
+					comp_grp_test_mask = csid_is_lite(csid) ? BIT(1 + rdi_idx) : BIT(14 + rdi_idx);
+				}
 
-		csid->cur_eof_isp_timestamp_converted = eof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
+				// get the buf_done_val with only bits corresponding to this path
+				path_buf_done_val = buf_done_val & comp_grp_test_mask;
 
-		struct camss_buf_done_info buf_done_info;
-		memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
-		// TODO: fill with info, including sensor metadata buffer addr and size
-		buf_done_info.status = buf_done_val;
-		buf_done_info.sof_isp_ts_conv = csid->cur_sof_isp_timestamp_converted;
-		buf_done_info.eof_isp_ts_conv = csid->cur_eof_isp_timestamp_converted;
-		buf_done_info.isp_to_kernel_raw_ts_offset = isp_to_kernel_raw_ts_offset_floor;
-		buf_done_info.sof_kernel_ts = csid->last_sof_kernel_ts;
-		// Provide sensor metadata if available
-		if(csid->get_metadata != NULL)
-		{
-			buf_done_info.sensor_metadata_buffer_addr = csid->get_metadata(csid->capture_subdev );
-			buf_done_info.sensor_metadata_buffer_size = csid->metadata_size;
+				// no buf done triggered for this path
+				if(!path_buf_done_val)
+					continue;
+
+				u32 eof_timestamp_lower = readl_relaxed(csid->base + csid_path_regs[path_type].curr_eof_lower);
+				u32 eof_timestamp_upper = readl_relaxed(csid->base + csid_path_regs[path_type].curr_eof_upper);
+				u64 eof_isp_timestamp = ((u64)eof_timestamp_upper) << 32 | eof_timestamp_lower;
+
+				eof_isp_timestamp = mul_u64_u32_div(
+					eof_isp_timestamp,
+					CAM_IFE_CSID_MUL_FACTOR,
+					CAM_IFE_CSID_DIV_FACTOR);
+
+				u64 cur_eof_isp_timestamp_converted = eof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
+
+				struct camss_buf_done_info buf_done_info;
+				memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
+				// Fill with buf_done info and sof/eof timestamps, including sensor metadata buffer addr and size
+				buf_done_info.status = path_buf_done_val; // path buf_done bits only!
+				buf_done_info.sof_isp_ts_conv = csid->path_cur_sof_isp_timestamp_converted[path_type];
+				buf_done_info.eof_isp_ts_conv = cur_eof_isp_timestamp_converted;
+				buf_done_info.isp_to_kernel_raw_ts_offset = isp_to_kernel_raw_ts_offset_floor;
+				buf_done_info.sof_kernel_ts = csid->path_last_sof_kernel_ts[path_type];
+				// Provide sensor metadata if available
+				if(csid->get_metadata != NULL)
+				{
+					buf_done_info.sensor_metadata_buffer_addr = csid->get_metadata(csid->capture_subdev );
+					buf_done_info.sensor_metadata_buffer_size = csid->metadata_size;
+				}
+
+				trace_csid_isr_wm_done(0, csid->id);
+				// printk("csid%d calling camss_buf_done for path %d with status 0x%x\n", csid->id, path_type, buf_done_info.status);
+				camss_buf_done(csid->camss, csid->id, 0, &buf_done_info);
+			}
 		}
-		trace_csid_isr_wm_done(0, csid->id);
-		camss_buf_done(csid->camss, csid->id, 0, &buf_done_info);
 	}
 
 	val = 1 << IRQ_CMD_CLEAR;
@@ -505,12 +592,14 @@ static int csid_reset(struct csid_device *csid)
 
 	writel_relaxed(~0u, csid->base + CSID_TOP_IRQ_MASK);
 	writel_relaxed(~0u, csid->base + CSID_BUF_DONE_IRQ_MASK);
-	/* PATH_INFO_SOF | CAMIF_SOF */
 
+	// TODO: HACK FOR XRSERVICE COMPAT, that's properly configured in that in __csid_configure_path_stream for enabled paths now, remove that
+	// once we stop assuming that we always have IPP0 IRQs
+	/* PATH_INFO_SOF | CAMIF_SOF */
 	val = 0x1010;
 	//val = 0x10881004;
-	writel_relaxed(val, csid->base + CSID_CSI2_RDIN_IRQ_MASK(0));
-	writel_relaxed(val, csid->base + 0xb0); // IPP SOF
+	writel_relaxed(val, csid->base + csid_path_regs[CAMSS_EXT_CSID_PATH_RDI0].irq_mask);
+	writel_relaxed(val, csid->base + csid_path_regs[CAMSS_EXT_CSID_PATH_IPP0].irq_mask);
 
 	return 0;
 }
@@ -647,6 +736,55 @@ static int csid_vfe_get_registers(struct csid_device *csid, struct csid_vfe_priv
 	return 0;
 }
 
+int csid_set_extended_config_for_pad(struct csid_device *csid, struct camss_ext_config *config, int pad_idx)
+{
+	int i;
+	u32 src_stream_idx;
+
+	if(pad_idx < MSM_CSID_PAD_FIRST_SRC || pad_idx >= (MSM_CSID_PAD_FIRST_SRC | MSM_CSID_MAX_SRC_STREAMS)) {
+		dev_err(csid->camss->dev, "Invalid pad index %d in csid_set_extended_config_for_pad", pad_idx);
+		return -EINVAL;
+	}
+
+	src_stream_idx = pad_idx - MSM_CSID_PAD_FIRST_SRC;
+
+	// first clear all enabled paths for this src_stream_idx
+	for(i=0; i<CAMSS_EXT_CSID_PATH_TYPE_MAX; i++) {
+		// if the src_stream already had this path configured fully clear it since this config will overwrite the previous one
+		if(csid->extended_cfg_paths[i].owner_stream_idx == src_stream_idx) {
+			memset(&csid->extended_cfg_paths[i], 0, sizeof(struct csid_path_config));
+		}
+
+		// if new config enable a csid path save that to the internal config
+		if(config->csid_path_configs[i].en) {
+			// abort configuration if the path was already enabled by another stream
+			if(csid->extended_cfg_paths[i].en) {
+				dev_err(csid->camss->dev, "csid(%d) source pad %d tried to acquire path %d already in use by source pad %d",
+					csid->id, src_stream_idx, i, csid->extended_cfg_paths[i].owner_stream_idx);
+				return -EINVAL;
+			}
+
+			if(i == CAMSS_EXT_CSID_PATH_IPP0 && csid_is_lite(csid)) {
+				dev_err(csid->camss->dev, "csid(%d) source pad %d tried to acquire IPP0 path that is not supported on lite csids", csid->id, src_stream_idx);
+				return -EINVAL;
+			}
+
+			csid->extended_cfg_paths[i].en = true;
+			csid->extended_cfg_paths[i].owner_stream_idx = src_stream_idx;
+			csid->extended_cfg_paths[i].vc = config->csid_path_configs[i].vc;
+			csid->extended_cfg_paths[i].dt_id = config->csid_path_configs[i].dt_id;
+			csid->extended_cfg_paths[i].multi_vcdt_en = config->csid_path_configs[i].multi_vcdt_en;
+			csid->extended_cfg_paths[i].multi_vcdt_vc = config->csid_path_configs[i].multi_vcdt_vc;
+			csid->extended_cfg_paths[i].trigger_post_sof_work = config->csid_path_configs[i].trigger_post_sof_work;
+		}
+	}
+
+	// will cause csid_configure_stream to use the extended configuration(s) instead of the default rdi only config
+	csid->has_extended_cfg = true;
+
+	return 0;
+}
+
 const struct csid_hw_ops csid_ops_gen3 = {
 	/* No testgen pattern hw in csid gen3 HW */
 	.configure_testgen_pattern = NULL,
@@ -659,4 +797,5 @@ const struct csid_hw_ops csid_ops_gen3 = {
 	.reg_update = csid_subdev_reg_update,
 	.set_csid_vfe_registers = csid_vfe_set_registers,
 	.get_csid_vfe_registers = csid_vfe_get_registers,
+	.set_extended_config_for_pad = csid_set_extended_config_for_pad,
 };

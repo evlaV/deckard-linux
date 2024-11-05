@@ -83,9 +83,151 @@ struct frameheader_data {
     u32 local_id;
 };
 
+static u32 vfe_get_output_type_wm(struct vfe_device *vfe, enum camss_ext_vfe_output_type type)
+{
+	u32 wm = 0;
+	switch(type)
+	{
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_RDI0:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_RDI1:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_RDI2:
+			wm = (vfe_is_lite(vfe) ? 0 : 23); // rdi0
+			wm += (type - CAMSS_EXT_VFE_OUTPUT_TYPE_RDI0); // increment for actual rdi
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_FULL_Y:
+			wm = 0;
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_FULL_C:
+			wm = 1;
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_DS4:
+			wm = 2;
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_DS16:
+			wm = 3;
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_STATS_IHIST:
+			wm = 19;
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_STATS_BHIST:
+			wm = 17;
+			break;
+		default:
+			wm = 0;
+			break;
+	}
+	return wm;
+}
+
+static u32 vfe_get_output_type_comp_group(struct vfe_device *vfe, enum camss_ext_vfe_output_type type)
+{
+	u32 comp_group = 0;
+	switch(type)
+	{
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_RDI0:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_RDI1:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_RDI2:
+			comp_group = (vfe_is_lite(vfe) ? 1 : 14); // rdi0
+			comp_group += (type - CAMSS_EXT_VFE_OUTPUT_TYPE_RDI0); // increment for actual rdi
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_FULL_Y:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_FULL_C:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_DS4:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_DS16:
+			comp_group = 0;
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_STATS_IHIST:
+			comp_group = 10;
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_STATS_BHIST:
+			comp_group = 8;
+			break;
+		default:
+			comp_group = 0;
+			break;
+	}
+	return comp_group;
+}
+
+static u32 vfe_get_output_type_packer_cfg(struct vfe_device *vfe, enum camss_ext_vfe_output_type type)
+{
+	u32 packer = 0;
+	switch(type)
+	{
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_RDI0:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_RDI1:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_RDI2:
+			packer = 0x0; // PLAIN_128
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_FULL_Y:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_FULL_C:
+			packer = 0x3; // PLAIN_8_LSB_MSB_10_ODD_EVEN
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_DS4:
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_DS16:
+			packer = 0xa; // PLAIN_64
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_STATS_IHIST:
+			packer = 0x8; // PLAIN_16_16BPP
+			break;
+		case CAMSS_EXT_VFE_OUTPUT_TYPE_STATS_BHIST:
+			packer = 0xa; // PLAIN_64
+			break;
+		default:
+			packer = 0;
+			break;
+	}
+	return packer;
+}
+
 static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 {
 	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(line->video_out.has_extended_cfg)
+	{
+		line->required_comp_done_mask = 0;
+
+		for(int type=0; type<CAMSS_EXT_VFE_OUTPUT_TYPE_MAX; type++)
+		{
+			struct camss_ext_vfe_output_config *cfg = &line->video_out.extended_cfg.vfe_output_configs[type];
+			u32 wm = 0;
+			u32 mode = 0;
+
+			// Ignore meta output since it's written by the driver itself
+			if(!cfg->en || type == CAMSS_EXT_VFE_OUTPUT_TYPE_META)
+				continue;
+			
+			wm = vfe_get_output_type_wm(vfe, type);
+			if(type == CAMSS_EXT_VFE_OUTPUT_TYPE_RDI0 || type == CAMSS_EXT_VFE_OUTPUT_TYPE_RDI1 ||
+				type == CAMSS_EXT_VFE_OUTPUT_TYPE_RDI2)
+			{
+				writel(0xffff, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
+				writel(0xffff, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm)); // stride
+				mode = 1;
+			}
+			else if(type == CAMSS_EXT_VFE_OUTPUT_TYPE_STATS_IHIST || type == CAMSS_EXT_VFE_OUTPUT_TYPE_STATS_BHIST)
+			{
+				writel(0x0, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
+				writel(0x1, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm)); // stride
+				mode = 1;
+			}
+			else
+			{
+				// FULL_Y / FULL_C / DS4 / DS16
+				writel((cfg->height << 16) | cfg->width, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
+				writel(cfg->stride, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm)); // stride
+			}
+			writel(0x0, vfe->base + VFE_BUS_WM_IMAGE_CFG_1(wm)); // X_INIT = 0
+			writel(vfe_get_output_type_packer_cfg(vfe, type), vfe->base + VFE_BUS_WM_PACKER_CFG(wm));
+			writel(BIT(0) | (cfg->frameheader_en ? BIT(2) : 0x0) | (mode << 16), vfe->base + VFE_BUS_WM_CFG(wm)); // EN | FRAMEHEADER_EN
+
+			line->required_comp_done_mask |= BIT(vfe_get_output_type_comp_group(vfe, type));
+		}
+	} else
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
 	if (pix->pixelformat == V4L2_PIX_FMT_NV12) {
 		// IPP path config
 		u32 wm;
@@ -97,7 +239,7 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 			writel(WM_CFG_EN, vfe->base + VFE_BUS_WM_CFG(wm)); // EN=1 (+ all other settings to 0)
 		}
 
-		vfe->required_comp_done_mask = BIT(0); // need composite group 0 (full)
+		line->required_comp_done_mask = BIT(0); // need composite group 0 (full)
 
 		// Enable extra output paths depending on the requested statistics
 		if(vfe->stats_cfg) {
@@ -110,14 +252,14 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 				writel(1, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(STATS_IHIST_WM));
 				writel(0x8, vfe->base + VFE_BUS_WM_PACKER_CFG(STATS_IHIST_WM)); // PACKER_FMT_PLAIN_16_16BPP
 				writel(WM_CFG_EN | WM_HEADER_EN | WM_CFG_MODE, vfe->base + VFE_BUS_WM_CFG(STATS_IHIST_WM));
-				vfe->required_comp_done_mask |= BIT(STATS_IHIST_COMP_GROUP); // need composite group 10 (IHIST stats)
+				line->required_comp_done_mask |= BIT(STATS_IHIST_COMP_GROUP); // need composite group 10 (IHIST stats)
 			}
 			if(vfe->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
 				writel(0, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(STATS_BHIST_WM));
 				writel(1, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(STATS_BHIST_WM));
 				writel(0xa, vfe->base + VFE_BUS_WM_PACKER_CFG(STATS_BHIST_WM)); // PACKER_FMT_VER3_PLAIN_64
 				writel(WM_CFG_EN | WM_HEADER_EN | WM_CFG_MODE, vfe->base + VFE_BUS_WM_CFG(STATS_BHIST_WM));
-				vfe->required_comp_done_mask |= BIT(STATS_BHIST_COMP_GROUP); // need composite group 8 (BHIST stats)
+				line->required_comp_done_mask |= BIT(STATS_BHIST_COMP_GROUP); // need composite group 8 (BHIST stats)
 			}
 		}
 	}
@@ -158,18 +300,19 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 			wm_cfg |= WM_HEADER_EN;
 		writel(wm_cfg, vfe->base + VFE_BUS_WM_CFG(wm));
 
-		vfe->required_comp_done_mask = BIT(rdi_comp_group); // need RDI composite group
+		line->required_comp_done_mask = BIT(rdi_comp_group); // need RDI composite group
 	}
 
 }
 
+// TODO: need update to stop all enabled paths?
 static void vfe_wm_stop(struct vfe_device *vfe, u8 wm)
 {
 	wm = RDI_WM(wm);
 	writel(0, vfe->base + VFE_BUS_WM_CFG(wm));
 }
 
-static void vfe_update_buffer_comp_mask_from_fifo(struct vfe_device *vfe, u32 comp, u32 wm, u32 buff0_wm_addr, u32 buff1_wm_addr)
+static void vfe_update_buffer_comp_mask_from_fifo(struct vfe_device *vfe, struct vfe_line *line, u32 comp, u32 wm, u32 buff0_wm_addr, u32 buff1_wm_addr)
 {
 	u32 last_wm_done_addr = readl_relaxed(vfe->base + VFE_BUS_WM_ADDR_STATUS_0(wm));
 	
@@ -178,19 +321,44 @@ static void vfe_update_buffer_comp_mask_from_fifo(struct vfe_device *vfe, u32 co
 
 	if( buff0_wm_addr && (buff0_wm_addr == last_wm_done_addr))
 	{
-		vfe->line[0].output.buf[0]->comp_done_status |= BIT(comp);
+		line->output.buf[0]->comp_done_status |= BIT(comp);
 	}
 	else if((buff0_wm_addr && buff1_wm_addr) && (buff1_wm_addr == last_wm_done_addr))
 	{
-		vfe->line[0].output.buf[0]->comp_done_status |= BIT(comp);
-		vfe->line[0].output.buf[1]->comp_done_status |= BIT(comp);
+		line->output.buf[0]->comp_done_status |= BIT(comp);
+		line->output.buf[1]->comp_done_status |= BIT(comp);
 	}
 }
 
-static void vfe_update_buffer_status(struct vfe_device *vfe, u32 buf_done_status)
+static void vfe_update_buffer_status(struct vfe_device *vfe, struct vfe_line *line, u32 buf_done_status)
 {
-	struct v4l2_pix_format_mplane *pix = &vfe->line[0].video_out.active_fmt.fmt.pix_mp;
+	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
 
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(line->video_out.has_extended_cfg)
+	{
+		// Check in the buffer done status if the any of enabled output have arrived. If so update the comp_mask_done mask
+		for(int type=0; type<CAMSS_EXT_VFE_OUTPUT_TYPE_MAX; type++)
+		{
+			u32 wm = 0;
+			u32 comp_group = 0;
+			if(!line->video_out.extended_cfg.vfe_output_configs[type].en || (type == CAMSS_EXT_VFE_OUTPUT_TYPE_META))
+				continue;
+			
+			wm = vfe_get_output_type_wm(vfe, type);
+			comp_group = vfe_get_output_type_comp_group(vfe, type);
+
+			if(buf_done_status & BIT(comp_group))
+			{
+				u32 buff0_addr = line->output.buf[0] ? line->output.buf[0]->ext_addr[type] : 0;
+				u32 buff1_addr = line->output.buf[1] ? line->output.buf[1]->ext_addr[type] : 0;
+				vfe_update_buffer_comp_mask_from_fifo(vfe, line, comp_group, wm, buff0_addr, buff1_addr);
+			}
+		}
+	} else
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
 	if (pix->pixelformat == V4L2_PIX_FMT_NV12)
 	{
 		// IPP streaming path with non lite VFEs
@@ -198,23 +366,23 @@ static void vfe_update_buffer_status(struct vfe_device *vfe, u32 buf_done_status
 		// We check the full image composite group as well as the statistics comp group if enabled
 		if(buf_done_status & BIT(0))
 		{
-			u32 buff0_addr = vfe->line[0].output.buf[0] ? vfe->line[0].output.buf[0]->addr[0] : 0;
-			u32 buff1_addr = vfe->line[0].output.buf[1] ? vfe->line[0].output.buf[1]->addr[0] : 0;
-			vfe_update_buffer_comp_mask_from_fifo(vfe, 0, 0, buff0_addr, buff1_addr);
+			u32 buff0_addr = line->output.buf[0] ? line->output.buf[0]->addr[0] : 0;
+			u32 buff1_addr = line->output.buf[1] ? line->output.buf[1]->addr[0] : 0;
+			vfe_update_buffer_comp_mask_from_fifo(vfe, line, 0, 0, buff0_addr, buff1_addr);
 		}
 		// BHIST statistics composite group
 		if(buf_done_status & BIT(STATS_BHIST_COMP_GROUP) && (vfe->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN))
 		{
-			u32 buff0_addr = vfe->line[0].output.buf[0] ? (vfe->line[0].output.buf[0]->extrabuffer_dma_addr+STATS_BHIST_DATA_OFFSET) : 0;
-			u32 buff1_addr = vfe->line[0].output.buf[1] ? (vfe->line[0].output.buf[1]->extrabuffer_dma_addr+STATS_BHIST_DATA_OFFSET) : 0;
-			vfe_update_buffer_comp_mask_from_fifo(vfe, STATS_BHIST_COMP_GROUP, STATS_BHIST_WM, buff0_addr, buff1_addr);
+			u32 buff0_addr = line->output.buf[0] ? (line->output.buf[0]->extrabuffer_dma_addr+STATS_BHIST_DATA_OFFSET) : 0;
+			u32 buff1_addr = line->output.buf[1] ? (line->output.buf[1]->extrabuffer_dma_addr+STATS_BHIST_DATA_OFFSET) : 0;
+			vfe_update_buffer_comp_mask_from_fifo(vfe, line, STATS_BHIST_COMP_GROUP, STATS_BHIST_WM, buff0_addr, buff1_addr);
 		}
 		// IHIST statistics composite group
 		if(buf_done_status & BIT(STATS_IHIST_COMP_GROUP) && vfe->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN)
 		{
-			u32 buff0_addr = vfe->line[0].output.buf[0] ? (vfe->line[0].output.buf[0]->extrabuffer_dma_addr+STATS_IHIST_DATA_OFFSET) : 0;
-			u32 buff1_addr = vfe->line[0].output.buf[1] ? (vfe->line[0].output.buf[1]->extrabuffer_dma_addr+STATS_IHIST_DATA_OFFSET) : 0;
-			vfe_update_buffer_comp_mask_from_fifo(vfe, STATS_IHIST_COMP_GROUP, STATS_IHIST_WM, buff0_addr, buff1_addr);
+			u32 buff0_addr = line->output.buf[0] ? (line->output.buf[0]->extrabuffer_dma_addr+STATS_IHIST_DATA_OFFSET) : 0;
+			u32 buff1_addr = line->output.buf[1] ? (line->output.buf[1]->extrabuffer_dma_addr+STATS_IHIST_DATA_OFFSET) : 0;
+			vfe_update_buffer_comp_mask_from_fifo(vfe, line, STATS_IHIST_COMP_GROUP, STATS_IHIST_WM, buff0_addr, buff1_addr);
 		}
 	}
 	else
@@ -222,9 +390,9 @@ static void vfe_update_buffer_status(struct vfe_device *vfe, u32 buf_done_status
 		// RDI streaming path (both main and lite VFEs): check only the RDI0 composite group
 		if(buf_done_status & BIT(RDI_COMP_GROUP(0)))
 		{
-			u32 buff0_addr = vfe->line[0].output.buf[0] ? vfe->line[0].output.buf[0]->addr[0] : 0;
-			u32 buff1_addr = vfe->line[0].output.buf[1] ? vfe->line[0].output.buf[1]->addr[0] : 0;
-			vfe_update_buffer_comp_mask_from_fifo(vfe, RDI_COMP_GROUP(0), RDI_WM(0), buff0_addr, buff1_addr);
+			u32 buff0_addr = line->output.buf[0] ? line->output.buf[0]->addr[0] : 0;
+			u32 buff1_addr = line->output.buf[1] ? line->output.buf[1]->addr[0] : 0;
+			vfe_update_buffer_comp_mask_from_fifo(vfe, line, RDI_COMP_GROUP(0), RDI_WM(0), buff0_addr, buff1_addr);
 		}
 	}
 }
@@ -232,7 +400,7 @@ static void vfe_update_buffer_status(struct vfe_device *vfe, u32 buf_done_status
 // custom buf_done is needed for 880 to handle multiple outputs and IPP path
 static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_done_info *buf_done_info)
 {
-	struct vfe_line *line = &vfe->line[vfe->wm_output_map[wm]];
+	struct vfe_line *line = NULL;
 	struct camss_buffer *ready_buf;
 	struct vfe_output *output;
 	unsigned long flags;
@@ -247,17 +415,28 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 	void* bhistDataAddr = NULL;
 	struct frameheader_data *frameheaderData;
 	u64 sof_isp_timestamp_converted = buf_done_info->sof_isp_ts_conv;
+	int i;
 
 	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
-	if (vfe->wm_output_map[wm] == VFE_LINE_NONE) {
+	// look for a line that uses on of the arrived output (stop at the first valid line found, lines cannot share the same output)
+	for(i=0; i<VFE_LINE_NUM_MAX; i++) {
+		if(vfe->line[i].required_comp_done_mask & buf_done_info->status) {
+			line = &vfe->line[i];
+			break;
+		}
+	}
+
+	if(line == NULL) {
+		// no line matching the buf_done status bits found
 		dev_err_ratelimited(vfe->camss->dev,
-				    "Received wm done for unmapped index\n");
+				    "No matching line found for the buffer done status 0x%x \n", buf_done_info->status);
 		goto out_unlock;
 	}
-	output = &vfe->line[vfe->wm_output_map[wm]].output;
+
+	output = &line->output;
 
 	if(!output->buf[0]) {
 		dev_err_ratelimited(vfe->camss->dev,
@@ -266,7 +445,11 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 	}
 
 	// Update the buffer status with the bus status to keep track of which composite groups are done 
-	vfe_update_buffer_status(vfe, buf_done_info->status);
+	vfe_update_buffer_status(vfe, line, buf_done_info->status);
+
+	// if(output->buf[0]) {
+	// 	printk("got status 0x%x required 0x%x after buf done 0x%x\n", output->buf[0]->comp_done_status, line->required_comp_done_mask, buf_done_info->status);
+	// }
 
 	// If we have received anything for the buffer 1 we need to skip buffer 0
 	// We won't be able to send out buffer 0 in any case since it needs frame data stored by the sensor and
@@ -282,7 +465,7 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 		spin_lock_irqsave(&vfe->output_lock, flags);
 	}
 
-	if((output->buf[0] && output->buf[0]->comp_done_status != vfe->required_comp_done_mask)) {
+	if((output->buf[0] && output->buf[0]->comp_done_status != line->required_comp_done_mask)) {
 		// Buffer is not complete so not doing anything and wait for the remaining comp done to happen
 		goto out_unlock;
 	}
@@ -306,50 +489,76 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 	} else
 		output->gen2.active_num--;
 
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(line->video_out.has_extended_cfg && line->video_out.extended_cfg.vfe_output_configs[CAMSS_EXT_VFE_OUTPUT_TYPE_META].en)
+    {
+        // When using the extended configuration to output metadata we copy directly the metadata info the configured
+        // buffer plane instead of using an additional video device
+        size_t nb_copied;
+        struct camss_metadata meta = {0};
+        // copy sensor metadata into v4l2 plane
+        meta.sof_timestamp = buf_done_info->sof_isp_ts_conv;
+        meta.eof_timestamp = buf_done_info->eof_isp_ts_conv;
+        meta.sof_isr_timestamp = buf_done_info->sof_kernel_ts;
+        meta.eof_isr_timestamp = ts_monotonic_raw;
+        meta.isp_to_kernel_raw_ts_offset = buf_done_info->isp_to_kernel_raw_ts_offset;
+        memcpy(meta.sensorMetaDataBuffer, buf_done_info->sensor_metadata_buffer_addr, buf_done_info->sensor_metadata_buffer_size);
 
-	if(buf_done_info->sensor_metadata_buffer_addr != NULL)
+        u32 plane_offset = line->video_out.extended_cfg.vfe_output_configs[CAMSS_EXT_VFE_OUTPUT_TYPE_META].offset;
+        nb_copied = sg_pcopy_from_buffer(ready_buf->ext_metadata_sgt->sgl, ready_buf->ext_metadata_sgt->nents, &meta, sizeof(meta), plane_offset);
+        if(nb_copied != sizeof(meta)) {
+            dev_err(vfe->camss->dev, "Failed to copy metadata");
+        }
+    }
+	else
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
 	{
-		sensorMetaDataBufferAddr = buf_done_info->sensor_metadata_buffer_addr;
+		if(buf_done_info->sensor_metadata_buffer_addr != NULL)
+		{
+			sensorMetaDataBufferAddr = buf_done_info->sensor_metadata_buffer_addr;
+		}
+		if(vfe->stats_cfg)
+		{
+			// Make buffer changes visible to CPU
+			dma_sync_single_for_cpu(vfe->camss->dev, ready_buf->extrabuffer_dma_addr, ready_buf->extrabuffer_size, DMA_BIDIRECTIONAL);
+
+
+			// If stats are enabled, use the frameheader timestamp which should be guaranteed to be properly
+			// associated with the buffer.
+			if(vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
+				frameheaderDataAddr = ready_buf->extrabuffer_vaddr + STATS_FH_DATA_OFFSET;
+				frameheaderData = (struct frameheader_data*)frameheaderDataAddr;
+				uint64_t frameheader_ts = frameheaderData->ts;
+
+				// The timestamp is 8 bits left shifted because the lower 8 bits contain virtual channel 
+				// and other information.
+				frameheader_ts >>= 8;
+
+				// Apply the same transformation as in the SOF handler
+				frameheader_ts = mul_u64_u32_div(
+					frameheader_ts,
+					CAM_IFE_CSID_MUL_FACTOR,
+					CAM_IFE_CSID_DIV_FACTOR);
+
+				// Use the existing offset to adjust the frame header timestamp
+				frameheader_ts += buf_done_info->isp_to_kernel_raw_ts_offset;
+				sof_isp_timestamp_converted = frameheader_ts;
+			}
+			if(vfe->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
+				ihistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_FH_DATA_OFFSET;
+				ihistDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_DATA_OFFSET;
+			}
+			if(vfe->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
+				bhistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_BHIST_FH_DATA_OFFSET;
+				bhistDataAddr = ready_buf->extrabuffer_vaddr + STATS_BHIST_DATA_OFFSET;
+			}
+		}
+
+		metadata_send(&vfe->camss->metadata[vfe->id], ts_monotonic_raw, sof_isp_timestamp_converted, buf_done_info->eof_isp_ts_conv, buf_done_info->sof_kernel_ts, ts_monotonic_raw,
+			ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
 	}
-	if(vfe->stats_cfg)
-	{
-		// Make buffer changes visible to CPU
-		dma_sync_single_for_cpu(vfe->camss->dev, ready_buf->extrabuffer_dma_addr, ready_buf->extrabuffer_size, DMA_BIDIRECTIONAL);
-
-
-		// If stats are enabled, use the frameheader timestamp which should be guaranteed to be properly
-		// associated with the buffer.
-		if(vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
-			frameheaderDataAddr = ready_buf->extrabuffer_vaddr + STATS_FH_DATA_OFFSET;
-			frameheaderData = (struct frameheader_data*)frameheaderDataAddr;
-			uint64_t frameheader_ts = frameheaderData->ts;
-
-			// The timestamp is 8 bits left shifted because the lower 8 bits contain virtual channel 
-			// and other information.
-			frameheader_ts >>= 8;
-
-			// Apply the same transformation as in the SOF handler
-			frameheader_ts = mul_u64_u32_div(
-				frameheader_ts,
-				CAM_IFE_CSID_MUL_FACTOR,
-				CAM_IFE_CSID_DIV_FACTOR);
-
-			// Use the existing offset to adjust the frame header timestamp
-			frameheader_ts += buf_done_info->isp_to_kernel_raw_ts_offset;
-			sof_isp_timestamp_converted = frameheader_ts;
-		}
-		if(vfe->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
-			ihistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_FH_DATA_OFFSET;
-			ihistDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_DATA_OFFSET;
-		}
-		if(vfe->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
-			bhistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_BHIST_FH_DATA_OFFSET;
-			bhistDataAddr = ready_buf->extrabuffer_vaddr + STATS_BHIST_DATA_OFFSET;
-		}
-	}
-
-	metadata_send(&vfe->camss->metadata[vfe->id], ts_monotonic_raw, sof_isp_timestamp_converted, buf_done_info->eof_isp_ts_conv, buf_done_info->sof_kernel_ts, ts_monotonic_raw,
-		ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
 
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 
@@ -361,10 +570,44 @@ out_unlock:
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 }
 
+static void vfe_wm_update_ext(struct vfe_device *vfe, struct vfe_line *line, struct camss_buffer *buf)
+{
+	u32 aup_rup_cmd_mask = BIT(28);
+
+	buf->comp_done_status = 0; // reset the comp done status
+
+	for(int type=0; type<CAMSS_EXT_VFE_OUTPUT_TYPE_MAX; type++)
+	{
+		u32 wm = 0;
+
+		// Ignore meta output since it's written by the driver itself
+		if(!line->video_out.extended_cfg.vfe_output_configs[type].en || type == CAMSS_EXT_VFE_OUTPUT_TYPE_META)
+			continue;
+
+		wm = vfe_get_output_type_wm(vfe, type);
+		
+		writel(buf->ext_addr[type] >> 8, vfe->base + VFE_BUS_WM_IMAGE_ADDR(wm));
+		if(line->video_out.extended_cfg.vfe_output_configs[type].frameheader_en)
+			writel(buf->ext_fh_addr[type] >> 8, vfe->base + VFE_BUS_WM_HEADER_ADDR(wm));
+	}
+
+	// RUP/AUP is handled by vfe_reg_update now
+}
+
 static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
 			  struct vfe_line *line)
 {
 	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
+
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(line->video_out.has_extended_cfg)
+	{
+		vfe_wm_update_ext(vfe, line, buffer);
+		return;
+	}
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
 
 	buffer->comp_done_status = 0; // reset the comp done status
 
@@ -408,6 +651,24 @@ static void vfe_reg_update(struct vfe_device *vfe, enum vfe_line_id line_id)
 {
 	struct vfe_line *line = &vfe->line[line_id];
 	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(line->video_out.has_extended_cfg)
+	{
+		if(line->video_out.extended_cfg.vfe_output_configs[CAMSS_EXT_VFE_OUTPUT_TYPE_FULL_Y].en)
+			camss_reg_update(vfe->camss, vfe->id, -4, false); // HACK: needed to set IPP bits in RUP_AUP_CMD
+
+		if(line->video_out.extended_cfg.vfe_output_configs[CAMSS_EXT_VFE_OUTPUT_TYPE_RDI0].en)
+			camss_reg_update(vfe->camss, vfe->id, 0, false);
+
+		if(line->video_out.extended_cfg.vfe_output_configs[CAMSS_EXT_VFE_OUTPUT_TYPE_RDI1].en)
+			camss_reg_update(vfe->camss, vfe->id, 1, false);
+
+		if(line->video_out.extended_cfg.vfe_output_configs[CAMSS_EXT_VFE_OUTPUT_TYPE_RDI2].en)
+			camss_reg_update(vfe->camss, vfe->id, 2, false);
+	} else
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
 	if (pix->pixelformat == V4L2_PIX_FMT_NV12) {
 		camss_reg_update(vfe->camss, vfe->id, -4, false); // HACK: needed to set IPP bits in RUP_AUP_CMD
 	}
@@ -422,6 +683,24 @@ static inline void vfe_reg_update_clear(struct vfe_device *vfe,
 {
 	struct vfe_line *line = &vfe->line[line_id];
 	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
+	if(line->video_out.has_extended_cfg)
+	{
+		if(line->video_out.extended_cfg.vfe_output_configs[CAMSS_EXT_VFE_OUTPUT_TYPE_FULL_Y].en)
+			camss_reg_update(vfe->camss, vfe->id, -4, true); // HACK: needed to set IPP bits in RUP_AUP_CMD
+
+		if(line->video_out.extended_cfg.vfe_output_configs[CAMSS_EXT_VFE_OUTPUT_TYPE_RDI0].en)
+			camss_reg_update(vfe->camss, vfe->id, 0, true);
+
+		if(line->video_out.extended_cfg.vfe_output_configs[CAMSS_EXT_VFE_OUTPUT_TYPE_RDI1].en)
+			camss_reg_update(vfe->camss, vfe->id, 1, true);
+
+		if(line->video_out.extended_cfg.vfe_output_configs[CAMSS_EXT_VFE_OUTPUT_TYPE_RDI2].en)
+			camss_reg_update(vfe->camss, vfe->id, 2, true);
+	} else
+	// ------------------------------------------------------------
+	// ------------------------------------------------------------
 	if (pix->pixelformat == V4L2_PIX_FMT_NV12) {
 		camss_reg_update(vfe->camss, vfe->id, -4, true); // HACK: needed to set IPP bits in RUP_AUP_CMD
 	}
@@ -433,6 +712,7 @@ static inline void vfe_reg_update_clear(struct vfe_device *vfe,
 
 static long vfe_set_statistics_config_880(struct vfe_device *vfe, u32 stats_cfg)
 {
+	int i;
 	// HACK: We assume only line 0 is used in this function
 
 	if(vfe_is_lite(vfe) && (stats_cfg & ~STATS_CFG_FH_OUTPUT_EN)) {
@@ -446,10 +726,12 @@ static long vfe_set_statistics_config_880(struct vfe_device *vfe, u32 stats_cfg)
 		dev_err(vfe->camss->dev, "vfe_set_statistics_config_880 called after streaming started\n");
 		return -EBUSY;
 	}
-	if(vfe->line[0].output.gen2.active_num) {
-		// We cannot set config if we already have some buffer queued since all buffers must share the same config.
-		dev_err(vfe->camss->dev, "vfe_set_statistics_config_880 called with buffers already enqueued");
-		return -EBUSY;
+	for(i=0; i<VFE_LINE_NUM_MAX; i++) {
+		if(vfe->line[i].output.gen2.active_num) {
+			// We cannot set config if we already have some buffer queued since all buffers must share the same config.
+			dev_err(vfe->camss->dev, "vfe_set_statistics_config_880 called with buffers already enqueued");
+			return -EBUSY;
+		}
 	}
 
 	// Set the statistics buffer size
@@ -459,18 +741,9 @@ static long vfe_set_statistics_config_880(struct vfe_device *vfe, u32 stats_cfg)
 	// - 64 + 2048 bytes for the image histogram and its header
 	// - 64 + 4096 bytes for the bayer histogram and its header
 	// (For LITE IFEs only reserve a small size since we can only stream frameheaders)
-	vfe->line[0].video_out.required_extrabuffer_size = vfe_is_lite(vfe) ? 256 : 8192;
 
-	// Setup the write bus COMP DONE mask used to test the IRQ status
-	vfe->stats_comp_done_mask = 0;
-	if(!vfe_is_lite(vfe)) {
-		if(vfe->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
-			vfe->stats_comp_done_mask |= BIT(STATS_IHIST_COMP_GROUP);
-		}
-		if(vfe->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
-			vfe->stats_comp_done_mask |= BIT(STATS_BHIST_COMP_GROUP);
-		}
-	}
+	for(i=0; i<VFE_LINE_NUM_MAX; i++)
+		vfe->line[i].video_out.required_extrabuffer_size = vfe_is_lite(vfe) ? 256 : 8192;
 
 	dev_warn(vfe->camss->dev, "vfe(%d) statistics streaming config set to 0x%x", vfe->id, vfe->stats_cfg);
 	return 0;
