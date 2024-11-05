@@ -242,12 +242,9 @@
 		};
 	};
 
-	BACKLIGHT: backlight {
-		compatible = "valve-backlight";
-		preboost-gpio = <&tlmm 41 GPIO_ACTIVE_HIGH>;
-		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>,
-			   <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
-		i2c-adapter = <&i2c4 &i2c5>;
+	PREBOOST: preboost {
+		compatible = "mps,mp9184";
+		en-gpio = <&tlmm 41 GPIO_ACTIVE_HIGH>;
 	};
 
 	exp_vout_5v: exp_vout_5v {
@@ -779,31 +776,6 @@
 	qcom,dual-dsi-mode;
 	qcom,master-dsi;
 
-#if 0
-	panel@0 {
-		compatible = "visionox,vtdr6130";
-		reg = <0>;
-
-		pinctrl-names = "default", "sleep";
-		pinctrl-0 = <&sde_dsi_active>, <&sde_te_active>;
-		pinctrl-1 = <&sde_dsi_suspend>, <&sde_te_suspend>;
-
-		vddio-supply = <&VREG_L12B_1P8>;
-		vci-supply = <&vreg_l13b_3p0>;
-		vdd-supply = <&vreg_l11b_1p2>;
-
-		reset-gpios = <&tlmm 133 GPIO_ACTIVE_LOW>;
-
-		port {
-			panel0_in: endpoint {
-				remote-endpoint = <&mdss_dsi0_out>;
-			};
-		};
-	};
-#endif
-
-#if 1
-
 	panel: panel@0 {
 		reg = <0>;
 		compatible = "jdi4k";
@@ -811,27 +783,19 @@
 		reset-gpios =<&pm8550_gpios 3 GPIO_ACTIVE_HIGH>;
 		reset2-gpios =<&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
 
-		//Bias supplies enabled via GPIO, but controlled by
-		//same I2C as defined for backlights
-		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
-		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+		//Bias supplies enabled via GPIO
+		left-pos-supply = <&vpos_l>;
+		left-neg-supply = <&vneg_l>;
+		right-pos-supply = <&vpos_r>;
+		right-neg-supply = <&vneg_r>;
 
-		// XXX or tlmm 121 boost?
+		backlight-left-supply = <&backlight_left>;
+		backlight-right-supply = <&backlight_right>;
 
-		wled1-supply = <&BACKLIGHT>;
+		preboost-supply = <&PREBOOST>;
+
 		vdda-supply = <&VREG_L12B_1P8>;
 
-		//pinctrl-names = "default";
-		//pinctrl-0 = <&sde_dsi_active>;
-
-#if 0
-		port {
-			panel0_in: endpoint {
-				remote-endpoint = <&mdss_dsi0_out>;
-			};
-		};
-#endif
-#if 1
 		ports {
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -849,9 +813,7 @@
 				};
 			};
 		};
-#endif
 	};
-#endif
 };
 
 &mdss_dsi0_out {

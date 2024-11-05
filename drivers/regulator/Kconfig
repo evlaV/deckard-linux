@@ -463,6 +463,13 @@ config REGULATOR_ISL6271A
 	help
 	  This driver supports ISL6271A voltage regulator chip.
 
+config REGULATOR_KTD2151
+	tristate "Kinectic Tech KTD2151 dual output LCD bias power regulator"
+	depends on I2C
+	help
+	  This driver controls a Kinectic Tech KTD2151 dual output
+	  regulator via I2C bus.
+
 config REGULATOR_LM363X
 	tristate "TI LM363X voltage regulators"
 	depends on MFD_TI_LMU
@@ -805,6 +812,17 @@ config REGULATOR_MP886X
 	help
 	  This driver supports the MP8869 voltage regulator.
 
+config REGULATOR_MPQ3367
+	tristate "MPS MPQ3367 6-Channel, Max.150mA/Ch Boost WLED"
+	depends on I2C
+	help
+	  This driver controls a MPS MPQ3367 regulator via I2C bus.
+
+config REGULATOR_MP9184
+	tristate "MPS MP9184A Synchronous Boost Converter"
+	help
+	  This driver controls a MPS MP9184A regulator.
+
 config REGULATOR_MPQ7920
 	tristate "Monolithic MPQ7920 PMIC"
 	depends on I2C && OF
@@ -933,6 +951,13 @@ config REGULATOR_MTK_DVFSRC
 	  This driver supports to control regulators via the DVFSRC
 	  of Mediatek. It allows for voting on regulator state
 	  between multiple users.
+
+config REGULATOR_NEX10000UB
+	tristate "Nexperia nex10000ub dual output LCD bias power regulator"
+	depends on I2C
+	help
+	  This driver controls a Nexperia nex10000ub dual output
+	  regulator via I2C bus.
 
 config REGULATOR_PALMAS
 	tristate "TI Palmas PMIC Regulators"

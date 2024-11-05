@@ -27,6 +27,40 @@
 		v1v1-supply = <&VREG_L2G_1P1>;
 		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
 	};
+
+	// lcd bias power supplies
+	LCD_BIAS: lcd_bias {
+		compatible = "kinetic,ktd2151";
+		status = "okay";
+		// left i2c, right i2c
+		i2c-adapter = <&i2c5 &i2c4>;
+
+		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+
+		regulators {
+			vpos_r: vposr{
+				regulator-name = "lcdr_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vneg_r: vnegr{
+				regulator-name = "lcdr_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vpos_l: vposl{
+				regulator-name = "lcdl_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vneg_l: vnegl{
+				regulator-name = "lcdl_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+		};
+	};
 };
 
 &pcie1 {
@@ -223,6 +257,40 @@
 		bp-gpio = <&tlmm 139 GPIO_ACTIVE_HIGH>;
 
 		status = "ok";
+	};
+};
+
+// right display power and backlight
+&i2c4 {
+	status = "okay";
+	mpq3367_right@38 {
+		compatible = "mps,mpq3367";
+		reg = <0x38>;
+		status = "okay";
+		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+		mode = "pwm";
+		regulator {
+			backlight_right: backlight{
+				regulator-name = "backlight_right";
+			};
+		};
+	};
+};
+
+// left display power and backlight
+&i2c5 {
+	status = "okay";
+	mpq3367@38 {
+		compatible = "mps,mpq3367";
+		reg = <0x38>;
+		status = "okay";
+		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+		mode = "pwm";
+		regulator {
+			backlight_left: backlight{
+				regulator-name = "backlight_left";
+			};
+		};
 	};
 };
 

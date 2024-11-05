@@ -32,10 +32,24 @@ static const char * const regulator_names[] = {
 	//"ibb", pm8150 avee
 };
 
+static const char * const preboost_driver_names[] = {
+	"preboost",
+};
+
 // struct for the backlight drivers is created so that they can be enabled
 // separately and not affect the panel on time sequencing
 static const char * const backlight_driver_names[] = {
-	"wled1",
+	"backlight-left",
+    "backlight-right",
+};
+
+// struct for the backlight drivers is created so that they can be enabled
+// separately and not affect the panel on time sequencing
+static const char * const lcd_bias_names[] = {
+	"left-pos",
+    "left-neg",
+    "right-pos",
+    "right-neg"
 };
 
 typedef enum
@@ -52,7 +66,9 @@ struct rad {
 	struct drm_panel panel;
 
 	struct regulator_bulk_data power_supplies[ARRAY_SIZE(regulator_names)];
+    struct regulator_bulk_data preboost_drivers[ARRAY_SIZE(backlight_driver_names)];
 	struct regulator_bulk_data backlight_drivers[ARRAY_SIZE(backlight_driver_names)];
+    struct regulator_bulk_data lcd_bias_regulators[ARRAY_SIZE(lcd_bias_names)];
 
 	struct gpio_desc *reset_gpio;
 	struct gpio_desc *reset2_gpio;
@@ -340,6 +356,7 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	unsigned GPO1_TES1 = 233, GPO1_TEW1 = 17;
     _get_per_mode_settings(ctx->current_mode, &VFP, &VID_VS_DELAY, &VBP);
 
+    printk("RAD panel on\n");
 
 	pps_cmd[0] = 0xe6;
 	drm_dsc_pps_payload_pack((void*) &pps_cmd[1], &ctx->dsc_cfg);
@@ -425,6 +442,8 @@ static void get_panel_info(struct drm_panel *panel)
 	u8 *panel_mfg_info = ctx->panel_mfg_info;
 	int ret;
 	unsigned int id, offset;
+
+    printk("RAD pael info\n");
 
 	// read panel info from register 0xBF
 	// only DVT+ panels will have data other than synaptics driver IDs populated
@@ -590,7 +609,7 @@ static ssize_t panel_write_store(struct device *dev, struct device_attribute *at
 static ssize_t panel_available_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct rad *ctx = dev_get_drvdata(dev);
-	buf[0] = ctx->prepared ? '1' : '0';
+	buf[0] = ctx->enabled ? '1' : '0';
 	buf[1] = '\n';
 	return 2;
 }
@@ -658,7 +677,7 @@ static int truly_35597_power_on(struct rad *ctx)
 {
 	int ret;
 
-    // turn on vdd
+	// turn on vdd
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->power_supplies), ctx->power_supplies);
 	if (ret < 0)
 		return ret;
@@ -666,19 +685,18 @@ static int truly_35597_power_on(struct rad *ctx)
     // wait > 1 msec
 	usleep_range(1000, 2000);
 
-    // turn on AVDD
-	gpiod_set_value(ctx->enp_gpio, 1);
+	// turn on AVDD and AVEE
+	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->lcd_bias_regulators), ctx->lcd_bias_regulators);
+	if (ret < 0) {
+		DRM_DEV_ERROR(ctx->dev,
+			"regulator_bulk_enable failed %d\n", ret);
+		return ret;
+	}
 
-    // turn on AVEE
-	gpiod_set_value(ctx->enn_gpio, 1);
-
-	//gpiod_set_value(ctx->reset_gpio, 0);
-	//gpiod_set_value(ctx->reset2_gpio, 0);
 	// wait > 3 msec
 	usleep_range(20000, 30000);
 	gpiod_set_value(ctx->reset_gpio, 1);
 	gpiod_set_value(ctx->reset2_gpio, 1);
-	//usleep_range(10000, 20000);
 
 	return 0;
 }
@@ -687,26 +705,22 @@ static int rad_power_off(struct rad *ctx)
 {
 	int ret = 0;
 
-    // Put panels into reset
+	// Put panels into reset
 	gpiod_set_value(ctx->reset_gpio, 0);
 	gpiod_set_value(ctx->reset2_gpio, 0);
 
-    // wait > 25 msec
-    usleep_range(25000, 26000);
+	// wait > 25 msec
+	usleep_range(25000, 26000);
 
-    // turn off AVEE
-	gpiod_set_value(ctx->enn_gpio, 0);
+	// turn off AVDD and AVEE
+	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->lcd_bias_regulators), ctx->lcd_bias_regulators);
+	if (ret < 0)
+		return ret;
 
-    // wait > 1 msec
+	// wait > 1 msec
 	usleep_range(10000, 20000);
 
-    // turn off AVDD
-	gpiod_set_value(ctx->enp_gpio, 0);
-
-    // wait > 1 msec
-	usleep_range(10000, 20000);
-
-    // turn off vdd
+	// turn off vdd
 	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->power_supplies), ctx->power_supplies);
 	if (ret) {
 		DRM_DEV_ERROR(ctx->dev,
@@ -717,10 +731,20 @@ static int rad_power_off(struct rad *ctx)
 
 static int rad_disable(struct drm_panel *panel)
 {
+	int ret;
 	struct rad *ctx = panel_to_ctx(panel);
 
 	if (!ctx->enabled)
 		return 0;
+
+	ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
+	ctx->dsi[1]->mode_flags &= ~MIPI_DSI_MODE_LPM;
+
+	dsi_write_panel_off(panel);
+
+	ret = rad_power_off(ctx);
+	if (ret < 0)
+		DRM_DEV_ERROR(ctx->dev, "power_off failed ret = %d\n", ret);
 
 	backlight_disable(ctx->backlight);
 
@@ -736,21 +760,19 @@ static int rad_unprepare(struct drm_panel *panel)
 	if (!ctx->prepared)
 		return 0;
 
-	ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
-	ctx->dsi[1]->mode_flags &= ~MIPI_DSI_MODE_LPM;
-
-    // disable backlight drivers
+	// disable backlight drivers
 	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
 	if (ret) {
 		DRM_DEV_ERROR(ctx->dev,
-			"regulator_bulk_disable failed %d\n", ret);
+			"regulator_bulk_disable failed for backlight %d\n", ret);
 	}
 
-	dsi_write_panel_off(panel);
-
-	ret = rad_power_off(ctx);
-	if (ret < 0)
-		DRM_DEV_ERROR(ctx->dev, "power_off failed ret = %d\n", ret);
+	// disable preboost drivers
+	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->preboost_drivers), ctx->preboost_drivers);
+	if (ret) {
+		DRM_DEV_ERROR(ctx->dev,
+			"regulator_bulk_disable failed for preboost%d\n", ret);
+	}
 
 	// clear out panel manufacturing info
 	memset(ctx->panel_mfg_info, 0, ARRAY_SIZE(ctx->panel_mfg_info));
@@ -795,27 +817,23 @@ static void rad_backlight_work_init(struct rad *ctx)
 
 static int rad_prepare(struct drm_panel *panel)
 {
-	struct rad *ctx = panel_to_ctx(panel);
 	int ret;
+	struct rad *ctx = panel_to_ctx(panel);
 
 	if (ctx->prepared)
 		return 0;
 
-	ret = truly_35597_power_on(ctx);
+	// turn on preboost drivers
+	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->preboost_drivers), ctx->preboost_drivers);
 	if (ret < 0)
 	{
-		DRM_DEV_ERROR(ctx->dev, "power_on failed\n");
+		DRM_DEV_ERROR(ctx->dev, "preboost on failed\n");
 		goto power_off;
 	}
 
-	ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
-	ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
-
-    // wait > 20 msec after power on before initial setting
-	usleep_range(20000, 21000);
-	dsi_write_panel_on(panel);
-
-    get_panel_info(panel);
+	//we need to delay to wait for hiccup mode to exit --
+	//at a minimum it is about 70ms we need to wait here...
+	usleep_range(400000, 450000);
 
 	// turn on backlight drivers
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
@@ -825,8 +843,8 @@ static int rad_prepare(struct drm_panel *panel)
 		goto power_off;
 	}
 
-	ctx->backlight->props.pulse_offset_rows = 233;
-	rad_backlight_work_init(ctx);
+	// clear out panel manufacturing info
+	memset(ctx->panel_mfg_info, 0, ARRAY_SIZE(ctx->panel_mfg_info));
 
 	ctx->prepared = true;
 
@@ -889,7 +907,7 @@ int panel_mode_set(const struct drm_display_mode *mode)
 	{
 		ctx->current_mode = new_mode;
         // only reset the panel parematers if we already initialized the panels
-		if (ctx->prepared)
+		if (ctx->enabled)
 		{
 			_get_per_mode_settings(ctx->current_mode, &VFP, &VID_VS_DELAY, &VBP);
 			// Display Timing
@@ -910,7 +928,31 @@ static int rad_enable(struct drm_panel *panel)
 	if (ctx->enabled)
 		return 0;
 
+	ret = truly_35597_power_on(ctx);
+	if (ret < 0)
+	{
+		DRM_DEV_ERROR(ctx->dev, "power_on failed\n");
+		return ret;;
+	}
+
+	ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
+	ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
+
+    // wait > 20 msec after power on before initial setting
+	usleep_range(20000, 21000);
+	dsi_write_panel_on(panel);
+
+    get_panel_info(panel);
+
+	ctx->backlight->props.pulse_offset_rows = 233;
+	rad_backlight_work_init(ctx);
+
 	ret = backlight_enable(ctx->backlight);
+	if (ret < 0)
+	{
+		DRM_DEV_ERROR(ctx->dev, "backlight enable failed\n");
+		return ret;;
+	}
 
 	ctx->enabled = true;
 
@@ -968,11 +1010,27 @@ static int rad_panel_add(struct rad *ctx)
 	if (ret < 0)
 		return ret;
 
+	for (i = 0; i < ARRAY_SIZE(ctx->preboost_drivers); i++)
+		ctx->preboost_drivers[i].supply = preboost_driver_names[i];
+
+	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->preboost_drivers),
+				      ctx->preboost_drivers);
+	if (ret < 0)
+		return ret;
+
 	for (i = 0; i < ARRAY_SIZE(ctx->backlight_drivers); i++)
 		ctx->backlight_drivers[i].supply = backlight_driver_names[i];
 
 	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->backlight_drivers),
 				      ctx->backlight_drivers);
+	if (ret < 0)
+		return ret;
+
+	for (i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++)
+		ctx->lcd_bias_regulators[i].supply = lcd_bias_names[i];
+
+	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->lcd_bias_regulators),
+				      ctx->lcd_bias_regulators);
 	if (ret < 0)
 		return ret;
 
@@ -994,36 +1052,6 @@ static int rad_panel_add(struct rad *ctx)
     of_property_read_u32(dev->of_node, "backlight_ramp_step_time_msec", &ctx->backlight_ramp_step_time_msec);
     printk("backlight_ramp_step_size = %d", ctx->backlight_ramp_step_size);
     printk("backlight_ramp_step_time_msec = %d", ctx->backlight_ramp_step_time_msec);
-
-#if 0
-	ctx->backlight_gpio = devm_gpiod_get_optional(dev, "backlight", GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->backlight_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get reset gpio %ld\n",
-			PTR_ERR(ctx->backlight_gpio));
-		return PTR_ERR(ctx->backlight_gpio);
-	};
-
-	ctx->backlight2_gpio = devm_gpiod_get_optional(dev, "backlight2", GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->backlight2_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get reset gpio %ld\n",
-			PTR_ERR(ctx->backlight2_gpio));
-		return PTR_ERR(ctx->backlight2_gpio);
-	};
-#endif
-
-	ctx->enp_gpio = devm_gpiod_get(dev, "enp", GPIOD_OUT_LOW);
-	if (IS_ERR(ctx->enp_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get enp gpio %ld\n",
-			PTR_ERR(ctx->enp_gpio));
-		return PTR_ERR(ctx->enp_gpio);
-	}
-
-	ctx->enn_gpio = devm_gpiod_get(dev, "enn", GPIOD_OUT_LOW);
-	if (IS_ERR(ctx->enn_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get enn gpio %ld\n",
-			PTR_ERR(ctx->enn_gpio));
-		return PTR_ERR(ctx->enn_gpio);
-	}
 
 	memset(&bl_props, 0, sizeof(bl_props));
 	bl_props.type = BACKLIGHT_RAW;
