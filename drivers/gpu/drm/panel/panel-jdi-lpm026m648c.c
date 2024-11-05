@@ -59,8 +59,20 @@ static const char * const regulator_names[] = {
 	"vdda",
 };
 
-static const char * const bl_driver_names[] = {
-	"wled1",
+static const char * const preboost_driver_names[] = {
+	"preboost",
+};
+
+static const char * const backlight_driver_names[] = {
+	"backlight-left",
+	"backlight-right",
+};
+
+static const char * const lcd_bias_names[] = {
+	"left-pos",
+	"left-neg",
+	"right-pos",
+	"right-neg"
 };
 
 #define PANEL_MFG_INFO_NUM_BYTES 40
@@ -70,7 +82,9 @@ struct lpm026m648c_ctx {
 	struct drm_panel panel;
 
 	struct regulator_bulk_data power_supplies[ARRAY_SIZE(regulator_names)];
-	struct regulator_bulk_data backlight_drivers[ARRAY_SIZE(bl_driver_names)];
+	struct regulator_bulk_data preboost_drivers[ARRAY_SIZE(preboost_driver_names)];
+	struct regulator_bulk_data backlight_drivers[ARRAY_SIZE(backlight_driver_names)];
+	struct regulator_bulk_data lcd_bias_regulators[ARRAY_SIZE(lcd_bias_names)];
 
 	struct gpio_descs *reset_gpios;
 	struct gpio_desc *enp_gpio;
@@ -326,11 +340,13 @@ static int lpm026m648c_power_on(struct lpm026m648c_ctx *ctx)
 		return ret;
 
 	usleep_range(1000, 2000);
-    // turn on AVDD
-	gpiod_set_value(ctx->enp_gpio, 1);
-
-    // turn on AVEE
-	gpiod_set_value(ctx->enn_gpio, 1);
+	// turn on AVDD and AVEE
+	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->lcd_bias_regulators), ctx->lcd_bias_regulators);
+	if (ret < 0) {
+		DRM_DEV_ERROR(ctx->dev,
+			"regulator_bulk_enable failed %d\n", ret);
+			return ret;
+	}
 	
 	msleep(20);
 	gpiod_set_value(ctx->reset_gpios->desc[0], 1);
@@ -340,18 +356,19 @@ static int lpm026m648c_power_on(struct lpm026m648c_ctx *ctx)
 
 static int lpm026m648c_power_off(struct lpm026m648c_ctx *ctx)
 {
+	int ret;
 	gpiod_set_value(ctx->reset_gpios->desc[0], 0);
 	gpiod_set_value(ctx->reset_gpios->desc[1], 0);
 	msleep(25);
-    // turn off AVEE
-	gpiod_set_value(ctx->enn_gpio, 0);
 
-    // wait > 1 msec
-	usleep_range(10000, 20000);
-
-    // turn off AVDD
-	gpiod_set_value(ctx->enp_gpio, 0);
-
+	// turn off AVDD and AVEE
+	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->lcd_bias_regulators), ctx->lcd_bias_regulators);
+	if (ret < 0)
+	if (ret < 0) {
+		DRM_DEV_ERROR(ctx->dev,
+			"regulator_bulk_disable failed %d\n", ret);
+			return ret;
+	}
 	msleep(20);
 
 	return regulator_bulk_disable(ARRAY_SIZE(ctx->power_supplies),
@@ -360,10 +377,21 @@ static int lpm026m648c_power_off(struct lpm026m648c_ctx *ctx)
 
 static int lpm026m648c_disable(struct drm_panel *panel)
 {
+    int ret;
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 
 	if (!ctx->enabled)
 		return 0;
+
+	ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
+	if (ctx->is_dual_panel)
+		ctx->dsi[1]->mode_flags &= ~MIPI_DSI_MODE_LPM;
+
+	dsi_write_panel_off(panel);
+
+	ret = lpm026m648c_power_off(ctx);
+	if (ret < 0)
+		DRM_DEV_ERROR(ctx->dev, "power_off failed ret = %d\n", ret);
 
 	backlight_disable(ctx->backlight);
 
@@ -379,22 +407,20 @@ static int lpm026m648c_unprepare(struct drm_panel *panel)
 	if (!ctx->prepared)
 		return 0;
 
-	ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
-	if (ctx->is_dual_panel)
-		ctx->dsi[1]->mode_flags &= ~MIPI_DSI_MODE_LPM;
-
-	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->backlight_drivers),
-				     ctx->backlight_drivers);
-	if (ret)
+	// disable backlight drivers
+	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
+	if (ret) {
 		DRM_DEV_ERROR(ctx->dev,
-			"failed to disable backlight %d\n", ret);
+			"regulator_bulk_disable failed for backlight %d\n", ret);
+	}
 
-	dsi_write_panel_off(panel);
-
-	ret = lpm026m648c_power_off(ctx);
-	if (ret < 0)
-		DRM_DEV_ERROR(ctx->dev, "power_off failed ret = %d\n", ret);
-
+	// disable preboost drivers
+	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->preboost_drivers), ctx->preboost_drivers);
+	if (ret) {
+		DRM_DEV_ERROR(ctx->dev,
+			"regulator_bulk_disable failed for preboost%d\n", ret);
+	}
+	
 	ctx->prepared = false;
 	return ret;
 }
@@ -441,27 +467,28 @@ static int lpm026m648c_prepare(struct drm_panel *panel)
 	if (ctx->prepared)
 		return 0;
 
-	ret = lpm026m648c_power_on(ctx);
-	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "power_on failed\n");
+	// turn on preboost drivers
+	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->preboost_drivers), ctx->preboost_drivers);
+	if (ret < 0)
+	{
+		DRM_DEV_ERROR(ctx->dev, "preboost on failed\n");
 		goto power_off;
 	}
 
-	ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
-	if (ctx->is_dual_panel)
-		ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
+	//we need to delay to wait for hiccup mode to exit --
+	//at a minimum it is about 70ms we need to wait here...
+	usleep_range(400000, 450000);
 
-	msleep(20);
-	dsi_write_panel_on(panel);
-	get_panel_info(panel);
-
-	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->backlight_drivers),
-				    ctx->backlight_drivers);
+	// turn on backlight drivers
+	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
 	if (ret < 0)
+	{
+		DRM_DEV_ERROR(ctx->dev, "backlight driver on failed\n");
 		goto power_off;
+	}
 
-	ctx->backlight->props.pulse_offset_rows = GPO1_TES1;
-	lpm026m648c_backlight_work_init(ctx);
+	// clear out panel manufacturing info
+	memset(ctx->panel_mfg_info, 0, ARRAY_SIZE(ctx->panel_mfg_info));
 
 	ctx->prepared = true;
 
@@ -508,10 +535,37 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 	if (ctx->enabled)
 		return 0;
 
+	ret = lpm026m648c_power_on(ctx);
+	if (ret < 0) {
+		DRM_DEV_ERROR(ctx->dev, "power_on failed\n");
+		goto power_off;
+	}
+
+	ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
+	if (ctx->is_dual_panel)
+		ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
+
+	msleep(20);
+	dsi_write_panel_on(panel);
+	get_panel_info(panel);
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->backlight_drivers),
+				    ctx->backlight_drivers);
+	if (ret < 0)
+		goto power_off;
+
+	ctx->backlight->props.pulse_offset_rows = GPO1_TES1;
+	lpm026m648c_backlight_work_init(ctx);
+
 	ret = backlight_enable(ctx->backlight);
 
 	ctx->enabled = true;
 
+	return ret;
+
+power_off:
+	if (lpm026m648c_power_off(ctx))
+		DRM_DEV_ERROR(ctx->dev, "power_off failed\n");
 	return ret;
 }
 
@@ -629,31 +683,33 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 	if (ret < 0)
 		return ret;
 
+	for (i = 0; i < ARRAY_SIZE(ctx->preboost_drivers); i++)
+						ctx->preboost_drivers[i].supply = preboost_driver_names[i];
+
+	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->preboost_drivers),
+						ctx->preboost_drivers);
+	if (ret < 0)
+		return ret;
+
 	for (i = 0; i < ARRAY_SIZE(ctx->backlight_drivers); i++)
-		ctx->backlight_drivers[i].supply = bl_driver_names[i];
+		ctx->backlight_drivers[i].supply = backlight_driver_names[i];
 
 	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->backlight_drivers),
 				      ctx->backlight_drivers);
 	if (ret < 0)
 		return ret;
 
+	for (i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++)
+		ctx->lcd_bias_regulators[i].supply = lcd_bias_names[i];
+
+	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->lcd_bias_regulators),
+		ctx->lcd_bias_regulators);
+	if (ret < 0)
+		return ret;
+
 	ctx->reset_gpios = devm_gpiod_get_array(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(ctx->reset_gpios))
 		return PTR_ERR(ctx->reset_gpios);
-
-	ctx->enp_gpio = devm_gpiod_get(dev, "enp", GPIOD_OUT_LOW);
-	if (IS_ERR(ctx->enp_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get enp gpio %ld\n",
-			PTR_ERR(ctx->enp_gpio));
-		return PTR_ERR(ctx->enp_gpio);
-	}
-
-	ctx->enn_gpio = devm_gpiod_get(dev, "enn", GPIOD_OUT_LOW);
-	if (IS_ERR(ctx->enn_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get enn gpio %ld\n",
-			PTR_ERR(ctx->enn_gpio));
-		return PTR_ERR(ctx->enn_gpio);
-	}
 
     of_property_read_u32(dev->of_node, "backlight_ramp_step_size", &ctx->backlight_ramp_step_size);
     of_property_read_u32(dev->of_node, "backlight_ramp_step_time_msec", &ctx->backlight_ramp_step_time_msec);
