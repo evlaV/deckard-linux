@@ -768,12 +768,6 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (ret)
 		goto out;
 
-	if (!(args->flags & MSM_SUBMIT_NO_IMPLICIT)) {
-		ret = submit_fence_sync(submit);
-		if (ret)
-			goto out;
-	}
-
 	ret = submit_pin_objects(submit);
 	if (ret)
 		goto out;
