@@ -1036,6 +1036,7 @@
 };
 
 &cci2_i2c1 {
+	clock-frequency = <400000>;
 	sensor@60 {
 		compatible = "ovti,og0ve10x";
 		reg = <0x60>;
