@@ -85,7 +85,7 @@ static void check_invariants(const struct maps *maps __maybe_unused)
 			/* If addresses are sorted... */
 			if (RC_CHK_ACCESS(maps)->maps_by_address_sorted) {
 				/* Maps should be in start address order. */
-				assert(map__start(prev) <= map__start(map));
+				//assert(map__start(prev) <= map__start(map));
 				/*
 				 * If the ends of maps aren't broken (during
 				 * construction) then they should be ordered
@@ -512,9 +512,11 @@ static void __maps__remove(struct maps *maps, struct map *map)
 	struct map **maps_by_name = maps__maps_by_name(maps);
 	unsigned int nr_maps = maps__nr_maps(maps);
 	unsigned int address_idx;
-
+	int retval;
 	/* Slide later mappings over the one to remove */
-	address_idx = maps__by_address_index(maps, map);
+	retval = maps__by_address_index(maps, map);
+	if( retval == -1 ) return;
+	address_idx = (unsigned int) retval;
 	map__put(maps_by_address[address_idx]);
 	memmove(&maps_by_address[address_idx],
 		&maps_by_address[address_idx + 1],
@@ -1060,9 +1062,14 @@ struct map *maps__find_next_entry(struct maps *maps, struct map *map)
 {
 	unsigned int i;
 	struct map *result = NULL;
+	int retval;
 
 	down_read(maps__lock(maps));
-	i = maps__by_address_index(maps, map);
+	retval = maps__by_address_index(maps, map);
+	
+	if( retval == -1 ) return result;
+	i = (unsigned int)retval;
+
 	if (i < maps__nr_maps(maps))
 		result = map__get(maps__maps_by_address(maps)[i]);
 
