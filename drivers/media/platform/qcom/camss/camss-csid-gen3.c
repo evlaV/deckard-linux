@@ -6,6 +6,7 @@
  */
 #include <linux/completion.h>
 #include <linux/delay.h>
+#include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
@@ -331,6 +332,17 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	ipp_status = readl(csid->base + 0xac);
 	writel(ipp_status, csid->base + 0xb4);
 
+#if CSID_RX_DEBUG
+	// increment the rx debug irq counters when enabled and we received a csi2 rx irq
+	if(csid->rx_dbg_en && top_val & 0x4) {
+		// increment counters based on irq status
+		for(int bit=0; bit<32; bit++) {
+			if(val & BIT(bit))
+				csid->rx_dbg_irq_counters[bit]++;
+		}
+	}
+#endif
+
 	if((rdi_status & 0x0010) || (ipp_status & 0x0010)) // Test if PATH_INFO_SOF is set
 	{
 		u32 sof_timestamp_lower = readl_relaxed(sof_addr_lower);
@@ -445,6 +457,15 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		buf_done_val = readl(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 		writel(buf_done_val, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
 
+#if CSID_RX_DEBUG
+		if(csid->rx_dbg_en) {
+			// NOTE: Enabling CSI2 RX IRQs seems to cause some issue where streaming works properly but we randomly
+			// miss some of the bits in BUF_DONE_STATUS after the BUF_DONE bit has been set in the top IRQ status
+			// For the moment we set all the buf done bits to compensate for that
+			buf_done_val = 0xffffffff;
+		}
+#endif
+
 		u32 eof_timestamp_lower = readl_relaxed(eof_addr_lower);
 		u32 eof_timestamp_upper = readl_relaxed(eof_addr_upper);
 		u64 eof_isp_timestamp = ((u64)eof_timestamp_upper) << 32 | eof_timestamp_lower;
@@ -532,6 +553,12 @@ static int csid_reset(struct csid_device *csid)
 
 	writel_relaxed(~0u, csid->base + CSID_TOP_IRQ_MASK);
 	writel_relaxed(~0u, csid->base + CSID_BUF_DONE_IRQ_MASK);
+
+#if CSID_RX_DEBUG
+	// re-configure rx irqs after reset since these got cleared
+	writel_relaxed(csid->rx_dbg_en ? 0x9ffffff : 0x0, csid->base + CSID_CSI2_RX_IRQ_MASK);
+#endif
+
 	/* PATH_INFO_SOF | CAMIF_SOF */
 
 	val = 0x1010;
@@ -542,9 +569,87 @@ static int csid_reset(struct csid_device *csid)
 	return 0;
 }
 
+#if CSID_RX_DEBUG
+static ssize_t rx_dbg_en_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct csid_device *csid = container_of(attr, struct csid_device, rx_dbg_en_attr);
+	return sysfs_emit(buf, "%d\n", csid->rx_dbg_en);
+}
+
+static ssize_t rx_dbg_en_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct csid_device *csid = container_of(attr, struct csid_device, rx_dbg_en_attr);
+
+	if(!count || (buf[0]!='0' && buf[0]!='1'))
+		return -EINVAL;
+
+	bool en = (buf[0]=='1');
+
+	if(csid->rx_dbg_en != en) {
+		csid->rx_dbg_en = en;
+
+		// configure rx irqs
+		writel_relaxed(csid->rx_dbg_en ? 0x9ffffff : 0x0, csid->base + CSID_CSI2_RX_IRQ_MASK);
+
+		if(csid->rx_dbg_en) {
+			// reset debug rx irq counters only when rx debug is enabled
+			memset(csid->rx_dbg_irq_counters, 0, sizeof(csid->rx_dbg_irq_counters));
+		}
+
+		dev_warn(csid->camss->dev, "csid%d csi2 rx stats enabled=%d\n", csid->id, csid->rx_dbg_en);
+	}
+
+	return count;
+}
+
+struct csid_rx_stats_info {
+	u32 bit;
+	const char* name;
+};
+
+struct csid_rx_stats_info rx_stats_info[] = {
+	{0, "DL0_EOT_CAPTURED"}, {1, "DL1_EOT_CAPTURED"}, {2, "DL2_EOT_CAPTURED"}, {3, "DL3_EOT_CAPTURED"},
+	{4, "DL0_SOT_CAPTURED"}, {5, "DL1_SOT_CAPTURED"}, {6, "DL2_SOT_CAPTURED"}, {7, "DL3_SOT_CAPTURED"},
+	{8, "LONG_PKT_CAPTURED"}, {9, "SHORT_PKT_CAPTURED"}, {10, "CPHY_PKT_HDR_CAPTURED"}, {11, "CPHY_EOT_RECEPTION"},
+	{12, "CPHY_SOT_RECEPTION"}, {13, "ERROR_CPHY_PH_CRC"}, {14, "WARNING_ECC"}, {15, "LANE0_FIFO_OVERFLOW"},
+	{16, "LANE1_FIFO_OVERFLOW"}, {17, "LANE2_FIFO_OVERFLOW"}, {18, "LANE3_FIFO_OVERFLOW"}, {19, "ERROR_CRC"},
+	{20, "ERROR_ECC"}, {20, "MMAPPED_VC_DT"}, {20, "UNMAPPED_VC_DT"}, {20, "STREAM_UNDERFLOW"},
+	{24, "UNBOUNDED_FRAME"}, {27, "RST_DONE"}
+};
+
+static ssize_t rx_dbg_stats_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct csid_device *csid = container_of(attr, struct csid_device, rx_dbg_stats_attr);
+	int i;
+	u32 count = 0;
+
+	for(i=0; i<ARRAY_SIZE(rx_stats_info); i++) {
+		count += sysfs_emit_at(buf, count, "%s;%u\n", rx_stats_info[i].name, csid->rx_dbg_irq_counters[rx_stats_info[i].bit]);
+	}
+
+	return count;
+}
+#endif
+
 static void csid_subdev_init(struct csid_device *csid)
 {
 	csid->testgen.nmodes = CSID_PAYLOAD_MODE_DISABLED;
+#if CSID_RX_DEBUG
+	int ret = 0;
+	// Add attributes to enable/retrieve csi2 rx statistics
+	csid->rx_dbg_en_attr = (struct device_attribute)__ATTR_RW(rx_dbg_en);
+	csid->rx_dbg_stats_attr = (struct device_attribute)__ATTR_RO(rx_dbg_stats);
+	csid->rx_dbg_attrs[0] = &csid->rx_dbg_en_attr.attr;
+	csid->rx_dbg_attrs[1] = &csid->rx_dbg_stats_attr.attr;
+	csid->rx_dbg_attrs[2] = NULL;
+	snprintf(csid->rx_dbg_attr_group_name, sizeof(csid->rx_dbg_attr_group_name), "csid%d", csid->id);
+	csid->rx_dbg_attr_group.name = csid->rx_dbg_attr_group_name;
+	csid->rx_dbg_attr_group.attrs = csid->rx_dbg_attrs;
+	ret = devm_device_add_group(csid->camss->dev, &csid->rx_dbg_attr_group);
+	if(ret) {
+		dev_err(csid->camss->dev, "Failed to setup CSI2 RX debug attributes");
+	}
+#endif
 }
 
 static int csid_vfe_set_registers(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config)
