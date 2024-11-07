@@ -648,66 +648,83 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 	}
 
 	for (i = 0; i < 2; i++) {
-		if (c->is_dual_dsi && !list_empty(&dpu->writeback[i].job_queue)) {
-			// check for a pending CWB job
-			struct drm_writeback_job *job = list_first_entry(&dpu->writeback[i].job_queue, struct drm_writeback_job, list_entry);
-			// non-NULL "priv" indicates CWB job
-			if (!job->priv) {
-				// also check the next entry (required not to skip frame)
-				if (list_is_last(&job->list_entry, &dpu->writeback[i].job_queue))
-					goto not_cwb;
-
-				job = list_next_entry(job, list_entry);
-				if (!job->priv)
-					goto not_cwb;
-			}
-
-			dpu_write(dpu, WB_DST_ADDR_SW_STATUS(i), 0); // secure
-			dpu_write(dpu, WB_ALPHA_X_VALUE(i), 0xff);
-
-			dpu_write(dpu, WB_DANGER_LUT(i), 0);
-			dpu_write(dpu, WB_SAFE_LUT(i), 0xffff);
-			dpu_write(dpu, WB_CREQ_LUT_0(i), 0);
-			dpu_write(dpu, WB_CREQ_LUT_1(i), 0);
-			dpu_write(dpu, WB_QOS_CTRL(i), 0);
-
-			wb_set_framebuffer(dpu, i, job->fb, i ? 0xb : 0xd);
-
-			dpu_write(dpu, WB_MUX(i), i ? 0xb : 0xd); // DCWB
-			dpu_write(dpu, CTL_WB_ACTIVE(c->ctl), BIT(1+i));
-			dpu_write(dpu, CTL_WB_FLUSH(c->ctl), BIT(1+i));
-			ctl_flush |= BIT(16); // flush WB
-			if (i == 0) {
-				dpu_write(dpu, CTL_CDM_ACTIVE(c->ctl), BIT(0));
-				dpu_write(dpu, CTL_CDM_FLUSH(c->ctl), BIT(0));
-				ctl_flush |= BIT(26); // flush CDM
-			}
-
-			dpu_write(dpu, MERGE_3D_CWB_MODE(i), 3);
-			dpu_write(dpu, MERGE_3D_CWB_MUX(i), 0);
-
-			if(dpu->cwb_plane_select == 0) {
-				//left display
-				dpu_write(dpu, CWB_MUX(i, 0), c->lm + i*2);
-				dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
-				dpu_write(dpu, CWB_MUX(i, 1), c->lm + i*2+1);
-			}
-			else {
-				//right display
-				dpu_write(dpu, CWB_MUX(i, 0), c->lm + (1-i)*2);
-				dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
-				dpu_write(dpu, CWB_MUX(i, 1), c->lm + (1-i)*2+1);
-			}
-
-			dpu_write(dpu, CWB_MODE(i, 1), 0);
-
-			dpu_write(dpu, CTL_CWB_ACTIVE(c->ctl), 3 << (i*2));
-			dpu_write(dpu, CTL_CWB_FLUSH(c->ctl), 3 << (i*2));
-			ctl_flush |= BIT(28); // flush CWB
-
-			job->priv = NULL;
-		not_cwb:;
+		if (!c->is_dual_dsi) {
+			continue;
 		}
+
+		struct drm_writeback_job *job = NULL;
+
+		// Take a lock during the whole period of trying to use a job from
+		// the writeback job_queue to avoid having it deleted when the IRQ
+		// gets triggered
+		unsigned long flags;
+		spin_lock_irqsave(&dpu->writeback[i].job_lock, flags);
+		if (list_empty(&dpu->writeback[i].job_queue)) {
+			spin_unlock_irqrestore(&dpu->writeback[i].job_lock, flags);
+			continue;
+		}
+
+		job = list_first_entry(&dpu->writeback[i].job_queue, struct drm_writeback_job, list_entry);
+
+		// non-NULL "priv" indicates CWB job
+		if (!job->priv) {
+			// also check the next entry (required not to skip frame)
+			if (list_is_last(&job->list_entry, &dpu->writeback[i].job_queue))
+				goto not_cwb;
+
+			job = list_next_entry(job, list_entry);
+			if (!job->priv)
+				goto not_cwb;
+		}
+
+		dpu_write(dpu, WB_DST_ADDR_SW_STATUS(i), 0); // secure
+		dpu_write(dpu, WB_ALPHA_X_VALUE(i), 0xff);
+
+		dpu_write(dpu, WB_DANGER_LUT(i), 0);
+		dpu_write(dpu, WB_SAFE_LUT(i), 0xffff);
+		dpu_write(dpu, WB_CREQ_LUT_0(i), 0);
+		dpu_write(dpu, WB_CREQ_LUT_1(i), 0);
+		dpu_write(dpu, WB_QOS_CTRL(i), 0);
+
+		wb_set_framebuffer(dpu, i, job->fb, i ? 0xb : 0xd);
+
+		dpu_write(dpu, WB_MUX(i), i ? 0xb : 0xd); // DCWB
+		dpu_write(dpu, CTL_WB_ACTIVE(c->ctl), BIT(1+i));
+		dpu_write(dpu, CTL_WB_FLUSH(c->ctl), BIT(1+i));
+		ctl_flush |= BIT(16); // flush WB
+		if (i == 0) {
+			dpu_write(dpu, CTL_CDM_ACTIVE(c->ctl), BIT(0));
+			dpu_write(dpu, CTL_CDM_FLUSH(c->ctl), BIT(0));
+			ctl_flush |= BIT(26); // flush CDM
+		}
+
+		dpu_write(dpu, MERGE_3D_CWB_MODE(i), 3);
+		dpu_write(dpu, MERGE_3D_CWB_MUX(i), 0);
+
+		if(dpu->cwb_plane_select == 0) {
+			//left display
+			dpu_write(dpu, CWB_MUX(i, 0), c->lm + i*2);
+			dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
+			dpu_write(dpu, CWB_MUX(i, 1), c->lm + i*2+1);
+		}
+		else {
+			//right display
+			dpu_write(dpu, CWB_MUX(i, 0), c->lm + (1-i)*2);
+			dpu_write(dpu, CWB_MODE(i, 0), 0); // capture mixer output (see sde_crtc_output_capture_point)
+			dpu_write(dpu, CWB_MUX(i, 1), c->lm + (1-i)*2+1);
+		}
+
+		dpu_write(dpu, CWB_MODE(i, 1), 0);
+
+		dpu_write(dpu, CTL_CWB_ACTIVE(c->ctl), 3 << (i*2));
+		dpu_write(dpu, CTL_CWB_FLUSH(c->ctl), 3 << (i*2));
+		ctl_flush |= BIT(28); // flush CWB
+
+		job->priv = NULL;
+
+		not_cwb:
+			spin_unlock_irqrestore(&dpu->writeback[i].job_lock, flags);
+
 	}
 
 	dpu_write(dpu, CTL_FETCH_PIPE_ACTIVE(c->ctl), fetch_pipe_active);
