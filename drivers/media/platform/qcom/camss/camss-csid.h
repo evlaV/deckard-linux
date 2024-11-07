@@ -255,6 +255,22 @@ struct csid_device {
 
 	bool has_extended_cfg;
 	struct csid_path_config extended_cfg_paths[CAMSS_EXT_CSID_PATH_TYPE_MAX];
+
+#define CSID_RX_DEBUG 1
+#if CSID_RX_DEBUG
+	bool rx_dbg_en;
+
+	// need to store attributes variables since we have one group per csid and want
+	// access the csid_device from attr_rx_stats_en/attr_rx_stats using container_of
+	char rx_dbg_attr_group_name[256];
+	struct attribute_group rx_dbg_attr_group;
+	struct attribute *rx_dbg_attrs[3];
+	struct device_attribute rx_dbg_en_attr;
+	struct device_attribute rx_dbg_stats_attr;
+
+	// debug rx irq counters
+	u32 rx_dbg_irq_counters[32];
+#endif
 };
 
 struct camss_subdev_resources;
