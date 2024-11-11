@@ -55,6 +55,8 @@
 #define     SLG4AX46073V_TACH_ARMED       0x01
 #define SLG4AX46073V_REG_WDT_STATUS  0x4A
 #define     SLG4AX46073V_WDT_OK        0x10
+#define SLG4AX46073V_REG_RESET       0xF5
+#define     SLG4AX46073V_RESET                0x01
 
 #define VERSION_7                    0x07
 
@@ -92,6 +94,7 @@ static bool slg4ax46073v_readable_reg(struct device *dev, unsigned int reg)
     case SLG4AX46073V_REG_TACH_ARMED:
     case SLG4AX46073V_REG_WDT_STATUS:
     case SLG4AX46073V_REG_VERSION:
+    case SLG4AX46073V_REG_RESET:
 		return true;
 	default:
 		return false;
@@ -108,6 +111,7 @@ static bool slg4ax46073v_writeable_reg(struct device *dev, unsigned int reg)
     case SLG4AX46073V_REG_TACH_ARMED:
     case SLG4AX46073V_REG_WDT_STATUS:
     case SLG4AX46073V_REG_VERSION:
+    case SLG4AX46073V_REG_RESET:
 		return true;
 	default:
 		return false;
@@ -124,6 +128,7 @@ static bool slg4ax46073v_volatile_reg(struct device *dev, unsigned int reg)
     case SLG4AX46073V_REG_TACH_ARMED:
     case SLG4AX46073V_REG_WDT_STATUS:
     case SLG4AX46073V_REG_VERSION:
+    case SLG4AX46073V_REG_RESET:
 		return true;
 	default:
 		return false;
@@ -276,28 +281,22 @@ static void slg4ax46073v_reset(struct slg4ax46073v *slg4ax46073v)
     // disable Oscillator, disable WDT, disable tach
     regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT, SLG4AX46073V_VI_DISABLE_PWM_CLK0);
 
-    // cycle fan power supply
+    // turn off fan power supply
     gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 0);
     usleep_range(100000,150000);
+
+    // reset fan controller
+    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_RESET, SLG4AX46073V_RESET);
+
+    // turn fan power supply back on
     gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 1);
     usleep_range(100000,150000);
-
-    // Set PWM frequency to default 25 kHz
-    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_PERIOD, SLG4AX46073V_PWM_PERIOD_DEFAULT);
-
-    // reset fan speed to 30%
-    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC, slg4ax46073v_pwm_duty_cycle_to_reg_value(slg4ax46073v,30));
 
     // re arm tach
     slg4ax46073v_arm_tach(slg4ax46073v);
 
     // reset wdt
     slg4ax46073v_reset_wdt( slg4ax46073v );
-
-    // Enable Oscillator
-    regmap_read(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT, &regval);
-    regval &= ~SLG4AX46073V_VI_DISABLE_PWM_CLK0;
-    regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT, regval);
 }
 
 static irqreturn_t fan_alert_irq_handler_top(int irq, void *dev_id)
