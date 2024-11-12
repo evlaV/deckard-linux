@@ -146,12 +146,13 @@ void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer *fb)
 	dpu_write(dpu, reg + 20, pitch[2] | pitch[3] << 16);
 }
 
-static void
+void
 sspp_set_coords(struct dpu_kms *dpu, u8 i, struct drm_rect *dst, struct drm_rect *src, bool nv12)
 {
 	u32 src_size = (drm_rect_height(src) & 0xffff0000) | drm_rect_width(src) >> 16;
 	u32 src_size_uv = (drm_rect_height(src)/2 & 0xffff0000) | drm_rect_width(src)/2 >> 16;
 
+printk("set coords2----\n");
 	dpu_write(dpu, SSPP_SRC_SIZE(i), src_size);
 	dpu_write(dpu, SSPP_SRC_SIZE(i)+4, src_size);
 	dpu_write(dpu, SSPP_SRC_XY(i), (src->y1 & 0xffff0000) | src->x1 >> 16);
@@ -159,7 +160,9 @@ sspp_set_coords(struct dpu_kms *dpu, u8 i, struct drm_rect *dst, struct drm_rect
 		  drm_rect_height(dst) << 16 | drm_rect_width(dst));
 	dpu_write(dpu, SSPP_OUT_XY(i), dst->y1 << 16 | dst->x1);
 
+	printk("------SSPP_SW_PIX_EXT_C0_REQ_PIXELS and SSPP_SW_PIX_EXT_C3_REQ_PIXELS(%d) 0x%x\n", i, src_size);
 	dpu_write(dpu, SSPP_SW_PIX_EXT_C0_REQ_PIXELS(i), src_size);
+	printk("------SSPP_SW_PIX_EXT_C1C2_REQ_PIXELS(%d) uv 0x%x size 0x%x\n", i, src_size_uv, src_size);
 	dpu_write(dpu, SSPP_SW_PIX_EXT_C1C2_REQ_PIXELS(i), nv12 ? src_size_uv : src_size);
 	dpu_write(dpu, SSPP_SW_PIX_EXT_C3_REQ_PIXELS(i), src_size);
 
@@ -274,6 +277,7 @@ sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
 	dpu_write(dpu, SSPP_SRC_UNPACK_PATTERN(i), unpack_pattern);
 	dpu_write(dpu, SSPP_SRC_OP_MODE(i), op_mode);
 
+printk("-----sspp %d op_mode 0x%x with bit4 set for rec1\n", i, op_mode);
 	if (i==16||i==17) { // for CAC unpack planes using multirect
 	dpu_write(dpu, SSPP_SRC_FORMAT_REC1(i), src_format);
 	dpu_write(dpu, SSPP_SRC_UNPACK_PATTERN_REC1(i), unpack_pattern);
@@ -296,6 +300,7 @@ void wb_set_framebuffer(struct dpu_kms *dpu, unsigned i, struct drm_framebuffer 
 	const struct drm_format_info *fmt = fb->format;
 	u32 dst_format, unpack_pattern, opmode = 0;
 
+printk("===================== wb set fb ================\n");
 	format_info(fmt->format, fmt->cpp[0], &dst_format, &unpack_pattern);
 
 	if (dst_format & BIT(12)) {
@@ -374,7 +379,9 @@ dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state)
 	if (i >= 4) i += 12; // DMA sspp starts at 0x20000 offset instead of 0x8000
 
 	set_framebuffer(dpu, SSPP_SRC0_ADDR(i), fb);
+printk("set coords1--------\n");
 	sspp_set_coords(dpu, i, &state->dst, &state->src, fb->format->format == DRM_FORMAT_NV12);
+printk("set coords3--------\n");
 	sspp_set_format(dpu, i, fb->format, fb->modifier, rotation);
 
 	// all VIG planes being used for CAC

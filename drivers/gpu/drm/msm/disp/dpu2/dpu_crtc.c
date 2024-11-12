@@ -524,6 +524,7 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 
 				/* mapping sspp to mixer stages */
 				mixercfg_set_sspp_stage(&mixer_cfg[i], id, stage);
+				printk("======= map sspp %d to blend stage %d\n", i, stage);
 
 				/* sspp state */
 				dpu_plane_update(dpu, id, &s);
@@ -715,7 +716,11 @@ dpu_crtc_atomic_flush(struct drm_crtc *crtc, struct drm_atomic_state *old_state)
 	dpu_write(dpu, CTL_TOP(c->ctl), 0xf0000000); /* BIT(17) for command mode */
 
 	dpu_toggle_start_irq(dpu, c->ctl, true);
+	printk("------ctl flush 0x%x\n", ctl_flush);
 	dpu_write(dpu, CTL_FLUSH(c->ctl), ctl_flush);
+//	dpu_write(dpu, CTL_FLUSH(c->ctl), 0x83461bc7); //consistent writing makes vkcube fps much slower: 10fps
+//	dpu_write(dpu, CTL_FLUSH(c->ctl), 0x3061bc7); //this make vkcube shows pattern garbage, may due to dsc issue
+//	dpu_write(dpu, CTL_FLUSH(c->ctl), 0x3461bc7); //this make vkcube shows pattern garbage too, why?
 
 	if (c->is_wb)
 		dpu_write(dpu, CTL_START(c->ctl), 1);
@@ -817,6 +822,10 @@ static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
 
 		dpu_write(dpu, SSPP_SRC_SIZE_REC1(i), cac->src_b.size);
 		dpu_write(dpu, SSPP_SRC_XY_REC1(i), cac->src_b.xy);
+
+		/* add unnecssary DMA0/1 out size/xy to align upstream reg val */
+		//dpu_write(dpu, SSPP_OUT_SIZE_REC1(i), cac->dst_b.size);
+		//dpu_write(dpu, SSPP_OUT_XY_REC1(i), cac->dst_b.xy);
 		// note: dst rect for blue uses qseed
 
 		dpu_write(dpu, QSEED3_CAC_LE_PHASE_INIT2_Y_H(i), cac->phase_step_r_h);
@@ -864,9 +873,15 @@ static void set_cac_blob(struct dpu_kms *dpu, const struct CAC_BLOB *cac)
 		if ((i & 2) == 0) { /* i=0,1, j=16,17 for DMA0/DMA1 that fetch data from DDR */
 			dpu_write(dpu, SSPP_SRC_SIZE(j), cac->src_unpack.size);
 			dpu_write(dpu, SSPP_SRC_XY(j), cac->src_unpack.xy);
+			/* add unnecssary DMA0/1 out size/xy to align upstream reg val */
+			//dpu_write(dpu, SSPP_OUT_SIZE(j), (2160 << 16) | 1080);
+			//dpu_write(dpu, SSPP_OUT_XY(j), 0);
 		} else { /* i = 2,3, j=16,17 */
 			dpu_write(dpu, SSPP_SRC_SIZE_REC1(j), cac->src_unpack.size);
 			dpu_write(dpu, SSPP_SRC_XY_REC1(j), cac->src_unpack.xy);
+			/* add unnecssary DMA0/1 out size/xy to align upstream reg val */
+			//dpu_write(dpu, SSPP_OUT_SIZE_REC1(j), (2160 << 16) | 1080);
+			//dpu_write(dpu, SSPP_OUT_XY_REC1(j), 1080);
 		}
 	}
 }
@@ -901,10 +916,10 @@ void dpu_set_static_regs(struct dpu_kms *dpu)
 	mixercfg_set_sspp_stage(&mixer_cfg[2], 1, 0); // red/blue for lm2
 	mixercfg_set_sspp_stage(&mixer_cfg[0], 2, 0); // red/blue for lm1
 	mixercfg_set_sspp_stage(&mixer_cfg[2], 3, 0); // red/blue for lm3
-	mixercfg_set_sspp_stage     (&mixer_cfg[0], 6, 1); // green for lm0
-	mixercfg_set_sspp_stage_rec1(&mixer_cfg[0], 6, 1); // green for lm1
-	mixercfg_set_sspp_stage     (&mixer_cfg[2], 7, 1); // green for lm2
-	mixercfg_set_sspp_stage_rec1(&mixer_cfg[2], 7, 1); // green for lm3
+	mixercfg_set_sspp_stage     (&mixer_cfg[0], 6, 1); // dma2: green for lm0
+	mixercfg_set_sspp_stage_rec1(&mixer_cfg[0], 6, 1); // dma2_rec1: green for lm1
+	mixercfg_set_sspp_stage     (&mixer_cfg[2], 7, 1); // dma3: green for lm2
+	mixercfg_set_sspp_stage_rec1(&mixer_cfg[2], 7, 1); // dma3_rec1: green for lm3
 
 	/* configure 4 mixer blending stage */
 	ctl_set_mixercfg(dpu, 0, 0, &mixer_cfg[0]);
