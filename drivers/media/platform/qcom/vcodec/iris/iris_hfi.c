@@ -14,6 +14,8 @@
 #include "vpu_common.h"
 #include "firmware_no_tz.h"
 
+#include "trace.h"
+
 static int iris_hfi_queue_cmd_write(struct iris_core *core, void *pkt)
 {
 	struct iface_q_info *q_info;
@@ -746,6 +748,8 @@ int iris_hfi_queue_buffer(struct iris_inst *inst,
 
 	if (!inst->packet)
 		return -EINVAL;
+
+	trace_iris_hfi_queue_buffer(0);
 
 	core = inst->core;
 	mutex_lock(&core->lock);
