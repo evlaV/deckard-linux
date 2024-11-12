@@ -1073,6 +1073,16 @@ endmenu
 menu "I2C GPIO expanders"
 	depends on I2C
 
+config GPIO_SLG_NORTHGATE
+	tristate "Silego Northgate Paddle I2C GPIO expander"
+	select GPIO_REGMAP
+	select REGMAP_I2C
+	help
+	  GPIO driver for Deckard Silego Northgate Paddle GPIO expander.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called gpio-silego-northgate-paddle.
+
 config GPIO_ADNP
 	tristate "Avionic Design N-bit GPIO expander"
 	depends on OF_GPIO

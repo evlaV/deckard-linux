@@ -1706,6 +1706,16 @@
         //wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
         vcc-supply  = <&vreg_l15b_1p8>;
     };
+
+	// Northgate/Enthusiast Paddle Card Silego
+	slg46534v@48 {
+		compatible = "silego,northgate";
+		reg = <0x48>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		status = "ok";
+	};
 };
 
 &pm8550ve_gpios {
