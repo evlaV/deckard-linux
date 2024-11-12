@@ -1157,6 +1157,7 @@ int vdec_qbuf(struct iris_inst *inst, struct vb2_buffer *vb2)
 
 	iris_scale_power(inst);
 
+	// TODO trace this
 	ret = queue_buffer(inst, buf);
 	if (ret)
 		return ret;
