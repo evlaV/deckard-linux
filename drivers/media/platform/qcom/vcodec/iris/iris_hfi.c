@@ -749,7 +749,7 @@ int iris_hfi_queue_buffer(struct iris_inst *inst,
 	if (!inst->packet)
 		return -EINVAL;
 
-	trace_iris_hfi_queue_buffer(0);
+	trace_iris_hfi_queue_buffer(buffer->timestamp);
 
 	core = inst->core;
 	mutex_lock(&core->lock);
