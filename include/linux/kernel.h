@@ -362,6 +362,9 @@ extern __printf(2, 0) int
 __ftrace_vprintk(unsigned long ip, const char *fmt, va_list ap);
 
 extern void ftrace_dump(enum ftrace_dump_mode oops_dump_mode);
+
+// Helper function for other kernel modules to get a global, unique, trace context ID.
+extern uint64_t trace_ctx_id(void);
 #else
 static inline void tracing_start(void) { }
 static inline void tracing_stop(void) { }
@@ -384,6 +387,10 @@ ftrace_vprintk(const char *fmt, va_list ap)
 	return 0;
 }
 static inline void ftrace_dump(enum ftrace_dump_mode oops_dump_mode) { }
+static inline uint64_t trace_ctx_id(void)
+{
+	return 0;
+}
 #endif /* CONFIG_TRACING */
 
 /* Rebuild everything on CONFIG_DYNAMIC_FTRACE */
