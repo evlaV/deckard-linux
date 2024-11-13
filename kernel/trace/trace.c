@@ -6972,6 +6972,27 @@ tracing_total_entries_read(struct file *filp, char __user *ubuf,
 	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
 }
 
+// Start our tracing counter at some nice large number that is unlikely to conflict with others
+static uint64_t trace_ctx_counter = 1000000;
+static DEFINE_MUTEX(trace_ctx_counter_mutex);
+
+uint64_t trace_ctx_id(void)
+{
+	mutex_lock(&trace_ctx_counter_mutex); // Protect the counter
+	uint64_t value = trace_ctx_counter++;
+	mutex_unlock(&trace_ctx_counter_mutex);
+	return value;
+}
+
+static ssize_t tracing_ctx_id_read(struct file *filp, char __user *ubuf,
+				size_t cnt, loff_t *ppos)
+{
+	// max length of uint64_t is 20 characters
+	char buf[22];
+	int r = snprintf(buf, sizeof(buf), "%llu\n", trace_ctx_id());
+	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+}
+
 static ssize_t
 tracing_last_boot_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
 {
@@ -7601,6 +7622,12 @@ static const struct file_operations tracing_free_buffer_fops = {
 static const struct file_operations tracing_mark_fops = {
 	.open		= tracing_mark_open,
 	.write		= tracing_mark_write,
+	.release	= tracing_release_generic_tr,
+};
+
+static const struct file_operations tracing_ctx_id_fops = {
+	.open		= tracing_open_generic_tr,
+	.read		= tracing_ctx_id_read,
 	.release	= tracing_release_generic_tr,
 };
 
@@ -9855,6 +9882,9 @@ init_tracer_tracefs(struct trace_array *tr, struct dentry *d_tracer)
 
 	trace_create_file("trace_marker", 0220, d_tracer,
 			  tr, &tracing_mark_fops);
+
+	trace_create_file("trace_ctx_id", TRACE_MODE_READ, d_tracer,
+	          tr, &tracing_ctx_id_fops);
 
 	tr->trace_marker_file = __find_event_file(tr, "ftrace", "print");
 
