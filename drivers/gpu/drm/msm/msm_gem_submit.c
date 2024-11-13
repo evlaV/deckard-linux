@@ -292,12 +292,16 @@ static int submit_fence_sync(struct msm_gem_submit *submit)
 	return ret;
 }
 
-static int submit_pin_objects(struct msm_gem_submit *submit)
+static int submit_pin_vmas(struct msm_gem_submit *submit)
 {
-	struct msm_drm_private *priv = submit->dev->dev_private;
-	int i, ret = 0;
+	int ret = 0;
 
-	for (i = 0; i < submit->nr_bos; i++) {
+	/*
+	 * First loop, before holding the LRU lock, avoids holding the
+	 * LRU lock while calling msm_gem_pin_vma_locked (which could
+	 * trigger get_pages())
+	 */
+	for (int i = 0; i < submit->nr_bos; i++) {
 		struct drm_gem_object *obj = submit->bos[i].obj;
 		msm_gem_lock(obj);
 		struct drm_gpuva *vma;
@@ -317,7 +321,21 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 		submit->bos[i].iova = vma->va.addr;
 	}
 
-	for (i = 0; i < submit->nr_bos; i++) {
+	return ret;
+}
+
+static void submit_pin_objects(struct msm_gem_submit *submit)
+{
+	struct msm_drm_private *priv = submit->dev->dev_private;
+
+	/*
+	 * A second loop while holding the LRU lock (a) avoids acquiring/dropping
+	 * the LRU lock for each individual bo, while (b) avoiding holding the
+	 * LRU lock while calling msm_gem_pin_vma_locked() (which could trigger
+	 * get_pages() which could trigger reclaim.. and if we held the LRU lock
+	 * could trigger deadlock with the shrinker).
+	 */
+	for (int i = 0; i < submit->nr_bos; i++) {
 		msm_gem_lock(submit->bos[i].obj);
 		mutex_lock(&priv->lru.lock);
 		msm_gem_pin_obj_locked(submit->bos[i].obj);
@@ -326,8 +344,6 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 	}
 
 	submit->bos_pinned = true;
-
-	return ret;
 }
 
 static void submit_unpin_objects(struct msm_gem_submit *submit)
@@ -746,9 +762,11 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (ret)
 		goto out;
 
-	ret = submit_pin_objects(submit);
+	ret = submit_pin_vmas(submit);
 	if (ret)
 		goto out;
+
+	submit_pin_objects(submit);
 
 	/* copy_*_user while holding a ww ticket upsets lockdep */
 	ret = submit_lock_objects(submit);
