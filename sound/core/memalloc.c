@@ -18,6 +18,7 @@
 #endif
 #include <sound/memalloc.h>
 #include "memalloc_local.h"
+#include <trace/gpuvis.h>
 
 #define DEFAULT_GFP \
 	(GFP_KERNEL | \
@@ -206,6 +207,7 @@ EXPORT_SYMBOL(snd_dma_buffer_mmap);
 void snd_dma_buffer_sync(struct snd_dma_buffer *dmab,
 			 enum snd_dma_sync_mode mode)
 {
+	TRACE_BEGIN_CTX();
 	const struct snd_malloc_ops *ops;
 
 	if (!dmab || !dmab->dev.need_sync)
@@ -941,6 +943,7 @@ static const struct snd_malloc_ops *snd_dma_ops[] = {
 
 static const struct snd_malloc_ops *snd_dma_get_ops(struct snd_dma_buffer *dmab)
 {
+	TRACE_BEGIN_CTX();
 	if (WARN_ON_ONCE(!dmab))
 		return NULL;
 	if (WARN_ON_ONCE(dmab->dev.type <= SNDRV_DMA_TYPE_UNKNOWN ||

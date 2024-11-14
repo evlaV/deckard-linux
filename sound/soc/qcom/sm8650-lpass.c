@@ -6,6 +6,7 @@
 #include <sound/soc-dapm.h>
 #include <sound/pcm.h>
 #include <linux/soundwire/sdw.h>
+#include <trace/gpuvis.h>
 
 #define BITRANGE(x, lo, hi) (((x) << lo) & GENMASK(hi, lo))
 
@@ -178,6 +179,7 @@ struct lpass {
 
 static int sm8250_snd_startup(struct snd_pcm_substream *substream)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct lpass *lp = snd_soc_card_get_drvdata(rtd->card);
 	struct snd_soc_dai *codec_dai;
@@ -203,6 +205,7 @@ static int sm8250_snd_startup(struct snd_pcm_substream *substream)
 
 static void sm8250_snd_shutdown(struct snd_pcm_substream *substream)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct lpass *lp = snd_soc_card_get_drvdata(rtd->card);
 
@@ -211,6 +214,7 @@ static void sm8250_snd_shutdown(struct snd_pcm_substream *substream)
 
 static int sm8250_snd_prepare(struct snd_pcm_substream *substream)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct lpass *lp = snd_soc_card_get_drvdata(rtd->card);
 	int ret;
@@ -242,6 +246,7 @@ static int sm8250_snd_prepare(struct snd_pcm_substream *substream)
 
 static int sm8250_snd_hw_free(struct snd_pcm_substream *substream)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct lpass *lp = snd_soc_card_get_drvdata(rtd->card);
 
@@ -263,6 +268,7 @@ static const struct snd_soc_ops sm8250_wsa_be_ops = {
 static int sm8250_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 				     struct snd_pcm_hw_params *params)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_interval *rate = hw_param_interval(params,
 					SNDRV_PCM_HW_PARAM_RATE);
 	struct snd_interval *channels = hw_param_interval(params,
@@ -276,12 +282,14 @@ static int sm8250_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 
 static void aif_write(void __iomem *ptr, u32 val)
 {
+	TRACE_BEGIN_CTX();
 	writel(val, ptr);
 }
 
 static struct lpaif* find_aif(struct snd_soc_component *component,
 			      struct snd_pcm_substream *substream)
 {
+	TRACE_BEGIN_CTX();
 	struct lpass *lpass = snd_soc_component_get_drvdata(component);
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	return &lpass->aif[rtd->dai_link->id];
@@ -290,6 +298,7 @@ static struct lpaif* find_aif(struct snd_soc_component *component,
 static int lpass_platform_pcmops_open(struct snd_soc_component *component,
 				      struct snd_pcm_substream *substream)
 {
+	TRACE_BEGIN_CTX();
 	struct lpaif *aif = find_aif(component, substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
@@ -322,6 +331,7 @@ static int lpass_platform_pcmops_open(struct snd_soc_component *component,
 static int lpass_platform_pcmops_close(struct snd_soc_component *component,
 				       struct snd_pcm_substream *substream)
 {
+	TRACE_BEGIN_CTX();
 	struct lpaif *aif = find_aif(component, substream);
 
 	WARN_ON(!aif->substream);
@@ -332,6 +342,7 @@ static int lpass_platform_pcmops_close(struct snd_soc_component *component,
 static int lpass_platform_pcmops_prepare(struct snd_soc_component *component,
 					 struct snd_pcm_substream *substream)
 {
+	TRACE_BEGIN_CTX();
 	struct lpass *lpass = snd_soc_component_get_drvdata(component);
 	struct lpaif *aif = find_aif(component, substream);
 
@@ -364,6 +375,7 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 					 struct snd_pcm_substream *substream,
 					 int cmd)
 {
+	TRACE_BEGIN_CTX();
 	struct lpaif *aif = find_aif(component, substream);
 	u32 codec_intf = DMA_CODEC_INTF_NUM_ACTIVE_CHANNEL(3) |
 		DMA_CODEC_INTF_CODEC_INTF((aif->id == AIF_WSA2 ? 2 : 1)) |
@@ -493,6 +505,7 @@ static snd_pcm_uframes_t lpass_platform_pcmops_pointer(
 		struct snd_soc_component *component,
 		struct snd_pcm_substream *substream)
 {
+	TRACE_BEGIN_CTX();
 	struct lpaif *aif = find_aif(component, substream);
 	u32 curr_addr = readl(REG_DMA_CURR_ADDR(aif, 0));
 
@@ -503,6 +516,7 @@ static int lpass_platform_pcmops_mmap(struct snd_soc_component *component,
 				      struct snd_pcm_substream *substream,
 				      struct vm_area_struct *vma)
 {
+	TRACE_BEGIN_CTX();
 	struct lpaif *ai = find_aif(component, substream);
 	unsigned long user_count = vma_pages(vma);
 	unsigned long count = ai->lpm_size >> PAGE_SHIFT;
@@ -512,6 +526,7 @@ static int lpass_platform_pcmops_mmap(struct snd_soc_component *component,
 
 	if (vma->vm_pgoff >= count || user_count > count - vma->vm_pgoff)
 		return -ENXIO;
+	printk(KERN_INFO "lpass_platform_pcmops_mmap(vma, 0x%lx, %ld (0x%lx), %ld, prot)", vma->vm_start, pfn + vma->vm_pgoff, (pfn + vma->vm_pgoff) << PAGE_SHIFT, user_count << PAGE_SHIFT);
 	return remap_pfn_range(vma, vma->vm_start, pfn + vma->vm_pgoff,
 			user_count << PAGE_SHIFT, vma->vm_page_prot);
 }
@@ -528,6 +543,7 @@ static const struct snd_soc_component_driver lpass_component_driver = {
 
 static irqreturn_t lpass_wsa_irq(int irq, void *data)
 {
+	TRACE_BEGIN_CTX();
 	struct lpass *lp = data;
 	u32 irqs = readl(REG_IRQ_STAT(&lp->aif[AIF_WSA]));
 
@@ -549,6 +565,7 @@ static irqreturn_t lpass_wsa_irq(int irq, void *data)
 
 static irqreturn_t lpass_va_irq(int irq, void *data)
 {
+	TRACE_BEGIN_CTX();
 	struct lpass *lp = data;
 	u32 irqs = readl(REG_IRQ_STAT(&lp->aif[AIF_VA]));
 
@@ -564,6 +581,7 @@ static irqreturn_t lpass_va_irq(int irq, void *data)
 
 static irqreturn_t lpass_hdmi_irq(int irq, void *data)
 {
+	TRACE_BEGIN_CTX();
 	struct lpass *lp = data;
 	u32 irqs = readl(REG_IRQ_STAT(&lp->aif[AIF_HDMI]));
 
@@ -582,6 +600,7 @@ static irqreturn_t lpass_hdmi_irq(int irq, void *data)
 
 static irqreturn_t lpass_mi2s_irq(int irq, void *data)
 {
+	TRACE_BEGIN_CTX();
 	struct lpass *lp = data;
 	u32 irqs = readl(REG_IRQ_STAT(&lp->aif[AIF_MI2S]));
 
@@ -597,6 +616,7 @@ static irqreturn_t lpass_mi2s_irq(int irq, void *data)
 
 static int sm8250_platform_probe(struct platform_device *pdev)
 {
+	TRACE_BEGIN_CTX();
 	static const char *name_lpaif[] = { "wsa-lpaif", "va-lpaif", "hdmi-lpaif", "mi2s-lpaif" };
 	static const char *name_lpm[] = { "wsa-lpm", "va-lpm", "hdmi-mi2s-lpm" };
 	static irq_handler_t irq_fn[] = { lpass_wsa_irq, lpass_va_irq, lpass_hdmi_irq, lpass_mi2s_irq };

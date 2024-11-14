@@ -28,6 +28,7 @@
 #include <media/v4l2-subdev.h>
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
+#include <trace/gpuvis.h>
 
 #define V4L2_CID_TEMPERATURE	(V4L2_CID_USER_OG01A1B_BASE + 0)
 #define V4L2_CID_READ_OG01A1B   (V4L2_CID_USER_OG01A1B_BASE + 1)
@@ -1477,7 +1478,7 @@ static int og01a1b_init_controls(struct og01a1b_dev *sensor)
 						   sensor->sof_cb_address);
 
 	sensor->metadata_size[0] = sizeof(struct SensorMetaData);
-	printk("metadata size: %d\n", sizeof(struct SensorMetaData));
+	printk("metadata size: %ld\n", sizeof(struct SensorMetaData));
 	if (size_control)
 		size_control->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 
@@ -1520,13 +1521,13 @@ static int og01a1b_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 	int ret = 0;
-	static char *gpionames[] = {"ira", "irb"};
+	//static char *gpionames[] = {"ira", "irb"};
 
 	mutex_lock(&sensor->lock);
 	reset_groups(sensor);
 	if(sensor->is_sync_sensor) {
 		struct i2c_client *client = sensor->i2c_client;
-		sensor->ir_emitter_mode = false;
+		sensor->ir_emitter_mode = IR_EMITTER_MODE_OFF;
 		unsigned long flags;
 		spin_lock_irqsave(&ir_spinlock, flags);
 		if(!!on) {
@@ -1582,7 +1583,7 @@ static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
     // Reset the sync state
     last_time_in_sync = 0;
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
-	struct i2c_client *client = sensor->i2c_client;
+	//struct i2c_client *client = sensor->i2c_client;
 	for(int i = 0; i < NUM_REGISTER_GROUPS; i++) {
 		sensor->updateGroupRegisters[i] = true;
 	}
@@ -1601,10 +1602,10 @@ static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
 static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
-	struct i2c_client *client = sensor->i2c_client;
+	//struct i2c_client *client = sensor->i2c_client;
     u32 ret = 0;
 	u32 *a = arg;
-	unsigned long flags;
+	//unsigned long flags;
     switch (cmd)
     {
         case VIDIOC_OG01A1B_PRV_G_METADATA_VERSION:
@@ -1852,21 +1853,25 @@ void update_groups(struct og01a1b_dev *sensor)
     u64 lastGroupPostWriteTimestamp = 0;
     unsigned long flags;
 
+	TRACE_BEGIN_CTX();
 	mutex_lock(&sensor->lock);
 	
-
 	last_group_pre_write_timestamp = ktime_get_raw_ns();
 		//printk("updating groups for sensor:%d\n", sensor->sensor_index);
 	if(last_time_in_sync != 0) {
 		if(sensor->dual_i2c_main) {
+			TRACE_BEGIN_CTX_CONDITIONAL("badbadbad1");
 			og01a1b_write_group_registers_if_needed(sensor, true);
 			//printk("dual write on main sensor\n");
 			last_dual_write_time = ktime_get_raw_ns();
+			TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(2500));
 		}
 		// If there is not a dual write after the last time in sync, we need to write on the non main sensor to be safe
 		else if(last_dual_write_time < last_time_in_sync) {
+			TRACE_BEGIN_CTX_CONDITIONAL("badbadbad2");
 			//printk("dual write safety write on non main sensor\n");
 			og01a1b_write_group_registers_if_needed(sensor, false);
+			TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(2500));
 		}
 	}
 	// If not in sync both sensors need to be updated

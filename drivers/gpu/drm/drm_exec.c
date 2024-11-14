@@ -3,6 +3,7 @@
 #include <drm/drm_exec.h>
 #include <drm/drm_gem.h>
 #include <linux/dma-resv.h>
+#include <trace/gpuvis.h>
 
 /**
  * DOC: Overview
@@ -168,15 +169,21 @@ static int drm_exec_lock_contended(struct drm_exec *exec)
 	if (likely(!obj))
 		return 0;
 
-	/* Always cleanup the contention so that error handling can kick in */
-	exec->contended = NULL;
-	if (exec->flags & DRM_EXEC_INTERRUPTIBLE_WAIT) {
-		ret = dma_resv_lock_slow_interruptible(obj->resv,
-						       &exec->ticket);
-		if (unlikely(ret))
-			goto error_dropref;
-	} else {
-		dma_resv_lock_slow(obj->resv, &exec->ticket);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL("badbadbad6: dma_resv_lock");
+
+		/* Always cleanup the contention so that error handling can kick in */
+		exec->contended = NULL;
+		if (exec->flags & DRM_EXEC_INTERRUPTIBLE_WAIT) {
+			
+			ret = dma_resv_lock_slow_interruptible(obj->resv,
+								&exec->ticket);
+			if (unlikely(ret))
+				goto error_dropref;
+		} else {
+			dma_resv_lock_slow(obj->resv, &exec->ticket);
+		}
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(15000));
 	}
 
 	ret = drm_exec_obj_locked(exec, obj);

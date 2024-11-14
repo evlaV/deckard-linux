@@ -28,6 +28,7 @@
 #include <media/v4l2-subdev.h>
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
+#include <trace/gpuvis.h>
 
 #define V4L2_CID_TEMPERATURE (V4L2_CID_USER_OG01A1B_BASE + 0)
 
@@ -1116,6 +1117,7 @@ void update_groups_og0VE10(struct og0ve10_dev *sensor)
 	u64 lastGroupPostWriteTimestamp = 0;
 	unsigned long flags;
 
+	TRACE_BEGIN_CTX();
 	mutex_lock(&sensor->lock);
 
 	last_group_pre_write_timestamp = ktime_get_raw_ns();
@@ -1128,11 +1130,14 @@ void update_groups_og0VE10(struct og0ve10_dev *sensor)
 
 	if (last_time_in_sync_og0VE10 != 0) {
 		if (sensor->dual_i2c_main) {
+			TRACE_BEGIN_CTX("badbadbad3");
 			og0VE10_write_registers_for_group(sensor, sensor->lastGroup, true);
 			last_dual_write_time_og0VE10 = ktime_get_raw_ns();
 		} else if (last_dual_write_time_og0VE10 < last_time_in_sync_og0VE10) {
+			TRACE_BEGIN_CTX_CONDITIONAL("badbadbad4");
 			//printk("og0ve10 dual write safety write on non main sensor\n");
 			og0VE10_write_registers_for_group(sensor, sensor->lastGroup, false);
+			TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(1000));
 		}
 	} else {
 		//printk("og0ve10 non dual write write on non main sensor\n");

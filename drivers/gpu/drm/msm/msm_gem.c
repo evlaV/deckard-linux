@@ -15,6 +15,7 @@
 #include <drm/drm_file.h>
 
 #include <trace/events/gpu_mem.h>
+#include <trace/gpuvis.h>
 
 #include "msm_drv.h"
 #include "msm_fence.h"
@@ -524,7 +525,11 @@ int msm_gem_pin_vma_locked(struct drm_gem_object *obj, struct msm_gem_vma *vma)
 
 	msm_gem_assert_locked(obj);
 
-	pages = msm_gem_get_pages_locked(obj, MSM_MADV_WILLNEED);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL("badbadbad7: msm_gem_get_pages_locked(), sz = %d",obj->size);
+		pages = msm_gem_get_pages_locked(obj, MSM_MADV_WILLNEED);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(15000));
+	}
 	if (IS_ERR(pages))
 		return PTR_ERR(pages);
 

@@ -24,8 +24,10 @@
 #include <sound/minors.h>
 #include <linux/uio.h>
 #include <linux/delay.h>
+#include <trace/gpuvis.h>
 
 #include "pcm_local.h"
+
 
 #ifdef CONFIG_SND_DEBUG
 #define CREATE_TRACE_POINTS
@@ -3008,10 +3010,10 @@ static snd_pcm_sframes_t snd_pcm_forward(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int snd_pcm_delay(struct snd_pcm_substream *substream,
-			 snd_pcm_sframes_t *delay)
+static int snd_pcm_delay(struct snd_pcm_substream *substream, snd_pcm_sframes_t *delay)
 {
 	int err;
+	TRACE_BEGIN_CTX();
 
 	scoped_guard(pcm_stream_lock_irq, substream) {
 		err = do_pcm_hwsync(substream);
@@ -3019,7 +3021,6 @@ static int snd_pcm_delay(struct snd_pcm_substream *substream,
 			*delay = snd_pcm_calc_delay(substream);
 	}
 	snd_pcm_dma_buffer_sync(substream, SNDRV_DMA_SYNC_CPU);
-
 	return err;
 }
 		
@@ -3031,6 +3032,7 @@ static inline int snd_pcm_hwsync(struct snd_pcm_substream *substream)
 static int snd_pcm_sync_ptr(struct snd_pcm_substream *substream,
 			    struct snd_pcm_sync_ptr __user *_sync_ptr)
 {
+	TRACE_BEGIN_CTX("buffer_size=%u period_size=%u", substream->runtime->buffer_size, substream->runtime->period_size);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_pcm_sync_ptr sync_ptr;
 	volatile struct snd_pcm_mmap_status *status;
@@ -3038,23 +3040,31 @@ static int snd_pcm_sync_ptr(struct snd_pcm_substream *substream,
 	int err;
 
 	memset(&sync_ptr, 0, sizeof(sync_ptr));
-	if (get_user(sync_ptr.flags, (unsigned __user *)&(_sync_ptr->flags)))
+	if (get_user(sync_ptr.flags, (unsigned __user *)&(_sync_ptr->flags))) {
+		TRACE_END_CTX(TRACE_BASIC);
 		return -EFAULT;
-	if (copy_from_user(&sync_ptr.c.control, &(_sync_ptr->c.control), sizeof(struct snd_pcm_mmap_control)))
-		return -EFAULT;	
+	}
+	if (copy_from_user(&sync_ptr.c.control, &(_sync_ptr->c.control), sizeof(struct snd_pcm_mmap_control))) {
+		TRACE_END_CTX(TRACE_BASIC);
+		return -EFAULT;
+	}
 	status = runtime->status;
 	control = runtime->control;
 	if (sync_ptr.flags & SNDRV_PCM_SYNC_PTR_HWSYNC) {
 		err = snd_pcm_hwsync(substream);
-		if (err < 0)
+		if (err < 0) {
+			TRACE_END_CTX(TRACE_BASIC);
 			return err;
+		}
 	}
 	scoped_guard(pcm_stream_lock_irq, substream) {
 		if (!(sync_ptr.flags & SNDRV_PCM_SYNC_PTR_APPL)) {
 			err = pcm_lib_apply_appl_ptr(substream,
 						     sync_ptr.c.control.appl_ptr);
-			if (err < 0)
+			if (err < 0) {
+				TRACE_END_CTX();
 				return err;
+			}
 		} else {
 			sync_ptr.c.control.appl_ptr = control->appl_ptr;
 		}
@@ -3070,8 +3080,11 @@ static int snd_pcm_sync_ptr(struct snd_pcm_substream *substream,
 	}
 	if (!(sync_ptr.flags & SNDRV_PCM_SYNC_PTR_APPL))
 		snd_pcm_dma_buffer_sync(substream, SNDRV_DMA_SYNC_DEVICE);
-	if (copy_to_user(_sync_ptr, &sync_ptr, sizeof(sync_ptr)))
+	if (copy_to_user(_sync_ptr, &sync_ptr, sizeof(sync_ptr))) {
+		TRACE_END_CTX();
 		return -EFAULT;
+	}
+	TRACE_END_CTX();
 	return 0;
 }
 
@@ -3389,6 +3402,7 @@ static int snd_pcm_common_ioctl(struct file *file,
 static long snd_pcm_ioctl(struct file *file, unsigned int cmd,
 			  unsigned long arg)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_file *pcm_file;
 
 	pcm_file = file->private_data;
@@ -3415,6 +3429,7 @@ static long snd_pcm_ioctl(struct file *file, unsigned int cmd,
 int snd_pcm_kernel_ioctl(struct snd_pcm_substream *substream,
 			 unsigned int cmd, void *arg)
 {
+	TRACE_BEGIN_CTX();
 	snd_pcm_uframes_t *frames = arg;
 	snd_pcm_sframes_t result;
 	
@@ -3453,6 +3468,7 @@ EXPORT_SYMBOL(snd_pcm_kernel_ioctl);
 static ssize_t snd_pcm_read(struct file *file, char __user *buf, size_t count,
 			    loff_t * offset)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_file *pcm_file;
 	struct snd_pcm_substream *substream;
 	struct snd_pcm_runtime *runtime;
@@ -3478,6 +3494,7 @@ static ssize_t snd_pcm_read(struct file *file, char __user *buf, size_t count,
 static ssize_t snd_pcm_write(struct file *file, const char __user *buf,
 			     size_t count, loff_t * offset)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_file *pcm_file;
 	struct snd_pcm_substream *substream;
 	struct snd_pcm_runtime *runtime;
@@ -3502,6 +3519,7 @@ static ssize_t snd_pcm_write(struct file *file, const char __user *buf,
 
 static ssize_t snd_pcm_readv(struct kiocb *iocb, struct iov_iter *to)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_file *pcm_file;
 	struct snd_pcm_substream *substream;
 	struct snd_pcm_runtime *runtime;
@@ -3541,6 +3559,7 @@ static ssize_t snd_pcm_readv(struct kiocb *iocb, struct iov_iter *to)
 
 static ssize_t snd_pcm_writev(struct kiocb *iocb, struct iov_iter *from)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_file *pcm_file;
 	struct snd_pcm_substream *substream;
 	struct snd_pcm_runtime *runtime;
@@ -3579,6 +3598,7 @@ static ssize_t snd_pcm_writev(struct kiocb *iocb, struct iov_iter *from)
 
 static __poll_t snd_pcm_poll(struct file *file, poll_table *wait)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_file *pcm_file;
 	struct snd_pcm_substream *substream;
 	struct snd_pcm_runtime *runtime;
@@ -3639,6 +3659,7 @@ static __poll_t snd_pcm_poll(struct file *file, poll_table *wait)
  */
 static vm_fault_t snd_pcm_mmap_status_fault(struct vm_fault *vmf)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_substream *substream = vmf->vma->vm_private_data;
 	struct snd_pcm_runtime *runtime;
 	
@@ -3658,6 +3679,7 @@ static const struct vm_operations_struct snd_pcm_vm_ops_status =
 static int snd_pcm_mmap_status(struct snd_pcm_substream *substream, struct file *file,
 			       struct vm_area_struct *area)
 {
+	TRACE_BEGIN_CTX();
 	long size;
 	if (!(area->vm_flags & VM_READ))
 		return -EINVAL;
@@ -3677,6 +3699,7 @@ static int snd_pcm_mmap_status(struct snd_pcm_substream *substream, struct file 
  */
 static vm_fault_t snd_pcm_mmap_control_fault(struct vm_fault *vmf)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_substream *substream = vmf->vma->vm_private_data;
 	struct snd_pcm_runtime *runtime;
 	
@@ -3696,6 +3719,7 @@ static const struct vm_operations_struct snd_pcm_vm_ops_control =
 static int snd_pcm_mmap_control(struct snd_pcm_substream *substream, struct file *file,
 				struct vm_area_struct *area)
 {
+	TRACE_BEGIN_CTX();
 	long size;
 	if (!(area->vm_flags & VM_READ))
 		return -EINVAL;
@@ -3752,11 +3776,13 @@ static bool pcm_control_mmap_allowed(struct snd_pcm_file *pcm_file)
 static int snd_pcm_mmap_status(struct snd_pcm_substream *substream, struct file *file,
 			       struct vm_area_struct *area)
 {
+	TRACE_BEGIN_CTX();
 	return -ENXIO;
 }
 static int snd_pcm_mmap_control(struct snd_pcm_substream *substream, struct file *file,
 				struct vm_area_struct *area)
 {
+	TRACE_BEGIN_CTX();
 	return -ENXIO;
 }
 #endif /* coherent mmap */
@@ -3766,6 +3792,7 @@ static int snd_pcm_mmap_control(struct snd_pcm_substream *substream, struct file
  */
 static vm_fault_t snd_pcm_mmap_data_fault(struct vm_fault *vmf)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_substream *substream = vmf->vma->vm_private_data;
 	struct snd_pcm_runtime *runtime;
 	unsigned long offset;
@@ -3820,6 +3847,7 @@ static const struct vm_operations_struct snd_pcm_vm_ops_data_fault = {
 int snd_pcm_lib_default_mmap(struct snd_pcm_substream *substream,
 			     struct vm_area_struct *area)
 {
+	TRACE_BEGIN_CTX();
 	vm_flags_set(area, VM_DONTEXPAND | VM_DONTDUMP);
 	if (!substream->ops->page &&
 	    !snd_dma_buffer_mmap(snd_pcm_get_dma_buf(substream), area))
@@ -3848,6 +3876,7 @@ EXPORT_SYMBOL_GPL(snd_pcm_lib_default_mmap);
 int snd_pcm_lib_mmap_iomem(struct snd_pcm_substream *substream,
 			   struct vm_area_struct *area)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
 	area->vm_page_prot = pgprot_noncached(area->vm_page_prot);
@@ -3862,6 +3891,7 @@ EXPORT_SYMBOL(snd_pcm_lib_mmap_iomem);
 int snd_pcm_mmap_data(struct snd_pcm_substream *substream, struct file *file,
 		      struct vm_area_struct *area)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_runtime *runtime;
 	long size;
 	unsigned long offset;
@@ -3905,6 +3935,7 @@ EXPORT_SYMBOL(snd_pcm_mmap_data);
 
 static int snd_pcm_mmap(struct file *file, struct vm_area_struct *area)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_file * pcm_file;
 	struct snd_pcm_substream *substream;	
 	unsigned long offset;
@@ -3942,6 +3973,7 @@ static int snd_pcm_mmap(struct file *file, struct vm_area_struct *area)
 
 static int snd_pcm_fasync(int fd, struct file * file, int on)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_file * pcm_file;
 	struct snd_pcm_substream *substream;
 	struct snd_pcm_runtime *runtime;
@@ -4074,6 +4106,7 @@ static unsigned long snd_pcm_get_unmapped_area(struct file *file,
 					       unsigned long pgoff,
 					       unsigned long flags)
 {
+	TRACE_BEGIN_CTX();
 	struct snd_pcm_file *pcm_file = file->private_data;
 	struct snd_pcm_substream *substream = pcm_file->substream;
 	struct snd_pcm_runtime *runtime = substream->runtime;
