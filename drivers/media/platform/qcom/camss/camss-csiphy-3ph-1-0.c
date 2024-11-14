@@ -1085,6 +1085,18 @@ static void csiphy_gen2_config_lanes(struct csiphy_device *csiphy,
 	int i, array_size = csiphy->regs->lane_array_size;
 	u32 val;
 
+	// select which regs to use here because csiphy_regs->lane_regs is setup during probe
+	// but combo_mode variable is updated later during media links setup
+	if(!csiphy->combo_mode) {
+		dev_warn(csiphy->camss->dev, "csiphy%d loading regular registers", csiphy->id);
+		r = &lane_regs_sm8650[0];
+		array_size = ARRAY_SIZE(lane_regs_sm8650);
+	}
+	else
+	{
+		dev_warn(csiphy->camss->dev, "csiphy%d loading combo mode registers", csiphy->id);
+	}
+
 	for (i = 0; i < array_size; i++, r++) {
 		switch (r->csiphy_param_type) {
 		case CSIPHY_SETTLE_CNT_LOWER_BYTE:
