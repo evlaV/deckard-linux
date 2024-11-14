@@ -388,6 +388,16 @@ config VIDEO_OV01A10
 	  To compile this driver as a module, choose M here: the
 	  module will be called ov01a10.
 
+config VIDEO_ARCIMX616
+	tristate "Arcturus IMX616 sensor support"
+	help
+	  This is a Video4Linux2 sensor driver for the Arcturus
+	  camera that uses dual IMX616 sensors with advanced features, 
+	  EEPROM access, and LED control.
+	  
+	  To compile this driver as a module, choose M here: the
+	  module will be called arcimx616.
+
 config VIDEO_OV02A10
 	tristate "OmniVision OV02A10 sensor support"
 	help
