@@ -38,8 +38,9 @@ MODULE_DEVICE_TABLE(of, slg_northgate_of_table);
 #define SLG_NORTHGATE_GPIO_OUTPUT_MASK_DISABLE_3P3 0x40
 
 static const char *gpio_names[SLG_NORTHGATE_GPIO_MAX] = {
-	"Button1",	  "Button2", "Button3",	  "Button4",
-	"LoadBootloader", "Run",     "Disable3P3"
+	"northgate_button1",	"northgate_button2",	 "northgate_button3",
+	"northgate_button4",	"esp32_load_bootloader", "esp32_run",
+	"northgate_disable_3p3"
 };
 
 static const int index_map[SLG_NORTHGATE_GPIO_MAX] = {
@@ -171,15 +172,22 @@ static void slg_northgate_set(struct gpio_chip *chip, unsigned int offset,
 		if (ret != 0)
 			return;
 
-		reg_value &= ~mask;
-
-		if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOTLOADER && value)
-			reg_value |= 0x01;
-		else if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOT && value)
-			reg_value |= 0x20;
-		else if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_DISABLE_3P3 &&
-			 value)
-			reg_value |= 0x04;
+		if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOTLOADER) {
+			if (value)
+				reg_value |= 0x01;
+			else
+				reg_value &= ~0x01;
+		} else if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOT) {
+			if (value)
+				reg_value |= 0x20;
+			else
+				reg_value &= ~0x20;
+		} else if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_DISABLE_3P3) {
+			if (value)
+				reg_value |= 0x04;
+			else
+				reg_value &= ~0x04;
+		}
 
 		regmap_write(slg_ng->regmap, SLG_NORTHGATE_REG_OUTPUT,
 			     reg_value);
@@ -205,16 +213,20 @@ static void slg_northgate_set_multiple(struct gpio_chip *chip,
 	if (ret != 0)
 		return;
 
-	reg_value &= ~*mask;
-
 	if (*bits & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOTLOADER)
 		reg_value |= 0x01;
+	else if (*mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOTLOADER)
+		reg_value &= ~0x01;
 
 	if (*bits & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOT)
 		reg_value |= 0x20;
+	else if (*mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOT)
+		reg_value &= ~0x20;
 
 	if (*bits & SLG_NORTHGATE_GPIO_OUTPUT_MASK_DISABLE_3P3)
 		reg_value |= 0x04;
+	else if (*mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_DISABLE_3P3)
+		reg_value &= ~0x04;
 
 	regmap_write(slg_ng->regmap, SLG_NORTHGATE_REG_OUTPUT, reg_value);
 }
@@ -281,6 +293,7 @@ static int slg_northgate_probe(struct i2c_client *client)
 
 	// Power Down the Espressif
 	dev_info(&client->dev, "booting espressif\n");
+	slg_northgate_set(&slg_ng->chip, 4, 0);
 	slg_northgate_set(&slg_ng->chip, 5, 1);
 
 	return 0;
