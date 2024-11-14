@@ -140,10 +140,10 @@ struct msm_gem_vma {
 #define to_msm_vma(x) container_of(x, struct msm_gem_vma, base)
 
 struct drm_gpuva *
-msm_gem_vma_new(struct drm_gpuvm *vm, struct drm_gem_object *obj, uint32_t align,
-		u64 range_start, u64 range_end);
+msm_gem_vma_new(struct drm_gpuvm *vm, struct drm_gem_object *obj,
+		uint32_t align, u64 offset, u64 range_start, u64 range_end);
 void msm_gem_vma_purge(struct drm_gpuva *vma);
-int msm_gem_vma_map(struct drm_gpuva *vma, int prot, struct sg_table *sgt, int size);
+int msm_gem_vma_map(struct drm_gpuva *vma, int prot, struct sg_table *sgt);
 void msm_gem_vma_close(struct drm_gpuva *vma);
 
 struct msm_gem_object {
