@@ -316,6 +316,9 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 			continue;
 		}
 
+		if (dev->cpu == 0)
+			break;
+
 		/*
 		 * Use a physical idle state, not busy polling, unless a timer
 		 * is going to trigger soon enough.
