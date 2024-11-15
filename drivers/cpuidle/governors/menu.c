@@ -314,6 +314,9 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		if (s->exit_latency_ns > latency_req)
 			break;
 
+		if (dev->cpu == 0)
+			break;
+
 		if (s->target_residency_ns <= predicted_ns) {
 			idx = i;
 			continue;
