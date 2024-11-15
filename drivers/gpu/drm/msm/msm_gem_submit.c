@@ -16,6 +16,7 @@
 #include "msm_gpu.h"
 #include "msm_gem.h"
 #include "msm_gpu_trace.h"
+#include <linux/gpuvis_helpers.h>
 
 /* For userspace errors, use DRM_UT_DRIVER.. so that userspace can enable
  * error msgs for debugging, but we don't spam dmesg by default
@@ -253,12 +254,16 @@ static int submit_lock_objects(struct msm_gem_submit *submit)
 {
 	int ret;
 
+	TRACE_CTX("submit->nr_bos=%d",submit->nr_bos);
 	drm_exec_init(&submit->exec, DRM_EXEC_INTERRUPTIBLE_WAIT, submit->nr_bos);
 
 	drm_exec_until_all_locked (&submit->exec) {
 		for (unsigned i = 0; i < submit->nr_bos; i++) {
 			struct drm_gem_object *obj = submit->bos[i].obj;
-			ret = drm_exec_prepare_obj(&submit->exec, obj, 1);
+			{
+				TRACE_CTX_TIMED(15000,"gabe: long submit_lock_objects gabe");
+				ret = drm_exec_prepare_obj(&submit->exec, obj, 1);
+			}
 			drm_exec_retry_on_contention(&submit->exec);
 			if (ret)
 				goto error;
@@ -301,6 +306,7 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 	struct msm_drm_private *priv = submit->dev->dev_private;
 	int i, ret = 0;
 
+	TRACE_CTX("submit->nr_bos=%d",submit->nr_bos);
 	for (i = 0; i < submit->nr_bos; i++) {
 		struct drm_gem_object *obj = submit->bos[i].obj;
 		struct msm_gem_vma *vma;
