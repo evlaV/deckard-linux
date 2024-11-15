@@ -8,6 +8,8 @@
 #include "msm_gem.h"
 #include "msm_mmu.h"
 
+#define vm_dbg(fmt, ...) pr_debug("%s:%d: "fmt"\n", __func__, __LINE__, ##__VA_ARGS__)
+
 static void
 msm_gem_vm_free(struct drm_gpuvm *gpuvm)
 {
@@ -20,18 +22,29 @@ msm_gem_vm_free(struct drm_gpuvm *gpuvm)
 	kfree(vm);
 }
 
+static void
+msm_gem_vma_unmap_range(struct drm_gpuva *vma, uint64_t unmap_start, uint64_t unmap_range)
+{
+	struct msm_gem_vm *vm = to_msm_vm(vma->vm);
+
+	vm_dbg("%p:%p: %016llx %016llx", vma->vm, vma, unmap_start, unmap_start + unmap_range);
+
+	if (vma->gem.obj)
+		msm_gem_assert_locked(vma->gem.obj);
+
+	vm->mmu->funcs->unmap(vm->mmu, unmap_start, unmap_range);
+}
+
 /* Actually unmap memory for the vma */
 void msm_gem_vma_unmap(struct drm_gpuva *vma)
 {
 	struct msm_gem_vma *msm_vma = to_msm_vma(vma);
-	struct msm_gem_vm *vm = to_msm_vm(vma->vm);
-	unsigned size = vma->va.range;
 
 	/* Don't do anything if the memory isn't mapped */
 	if (!msm_vma->mapped)
 		return;
 
-	vm->mmu->funcs->unmap(vm->mmu, vma->va.addr, size);
+	msm_gem_vma_unmap_range(vma, vma->va.addr, vma->va.range);
 
 	msm_vma->mapped = false;
 }
@@ -51,6 +64,11 @@ msm_gem_vma_map(struct drm_gpuva *vma, int prot, struct sg_table *sgt)
 		return 0;
 
 	msm_vma->mapped = true;
+
+	vm_dbg("%p: %016llx %016llx", vma, vma->va.addr, vma->va.range);
+
+	if (vma->gem.obj)
+		msm_gem_assert_locked(vma->gem.obj);
 
 	/*
 	 * NOTE: iommu/io-pgtable can allocate pages, so we cannot hold
@@ -79,17 +97,16 @@ void msm_gem_vma_close(struct drm_gpuva *vma)
 
 	GEM_WARN_ON(msm_vma->mapped);
 
-	spin_lock(&vm->mm_lock);
-	if (vma->va.addr && vm->managed)
+	if (vma->va.addr && vm->managed) {
+		spin_lock(&vm->mm_lock);
 		drm_mm_remove_node(&msm_vma->node);
-	spin_unlock(&vm->mm_lock);
+		spin_unlock(&vm->mm_lock);
+	}
 
-	dma_resv_lock(drm_gpuvm_resv(vma->vm), NULL);
 	mutex_lock(&vm->vm_lock);
 	drm_gpuva_remove(vma);
 	drm_gpuva_unlink(vma);
 	mutex_unlock(&vm->vm_lock);
-	dma_resv_unlock(drm_gpuvm_resv(vma->vm));
 
 	kfree(vma);
 }
@@ -110,6 +127,7 @@ msm_gem_vma_new(struct drm_gpuvm *_vm, struct drm_gem_object *obj,
 
 	if (vm->managed) {
 		BUG_ON(offset != 0);
+		BUG_ON(!obj);  /* NULL mappings not valid for kernel managed VM */
 		spin_lock(&vm->mm_lock);
 		ret = drm_mm_insert_node_in_range(&vm->mm, &vma->node,
 						obj->size, max(1ul << align, PAGE_SIZE), 0,
@@ -123,7 +141,8 @@ msm_gem_vma_new(struct drm_gpuvm *_vm, struct drm_gem_object *obj,
 		range_end   = range_start + obj->size;
 	}
 
-	GEM_WARN_ON((range_end - range_start) > obj->size);
+	if (obj)
+		GEM_WARN_ON((range_end - range_start) > obj->size);
 
 	drm_gpuva_init(&vma->base, range_start, range_end - range_start, obj, offset);
 	vma->mapped = false;
@@ -133,6 +152,9 @@ msm_gem_vma_new(struct drm_gpuvm *_vm, struct drm_gem_object *obj,
 	mutex_unlock(&vm->vm_lock);
 	if (ret)
 		goto err_free_range;
+
+	if (!obj)
+		return &vma->base;
 
 	vm_bo = drm_gpuvm_bo_obtain(&vm->base, obj);
 	if (IS_ERR(vm_bo)) {
@@ -159,38 +181,264 @@ err_free_vma:
 	return ERR_PTR(ret);
 }
 
+static int
+msm_gem_vm_bo_validate(struct drm_gpuvm_bo *vm_bo, struct drm_exec *exec)
+{
+	// TODO
+	pr_err("%s:%d\n", __func__, __LINE__);
+	return 0;
+}
+
+struct op_priv {
+	unsigned flags;
+	struct drm_gpuvm *vm;
+};
+
+static struct drm_gpuva *
+vma_from_op(struct drm_gpuvm *vm, struct drm_gpuva_op_map *op)
+{
+	return msm_gem_vma_new(vm, op->gem.obj, op->gem.offset, op->va.addr,
+			       op->va.addr + op->va.range);
+}
+
+/*
+ * In a few places, we have to deal with map/unmap of potentially NULL (PRR)
+ * mappings.  The cond_lock()/cond_unlock() helpers simplify that.
+ */
+
+static void
+cond_lock(struct drm_gem_object *obj)
+{
+	if (!obj)
+		return;
+
+	/*
+	 * Hold a ref while we have the obj locked, so drm_gpuvm doesn't
+	 * manage to drop the last ref to the obj while it is locked:
+	 */
+	drm_gem_object_get(obj);
+	msm_gem_lock(obj);
+}
+
+static void
+cond_unlock(struct drm_gem_object *obj)
+{
+	if (!obj)
+		return;
+
+	msm_gem_unlock(obj);
+	/* Drop the ref obtained in cond_lock(): */
+	drm_gem_object_put(obj);
+}
+
+static int
+msm_gem_vm_sm_step_map(struct drm_gpuva_op *op, void *priv)
+{
+	struct drm_gem_object *obj = op->map.gem.obj;
+	struct drm_gpuvm *vm = ((struct op_priv *)priv)->vm;
+	struct drm_gpuva *vma;
+	struct sg_table *sgt;
+	unsigned prot;
+	int ret;
+
+	cond_lock(obj);
+	vma = vma_from_op(vm, &op->map);
+
+	vm_dbg("%p:%p: %016llx %016llx", vma->vm, vma, vma->va.addr, vma->va.range);
+
+	if (obj) {
+		sgt = to_msm_bo(obj)->sgt;
+		prot = msm_gem_prot(obj);
+	} else {
+		sgt = NULL;
+		prot = IOMMU_READ | IOMMU_WRITE;
+	}
+
+	if (WARN_ON(IS_ERR(vma))) {
+		ret = PTR_ERR(vma);
+		goto out_unlock;
+	}
+
+	vma->flags = ((struct op_priv *)priv)->flags;
+
+	ret = msm_gem_vma_map(vma, prot, sgt);
+
+out_unlock:
+	cond_unlock(obj);
+
+	return ret;
+}
+
+static int
+msm_gem_vm_sm_step_remap(struct drm_gpuva_op *op, void *priv)
+{
+	struct drm_gpuvm *vm = ((struct op_priv *)priv)->vm;
+	struct drm_gpuva *orig_vma = op->remap.unmap->va;
+	struct drm_gpuva *prev_vma = NULL, *next_vma = NULL;
+	struct drm_gem_object *obj = orig_vma->gem.obj;
+	uint64_t unmap_start, unmap_range;
+	unsigned flags;
+	int ret = 0;
+
+	vm_dbg("orig_vma: %p:%p: %016llx %016llx", vm, orig_vma, orig_vma->va.addr, orig_vma->va.range);
+
+	drm_gpuva_op_remap_to_unmap_range(&op->remap, &unmap_start, &unmap_range);
+
+	cond_lock(obj);
+	msm_gem_vma_unmap_range(op->remap.unmap->va, unmap_start, unmap_range);
+
+	/*
+	 * Part of this GEM obj is still mapped, but we're going to kill the
+	 * existing VMA and replace it with one or two new ones (ie. two if)
+	 * the unmapped range is in the middle of the existing (unmap) VMA.
+	 * So just set the state to unmapped:
+	 */
+	to_msm_vma(orig_vma)->mapped = false;
+
+	/*
+	 * The prev_vma and/or next_vma are replacing the unmapped vma, and
+	 * therefore should preserve it's flags:
+	 */
+	flags = orig_vma->flags;
+
+	msm_gem_vma_close(orig_vma);
+
+	if (op->remap.prev) {
+		prev_vma = vma_from_op(vm, op->remap.prev);
+		if (WARN_ON(IS_ERR(prev_vma))) {
+			ret = PTR_ERR(prev_vma);
+			goto out_unlock;
+		}
+		vm_dbg("prev_vma: %p:%p: %016llx %016llx", vm, prev_vma, prev_vma->va.addr, prev_vma->va.range);
+		to_msm_vma(prev_vma)->mapped = true;
+		prev_vma->flags = flags;
+	}
+
+	if (op->remap.next) {
+		next_vma = vma_from_op(vm, op->remap.next);
+		if (WARN_ON(IS_ERR(next_vma))) {
+			ret = PTR_ERR(next_vma);
+			goto out_unlock;
+		}
+		vm_dbg("next_vma: %p:%p: %016llx %016llx", vm, next_vma, next_vma->va.addr, next_vma->va.range);
+		to_msm_vma(next_vma)->mapped = true;
+		next_vma->flags = flags;
+	}
+
+out_unlock:
+	cond_unlock(obj);
+
+	return ret;
+}
+
+static int
+msm_gem_vm_sm_step_unmap(struct drm_gpuva_op *op, void *priv)
+{
+	struct drm_gpuva *vma = op->unmap.va;
+	struct drm_gem_object *obj = vma->gem.obj;
+
+	vm_dbg("%p:%p: %016llx %016llx", vma->vm, vma, vma->va.addr, vma->va.range);
+
+	cond_lock(obj);
+	msm_gem_vma_unmap(vma);
+	msm_gem_vma_close(vma);
+	cond_unlock(obj);
+
+	return 0;
+}
+
 static const struct drm_gpuvm_ops msm_gpuvm_ops = {
 	.vm_free = msm_gem_vm_free,
+	.vm_bo_validate = msm_gem_vm_bo_validate,
+	.sm_step_map = msm_gem_vm_sm_step_map,
+	.sm_step_remap = msm_gem_vm_sm_step_remap,
+	.sm_step_unmap = msm_gem_vm_sm_step_unmap,
 };
+
+static int
+run_and_free_steps(struct drm_gpuvm *vm, struct drm_gpuva_ops *ops, unsigned flags)
+{
+	struct op_priv priv = {
+		.vm = vm,
+		.flags = flags,
+	};
+	struct drm_gpuva_op *op;
+	int ret = 0;
+
+	if (IS_ERR(ops))
+		return PTR_ERR(ops);
+
+	drm_gpuva_for_each_op (op, ops) {
+
+		switch (op->op) {
+		case DRM_GPUVA_OP_MAP:
+			ret = msm_gem_vm_sm_step_map(op, &priv);
+			break;
+		case DRM_GPUVA_OP_REMAP:
+			ret = msm_gem_vm_sm_step_remap(op, &priv);
+			break;
+		case DRM_GPUVA_OP_UNMAP:
+			ret = msm_gem_vm_sm_step_unmap(op, &priv);
+			break;
+		default:
+			ret = -EINVAL;
+		}
+
+		if (ret)
+			break;
+	}
+
+	drm_gpuva_ops_free(vm, ops);
+
+	return ret;
+}
 
 static int
 run_bo_op(struct msm_gem_submit *submit, const struct msm_gem_submit_bo *bo)
 {
-	unsigned op = bo->flags & MSM_SUBMIT_BO_OP_MASK;
+	struct msm_gem_vm *vm = to_msm_vm(submit->vm);
+	struct drm_gpuva_ops *ops;
+	unsigned flags = 0;
 
-	switch (op) {
+	mutex_lock(&vm->vm_lock);
+	switch (bo->flags & MSM_SUBMIT_BO_OP_MASK) {
 	case MSM_SUBMIT_BO_OP_MAP:
+		if (bo->flags & MSM_SUBMIT_BO_DUMP)
+			flags |= MSM_VMA_DUMP;
+		fallthrough;
 	case MSM_SUBMIT_BO_OP_MAP_NULL:
-		return drm_gpuvm_sm_map(submit->vm, submit->vm, bo->iova,
-					bo->range, bo->obj, bo->bo_offset);
+		vm_dbg("MAP: %p: %016llx %016llx", vm, bo->iova, bo->range);
+		ops = drm_gpuvm_sm_map_ops_create(submit->vm, bo->iova,
+						  bo->range, bo->obj,
+						  bo->bo_offset);
 		break;
 	case MSM_SUBMIT_BO_OP_UNMAP:
-		return drm_gpuvm_sm_unmap(submit->vm, submit->vm, bo->iova,
-					  bo->bo_offset);
+		vm_dbg("UNMAP: %p: %016llx %016llx", vm, bo->iova, bo->range);
+		ops = drm_gpuvm_sm_unmap_ops_create(submit->vm, bo->iova,
+						    bo->bo_offset);
+		break;
+	default:
+		ops = ERR_PTR(-EINVAL);
+		break;
 	}
+	mutex_unlock(&vm->vm_lock);
 
-	return -EINVAL;
+	return run_and_free_steps(submit->vm, ops, flags);
 }
 
 static struct dma_fence *
 msm_vma_job_run(struct drm_sched_job *job)
 {
 	struct msm_gem_submit *submit = to_msm_submit(job);
+	struct msm_gem_vm *vm = to_msm_vm(submit->vm);
+
+	mutex_lock(&vm->op_lock);
 
 	for (unsigned i = 0; i < submit->nr_bos; i++) {
 		int ret = run_bo_op(submit, &submit->bos[i]);
 		if (ret) {
 			to_msm_vm(submit->vm)->unusable = true;
+			mutex_unlock(&vm->op_lock);
 			return ERR_PTR(ret);
 		}
 	}
@@ -208,6 +456,8 @@ msm_vma_job_run(struct drm_sched_job *job)
 		msm_gem_unpin_locked(obj);
 		msm_gem_unlock(obj);
 	}
+
+	mutex_unlock(&vm->op_lock);
 
 	/* VM_BIND ops are synchronous, so no fence to wait on: */
 	return NULL;
@@ -276,6 +526,7 @@ msm_gem_vm_create(struct drm_device *drm, struct msm_mmu *mmu, const char *name,
 
 	spin_lock_init(&vm->mm_lock);
 	mutex_init(&vm->vm_lock);
+	mutex_init(&vm->op_lock);
 
 	vm->mmu = mmu;
 	vm->managed = managed;
@@ -305,6 +556,7 @@ void
 msm_gem_vm_close(struct drm_gpuvm *gpuvm)
 {
 	struct msm_gem_vm *vm = to_msm_vm(gpuvm);
+	struct drm_gpuva_ops *ops;
 
 	/*
 	 * For kernel managed VMs, the VMAs are torn down when the handle is
@@ -316,4 +568,19 @@ msm_gem_vm_close(struct drm_gpuvm *gpuvm)
 	/* Kill the scheduler now, so we aren't racing with it for cleanup: */
 	drm_sched_stop(&vm->sched, NULL);
 	drm_sched_fini(&vm->sched);
+
+	/* Serialize against vm scheduler thread: */
+	mutex_lock(&vm->op_lock);
+
+	/*
+	 * To avoid nested locking problems, while still holding the lock
+	 * during the necessary vm traversal, generate a list of unmap ops:
+	 */
+	mutex_lock(&vm->vm_lock);
+	ops = drm_gpuvm_sm_unmap_ops_create(gpuvm, gpuvm->mm_start, gpuvm->mm_range);
+	mutex_unlock(&vm->vm_lock);
+
+	run_and_free_steps(gpuvm, ops, 0);
+
+	mutex_unlock(&vm->op_lock);
 }

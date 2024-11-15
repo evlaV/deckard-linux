@@ -76,6 +76,16 @@ struct msm_gem_vm {
 	/** @vm_lock: protects gpuvm insert/remove/traverse */
 	struct mutex vm_lock;
 
+	/**
+	 * @op_lock:
+	 *
+	 * Serializes VM operations.  Typically operations are serialized
+	 * by virtue of running on the VM_BIND queue, but in the cleanup
+	 * path (or if multiple VM_BIND queues) the @op_lock provides the
+	 * needed serialization.
+	 */
+	struct mutex op_lock;
+
 	/** @mmu: The mmu object which manages the pgtables */
 	struct msm_mmu *mmu;
 
@@ -117,6 +127,8 @@ msm_gem_vm_create(struct drm_device *drm, struct msm_mmu *mmu, const char *name,
 void msm_gem_vm_close(struct drm_gpuvm *gpuvm);
 
 struct msm_fence_context;
+
+#define MSM_VMA_DUMP (DRM_GPUVA_USERBITS << 0)
 
 /**
  * struct msm_gem_vma - a VMA mapping
