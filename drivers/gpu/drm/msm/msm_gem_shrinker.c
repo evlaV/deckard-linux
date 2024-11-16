@@ -289,7 +289,7 @@ int msm_gem_shrinker_init(struct drm_device *dev)
 	priv->shrinker->scan_objects = msm_gem_shrinker_scan;
 	priv->shrinker->private_data = priv;
 
-	shrinker_register(priv->shrinker);
+	//shrinker_register(priv->shrinker);
 
 	priv->vmap_notifier.notifier_call = msm_gem_shrinker_vmap;
 	WARN_ON(register_vmap_purge_notifier(&priv->vmap_notifier));
