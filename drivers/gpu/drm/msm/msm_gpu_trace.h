@@ -219,6 +219,18 @@ TRACE_EVENT(msm_mmu_prealloc_cleanup,
 		TP_printk("count=%u, remaining=%u", __entry->count, __entry->remaining)
 );
 
+TRACE_EVENT(msm_gpu_devfreq_status,
+		TP_PROTO(u64 busy_time),
+		TP_ARGS(busy_time),
+		TP_STRUCT__entry(
+			__field(u64, busy_time)
+			),
+		TP_fast_assign(
+			__entry->busy_time = busy_time;
+			),
+		TP_printk("preempted to %u", __entry->busy_time)
+);
+
 #endif
 
 #undef TRACE_INCLUDE_PATH
