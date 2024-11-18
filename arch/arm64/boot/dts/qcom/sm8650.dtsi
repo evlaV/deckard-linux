@@ -2487,7 +2487,7 @@
 			/* Speedbin needs more work on A740+, keep only lower freqs */
 			gpu_opp_table: opp-table {
 				compatible = "operating-points-v2";
-
+#if 0
 				opp-231000000 {
 					opp-hz = /bits/ 64 <231000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_LOW_SVS_D2>;
@@ -2534,7 +2534,7 @@
 					qcom,opp-acd-level = <0xc02a5ffd>;
 					opp-peak-kBps = <10687500>;
 				};
-
+#endif
 				opp-680000000 {
 					opp-hz = /bits/ 64 <680000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_SVS_L1>;
