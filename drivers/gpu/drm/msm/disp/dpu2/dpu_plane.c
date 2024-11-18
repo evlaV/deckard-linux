@@ -92,6 +92,7 @@ void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer *fb)
 	addr[0] = msm_framebuffer_iova(fb, dpu->base.aspace, 0);
 	pitch[0] = fb->pitches[0];
 
+#if 0
 	if (fb->format->format == DRM_FORMAT_NV12) {
 		addr[1] = msm_framebuffer_iova(fb, dpu->base.aspace, 1);
 		pitch[1] = fb->pitches[1];
@@ -109,7 +110,9 @@ void set_framebuffer(struct dpu_kms *dpu, u32 reg, struct drm_framebuffer *fb)
 			meta_height = ALIGN(DIV_ROUND_UP((fb->height+1)>>1, 8), 16);
 			addr[1] += ALIGN(pitch[3] * meta_height, 4096);
 		}
-	} else if (fb->modifier == DRM_FORMAT_MOD_QCOM_COMPRESSED) {
+	} else
+#endif
+ if (fb->modifier == DRM_FORMAT_MOD_QCOM_COMPRESSED) {
 		/*  always hit in CAC test */
 		/*
 		 * UBWC plane in addr[2]/pitch[2], but comes before in memory
@@ -277,7 +280,7 @@ sspp_set_format(struct dpu_kms *dpu, u8 i, const struct drm_format_info *fmt,
 	dpu_write(dpu, SSPP_SRC_UNPACK_PATTERN(i), unpack_pattern);
 	dpu_write(dpu, SSPP_SRC_OP_MODE(i), op_mode);
 
-printk("-----sspp %d op_mode 0x%x with bit4 set for rec1\n", i, op_mode);
+printk("===sspp %d op_mode 0x%x with bit4 set for rec1\n", i, op_mode);
 	if (i==16||i==17) { // for CAC unpack planes using multirect
 	dpu_write(dpu, SSPP_SRC_FORMAT_REC1(i), src_format);
 	dpu_write(dpu, SSPP_SRC_UNPACK_PATTERN_REC1(i), unpack_pattern);
@@ -378,76 +381,12 @@ dpu_plane_update(struct dpu_kms *dpu, u32 i, struct drm_plane_state *state)
 
 	if (i >= 4) i += 12; // DMA sspp starts at 0x20000 offset instead of 0x8000
 
+printk("-----set_framebuffer....\n");
 	set_framebuffer(dpu, SSPP_SRC0_ADDR(i), fb);
-printk("set coords1--------\n");
-	sspp_set_coords(dpu, i, &state->dst, &state->src, fb->format->format == DRM_FORMAT_NV12);
+printk("-----sspp_set_coords....\n");
+	//sspp_set_coords(dpu, i, &state->dst, &state->src, fb->format->format == DRM_FORMAT_NV12);
 printk("set coords3--------\n");
 	sspp_set_format(dpu, i, fb->format, fb->modifier, rotation);
-
-	// all VIG planes being used for CAC
-#if 0
-	if (i < 4) { /* only VIG planes */
-		//dpu_write(dpu, QSEED3_OP_MODE(i), BIT(14));
-		struct drm_rect *dst = &state->dst;
-		struct drm_rect *src = &state->src;
-		//dpu_write(dpu, QSEED3_OP_MODE(i), BIT(14));
-
-		u32 src_w = drm_rect_width(src) >> 16;
-		u32 src_h = drm_rect_height(src) >> 16;
-		u32 dst_w = drm_rect_width(dst);
-		u32 dst_h = drm_rect_height(dst);
-
-		//if (state->rotation == DRM_MODE_ROTATE_270)
-		//	swap(src_w, src_h);
-
-		/* XXX: phase init for fractional src coords ? */
-		dpu_write(dpu, QSEED3_PHASE_INIT_Y_H(i), 0);
-		dpu_write(dpu, QSEED3_PHASE_INIT_Y_V(i), 0);
-		dpu_write(dpu, QSEED3_PHASE_STEP_Y_H(i), mult_frac(0x200000, src_w, dst_w));
-		dpu_write(dpu, QSEED3_PHASE_STEP_Y_V(i), mult_frac(0x200000, src_h, dst_h));
-		dpu_write(dpu, QSEED3_PRELOAD(i), 0x3040304);
-		dpu_write(dpu, QSEED3_SRC_SIZE_Y_RGB_A(i), src_h << 16 | src_w);
-		dpu_write(dpu, QSEED3_DST_SIZE(i), dst_h << 16 | dst_w);
-
-		// cac_test: always enable scaling
-		if (fb->format->format == DRM_FORMAT_NV12) {
-			dpu_write(dpu, QSEED3_PHASE_INIT_UV_H(i), 0);
-			dpu_write(dpu, QSEED3_PHASE_INIT_UV_V(i), 0);
-			dpu_write(dpu, QSEED3_PHASE_STEP_UV_H(i), 0x100000);
-			dpu_write(dpu, QSEED3_PHASE_STEP_UV_V(i), 0x100000);
-			dpu_write(dpu, QSEED3_SRC_SIZE_UV(i), (src_h>>1) << 16 | (src_w>>1));
-			dpu_write(dpu, QSEED3_OP_MODE(i), 0x03035001);
-		} else if (cac_test)
-			dpu_write(dpu, QSEED3_OP_MODE(i), 0x00034001);
-		else
-			dpu_write(dpu, QSEED3_OP_MODE(i), BIT(14) | 0);
-
-		if (fb->format->format == DRM_FORMAT_NV12) {
-			// XXX check this
-			u32 csc_reg_off = 0x5A04 + i * 0x2000;
-			dpu_write(dpu, SSPP_VIG_CSC_10_OP_MODE(i), 0x3);
-			dpu_write(dpu, csc_reg_off + 0x00, 0x254);
-			dpu_write(dpu, csc_reg_off + 0x04, 0x2540331);
-			dpu_write(dpu, csc_reg_off + 0x08, 0x1E601F37);
-			dpu_write(dpu, csc_reg_off + 0x0c, 0x4090254);
-			dpu_write(dpu, csc_reg_off + 0x10, 0x0);
-			dpu_write(dpu, csc_reg_off + 0x14, 0x4003AC);
-			dpu_write(dpu, csc_reg_off + 0x18, 0x4003C0);
-			dpu_write(dpu, csc_reg_off + 0x1c, 0x4003C0);
-			dpu_write(dpu, csc_reg_off + 0x20, 0x3FF);
-			dpu_write(dpu, csc_reg_off + 0x24, 0x3FF);
-			dpu_write(dpu, csc_reg_off + 0x28, 0x3FF);
-			dpu_write(dpu, csc_reg_off + 0x2c, 0xFFC0);
-			dpu_write(dpu, csc_reg_off + 0x30, 0xFE00);
-			dpu_write(dpu, csc_reg_off + 0x34, 0xFE00);
-			dpu_write(dpu, csc_reg_off + 0x38, 0x0);
-			dpu_write(dpu, csc_reg_off + 0x3c, 0x0);
-			dpu_write(dpu, csc_reg_off + 0x40, 0x0);
-		} else {
-			dpu_write(dpu, SSPP_VIG_CSC_10_OP_MODE(i), 0);
-		}
-	}
-#endif
 }
 
 static void
