@@ -4144,6 +4144,7 @@
 				compatible = "operating-points-v2-adreno",
 					     "operating-points-v2";
 
+#if 0
 				opp-231000000 {
 					opp-hz = /bits/ 64 <231000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_LOW_SVS_D2>;
@@ -4192,7 +4193,7 @@
 					opp-peak-kBps = <10687500>;
 					qcom,opp-acd-level = <0x882a5ffd>;
 				};
-
+#endif
 				opp-680000000 {
 					opp-hz = /bits/ 64 <680000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_SVS_L1>;
