@@ -14,6 +14,7 @@
 
 struct simple_ondemand_data {
 	unsigned long long frequency;
+	unsigned long long avg_busy;
 };
 
 /* Default constants for DevFreq-Simple-Ondemand (DFSO) */
@@ -29,6 +30,7 @@ static int devfreq_simple_ondemand_func(struct devfreq *df,
 	unsigned int dfso_downdifferential = DFSO_DOWNDIFFERENCTIAL;
 	struct devfreq_simple_ondemand_data *data = df->data;
 	struct simple_ondemand_data *governor_data = df->governor_data;
+	unsigned long long busy, fact;
 
 	err = devfreq_update_stats(df);
 	if (err)
@@ -78,10 +80,20 @@ static int devfreq_simple_ondemand_func(struct devfreq *df,
 	/* 	return 0; */
 	/* } */
 
+	busy = div_u64(stat->busy_time * 1000000, stat->total_time);
+	/*        0.1  */
+	fact = 100000 * stat->total_time / (df->profile->polling_ms * 1000);
+	governor_data->avg_busy = busy > governor_data->avg_busy ?
+		busy :
+		div_u64(governor_data->avg_busy * (1000000 - fact) + busy * fact, 1000000);
+
+	if (governor_data->avg_busy > (1000000/2)) {
+		*freq = DEVFREQ_MAX_FREQ;
+		return 0;
+	}
+
 	/* Set the desired frequency based on the load */
-	a = stat->busy_time;
-	a *= stat->current_frequency;
-	b = div_u64(a, stat->total_time);
+	b = div_u64(governor_data->avg_busy * stat->current_frequency, 1000000);
 	b *= 100;
 	b = div_u64(b, (dfso_upthreshold - dfso_downdifferential / 2));
 	if (b > *freq) {
