@@ -1685,6 +1685,16 @@ bool trace_clock_in_ns(struct trace_array *tr)
 	return false;
 }
 
+ktime_t trace_clock_gettime(struct trace_array *tr)
+{
+	return trace_clocks[tr->clock_id].func();
+}
+
+ktime_t trace_clock_gettime_top(void)
+{
+	return trace_clock_gettime(top_trace_array());
+}
+
 /*
  * trace_parser_get_init - gets the buffer for trace parser
  */
