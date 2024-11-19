@@ -1,0 +1,388 @@
+/dts-v1/;
+
+#include "sm8650-deckard.dtsi"
+
+/ {
+    model = "SM8650 POC-F rev1 4slam 2et";
+
+	FPGA_clk: FPGA_clk {
+		compatible = "fpga-clock";
+		#clock-cells = <0>;
+		clock-output-names = "fpga_clk";
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&FPGA_clk_default>;
+
+		clocks = <&gcc GCC_GP3_CLK>;
+		clock-frequency = <33333333>;
+		clock-names = "pinclk";
+	};
+
+	fpga: fpga {
+		compatible = "efinix,t8f81c2";
+
+		clocks = <&FPGA_clk>;
+		clock-names = "fpga_clk";
+		v1v1-supply = <&VREG_L2G_1P1>;
+		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
+	};
+
+	// lcd bias power supplies
+	LCD_BIAS: lcd_bias {
+		compatible = "kinetic,ktd2151";
+		status = "okay";
+		// left i2c, right i2c
+		i2c-adapter = <&i2c5 &i2c4>;
+
+		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+
+		regulators {
+			vpos_r: vposr{
+				regulator-name = "lcdr_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vneg_r: vnegr{
+				regulator-name = "lcdr_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vpos_l: vposl{
+				regulator-name = "lcdl_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vneg_l: vnegl{
+				regulator-name = "lcdl_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+		};
+	};
+};
+
+// nRF Pins
+&tlmm {
+	// nRF CS
+	qup_spi10_cs_nrf: qup-spi10-cs-state-nrf {
+		pins = "gpio13", "gpio15";
+		function = "qup2_se2";
+		drive-strength = <6>;
+		bias-disable;
+	};
+
+	// nRF SPI interrupt and reset pins
+
+    // expansion
+	l_spihid_default_state: l-spihid-default {
+		l_irq0 {
+			pins = "gpio69";
+			function = "gpio";
+			bias-pull-up;
+		};
+
+		 l_reset0 {
+			 pins = "gpio70";
+			 function = "gpio";
+			 drive-strength = <2>;
+			 output-low;
+			 bias-pull-down;
+		 };
+	};
+
+	// host/mainboard
+	r_spihid_default_state: r-spihid-default {
+		r_irq0 {
+			pins = "gpio66";
+			function = "gpio";
+			bias-pull-up;
+		};
+
+		r_reset0 {
+			pins = "gpio137";
+			function = "gpio";
+			drive-strength = <2>;
+			output-low;
+			bias-pull-down;
+		};
+	};
+
+	nrf_host_rst_n: nrf_host_rst_n {
+		mux {
+			pins = "gpio164";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio164";
+			power-source = <1>; /* 1.8 V */
+			bias-disable = <0>;
+			output-enable;
+			output-low;
+		};
+	};
+};
+
+#ifndef NRF_UART
+// nRF SPI HID
+&spi10 {
+	status = "okay";
+
+	pinctrl-0 = <&qup_spi10_data_clk>, <&qup_spi10_cs_nrf>;
+	pinctrl-names = "default";
+
+	// L, on QUP2 SE2 L3 CS
+	// expansion, CS_2=gpio_15
+	hid@2 {
+		compatible = "hid-over-spi";
+		reg = <2>;
+		interrupts-extended = <&tlmm 69 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 70 GPIO_ACTIVE_LOW>;
+		//vdd-supply = <&vdd_3v3_reg>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&l_spihid_default_state>;
+	};
+
+	// R, on QUP2 SE2 L6 CS
+	// mainboard, CS_1=gpio_13
+	hid@1 {
+		compatible = "hid-over-spi";
+		reg = <1>;
+		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 137 GPIO_ACTIVE_LOW>;
+		//vdd-supply = <&vdd_3v3_reg>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&r_spihid_default_state>;
+		//pinctrl-0 = <&r_spihid_default_state>, <&nrf_host_rst_n>;
+		//pinctrl-assert-gpios = < &tlmm 164 GPIO_ACTIVE_LOW >;
+    };
+};
+#endif
+
+&i2c4 {
+	status = "okay";
+
+    /* FAN_I2C */
+	slg4ax46073v@8 {
+		compatible = "silego,slg4ax46073v";
+		reg = <0x08>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		//vdd-fan-1-supply = <&VBATT_2S>; not modeled in dts
+		fan-alert-gpios = <&tlmm 174 GPIO_ACTIVE_HIGH>;
+		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
+		bp-gpio = <&tlmm 139 GPIO_ACTIVE_HIGH>;
+        status = "disabled";
+	};
+
+    mpq3367_right@38 {
+        compatible = "mps,mpq3367";
+        reg = <0x38>;
+        status = "okay";
+        en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+        mode = "pwm";
+        regulator {
+            backlight_right: backlight{
+                regulator-name = "backlight_right";
+            };
+        };
+    };
+};
+
+// left display power and backlight
+&i2c5 {
+    status = "okay";
+    mpq3367@38 {
+        compatible = "mps,mpq3367";
+        reg = <0x38>;
+        status = "okay";
+        en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+        mode = "pwm";
+        regulator {
+            backlight_left: backlight{
+                regulator-name = "backlight_left";
+            };
+        };
+    };
+};
+
+&cci2_i2c1 { // "CCI_5"
+	cam@60 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x60>;
+		sensor-queue-index = <0>;
+
+		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 123 GPIO_ACTIVE_HIGH>;
+		ircontrol-gpios = <&tlmm 200 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk1_active>; // <&cam_6dof_l_default>;
+
+		clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_L>;
+		AVDD-supply = <&VREG_6DOF_2P8_L>;
+		DVDD-supply = <&VREG_6DOF_1V2_L>;
+
+		id = "slam_left";
+
+		port {
+			cam_6dof_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&csiphy0_ep>;
+			};
+		};
+	};
+
+	cam_u@3e {
+		compatible = "ovti,og0ve10x";
+		reg = <0x3e>;
+		sensor-queue-index = <0>;
+
+		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 97 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk3_active>; // <&cam_6dof_ul_default>;
+
+		clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_UL>;
+		AVDD-supply = <&VREG_6DOF_2P8_UL>;
+		DVDD-supply = <&VREG_6DOF_1V2_UL>;
+
+		id = "upper_left";
+
+		port {
+			cam_6dof_ul: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&csiphy0_combo_ep>;
+			};
+		};
+	};
+};
+
+&cci2_i2c0 { // "CCI_4"
+	cam@60 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x60>;
+		sensor-queue-index = <1>;
+
+		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 121 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk0_active>; // <&cam_6dof_r_default>;
+
+		clocks = <&camcc CAM_CC_MCLK0_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_R>;
+		AVDD-supply = <&VREG_6DOF_2P8_R>;
+		DVDD-supply = <&VREG_6DOF_1V2_R>;
+
+		id = "slam_right";
+
+		port {
+			cam_6dof_r: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&csiphy1_ep>;
+			};
+		};
+	};
+
+	cam_u@3e {
+		compatible = "ovti,og0ve10x";
+		reg = <0x3E>;
+		sensor-queue-index = <1>;
+
+		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk5_active>; // <&cam_6dof_ur_default>;
+
+		clocks = <&camcc CAM_CC_MCLK5_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_UR>;
+		AVDD-supply = <&VREG_6DOF_2P8_UR>;
+		DVDD-supply = <&VREG_6DOF_1V2_UR>;
+
+		id = "upper_right";
+
+		port {
+			cam_6dof_ur: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&csiphy1_combo_ep>;
+			};
+		};
+	};
+};
+
+&lpass_wsamacro {
+    pinctrl-names = "default";
+    pinctrl-0 = <&wsa_swr_active>;
+};
+
+&swr0 {
+	status = "okay";
+
+	/* WSA8845 */
+	left_spkr: speaker@0,0 {
+		compatible = "sdw20217020400";
+		reg = <0 0>;
+		//pinctrl-names = "default";
+		//pinctrl-0 = <&spkr_1_sd_n_active>;
+		powerdown-gpios = <&tlmm 186 GPIO_ACTIVE_LOW>; // LPASS 21
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "SpkrLeft";
+		vdd-1p8-supply = <&VREG_L15B_1P8>;
+		vdd-io-supply = <&VREG_L3C_1P2>;
+	};
+
+	/* WSA8845 */
+	right_spkr: speaker@0,1 {
+		compatible = "sdw20217020400";
+		reg = <0 1>;
+		//pinctrl-names = "default";
+		//pinctrl-0 = <&spkr_2_sd_n_active>;
+		powerdown-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "SpkrRight";
+		vdd-1p8-supply = <&VREG_L15B_1P8>;
+		vdd-io-supply = <&VREG_L3C_1P2>;
+	};
+};
+
+&sound {
+	status = "okay";
+	codecs =
+	<&left_spkr>, <&right_spkr>, <&swr0 0>,
+	<&lpass_wsamacro 0>,
+		 <&lpass_wsamacro 1>,
+		 <&lpass_vamacro 0>;
+};
+
