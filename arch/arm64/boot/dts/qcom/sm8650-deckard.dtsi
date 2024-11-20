@@ -904,7 +904,7 @@
 		power-role = "dual";
 		data-role = "dual";
 		try-power-role = "sink";
-		source-pdos = <PDO_FIXED(5000, 1500, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP |
+		source-pdos = <PDO_FIXED(5000, 750, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP |
 		  PDO_FIXED_USB_COMM)>;
         sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)>,
                     <PDO_FIXED(9000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)>,
