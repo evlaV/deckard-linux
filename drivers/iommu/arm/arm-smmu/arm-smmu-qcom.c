@@ -140,11 +140,16 @@ static void qcom_adreno_smmu_set_prr_bit(const void *cookie, bool set)
 	struct arm_smmu_cfg *cfg = &smmu_domain->cfg;
 	u32 reg = 0;
 
+	if (pm_runtime_resume_and_get(smmu->dev) < 0)
+		return;
+
 	reg =  arm_smmu_cb_read(smmu, cfg->cbndx, ARM_SMMU_CB_ACTLR);
 	reg &= ~GFX_ACTLR_PRR;
 	if (set)
 		reg |= FIELD_PREP(GFX_ACTLR_PRR, 1);
 	arm_smmu_cb_write(smmu, cfg->cbndx, ARM_SMMU_CB_ACTLR, reg);
+
+	pm_runtime_put_autosuspend(smmu->dev);
 }
 
 static void qcom_adreno_smmu_set_prr_addr(const void *cookie, phys_addr_t page_addr)
@@ -152,11 +157,16 @@ static void qcom_adreno_smmu_set_prr_addr(const void *cookie, phys_addr_t page_a
 	struct arm_smmu_domain *smmu_domain = (void *)cookie;
 	struct arm_smmu_device *smmu = smmu_domain->smmu;
 
+	if (pm_runtime_resume_and_get(smmu->dev) < 0)
+		return;
+
 	writel_relaxed(lower_32_bits(page_addr),
 				smmu->base + ARM_SMMU_GFX_PRR_CFG_LADDR);
 
 	writel_relaxed(upper_32_bits(page_addr),
 				smmu->base + ARM_SMMU_GFX_PRR_CFG_UADDR);
+
+	pm_runtime_put_autosuspend(smmu->dev);
 }
 
 #define QCOM_ADRENO_SMMU_GPU_SID 0
