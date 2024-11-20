@@ -6860,15 +6860,11 @@ tracing_total_entries_read(struct file *filp, char __user *ubuf,
 }
 
 // Start our tracing counter at some nice large number that is unlikely to conflict with others
-static uint64_t trace_ctx_counter = 1000000;
-static DEFINE_MUTEX(trace_ctx_counter_mutex);
+static atomic64_t trace_ctx_counter = ATOMIC64_INIT(1000000);
 
 uint64_t trace_ctx_id(void)
 {
-	mutex_lock(&trace_ctx_counter_mutex); // Protect the counter
-	uint64_t value = trace_ctx_counter++;
-	mutex_unlock(&trace_ctx_counter_mutex);
-	return value;
+	return atomic64_inc_return(&trace_ctx_counter);
 }
 
 static ssize_t tracing_ctx_id_read(struct file *filp, char __user *ubuf,
