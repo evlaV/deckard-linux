@@ -19,6 +19,10 @@
 #include <media/v4l2-mediabus.h>
 #include <media/videobuf2-v4l2.h>
 
+// Private ioctls to access CSID/VFE registers
+#define VIDIOC_PRIV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
+#define VIDIOC_PRIV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
+
 struct camss_buffer {
 	struct vb2_v4l2_buffer vb;
 	dma_addr_t addr[3];
