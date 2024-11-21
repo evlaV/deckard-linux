@@ -209,12 +209,10 @@ struct csid_device {
 	size_t metadata_size;
 	void* (*get_metadata) (struct v4l2_subdev*);
 	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp, u8 group);
-	u64 last_sof_isp_timestamp_converted;
-	u64 cur_sof_isp_timestamp_converted;
-	u64 cur_eof_isp_timestamp_converted;
-	u64 last_sof_kernel_ts;
-	u64 last_eof_kernel_ts;
-	u64 isp_to_kernel_raw_ts_offset;
+
+	// keep track of sof per-path/stream otherwise non-synced stream going through the same csid won't have the right sof metadata
+	u64 path_cur_sof_isp_timestamp_converted[MSM_CSID_MAX_SRC_STREAMS];
+	u64 path_last_sof_kernel_ts[MSM_CSID_MAX_SRC_STREAMS];
 
 #define CSID_RX_DEBUG 1
 #if CSID_RX_DEBUG
