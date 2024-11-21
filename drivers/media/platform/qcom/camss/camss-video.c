@@ -646,6 +646,104 @@ static int video_s_input(struct file *file, void *fh, unsigned int input)
 	return input == 0 ? 0 : -EINVAL;
 }
 
+static struct vfe_device* video_get_vfe_device(struct camss_video *video)
+{
+	struct media_pad *vfe_src_pad = media_entity_remote_source_pad_unique(&video->vdev.entity);
+	if(IS_ERR(vfe_src_pad)) {
+		dev_err(video->camss->dev, "Failed to get vfe source pad");
+		return (void*)vfe_src_pad;
+	}
+
+	struct v4l2_subdev *vfe_subdev = media_entity_to_v4l2_subdev(vfe_src_pad->entity);
+	if(!vfe_subdev) {
+		dev_err(video->camss->dev, "Failed to get vfe v4l2 subdev");
+		return ERR_PTR(-ENODEV);
+	}
+
+	struct vfe_device *vfe = v4l2_get_subdevdata(vfe_subdev);
+	if(!vfe) {
+		dev_err(video->camss->dev, "Failed to get vfe subdev data");
+		return ERR_PTR(-ENODEV);
+	}
+
+	return vfe;
+}
+
+static struct csid_device* video_get_csid_device(struct camss_video *video)
+{
+	struct media_pad *vfe_src_pad = media_entity_remote_source_pad_unique(&video->vdev.entity);
+	if(IS_ERR(vfe_src_pad)) {
+		dev_err(video->camss->dev, "Failed to get vfe source pad");
+		return (void*)vfe_src_pad;
+	}
+
+	struct media_pad *csid_src_pad = media_entity_remote_source_pad_unique(vfe_src_pad->entity);
+	if(IS_ERR(csid_src_pad)) {
+		dev_err(video->camss->dev, "Failed to get csid source pad");
+		return (void*)csid_src_pad;
+	}
+
+	struct v4l2_subdev *csid_subdev = media_entity_to_v4l2_subdev(csid_src_pad->entity);
+	if(!csid_subdev) {
+		dev_err(video->camss->dev, "Failed to get csid v4l2 subdev");
+		return ERR_PTR(-ENODEV);
+	}
+
+	struct csid_device *csid = v4l2_get_subdevdata(csid_subdev);
+	if(!csid) {
+		dev_err(video->camss->dev, "Failed to get csid subdev data");
+		return ERR_PTR(-ENODEV);
+	}
+
+	return csid;
+}
+
+static long video_ioctl(struct file *file, void *fh, bool valid_prio, unsigned int cmd, void *arg)
+{
+	struct camss_video *video = video_drvdata(file);
+	long ret = 0;
+
+	// Grab the vfe and csid device since these are needed for the extended
+	// configuration and to get/set hardware registers
+	struct vfe_device *vfe = video_get_vfe_device(video);
+	if(IS_ERR(vfe)) {
+		dev_err(video->camss->dev, "Failed to get the vfe from the video device");
+		return PTR_ERR(vfe);
+	}
+
+	struct csid_device *csid = video_get_csid_device(video);
+	if(IS_ERR(csid)) {
+		dev_err(video->camss->dev, "Failed to get the csid from the video device");
+		return PTR_ERR(csid);
+	}
+
+	switch(cmd)
+	{
+		case VIDIOC_PRIV_S_REGS:
+			if(csid->res->hw_ops->set_csid_vfe_registers) {
+				ret = csid->res->hw_ops->set_csid_vfe_registers(csid, arg);
+			}
+			else {
+				// Operation not supported
+				return -EINVAL;
+			}
+			break;
+		case VIDIOC_PRIV_G_REGS:
+			if(csid->res->hw_ops->get_csid_vfe_registers) {
+				ret = csid->res->hw_ops->get_csid_vfe_registers(csid, arg);
+			}
+			else {
+				// Operation not supported
+				return -EINVAL;
+			}
+			break;
+		default:
+			ret = -ENOTTY;
+	}
+
+	return ret;
+}
+
 static const struct v4l2_ioctl_ops msm_vid_ioctl_ops = {
 	.vidioc_querycap		= video_querycap,
 	.vidioc_enum_fmt_vid_cap	= video_enum_fmt,
@@ -665,6 +763,7 @@ static const struct v4l2_ioctl_ops msm_vid_ioctl_ops = {
 	.vidioc_enum_input		= video_enum_input,
 	.vidioc_g_input			= video_g_input,
 	.vidioc_s_input			= video_s_input,
+	.vidioc_default			= video_ioctl,
 };
 
 /* -----------------------------------------------------------------------------
