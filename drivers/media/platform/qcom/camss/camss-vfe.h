@@ -94,6 +94,8 @@ struct vfe_line {
 	struct vfe_output output;
 	const struct camss_format_info *formats;
 	unsigned int nformats;
+
+	u32 required_comp_done_mask; // bitfield where the index of each mandatory comp group for frames is set
 };
 
 struct vfe_device;
@@ -168,7 +170,6 @@ struct vfe_device {
 	struct device *genpd;
 	struct device_link *genpd_link;
 
-	u32 required_comp_done_mask; // bitfield where the index of each mandatory comp group for frames is set
 	u32 stats_cfg; // user-provided bitfield that indicates which statistics/frameheaders must be provided in the metadata buffers
 };
 

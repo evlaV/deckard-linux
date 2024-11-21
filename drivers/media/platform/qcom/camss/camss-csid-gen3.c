@@ -37,6 +37,16 @@
 #define CSID_RUP_AUP_CMD		0x18
 #define		CSID_RUP_AUP_RDI(rdi)		((BIT(4) | BIT(20)) << (rdi) | BIT(28))
 
+#define CSID_CSI2_RDIN_SOF_TIMESTAMP_LOWER(rdi) (0x594 + 0x100 * (rdi))
+#define CSID_CSI2_RDIN_SOF_TIMESTAMP_UPPER(rdi) (0x598 + 0x100 * (rdi))
+#define CSID_CSI2_RDIN_EOF_TIMESTAMP_LOWER(rdi) (0x5a4 + 0x100 * (rdi))
+#define CSID_CSI2_RDIN_EOF_TIMESTAMP_UPPER(rdi) (0x5a8 + 0x100 * (rdi))
+
+#define CSID_CSI2_IPP0_SOF_TIMESTAMP_LOWER 0x398
+#define CSID_CSI2_IPP0_SOF_TIMESTAMP_UPPER 0x39c
+#define CSID_CSI2_IPP0_EOF_TIMESTAMP_LOWER 0x3a8
+#define CSID_CSI2_IPP0_EOF_TIMESTAMP_UPPER 0x3ac
+
 #define CSID_TOP_IRQ_STATUS		0x7C
 #define		 TOP_IRQ_STATUS_RESET_DONE	BIT(0)
 
@@ -128,6 +138,62 @@ u32 isp_to_kernel_raw_ts_offset_estimation_state;
 u64 isp_to_kernel_raw_ts_offset_counter;
 u32 isp_to_kernel_raw_ts_offset_refinement_vote_cnt;
 s64 isp_to_kernel_raw_ts_offset_floor;
+
+static void update_isp_to_kernel_raw_ts_offset_estimate(u64 ts_monotonic_raw, u64 sof_isp_timestamp)
+{
+	s64 detected_isp_to_kernel_raw_ts_offset = ts_monotonic_raw - sof_isp_timestamp;
+
+	isp_to_kernel_raw_ts_offset_counter++;
+	
+	// Handle estimation state change
+	if(isp_to_kernel_raw_ts_offset_counter == MAX_NUM_OFFSETS)
+	{
+		if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
+		{
+			isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_REFINE;
+		}
+		else
+		{
+			// If the a percentage of the recent offsets disagreed with the current floor
+			// reset the floor and go back to INIT state
+			if(isp_to_kernel_raw_ts_offset_refinement_vote_cnt < VOTE_COUNT_THRESHOLD_FOR_OFFSET_RESET)
+			{
+				isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_INIT;
+				isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
+			}
+		}
+		isp_to_kernel_raw_ts_offset_counter = 0;
+		isp_to_kernel_raw_ts_offset_refinement_vote_cnt = 0;
+	}
+
+	// Compute the difference in nanoseconds between the current floor and the detected offset
+	s64 offsets_delta = (detected_isp_to_kernel_raw_ts_offset > isp_to_kernel_raw_ts_offset_floor) ?
+		(detected_isp_to_kernel_raw_ts_offset - isp_to_kernel_raw_ts_offset_floor) :
+		(isp_to_kernel_raw_ts_offset_floor - detected_isp_to_kernel_raw_ts_offset);
+
+	// In INIT just update the floor with the latest measurement if lower
+	if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
+	{
+		if(detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor)
+		{
+			isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
+		}
+	}
+	else if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_REFINE)
+	{
+		// Update the vote counter if detected offset is close to the current floor
+		if(offsets_delta < MAX_OFFSET_DELTA_FOR_VOTE_IN_NS)
+		{
+			isp_to_kernel_raw_ts_offset_refinement_vote_cnt++;
+		}
+
+		// If detected value is lower and very close to the current floor we adjust to it
+		if((detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor) && (offsets_delta < MAX_OFFSET_DELTA_FOR_ADJUSTMENT_IN_NS))
+		{
+			isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
+		}
+	}
+}
 
 static int csid_reset(struct csid_device *csid);
 
@@ -298,26 +364,12 @@ static void csid_subdev_reg_update(struct csid_device *csid, int port_id, bool c
 static irqreturn_t csid_isr(int irq, void *dev)
 {
 	struct csid_device *csid = dev;
-	u32 top_val, val, buf_done_val, rdi_status, ipp_status;
+	u32 top_val, val, buf_done_val;
 	u8 reset_done;
 	u64 ts_monotonic_raw = ktime_get_raw_ns();
-	void *sof_addr_lower, *sof_addr_upper, *eof_addr_lower, *eof_addr_upper;
 	int i = 0;
 
 	trace_csid_isr(0, csid->id);
-
-	// if IPP path is enabled use it as the source for SOF/EOF timestamps
-	if(readl(csid->base +0x300) & BIT(31)) {
-		sof_addr_upper = csid->base + 0x39c; // CSID_IPP0_TIMESTAMP_CURR1_SOF
-		sof_addr_lower = csid->base + 0x398; // CSID_IPP0_TIMESTAMP_CURR0_SOF
-		eof_addr_upper = csid->base + 0x3ac; // CSID_IPP0_TIMESTAMP_CURR1_EOF
-		eof_addr_lower = csid->base + 0x3a8; // CSID_IPP0_TIMESTAMP_CURR0_EOF
-	} else {
-		sof_addr_upper = csid->base + 0x598; // CSID_RDI0_TIMESTAMP_CURR1_SOF
-		sof_addr_lower = csid->base + 0x594; // CSID_RDI0_TIMESTAMP_CURR0_SOF
-		eof_addr_upper = csid->base + 0x5a8; // CSID_RDI0_TIMESTAMP_CURR1_EOF
-		eof_addr_lower = csid->base + 0x5a4; // CSID_RDI0_TIMESTAMP_CURR0_EOF
-	}
 
 	top_val = readl(csid->base + CSID_TOP_IRQ_STATUS);
 	writel(top_val, csid->base + CSID_TOP_IRQ_CLEAR);
@@ -325,12 +377,6 @@ static irqreturn_t csid_isr(int irq, void *dev)
 
 	val = readl(csid->base + CSID_CSI2_RX_IRQ_STATUS);
 	writel(val, csid->base + CSID_CSI2_RX_IRQ_CLEAR);
-
-	rdi_status = readl(csid->base + CSID_CSI2_RDIN_IRQ_STATUS(i));
-	writel(rdi_status, csid->base + CSID_CSI2_RDIN_IRQ_CLEAR(i));
-
-	ipp_status = readl(csid->base + 0xac);
-	writel(ipp_status, csid->base + 0xb4);
 
 #if CSID_RX_DEBUG
 	// increment the rx debug irq counters when enabled and we received a csi2 rx irq
@@ -343,86 +389,64 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	}
 #endif
 
-	if((rdi_status & 0x0010) || (ipp_status & 0x0010)) // Test if PATH_INFO_SOF is set
-	{
-		u32 sof_timestamp_lower = readl_relaxed(sof_addr_lower);
-		u32 sof_timestamp_upper = readl_relaxed(sof_addr_upper);
-		u64 sof_isp_timestamp = ((u64)sof_timestamp_upper) << 32 | sof_timestamp_lower;
+	// Loop through enabled rdi paths
+	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++) {
+		if ((csid->phy.en_vc & BIT(i)) || (i == VFE_LINE_PIX)) {
 
-		sof_isp_timestamp = mul_u64_u32_div(
-			sof_isp_timestamp,
-			CAM_IFE_CSID_MUL_FACTOR,
-			CAM_IFE_CSID_DIV_FACTOR);
+			// read and clear the path status
+			u32 path_status = 0;
+			if(i == VFE_LINE_PIX) {
+				path_status = readl(csid->base + 0xac);
+				writel(path_status, csid->base + 0xb4);
+			}
+			else {
+				path_status = readl(csid->base + CSID_CSI2_RDIN_IRQ_STATUS(i));
+				writel(path_status, csid->base + CSID_CSI2_RDIN_IRQ_CLEAR(i));
+			}
 
-		if(sof_isp_timestamp != 0) {
-			s64 detected_isp_to_kernel_raw_ts_offset = ts_monotonic_raw - sof_isp_timestamp;
+			if(path_status & 0x0010) { // Test if PATH_INFO_SOF is set
 
-			isp_to_kernel_raw_ts_offset_counter++;
-			
-			// Handle estimation state change
-			if(isp_to_kernel_raw_ts_offset_counter == MAX_NUM_OFFSETS)
-			{
-				if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
-				{
-					isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_REFINE;
+				u32 sof_timestamp_lower = 0;
+				u32 sof_timestamp_upper = 0;
+
+				if(i == VFE_LINE_PIX) {
+					sof_timestamp_lower = readl_relaxed(csid->base + CSID_CSI2_IPP0_SOF_TIMESTAMP_LOWER);
+					sof_timestamp_upper = readl_relaxed(csid->base + CSID_CSI2_IPP0_SOF_TIMESTAMP_UPPER);
+				}
+				else {
+					sof_timestamp_lower = readl_relaxed(csid->base + CSID_CSI2_RDIN_SOF_TIMESTAMP_LOWER(i));
+					sof_timestamp_upper = readl_relaxed(csid->base + CSID_CSI2_RDIN_SOF_TIMESTAMP_UPPER(i));
+				}
+
+				u64 sof_isp_timestamp = ((u64)sof_timestamp_upper) << 32 | sof_timestamp_lower;
+
+				sof_isp_timestamp = mul_u64_u32_div(
+					sof_isp_timestamp,
+					CAM_IFE_CSID_MUL_FACTOR,
+					CAM_IFE_CSID_DIV_FACTOR);
+
+				if(sof_isp_timestamp != 0) {
+					// update the isp->kernel_raw timestamp offset estimate with the new SOF measurement
+					update_isp_to_kernel_raw_ts_offset_estimate(ts_monotonic_raw, sof_isp_timestamp);
+
+					csid->path_cur_sof_isp_timestamp_converted[i] = sof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
+
+					if(csid->do_post_sof_work != NULL) {
+						u8 group = (sof_timestamp_lower & 1) ? 1 : 0;
+						csid->do_post_sof_work(csid->capture_subdev, csid->path_cur_sof_isp_timestamp_converted[i], ts_monotonic_raw, group);
+					}
+
+					csid->path_last_sof_kernel_ts[i] = ts_monotonic_raw;
 				}
 				else
 				{
-					// If the a percentage of the recent offsets disagreed with the current floor
-					// reset the floor and go back to INIT state
-					if(isp_to_kernel_raw_ts_offset_refinement_vote_cnt < VOTE_COUNT_THRESHOLD_FOR_OFFSET_RESET)
-					{
-						isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_INIT;
-						isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
-					}
-				}
-				isp_to_kernel_raw_ts_offset_counter = 0;
-				isp_to_kernel_raw_ts_offset_refinement_vote_cnt = 0;
-			}
-
-			// Compute the difference in nanoseconds between the current floor and the detected offset
-			s64 offsets_delta = (detected_isp_to_kernel_raw_ts_offset > isp_to_kernel_raw_ts_offset_floor) ?
-				(detected_isp_to_kernel_raw_ts_offset - isp_to_kernel_raw_ts_offset_floor) :
-				(isp_to_kernel_raw_ts_offset_floor - detected_isp_to_kernel_raw_ts_offset);
-
-			// In INIT just update the floor with the latest measurement if lower
-			if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
-			{
-				if(detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor)
-				{
-					isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
-				}
-			}
-			else if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_REFINE)
-			{
-				// Update the vote counter if detected offset is close to the current floor
-				if(offsets_delta < MAX_OFFSET_DELTA_FOR_VOTE_IN_NS)
-				{
-					isp_to_kernel_raw_ts_offset_refinement_vote_cnt++;
+					csid->path_last_sof_kernel_ts[i] = ts_monotonic_raw;
+					csid->path_cur_sof_isp_timestamp_converted[i] = 0;
 				}
 
-				// If detected value is lower and very close to the current floor we adjust to it
-				if((detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor) && (offsets_delta < MAX_OFFSET_DELTA_FOR_ADJUSTMENT_IN_NS))
-				{
-					isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
-				}
+				trace_csid_isr_sof(1, csid->id);
 			}
-
-			csid->cur_sof_isp_timestamp_converted = sof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
-			if(csid->do_post_sof_work != NULL) {
-				u8 group = (sof_timestamp_lower & 1) ? 1 : 0;
-				csid->do_post_sof_work(csid->capture_subdev, csid->cur_sof_isp_timestamp_converted, ts_monotonic_raw, group);
-			}
-
-			csid->last_sof_kernel_ts = ts_monotonic_raw;
 		}
-		else
-		{
-			csid->last_sof_kernel_ts = ts_monotonic_raw;
-			csid->cur_sof_isp_timestamp_converted = 0;
-		}
-
-		trace_csid_isr_sof(1, csid->id);
 	}
 
 #if 0
@@ -456,6 +480,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	if (top_val & 0x2000) {
 		buf_done_val = readl(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 		writel(buf_done_val, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
+		// printk("got buf_done_val 0x%x\n", buf_done_val);
 
 #if CSID_RX_DEBUG
 		if(csid->rx_dbg_en) {
@@ -466,33 +491,74 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		}
 #endif
 
-		u32 eof_timestamp_lower = readl_relaxed(eof_addr_lower);
-		u32 eof_timestamp_upper = readl_relaxed(eof_addr_upper);
-		u64 eof_isp_timestamp = ((u64)eof_timestamp_upper) << 32 | eof_timestamp_lower;
+		// check all paths to see if the buf_done status corresponds to one of it output
+		// if that's the case fill up the eof info and trigger the vfe wm_done with only
+		// the relevant bits in the buf_done_info.status variable
+		for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++) {
+			if ((csid->phy.en_vc & BIT(i)) || (i == VFE_LINE_PIX)) {
 
-		eof_isp_timestamp = mul_u64_u32_div(
-			eof_isp_timestamp,
-			CAM_IFE_CSID_MUL_FACTOR,
-			CAM_IFE_CSID_DIV_FACTOR);
+				// TODO: check bits
+				u32 comp_grp_test_mask = 0;
+				u32 path_buf_done_val = 0;
+				if(!csid_is_lite(csid) && (i == VFE_LINE_PIX)) {
+					comp_grp_test_mask = 0x3fff;
+				}
+				else {
+					u32 rdi_idx = i;
+					comp_grp_test_mask = csid_is_lite(csid) ? BIT(1 + rdi_idx) : BIT(14 + rdi_idx);
+				}
 
-		csid->cur_eof_isp_timestamp_converted = eof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
+				// get the buf_done_val with only bits corresponding to this path
+				path_buf_done_val = buf_done_val & comp_grp_test_mask;
 
-		struct camss_buf_done_info buf_done_info;
-		memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
-		// TODO: fill with info, including sensor metadata buffer addr and size
-		buf_done_info.status = buf_done_val;
-		buf_done_info.sof_isp_ts_conv = csid->cur_sof_isp_timestamp_converted;
-		buf_done_info.eof_isp_ts_conv = csid->cur_eof_isp_timestamp_converted;
-		buf_done_info.isp_to_kernel_raw_ts_offset = isp_to_kernel_raw_ts_offset_floor;
-		buf_done_info.sof_kernel_ts = csid->last_sof_kernel_ts;
-		// Provide sensor metadata if available
-		if(csid->get_metadata != NULL)
-		{
-			buf_done_info.sensor_metadata_buffer_addr = csid->get_metadata(csid->capture_subdev );
-			buf_done_info.sensor_metadata_buffer_size = csid->metadata_size;
+				// no buf done triggered for this path
+				if(!path_buf_done_val)
+					continue;
+
+				u32 eof_timestamp_lower = 0;
+				u32 eof_timestamp_upper = 0;
+				if(i == VFE_LINE_PIX) {
+					eof_timestamp_lower = readl_relaxed(csid->base + CSID_CSI2_IPP0_EOF_TIMESTAMP_LOWER);
+					eof_timestamp_upper = readl_relaxed(csid->base + CSID_CSI2_IPP0_EOF_TIMESTAMP_UPPER);
+				}
+				else {
+					eof_timestamp_lower = readl_relaxed(csid->base + CSID_CSI2_RDIN_EOF_TIMESTAMP_LOWER(i));
+					eof_timestamp_upper = readl_relaxed(csid->base + CSID_CSI2_RDIN_EOF_TIMESTAMP_UPPER(i));
+				}
+				u64 eof_isp_timestamp = ((u64)eof_timestamp_upper) << 32 | eof_timestamp_lower;
+
+				eof_isp_timestamp = mul_u64_u32_div(
+					eof_isp_timestamp,
+					CAM_IFE_CSID_MUL_FACTOR,
+					CAM_IFE_CSID_DIV_FACTOR);
+
+				u64 cur_eof_isp_timestamp_converted = eof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
+
+				struct camss_buf_done_info buf_done_info;
+				memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
+				// Fill with buf_done info and sof/eof timestamps, including sensor metadata buffer addr and size
+				buf_done_info.status = path_buf_done_val; // path buf_done bits only!
+				buf_done_info.sof_isp_ts_conv = csid->path_cur_sof_isp_timestamp_converted[i];
+				buf_done_info.eof_isp_ts_conv = cur_eof_isp_timestamp_converted;
+				buf_done_info.isp_to_kernel_raw_ts_offset = isp_to_kernel_raw_ts_offset_floor;
+				buf_done_info.sof_kernel_ts = csid->path_last_sof_kernel_ts[i];
+				// Provide sensor metadata if available
+				if(csid->get_metadata != NULL)
+				{
+					buf_done_info.sensor_metadata_buffer_addr = csid->get_metadata(csid->capture_subdev );
+					buf_done_info.sensor_metadata_buffer_size = csid->metadata_size;
+				}
+
+				u32 port_id = i;
+				if(i == VFE_LINE_PIX) {
+					port_id = 0; // route all IPP events to the RDI0 path until the PIX path is properly enabled
+				}
+
+				trace_csid_isr_wm_done(0, csid->id);
+				// printk("csid%d calling camss_buf_done for port %d with status 0x%x\n", csid->id, port_id, buf_done_info.status);
+				camss_buf_done(csid->camss, csid->id, port_id, &buf_done_info);
+			}
 		}
-		trace_csid_isr_wm_done(0, csid->id);
-		camss_buf_done(csid->camss, csid->id, 0, &buf_done_info);
 	}
 
 	val = IRQ_CMD_CLEAR;
