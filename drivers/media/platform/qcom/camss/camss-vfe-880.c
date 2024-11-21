@@ -143,12 +143,12 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 			writel(WM_CFG_EN, vfe->base + VFE_BUS_WM_CFG(wm)); // EN=1 (+ all other settings to 0)
 		}
 
-		vfe->required_comp_done_mask = BIT(0); // need composite group 0 (full)
+		line->required_comp_done_mask = BIT(0); // need composite group 0 (full)
 
 		// Enable extra output paths depending on the extra-output plane configuration
-		if(vfe->line[0].video_out.has_extra_output_plane_cfg)
+		if(line->video_out.has_extra_output_plane_cfg)
 		{
-			struct camss_extra_output_plane_cfg *ext_cfg = &vfe->line[0].video_out.extra_output_plane_cfg;
+			struct camss_extra_output_plane_cfg *ext_cfg = &line->video_out.extra_output_plane_cfg;
 
 			if(ext_cfg->frameheader_en) {
 				// Enable the frameheader for the first plane only
@@ -194,7 +194,7 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 				}
 				writel(0x0, vfe->base + VFE_BUS_WM_IMAGE_CFG_1(wm)); // X_INIT = 0
 				writel(BIT(0) | (ext_cfg->extra_output_frameheader_en[type] ? BIT(2) : 0x0) | (mode << 16), vfe->base + VFE_BUS_WM_CFG(wm)); // EN | FRAMEHEADER_EN
-				vfe->required_comp_done_mask |= BIT(comp_group);
+				line->required_comp_done_mask |= BIT(comp_group);
 			}
 		}
 		// Enable extra output paths depending on the requested statistics
@@ -208,14 +208,14 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 				writel(1, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(STATS_IHIST_WM));
 				writel(0x8, vfe->base + VFE_BUS_WM_PACKER_CFG(STATS_IHIST_WM)); // PACKER_FMT_PLAIN_16_16BPP
 				writel(WM_CFG_EN | WM_HEADER_EN | WM_CFG_MODE, vfe->base + VFE_BUS_WM_CFG(STATS_IHIST_WM));
-				vfe->required_comp_done_mask |= BIT(STATS_IHIST_COMP_GROUP); // need composite group 10 (IHIST stats)
+				line->required_comp_done_mask |= BIT(STATS_IHIST_COMP_GROUP); // need composite group 10 (IHIST stats)
 			}
 			if(vfe->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN) {
 				writel(0, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(STATS_BHIST_WM));
 				writel(1, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(STATS_BHIST_WM));
 				writel(0xa, vfe->base + VFE_BUS_WM_PACKER_CFG(STATS_BHIST_WM)); // PACKER_FMT_VER3_PLAIN_64
 				writel(WM_CFG_EN | WM_HEADER_EN | WM_CFG_MODE, vfe->base + VFE_BUS_WM_CFG(STATS_BHIST_WM));
-				vfe->required_comp_done_mask |= BIT(STATS_BHIST_COMP_GROUP); // need composite group 8 (BHIST stats)
+				line->required_comp_done_mask |= BIT(STATS_BHIST_COMP_GROUP); // need composite group 8 (BHIST stats)
 			}
 		}
 	}
@@ -252,11 +252,11 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 
 		// Frameheader streaming can be enabled on LITE IFEs
 		u32 wm_cfg = WM_CFG_EN | WM_CFG_MODE;
-		if(vfe->line[0].video_out.extra_output_plane_cfg.frameheader_en || vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN)
+		if(line->video_out.extra_output_plane_cfg.frameheader_en || vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN)
 			wm_cfg |= WM_HEADER_EN;
 		writel(wm_cfg, vfe->base + VFE_BUS_WM_CFG(wm));
 
-		vfe->required_comp_done_mask = BIT(rdi_comp_group); // need RDI composite group
+		line->required_comp_done_mask = BIT(rdi_comp_group); // need RDI composite group
 	}
 
 }
@@ -265,9 +265,12 @@ static void vfe_wm_stop(struct vfe_device *vfe, u8 wm)
 {
 	wm = RDI_WM(wm);
 	writel(0, vfe->base + VFE_BUS_WM_CFG(wm));
+
+	// reset the stats config
+	vfe->stats_cfg = 0;
 }
 
-static void vfe_update_buffer_comp_mask_from_fifo(struct vfe_device *vfe, u32 comp, u32 wm, u32 buff0_wm_addr, u32 buff1_wm_addr)
+static void vfe_update_buffer_comp_mask_from_fifo(struct vfe_device *vfe, struct vfe_line *line, u32 comp, u32 wm, u32 buff0_wm_addr, u32 buff1_wm_addr)
 {
 	u32 last_wm_done_addr = readl_relaxed(vfe->base + VFE_BUS_WM_ADDR_STATUS_0(wm));
 	
@@ -276,18 +279,18 @@ static void vfe_update_buffer_comp_mask_from_fifo(struct vfe_device *vfe, u32 co
 
 	if( buff0_wm_addr && (buff0_wm_addr == last_wm_done_addr))
 	{
-		vfe->line[0].output.buf[0]->comp_done_status |= BIT(comp);
+		line->output.buf[0]->comp_done_status |= BIT(comp);
 	}
 	else if((buff0_wm_addr && buff1_wm_addr) && (buff1_wm_addr == last_wm_done_addr))
 	{
-		vfe->line[0].output.buf[0]->comp_done_status |= BIT(comp);
-		vfe->line[0].output.buf[1]->comp_done_status |= BIT(comp);
+		line->output.buf[0]->comp_done_status |= BIT(comp);
+		line->output.buf[1]->comp_done_status |= BIT(comp);
 	}
 }
 
-static void vfe_update_buffer_status(struct vfe_device *vfe, u32 buf_done_status)
+static void vfe_update_buffer_status(struct vfe_device *vfe, struct vfe_line *line, u32 buf_done_status)
 {
-	struct v4l2_pix_format_mplane *pix = &vfe->line[0].video_out.active_fmt.fmt.pix_mp;
+	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
 
 	if (pix->pixelformat == V4L2_PIX_FMT_NV12)
 	{
@@ -296,15 +299,15 @@ static void vfe_update_buffer_status(struct vfe_device *vfe, u32 buf_done_status
 		// We check the full image composite group as well as the statistics comp group if enabled
 		if(buf_done_status & BIT(0))
 		{
-			u32 buff0_addr = vfe->line[0].output.buf[0] ? vfe->line[0].output.buf[0]->addr[0] : 0;
-			u32 buff1_addr = vfe->line[0].output.buf[1] ? vfe->line[0].output.buf[1]->addr[0] : 0;
-			vfe_update_buffer_comp_mask_from_fifo(vfe, 0, 0, buff0_addr, buff1_addr);
+			u32 buff0_addr = line->output.buf[0] ? line->output.buf[0]->addr[0] : 0;
+			u32 buff1_addr = line->output.buf[1] ? line->output.buf[1]->addr[0] : 0;
+			vfe_update_buffer_comp_mask_from_fifo(vfe, line, 0, 0, buff0_addr, buff1_addr);
 		}
 
-		if(vfe->line[0].video_out.has_extra_output_plane_cfg)
+		if(line->video_out.has_extra_output_plane_cfg)
 		{
-			struct camss_extra_output_plane_cfg *ext_cfg = &vfe->line[0].video_out.extra_output_plane_cfg;
-			u32 extra_output_addr_idx = vfe->line[0].video_out.extra_output_addr_idx;
+			struct camss_extra_output_plane_cfg *ext_cfg = &line->video_out.extra_output_plane_cfg;
+			u32 extra_output_addr_idx = line->video_out.extra_output_addr_idx;
 
 			// Check in the buffer done status if the any of enabled output have arrived. If so update the comp_mask_done mask
 			for(int type=0; type<CAMSS_EXTRA_OUTPUT_TYPE_MAX; type++)
@@ -321,9 +324,9 @@ static void vfe_update_buffer_status(struct vfe_device *vfe, u32 buf_done_status
 
 				if(buf_done_status & BIT(comp_group))
 				{
-					u32 buff0_addr = vfe->line[0].output.buf[0] ? (vfe->line[0].output.buf[0]->addr[extra_output_addr_idx]+plane_offset) : 0;
-					u32 buff1_addr = vfe->line[0].output.buf[1] ? (vfe->line[0].output.buf[1]->addr[extra_output_addr_idx]+plane_offset) : 0;
-					vfe_update_buffer_comp_mask_from_fifo(vfe, comp_group, wm, buff0_addr, buff1_addr);
+					u32 buff0_addr = line->output.buf[0] ? (line->output.buf[0]->addr[extra_output_addr_idx]+plane_offset) : 0;
+					u32 buff1_addr = line->output.buf[1] ? (line->output.buf[1]->addr[extra_output_addr_idx]+plane_offset) : 0;
+					vfe_update_buffer_comp_mask_from_fifo(vfe, line, comp_group, wm, buff0_addr, buff1_addr);
 				}
 			}
 		}
@@ -331,26 +334,26 @@ static void vfe_update_buffer_status(struct vfe_device *vfe, u32 buf_done_status
 		// BHIST statistics composite group
 		if(buf_done_status & BIT(STATS_BHIST_COMP_GROUP) && (vfe->stats_cfg & STATS_CFG_BHIST_OUTPUT_EN))
 		{
-			u32 buff0_addr = vfe->line[0].output.buf[0] ? (vfe->line[0].output.buf[0]->extrabuffer_dma_addr+STATS_BHIST_DATA_OFFSET) : 0;
-			u32 buff1_addr = vfe->line[0].output.buf[1] ? (vfe->line[0].output.buf[1]->extrabuffer_dma_addr+STATS_BHIST_DATA_OFFSET) : 0;
-			vfe_update_buffer_comp_mask_from_fifo(vfe, STATS_BHIST_COMP_GROUP, STATS_BHIST_WM, buff0_addr, buff1_addr);
+			u32 buff0_addr = line->output.buf[0] ? (line->output.buf[0]->extrabuffer_dma_addr+STATS_BHIST_DATA_OFFSET) : 0;
+			u32 buff1_addr = line->output.buf[1] ? (line->output.buf[1]->extrabuffer_dma_addr+STATS_BHIST_DATA_OFFSET) : 0;
+			vfe_update_buffer_comp_mask_from_fifo(vfe, line, STATS_BHIST_COMP_GROUP, STATS_BHIST_WM, buff0_addr, buff1_addr);
 		}
 		// IHIST statistics composite group
 		if(buf_done_status & BIT(STATS_IHIST_COMP_GROUP) && vfe->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN)
 		{
-			u32 buff0_addr = vfe->line[0].output.buf[0] ? (vfe->line[0].output.buf[0]->extrabuffer_dma_addr+STATS_IHIST_DATA_OFFSET) : 0;
-			u32 buff1_addr = vfe->line[0].output.buf[1] ? (vfe->line[0].output.buf[1]->extrabuffer_dma_addr+STATS_IHIST_DATA_OFFSET) : 0;
-			vfe_update_buffer_comp_mask_from_fifo(vfe, STATS_IHIST_COMP_GROUP, STATS_IHIST_WM, buff0_addr, buff1_addr);
+			u32 buff0_addr = line->output.buf[0] ? (line->output.buf[0]->extrabuffer_dma_addr+STATS_IHIST_DATA_OFFSET) : 0;
+			u32 buff1_addr = line->output.buf[1] ? (line->output.buf[1]->extrabuffer_dma_addr+STATS_IHIST_DATA_OFFSET) : 0;
+			vfe_update_buffer_comp_mask_from_fifo(vfe, line, STATS_IHIST_COMP_GROUP, STATS_IHIST_WM, buff0_addr, buff1_addr);
 		}
 	}
 	else
 	{
 		// RDI streaming path (both main and lite VFEs): check only the RDI0 composite group
-		if(buf_done_status & BIT(RDI_COMP_GROUP(0)))
+		if(buf_done_status & BIT(RDI_COMP_GROUP(line->output.wm_idx[0])))
 		{
-			u32 buff0_addr = vfe->line[0].output.buf[0] ? vfe->line[0].output.buf[0]->addr[0] : 0;
-			u32 buff1_addr = vfe->line[0].output.buf[1] ? vfe->line[0].output.buf[1]->addr[0] : 0;
-			vfe_update_buffer_comp_mask_from_fifo(vfe, RDI_COMP_GROUP(0), RDI_WM(0), buff0_addr, buff1_addr);
+			u32 buff0_addr = line->output.buf[0] ? line->output.buf[0]->addr[0] : 0;
+			u32 buff1_addr = line->output.buf[1] ? line->output.buf[1]->addr[0] : 0;
+			vfe_update_buffer_comp_mask_from_fifo(vfe, line, RDI_COMP_GROUP(line->output.wm_idx[0]), RDI_WM(line->output.wm_idx[0]), buff0_addr, buff1_addr);
 		}
 	}
 }
@@ -390,10 +393,10 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 	}
 
 	// Update the buffer status with the bus status to keep track of which composite groups are done 
-	vfe_update_buffer_status(vfe, buf_done_info->status);
+	vfe_update_buffer_status(vfe, line, buf_done_info->status);
 
 	// if(output->buf[0]) {
-	// 	printk("got status 0x%x required 0x%x after buf done 0x%x\n", output->buf[0]->comp_done_status, vfe->required_comp_done_mask, buf_done_info->status);
+	// 	printk("got status 0x%x required 0x%x after buf done 0x%x\n", output->buf[0]->comp_done_status, line->required_comp_done_mask, buf_done_info->status);
 	// }
 
 	// If we have received anything for the buffer 1 we need to skip buffer 0
@@ -410,7 +413,7 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 		spin_lock_irqsave(&vfe->output_lock, flags);
 	}
 
-	if((output->buf[0] && output->buf[0]->comp_done_status != vfe->required_comp_done_mask)) {
+	if((output->buf[0] && output->buf[0]->comp_done_status != line->required_comp_done_mask)) {
 		// Buffer is not complete so not doing anything and wait for the remaining comp done to happen
 		goto out_unlock;
 	}
@@ -532,11 +535,11 @@ static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *bu
 
 		if(line->video_out.has_extra_output_plane_cfg)
 		{
-			u32 extra_output_addr_idx = vfe->line[0].video_out.extra_output_addr_idx;
+			u32 extra_output_addr_idx = line->video_out.extra_output_addr_idx;
 
-			if(vfe->line[0].video_out.extra_output_plane_cfg.frameheader_en)
+			if(line->video_out.extra_output_plane_cfg.frameheader_en)
 			{
-				u32 fh_plane_offset = vfe->line[0].video_out.extra_output_plane_cfg.frameheader_offset;
+				u32 fh_plane_offset = line->video_out.extra_output_plane_cfg.frameheader_offset;
 				writel((buffer->addr[extra_output_addr_idx] + fh_plane_offset) >> 8, vfe->base + VFE_BUS_WM_HEADER_ADDR(0));
 			}
 
@@ -544,8 +547,8 @@ static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *bu
 			for(int type=0; type<CAMSS_EXTRA_OUTPUT_TYPE_MAX; type++)
 			{
 				u32 wm = 0;
-				u32 plane_offset = vfe->line[0].video_out.extra_output_plane_cfg.extra_output_offset[type];
-				u32 fh_plane_offset = vfe->line[0].video_out.extra_output_plane_cfg.extra_output_frameheader_offset[type];
+				u32 plane_offset = line->video_out.extra_output_plane_cfg.extra_output_offset[type];
+				u32 fh_plane_offset = line->video_out.extra_output_plane_cfg.extra_output_frameheader_offset[type];
 
 				// Ignore meta output since it's written by the driver itself
 				if(!line->video_out.extra_output_plane_cfg.extra_output_en[type] || type == CAMSS_EXTRA_OUTPUT_TYPE_META)
@@ -582,15 +585,15 @@ static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *bu
 			__func__, wm, buffer->addr[0]);
 
 		// Also enqueue the buffers address for the frameheader if enabled
-		if(line->video_out.has_extra_output_plane_cfg && vfe->line[0].video_out.extra_output_plane_cfg.frameheader_en)
+		if(line->video_out.has_extra_output_plane_cfg && line->video_out.extra_output_plane_cfg.frameheader_en)
 		{
-			u32 extra_output_addr_idx = vfe->line[0].video_out.extra_output_addr_idx;
-			u32 fh_plane_offset = vfe->line[0].video_out.extra_output_plane_cfg.frameheader_offset;
-			writel((buffer->addr[extra_output_addr_idx] + fh_plane_offset) >> 8, vfe->base + VFE_BUS_WM_HEADER_ADDR(RDI_WM(0)));
+			u32 extra_output_addr_idx = line->video_out.extra_output_addr_idx;
+			u32 fh_plane_offset = line->video_out.extra_output_plane_cfg.frameheader_offset;
+			writel((buffer->addr[extra_output_addr_idx] + fh_plane_offset) >> 8, vfe->base + VFE_BUS_WM_HEADER_ADDR(wm));
 		}
 		else if(vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
 			dma_sync_single_for_device(vfe->camss->dev, buffer->extrabuffer_dma_addr, buffer->extrabuffer_size, DMA_BIDIRECTIONAL);
-			writel((buffer->extrabuffer_dma_addr + STATS_FH_DATA_OFFSET) >> 8, vfe->base + VFE_BUS_WM_HEADER_ADDR(RDI_WM(0)));
+			writel((buffer->extrabuffer_dma_addr + STATS_FH_DATA_OFFSET) >> 8, vfe->base + VFE_BUS_WM_HEADER_ADDR(wm));
 		}
 
 	}
