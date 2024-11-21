@@ -96,7 +96,7 @@ struct camss_buf_done_info {
 	u32 status; // reg
 	u64 sof_isp_ts_conv;
 	u64 eof_isp_ts_conv;
-	u64 isp_to_kernel_raw_ts_offset;
+	s64 isp_to_kernel_raw_ts_offset;
 	u64 sof_kernel_ts;
 	void* sensor_metadata_buffer_addr;
 	size_t sensor_metadata_buffer_size;
