@@ -469,7 +469,8 @@ static void dpu_encoder_phys_vid_enable(struct dpu_encoder_phys *phys_enc)
 		goto skip_flush;
 
 	ctl->ops.update_pending_flush_intf(ctl, phys_enc->hw_intf->idx);
-	if (ctl->ops.update_pending_flush_merge_3d && phys_enc->hw_pp->merge_3d)
+	if (ctl->ops.update_pending_flush_merge_3d && phys_enc->hw_pp->merge_3d
+	    && !phys_enc->dpu_kms->planar_cac_enable)
 		ctl->ops.update_pending_flush_merge_3d(ctl, phys_enc->hw_pp->merge_3d->idx);
 
 	if (ctl->ops.update_pending_flush_cdm && phys_enc->hw_cdm)
