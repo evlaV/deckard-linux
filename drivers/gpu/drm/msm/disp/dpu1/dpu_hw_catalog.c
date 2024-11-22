@@ -274,7 +274,7 @@ static const u32 wb2_formats_rgb_yuv[] = {
 	{ \
 	.scaler_blk = {.name = "scaler", \
 		.version = scaler_ver, \
-		.base = 0xa00, .len = 0xa0,}, \
+		.base = 0xa00, .len = 0xdc,}, \
 	.csc_blk = {.name = "csc", \
 		.base = 0x1a00, .len = 0x100,}, \
 	.format_list = plane_formats_yuv, \

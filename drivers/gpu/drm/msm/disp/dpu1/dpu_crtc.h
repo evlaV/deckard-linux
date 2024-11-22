@@ -16,6 +16,7 @@
 
 #define DPU_CRTC_NAME_SIZE	12
 
+
 /* define the maximum number of in-flight frame events */
 #define DPU_CRTC_FRAME_EVENT_SIZE	4
 
@@ -202,7 +203,6 @@ struct dpu_crtc {
  * @mixers        : List of active mixers
  * @num_ctls      : Number of ctl paths in use
  * @hw_ctls       : List of active ctl paths
- * @num_dscs      : Number of DSCs in use
  * @crc_source    : CRC source
  * @crc_frame_skip_count: Number of frames skipped before getting CRC
  */
@@ -224,7 +224,6 @@ struct dpu_crtc_state {
 	u32 num_ctls;
 	struct dpu_hw_ctl *hw_ctls[CRTC_QUAD_MIXERS];
 
-	u32 num_dscs;
 	enum dpu_crtc_crc_source crc_source;
 	int crc_frame_skip_count;
 };
@@ -305,9 +304,9 @@ static inline enum dpu_crtc_client_type dpu_crtc_get_client_type(
 void dpu_crtc_frame_event_cb(struct drm_crtc *crtc, u32 event);
 
 /**
- * dpu_crtc_get_lm_num - Get mixer number in this CRTC pipeline
+ * dpu_crtc_get_num_lm - Get mixer number in this CRTC pipeline
  * state: Pointer to drm crtc state object
  */
-unsigned int dpu_crtc_get_lm_num(const struct drm_crtc_state *state);
+unsigned int dpu_crtc_get_num_lm(const struct drm_crtc_state *state);
 
 #endif /* _DPU_CRTC_H_ */

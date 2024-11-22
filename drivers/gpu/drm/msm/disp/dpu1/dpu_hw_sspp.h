@@ -20,6 +20,8 @@ struct dpu_hw_sspp;
 #define DPU_SSPP_SOURCE_ROTATED_90	BIT(2)
 #define DPU_SSPP_ROT_90			BIT(3)
 #define DPU_SSPP_SOLID_FILL		BIT(4)
+#define DPU_SSPP_SRC_SPLIT_ORDER	BIT(5)
+
 
 /**
  * Component indices
@@ -37,6 +39,7 @@ enum {
  * DPU_SSPP_RECT_SOLO - multirect disabled
  * DPU_SSPP_RECT_0 - rect0 of a multirect pipe
  * DPU_SSPP_RECT_1 - rect1 of a multirect pipe
+ * DPU_SSPP_RECT_CAC - CAC mode of a multirect pipe
  *
  * Note: HW supports multirect with either RECT0 or
  * RECT1. Considering no benefit of such configs over
@@ -47,6 +50,7 @@ enum dpu_sspp_multirect_index {
 	DPU_SSPP_RECT_SOLO = 0,
 	DPU_SSPP_RECT_0,
 	DPU_SSPP_RECT_1,
+	DPU_SSPP_RECT_CAC,
 };
 
 enum dpu_sspp_multirect_mode {
@@ -138,6 +142,43 @@ struct dpu_hw_pixel_ext {
 };
 
 /**
+ * struct cac_rect : cac rect configuration from user space
+ * @xy:		start position with x in bit[0:15] and y in bit[16:31].
+ * @size:	rect size with width in bit[0:15] and height in bit[16:31].
+ */
+struct cac_rect {
+	u32 xy, size;
+};
+
+/**
+ * struct cac_blob: cac configuration from user space
+ */
+struct cac_blob {
+	/* source and dest rect of red/green/blue */
+	struct cac_rect dst_r;
+	struct cac_rect dst_g;
+	struct cac_rect dst_b;
+	struct cac_rect src_r;
+	struct cac_rect src_g;
+	struct cac_rect src_b;
+
+	/* rect for fetch from DDR memory */
+	struct cac_rect src_unpack;
+
+	/* CAC step for horizontal/vertical direction of R/B */
+	u32 phase_step_r_h;
+	u32 phase_step_r_v;
+	u32 phase_step_b_h;
+	u32 phase_step_b_v;
+
+	/* init CAC phase for horizontal/vertical direction of R/B */
+	u32 phase_init_r_h;
+	u32 phase_init_r_v;
+	u32 phase_init_b_h;
+	u32 phase_init_b_v;
+};
+
+/**
  * struct dpu_sw_pipe_cfg : software pipe configuration
  * @src_rect:  src ROI, caller takes into account the different operations
  *             such as decimation, flip etc to program this field
@@ -148,6 +189,7 @@ struct dpu_hw_pixel_ext {
 struct dpu_sw_pipe_cfg {
 	struct drm_rect src_rect;
 	struct drm_rect dst_rect;
+	struct drm_rect img_rect;
 	unsigned int rotation;
 	bool valid;
 };
@@ -206,12 +248,21 @@ struct dpu_hw_sspp_ops {
 			struct dpu_hw_pixel_ext *pe_ext);
 
 	/**
+	 * setup_cac - setup pipe as planar CAC mode
+	 * @ctx: Pointer to pipe context
+	 * @cac: Pointer to CAC blob from user space
+	 */
+	void (*setup_cac)(struct dpu_hw_sspp *ctx, struct cac_blob *cac);
+
+	/**
 	 * setup_sourceaddress - setup pipe source addresses
 	 * @pipe: Pointer to software pipe context
 	 * @layout: format layout information for programming buffer to hardware
+	 * @cac: cac mode enablement
 	 */
 	void (*setup_sourceaddress)(struct dpu_sw_pipe *ctx,
-				    struct dpu_hw_fmt_layout *layout);
+				    struct dpu_hw_fmt_layout *layout,
+				    bool cac);
 
 	/**
 	 * setup_csc - setup color space coversion

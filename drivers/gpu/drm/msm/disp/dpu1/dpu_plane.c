@@ -481,8 +481,8 @@ static void _dpu_plane_setup_scaler3(struct dpu_hw_sspp *pipe_hw,
 		&& (src_w == dst_w))
 		return;
 
-	scale_cfg->dst_width = dst_w;
-	scale_cfg->dst_height = dst_h;
+	scale_cfg->dst_width[0] = dst_w;
+	scale_cfg->dst_height[0] = dst_h;
 	scale_cfg->y_rgb_filter_cfg = DPU_SCALE_BIL;
 	scale_cfg->uv_filter_cfg = DPU_SCALE_BIL;
 	scale_cfg->alpha_filter_cfg = DPU_SCALE_ALPHA_BIL;
@@ -840,12 +840,12 @@ static int dpu_plane_atomic_check_nopipe(struct drm_plane *plane,
 	struct dpu_kms *kms = _dpu_plane_get_kms(&pdpu->base);
 	u64 max_mdp_clk_rate = kms->perf.max_core_clk_rate;
 	struct dpu_plane_state *pstate = to_dpu_plane_state(new_plane_state);
-	struct dpu_sw_pipe_cfg pipe_cfg;
+	struct dpu_sw_pipe_cfg init_pipe_cfg;
 	struct drm_rect fb_rect = { 0 };
 	const struct drm_display_mode *mode = &crtc_state->adjusted_mode;
 	uint32_t max_linewidth;
-	u32 lm_num;
-	int lmcfg_id, lmcfg_num;
+	u32 num_lm;
+	int stage_id, num_stages;
 
 	min_scale = FRAC_16_16(1, MAX_UPSCALE_RATIO);
 	max_scale = MAX_DOWNSCALE_RATIO << 16;
@@ -868,10 +868,10 @@ static int dpu_plane_atomic_check_nopipe(struct drm_plane *plane,
 		return -EINVAL;
 	}
 
-	lm_num = dpu_crtc_get_lm_num(crtc_state);
+	num_lm = dpu_crtc_get_num_lm(crtc_state);
 
 	/* state->src is 16.16, src_rect is not */
-	drm_rect_fp_to_int(&pipe_cfg.src_rect, &new_plane_state->src);
+	drm_rect_fp_to_int(&init_pipe_cfg.src_rect, &new_plane_state->src);
 
 	fb_rect.x2 = new_plane_state->fb->width;
 	fb_rect.y2 = new_plane_state->fb->height;
@@ -886,7 +886,7 @@ static int dpu_plane_atomic_check_nopipe(struct drm_plane *plane,
 
 	max_linewidth = pdpu->catalog->caps->max_linewidth;
 
-	drm_rect_rotate(&pipe_cfg.src_rect,
+	drm_rect_rotate(&init_pipe_cfg.src_rect,
 			new_plane_state->fb->width, new_plane_state->fb->height,
 			new_plane_state->rotation);
 
@@ -898,63 +898,64 @@ static int dpu_plane_atomic_check_nopipe(struct drm_plane *plane,
 	 * for quad-pipe case. Check dest rectangle left/right clipping
 	 * first, then check super wide rectangle splitting in every half next.
 	 */
-	lmcfg_num = (lm_num + 1) / 2;
+	num_stages = (num_lm + 1) / 2;
 	/* iterate mixer configs for this plane, to separate left/right with the id */
-	for (lmcfg_id = 0; lmcfg_id < lmcfg_num; lmcfg_id++) {
-		struct drm_rect mixer_rect = {lmcfg_id * mode->hdisplay / lmcfg_num, 0,
-					(lmcfg_id + 1) * mode->hdisplay / lmcfg_num, mode->vdisplay};
-		int cfg_idx = lmcfg_id * PIPES_PER_LM_PAIR;
-		struct dpu_sw_pipe_cfg *cur_pipecfg = &pstate->pipe_cfg[cfg_idx];
+	for (stage_id = 0; stage_id < num_stages; stage_id++) {
+		struct drm_rect mixer_rect = {stage_id * mode->hdisplay / num_stages, 0,
+					(stage_id + 1) * mode->hdisplay / num_stages,
+					mode->vdisplay};
+		int cfg_idx = stage_id * PIPES_PER_STAGE;
+		struct dpu_sw_pipe_cfg *pipe_cfg = &pstate->pipe_cfg[cfg_idx];
+		struct dpu_sw_pipe_cfg *r_pipe_cfg = &pstate->pipe_cfg[cfg_idx + 1];
 
-		drm_rect_fp_to_int(&cur_pipecfg->src_rect, &new_plane_state->src);
-		cur_pipecfg->dst_rect = new_plane_state->dst;
+		drm_rect_fp_to_int(&pipe_cfg->src_rect, &new_plane_state->src);
+		pipe_cfg->dst_rect = new_plane_state->dst;
 
 		DPU_DEBUG_PLANE(pdpu, "checking src " DRM_RECT_FMT
 				" vs clip window " DRM_RECT_FMT "\n",
-				DRM_RECT_ARG(&cur_pipecfg->src_rect),
+				DRM_RECT_ARG(&pipe_cfg->src_rect),
 				DRM_RECT_ARG(&mixer_rect));
 
 		/* If this plane does not fall into mixer rect, check next mixer rect */
-		if (!drm_rect_clip_scaled(&cur_pipecfg->src_rect, &cur_pipecfg->dst_rect, &mixer_rect)) {
+		if (!drm_rect_clip_scaled(&pipe_cfg->src_rect, &pipe_cfg->dst_rect, &mixer_rect)) {
 			memset(&pstate->pipe_cfg[cfg_idx], 0, 2 * sizeof(struct dpu_sw_pipe_cfg));
 			memset(&pstate->pipe[cfg_idx], 0, 2 * sizeof(struct dpu_sw_pipe));
 			continue;
 		}
 
-		cur_pipecfg->valid = true;
-		cur_pipecfg->dst_rect.x1 -= mixer_rect.x1;
-		cur_pipecfg->dst_rect.x2 -= mixer_rect.x1;
+		pipe_cfg->valid = true;
+		pipe_cfg->dst_rect.x1 -= mixer_rect.x1;
+		pipe_cfg->dst_rect.x2 -= mixer_rect.x1;
 
 		DPU_DEBUG_PLANE(pdpu, "Got clip src:" DRM_RECT_FMT " dst: " DRM_RECT_FMT "\n",
-				DRM_RECT_ARG(&cur_pipecfg->src_rect), DRM_RECT_ARG(&cur_pipecfg->dst_rect));
+				DRM_RECT_ARG(&pipe_cfg->src_rect), DRM_RECT_ARG(&pipe_cfg->dst_rect));
 
 		/* Split super wide rect into 2 rect */
-		if ((drm_rect_width(&cur_pipecfg->src_rect) > max_linewidth) ||
-		     _dpu_plane_calc_clk(mode, cur_pipecfg) > max_mdp_clk_rate) {
-			struct dpu_sw_pipe_cfg *r_pipe_cfg = &pstate->pipe_cfg[cfg_idx + 1];
+		if ((drm_rect_width(&pipe_cfg->src_rect) > max_linewidth) ||
+		     _dpu_plane_calc_clk(mode, pipe_cfg) > max_mdp_clk_rate) {
 
-			if (drm_rect_width(&cur_pipecfg->src_rect) > 2 * max_linewidth) {
+			if (drm_rect_width(&pipe_cfg->src_rect) > 2 * max_linewidth) {
 				DPU_DEBUG_PLANE(pdpu, "invalid src " DRM_RECT_FMT " line:%u\n",
-						DRM_RECT_ARG(&cur_pipecfg->src_rect), max_linewidth);
+						DRM_RECT_ARG(&pipe_cfg->src_rect), max_linewidth);
 				return -E2BIG;
 			}
 
-			memcpy(r_pipe_cfg, cur_pipecfg, sizeof(struct dpu_sw_pipe_cfg));
-			cur_pipecfg->src_rect.x2 = (cur_pipecfg->src_rect.x1 + cur_pipecfg->src_rect.x2) >> 1;
-			cur_pipecfg->dst_rect.x2 = (cur_pipecfg->dst_rect.x1 + cur_pipecfg->dst_rect.x2) >> 1;
-			r_pipe_cfg->src_rect.x1 = cur_pipecfg->src_rect.x2;
-			r_pipe_cfg->dst_rect.x1 = cur_pipecfg->dst_rect.x2;
+			memcpy(r_pipe_cfg, pipe_cfg, sizeof(struct dpu_sw_pipe_cfg));
+			pipe_cfg->src_rect.x2 = (pipe_cfg->src_rect.x1 + pipe_cfg->src_rect.x2) >> 1;
+			pipe_cfg->dst_rect.x2 = (pipe_cfg->dst_rect.x1 + pipe_cfg->dst_rect.x2) >> 1;
+			r_pipe_cfg->src_rect.x1 = pipe_cfg->src_rect.x2;
+			r_pipe_cfg->dst_rect.x1 = pipe_cfg->dst_rect.x2;
 			r_pipe_cfg->valid = true;
 			DPU_DEBUG_PLANE(pdpu, "Split super wide plane into:"
 					DRM_RECT_FMT " and " DRM_RECT_FMT "\n",
-					DRM_RECT_ARG(&cur_pipecfg->src_rect),
+					DRM_RECT_ARG(&pipe_cfg->src_rect),
 					DRM_RECT_ARG(&r_pipe_cfg->src_rect));
 		} else {
-			memset(&pstate->pipe_cfg[cfg_idx + 1], 0, sizeof(struct dpu_sw_pipe_cfg));
-			memset(&pstate->pipe[cfg_idx + 1], 0, sizeof(struct dpu_sw_pipe));
+			memset(r_pipe_cfg, 0, sizeof(struct dpu_sw_pipe_cfg));
+			memset(r_pipe_cfg, 0, sizeof(struct dpu_sw_pipe));
 		}
 
-		drm_rect_rotate_inv(&cur_pipecfg->src_rect,
+		drm_rect_rotate_inv(&pipe_cfg->src_rect,
 				    new_plane_state->fb->width, new_plane_state->fb->height,
 				    new_plane_state->rotation);
 	}
@@ -967,7 +968,8 @@ static int dpu_plane_atomic_check_nopipe(struct drm_plane *plane,
 static int dpu_plane_is_multirect_parallel_capable(struct dpu_sw_pipe *pipe,
 						   struct dpu_sw_pipe_cfg *pipe_cfg,
 						   const struct msm_format *fmt,
-						   uint32_t max_linewidth)
+						   uint32_t max_linewidth,
+						   bool cac)
 {
 	if (drm_rect_width(&pipe_cfg->src_rect) != drm_rect_width(&pipe_cfg->dst_rect) ||
 	    drm_rect_height(&pipe_cfg->src_rect) != drm_rect_height(&pipe_cfg->dst_rect))
@@ -979,7 +981,7 @@ static int dpu_plane_is_multirect_parallel_capable(struct dpu_sw_pipe *pipe,
 	if (MSM_FORMAT_IS_YUV(fmt))
 		return false;
 
-	if (MSM_FORMAT_IS_UBWC(fmt) &&
+	if ((!cac) && MSM_FORMAT_IS_UBWC(fmt) &&
 	    drm_rect_width(&pipe_cfg->src_rect) > max_linewidth / 2)
 		return false;
 
@@ -1160,7 +1162,7 @@ static int dpu_plane_virtual_assign_resources(struct drm_crtc *crtc,
 	struct dpu_plane *pdpu = to_dpu_plane(plane);
 	const struct msm_format *fmt;
 	uint32_t max_linewidth;
-	int i, lm_num, lmcfg_id, lmcfg_num;
+	int i, num_lm, stage_id, num_stages;
 
 	if (plane_state->crtc)
 		crtc_state = drm_atomic_get_new_crtc_state(state,
@@ -1183,10 +1185,10 @@ static int dpu_plane_virtual_assign_resources(struct drm_crtc *crtc,
 
 	max_linewidth = dpu_kms->catalog->caps->max_linewidth;
 
-	lm_num = dpu_crtc_get_lm_num(crtc_state);
-	lmcfg_num = (lm_num + 1) / 2;
-	for (lmcfg_id = 0; lmcfg_id < lmcfg_num; lmcfg_id++) {
-		for (i = lmcfg_id * PIPES_PER_LM_PAIR; i < (lmcfg_id + 1) * PIPES_PER_LM_PAIR; i++) {
+	num_lm = dpu_crtc_get_num_lm(crtc_state);
+	num_stages = (num_lm + 1) / 2;
+	for (stage_id = 0; stage_id < num_stages; stage_id++) {
+		for (i = stage_id * PIPES_PER_STAGE; i < (stage_id + 1) * PIPES_PER_STAGE; i++) {
 			struct dpu_sw_pipe *pipe = &pstate->pipe[i];
 			struct dpu_sw_pipe *r_pipe = &pstate->pipe[i + 1];
 			struct dpu_sw_pipe_cfg *pipe_cfg = &pstate->pipe_cfg[i];
@@ -1204,11 +1206,11 @@ static int dpu_plane_virtual_assign_resources(struct drm_crtc *crtc,
 			 * multi-rect opportunity for the 2nd pipe in the pair.
 			 * SSPP multi-rect mode cross mixer pairs is not supported.
 			 */
-			if (!(i % 2) &&
+			if ((i % PIPES_PER_STAGE == 0) &&
 			    r_pipe_cfg->valid &&
 			    drm_rect_width(&r_pipe_cfg->src_rect) != 0 &&
-			    dpu_plane_is_multirect_parallel_capable(pipe, pipe_cfg, fmt, max_linewidth) &&
-			    dpu_plane_is_multirect_parallel_capable(r_pipe, r_pipe_cfg, fmt, max_linewidth) &&
+			    dpu_plane_is_multirect_parallel_capable(pipe, pipe_cfg, fmt, max_linewidth, dpu_kms->planar_cac_enable) &&
+			    dpu_plane_is_multirect_parallel_capable(r_pipe, r_pipe_cfg, fmt, max_linewidth, dpu_kms->planar_cac_enable) &&
 			    (test_bit(DPU_SSPP_SMART_DMA_V1, &pipe->sspp->cap->features) ||
 			     test_bit(DPU_SSPP_SMART_DMA_V2, &pipe->sspp->cap->features))) {
 				pipe->multirect_index = DPU_SSPP_RECT_0;
@@ -1340,10 +1342,12 @@ static void dpu_plane_sspp_update_pipe(struct drm_plane *plane,
 	struct dpu_plane *pdpu = to_dpu_plane(plane);
 	struct drm_plane_state *state = plane->state;
 	struct dpu_plane_state *pstate = to_dpu_plane_state(state);
+	struct dpu_kms *kms = _dpu_plane_get_kms(&pdpu->base);
 
 	if (layout && pipe->sspp->ops.setup_sourceaddress) {
 		trace_dpu_plane_set_scanout(pipe, layout);
-		pipe->sspp->ops.setup_sourceaddress(pipe, layout);
+		pipe->sspp->ops.setup_sourceaddress(pipe, layout,
+						    kms->planar_cac_enable);
 	}
 
 	/* override for color fill */
@@ -1354,9 +1358,12 @@ static void dpu_plane_sspp_update_pipe(struct drm_plane *plane,
 		return;
 	}
 
+	/* skip source rect setup for fetch SSPP in CAC case */
 	if (pipe->sspp->ops.setup_rects) {
-		pipe->sspp->ops.setup_rects(pipe,
-				pipe_cfg);
+		if (!(kms->planar_cac_enable &&
+		    (pipe->sspp->idx == SSPP_DMA0 || pipe->sspp->idx == SSPP_DMA1)))
+			pipe->sspp->ops.setup_rects(pipe,
+					pipe_cfg);
 	}
 
 	_dpu_plane_setup_scaler(pipe, fmt, false, pipe_cfg);
@@ -1364,6 +1371,10 @@ static void dpu_plane_sspp_update_pipe(struct drm_plane *plane,
 	if (pipe->sspp->ops.setup_multirect)
 		pipe->sspp->ops.setup_multirect(
 				pipe);
+
+
+	if (kms->planar_cac_enable && pipe->sspp->ops.setup_cac)
+		pipe->sspp->ops.setup_cac(pipe->sspp, NULL);
 
 	if (pipe->sspp->ops.setup_format) {
 		unsigned int rotation = pipe_cfg->rotation;

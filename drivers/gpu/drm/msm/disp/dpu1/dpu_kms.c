@@ -54,6 +54,9 @@
 bool dpu_use_virtual_planes = true;
 module_param(dpu_use_virtual_planes, bool, 0);
 
+bool dpu_use_planar_cac = true;
+module_param(dpu_use_planar_cac, bool, 0);
+
 static int dpu_kms_hw_init(struct msm_kms *kms);
 static void _dpu_kms_mmu_destroy(struct dpu_kms *dpu_kms);
 
@@ -843,6 +846,19 @@ static int _dpu_kms_drm_obj_init(struct dpu_kms *dpu_kms)
 			ret = PTR_ERR(crtc);
 			return ret;
 		}
+
+		if (dpu_use_planar_cac && i == 0) {
+			//dpu_kms->planar_cac_enable = true;
+			dpu_kms->cac_blob_id = -1;
+			dpu_kms->cac_prop = drm_property_create(dev, DRM_MODE_PROP_BLOB,
+								"CAC_BLOB", 0);
+			if(dpu_kms->cac_prop)
+				drm_object_attach_property(&crtc->base,
+							   dpu_kms->cac_prop, -1);
+			else
+				DPU_ERROR("Fail to create drm cac property");
+		}
+
 		priv->num_crtcs++;
 	}
 
@@ -1147,6 +1163,12 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 	if (rc) {
 		DPU_ERROR("rm init failed: %d\n", rc);
 		goto err_pm_put;
+	}
+
+	if (dpu_use_planar_cac) {
+		rc = dpu_rm_reserve_cac_sspp(dpu_kms);
+		if (rc)
+			goto err_pm_put;
 	}
 
 	dpu_kms->hw_mdp = dpu_hw_mdptop_init(dev,

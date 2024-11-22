@@ -54,6 +54,18 @@
 #define ktime_compare_safe(A, B) \
 	ktime_compare(ktime_sub((A), (B)), ktime_set(0, 0))
 
+/**
+ * Define the hidden pipes that are not in drm_plane scope.
+ * There are 6 SSPP for hidden planar R/G/B layers, VIG0~3 SSPP for red/blue
+ * and DMA2~3 SSPP for green, and all with multi-rect mode.
+ */
+#define PLANAR_CAC_SSPP_VIG	4
+#define PLANAR_CAC_SSPP		6
+#define PLANAR_CAC_SSPP_WITH_FETCH	8
+#define PLANAR_CAC_PIPES	12
+#define PLANAR_CAC_PIPES_WITH_FETCH	16
+
+
 extern bool dpu_use_virtual_planes;
 
 struct dpu_kms {
@@ -92,6 +104,10 @@ struct dpu_kms {
 	struct clk_bulk_data *clocks;
 	size_t num_clocks;
 
+	struct drm_property *cac_prop;
+	bool planar_cac_enable;
+	u32 cac_blob_id;
+
 	/* reference count bandwidth requests, so we know when we can
 	 * release bandwidth.  Each atomic update increments, and frame-
 	 * done event decrements.  Additionally, for video mode, the
@@ -101,6 +117,14 @@ struct dpu_kms {
 	atomic_t bandwidth_ref;
 	struct icc_path *path[2];
 	u32 num_paths;
+
+
+	/* hidden CAC pipes for post process of R/G/B. No plane associated directly
+	 * and they are fixed in hardware, so not in management of scope of crtc as
+	 * other pipes. Thus we put it here.
+	 */
+	struct dpu_sw_pipe cac_pipes[PLANAR_CAC_PIPES_WITH_FETCH];
+	struct dpu_sw_pipe_cfg cac_pipe_cfg[PLANAR_CAC_PIPES_WITH_FETCH];
 };
 
 struct vsync_info {
@@ -115,6 +139,8 @@ struct vsync_info {
 #define to_dpu_kms(x) container_of(x, struct dpu_kms, base)
 
 #define to_dpu_global_state(x) container_of(x, struct dpu_global_state, base)
+
+#define HIDEN_CAC_SSPP_CRTC 0xffffff
 
 /* Global private object state for tracking resources that are shared across
  * multiple kms objects (planes/crtcs/etc).

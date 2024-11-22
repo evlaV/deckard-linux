@@ -131,16 +131,21 @@ static u32 dpu_hw_ctl_get_pending_flush(struct dpu_hw_ctl *ctx)
 	return ctx->pending_flush_mask;
 }
 
-static inline void dpu_hw_ctl_trigger_flush_v1(struct dpu_hw_ctl *ctx)
+static inline void dpu_hw_ctl_trigger_flush_v1(struct dpu_hw_ctl *ctx,
+					    bool mode_changed)
 {
 	int dspp;
 
 	if (ctx->pending_flush_mask & BIT(MERGE_3D_IDX))
 		DPU_REG_WRITE(&ctx->hw, CTL_MERGE_3D_FLUSH,
 				ctx->pending_merge_3d_flush_mask);
+if (mode_changed)
+  DPU_REG_WRITE(&ctx->hw, CTL_MERGE_3D_FLUSH, 0x7);
 	if (ctx->pending_flush_mask & BIT(INTF_IDX))
 		DPU_REG_WRITE(&ctx->hw, CTL_INTF_FLUSH,
 				ctx->pending_intf_flush_mask);
+if (mode_changed)
+  DPU_REG_WRITE(&ctx->hw, CTL_INTF_FLUSH, 0xf);
 	if (ctx->pending_flush_mask & BIT(WB_IDX))
 		DPU_REG_WRITE(&ctx->hw, CTL_WB_FLUSH,
 				ctx->pending_wb_flush_mask);
@@ -166,9 +171,15 @@ static inline void dpu_hw_ctl_trigger_flush_v1(struct dpu_hw_ctl *ctx)
 			      ctx->pending_cdm_flush_mask);
 
 	DPU_REG_WRITE(&ctx->hw, CTL_FLUSH, ctx->pending_flush_mask);
+if (mode_changed)
+  DPU_REG_WRITE(&ctx->hw, CTL_FLUSH, 0x83461bc7);
+else
+  DPU_REG_WRITE(&ctx->hw, CTL_FLUSH, 0x3061bc7);
+//BIT(22) | BIT(31) | BIT(17) | BIT(0) | BIT(1) | BIT(2) | BIT(18) | BIT(11) | BIT(12) | BIT(24) | BIT(25) | BIT(13) | BIT(14) | BIT(6) | BIT(7) | BIT(8) | BIT(9));
 }
 
-static inline void dpu_hw_ctl_trigger_flush(struct dpu_hw_ctl *ctx)
+static inline void dpu_hw_ctl_trigger_flush(struct dpu_hw_ctl *ctx,
+					    bool mode_changed)
 {
 	trace_dpu_hw_ctl_trigger_pending_flush(ctx->pending_flush_mask,
 				     dpu_hw_ctl_get_flush_register(ctx));
@@ -493,7 +504,7 @@ static void dpu_hw_ctl_setup_blendstage(struct dpu_hw_ctl *ctx,
 
 	if (test_bit(DPU_MIXER_SOURCESPLIT,
 		&ctx->mixer_hw_caps->features))
-		pipes_per_stage = PIPES_PER_LM_PAIR;
+		pipes_per_stage = PIPES_PER_STAGE;
 	else
 		pipes_per_stage = 1;
 
@@ -531,6 +542,12 @@ static void dpu_hw_ctl_setup_blendstage(struct dpu_hw_ctl *ctx,
 	}
 
 exit:
+	/* hack for mainline does not support multiple SSPP goes to one stage */
+	if (lm > LM_1)
+		mixercfg[0] |= 0x10;
+	else
+		mixercfg[0] |= 0x2;
+
 	DPU_REG_WRITE(c, CTL_LAYER(lm), mixercfg[0]);
 	DPU_REG_WRITE(c, CTL_LAYER_EXT(lm), mixercfg[1]);
 	DPU_REG_WRITE(c, CTL_LAYER_EXT2(lm), mixercfg[2]);
@@ -587,6 +604,7 @@ static void dpu_hw_ctl_intf_cfg_v1(struct dpu_hw_ctl *ctx,
 
 	if (cfg->merge_3d)
 		DPU_REG_WRITE(c, CTL_MERGE_3D_ACTIVE, merge_3d_active);
+DPU_REG_WRITE(c, CTL_MERGE_3D_ACTIVE, 0);
 
 	if (cfg->cdm)
 		DPU_REG_WRITE(c, CTL_CDM_ACTIVE, cfg->cdm);

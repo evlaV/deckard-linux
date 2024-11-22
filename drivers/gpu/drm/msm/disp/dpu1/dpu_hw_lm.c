@@ -16,6 +16,8 @@
 #define LM_OUT_SIZE                       0x04
 #define LM_BORDER_COLOR_0                 0x08
 #define LM_BORDER_COLOR_1                 0x010
+#define LM_BLEND_OP                       0x38
+#define LM_BLEND_CONST_ALPHA              0x3c
 
 /* These register are offset to mixer base + stage base */
 #define LM_BLEND0_OP                     0x00
@@ -65,6 +67,9 @@ static void dpu_hw_lm_setup_out(struct dpu_hw_mixer *ctx,
 	else
 		op_mode &= ~BIT(31);
 	DPU_REG_WRITE(c, LM_OP_MODE, op_mode);
+
+	DPU_REG_WRITE(c, LM_BLEND_OP, 0x00000100);
+	DPU_REG_WRITE(c, LM_BLEND_CONST_ALPHA, 0x00ff00ff);
 }
 
 static void dpu_hw_lm_setup_border_color(struct dpu_hw_mixer *ctx,
@@ -108,6 +113,16 @@ static void dpu_hw_lm_setup_blend_config_combined_alpha(struct dpu_hw_mixer *ctx
 		return;
 
 	const_alpha = (bg_alpha & 0xFF) | ((fg_alpha & 0xFF) << 16);
+	if (blend_op != (1 << 8)) {
+		printk("====== blend_op 0x%x expected, but 0x%x\n",
+			1 << 8, blend_op);
+		blend_op = (1 << 8);
+	}
+	if (const_alpha != (0xff << 16 | 0xff)) {
+		printk("====== const_alpha 0xff00ff expected, but 0x%x\n",
+			const_alpha );
+		const_alpha = (0xff << 16 | 0xff);
+	}
 	DPU_REG_WRITE(c, LM_BLEND0_CONST_ALPHA + stage_off, const_alpha);
 	DPU_REG_WRITE(c, LM_BLEND0_OP + stage_off, blend_op);
 }
@@ -139,7 +154,7 @@ static void dpu_hw_lm_setup_color3(struct dpu_hw_mixer *ctx,
 	/* read the existing op_mode configuration */
 	op_mode = DPU_REG_READ(c, LM_OP_MODE);
 
-	op_mode = (op_mode & (BIT(31) | BIT(30))) | mixer_op_mode;
+	op_mode = (op_mode & (BIT(31) | BIT(30))) | mixer_op_mode | BIT(2);
 
 	DPU_REG_WRITE(c, LM_OP_MODE, op_mode);
 }

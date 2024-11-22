@@ -236,6 +236,10 @@ static void dpu_hw_intf_setup_timing_engine(struct dpu_hw_intf *intf,
 	DPU_REG_WRITE(c, INTF_HSYNC_SKEW, p->hsync_skew);
 	DPU_REG_WRITE(c, INTF_POLARITY_CTL, polarity_ctl);
 	DPU_REG_WRITE(c, INTF_FRAME_LINE_COUNT_EN, 0x3);
+	if (0x00800000 != intf_cfg) {
+		printk("intf_cfg 0x%x not expected, hack it", intf_cfg );
+		intf_cfg = 0x00800000;
+	}
 	DPU_REG_WRITE(c, INTF_CONFIG, intf_cfg);
 	DPU_REG_WRITE(c, INTF_PANEL_FORMAT, panel_format);
 	if (intf->cap->features & BIT(DPU_DATA_HCTL_EN)) {
@@ -276,9 +280,10 @@ static void dpu_hw_intf_setup_prg_fetch(
 
 	fetch_enable = DPU_REG_READ(c, INTF_CONFIG);
 	if (fetch->enable) {
-		fetch_enable |= BIT(31);
+		//fetch_enable |= BIT(31);
 		DPU_REG_WRITE(c, INTF_PROG_FETCH_START,
-				fetch->fetch_start);
+				0);
+				//fetch->fetch_start);
 	} else {
 		fetch_enable &= ~BIT(31);
 	}

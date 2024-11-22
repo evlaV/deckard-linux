@@ -164,6 +164,7 @@ enum dpu_enc_rc_states {
  *				clks and resources after IDLE_TIMEOUT time.
  * @topology:                   topology of the display
  * @idle_timeout:		idle timeout duration in milliseconds
+ * @num_dscs:			Number of DSCs in use
  * @wide_bus_en:		wide bus is enabled on this interface
  * @dsc:			drm_dsc_config pointer, for DSC-enabled encoders
  */
@@ -204,6 +205,7 @@ struct dpu_encoder_virt {
 	struct msm_display_topology topology;
 
 	u32 idle_timeout;
+	u32 num_dscs;
 
 	bool wide_bus_en;
 
@@ -548,14 +550,13 @@ bool dpu_encoder_use_dsc_merge(struct drm_encoder *drm_enc)
 {
 	struct dpu_encoder_virt *dpu_enc = to_dpu_encoder_virt(drm_enc);
 	int i, intf_count = 0, num_dsc = 0;
-	struct dpu_crtc_state *cstate = to_dpu_crtc_state(drm_enc->crtc->state);
 
 	for (i = 0; i < MAX_PHYS_ENCODERS_PER_VIRTUAL; i++)
 		if (dpu_enc->phys_encs[i])
 			intf_count++;
 
 	if (dpu_enc->dsc)
-		num_dsc = cstate->num_dscs;
+		num_dsc = dpu_enc->num_dscs;
 
 	return (num_dsc > 0) && (num_dsc > intf_count);
 }
@@ -1187,7 +1188,7 @@ static void dpu_encoder_virt_atomic_mode_set(struct drm_encoder *drm_enc,
 		cstate->mixers[i].hw_dspp = to_dpu_hw_dspp(hw_dspp[i]);
 	}
 
-	cstate->num_dscs = num_dsc;
+	dpu_enc->num_dscs = num_dsc;
 	if (cstate->num_mixers != num_lm) {
 		if (!cstate->num_mixers)
 			DPU_ERROR_ENC(dpu_enc,
@@ -1574,7 +1575,7 @@ static void _dpu_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	if (extra_flush_bits && ctl->ops.update_pending_flush)
 		ctl->ops.update_pending_flush(ctl, extra_flush_bits);
 
-	ctl->ops.trigger_flush(ctl);
+	ctl->ops.trigger_flush(ctl, drm_enc->crtc->state->mode_changed);
 
 	if (ctl->ops.get_pending_flush)
 		ret = ctl->ops.get_pending_flush(ctl);
@@ -1901,13 +1902,11 @@ static void dpu_encoder_dsc_pipe_cfg(struct dpu_hw_ctl *ctl,
 		ctl->ops.update_pending_flush_dsc(ctl, hw_dsc->idx);
 }
 
-static void dpu_encoder_prep_dsc(struct drm_encoder *drm_enc)
+static void dpu_encoder_prep_dsc(struct dpu_encoder_virt *dpu_enc,
+				 struct drm_dsc_config *dsc)
 {
 	/* coding only for 2LM, 2enc, 1 dsc config */
-	struct dpu_encoder_virt *dpu_enc = to_dpu_encoder_virt(drm_enc);
-	struct dpu_crtc_state *cstate = to_dpu_crtc_state(drm_enc->crtc->state);
-	struct drm_dsc_config *dsc = dpu_enc->dsc;
-	int num_dsc = cstate->num_dscs;
+	int num_dsc = dpu_enc->num_dscs;
 	struct dpu_encoder_phys *enc_master = dpu_enc->cur_master;
 	struct dpu_hw_ctl *ctl = enc_master->hw_ctl;
 	struct dpu_hw_dsc *hw_dsc[MAX_CHANNELS_PER_ENC];
@@ -1986,7 +1985,7 @@ void dpu_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc)
 	}
 
 	if (dpu_enc->dsc)
-		dpu_encoder_prep_dsc(drm_enc);
+		dpu_encoder_prep_dsc(dpu_enc, dpu_enc->dsc);
 }
 
 bool dpu_encoder_is_valid_for_commit(struct drm_encoder *drm_enc)
@@ -2186,7 +2185,7 @@ void dpu_encoder_helper_phys_cleanup(struct dpu_encoder_phys *phys_enc)
 	if (ctl->ops.reset_intf_cfg)
 		ctl->ops.reset_intf_cfg(ctl, &intf_cfg);
 
-	ctl->ops.trigger_flush(ctl);
+	ctl->ops.trigger_flush(ctl, false);
 	ctl->ops.trigger_start(ctl);
 	ctl->ops.clear_pending_flush(ctl);
 }
