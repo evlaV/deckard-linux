@@ -296,6 +296,16 @@ static void __csid_configure_rdi_stream(struct csid_device *csid, u8 enable, u8 
 
 	writel(val, csid->base + CSID_RDI_CFG1(vc));
 
+	if(csid->multi_vcdt_en)
+	{
+		val = 0x1; // EN
+		val |= (csid->multi_vcdt_vc & 0x1f) << 2; // VC1
+		val |= format->data_type << 7; //DT1
+		val |= DECODE_FORMAT_PAYLOAD_ONLY << 16; // DECODE_FORMAT1
+		val |= 0x1 << 13; // TS_COMB_VCDT_EN
+		writel(val, csid->base + 0x50c + 0x100 * (vc)); // MULTI_VCDT_CFG0
+	}
+
 	val = 0;
 	writel(val, csid->base + CSID_RDI_IRQ_SUBSAMPLE_PERIOD(vc));
 
