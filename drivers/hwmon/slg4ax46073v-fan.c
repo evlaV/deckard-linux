@@ -57,6 +57,9 @@
 #define     SLG4AX46073V_WDT_OK        0x10
 #define SLG4AX46073V_REG_RESET       0xF5
 #define     SLG4AX46073V_RESET                0x01
+#define SLG4AX46073V_REG_WDT_FREQ    0x9F
+#define     SLG4AX46073V_WDT_FULL             0xCF
+#define     SLG4AX46073V_WDT_HALF             0xCA
 
 #define VERSION_7                    0x07
 
@@ -95,6 +98,7 @@ static bool slg4ax46073v_readable_reg(struct device *dev, unsigned int reg)
     case SLG4AX46073V_REG_WDT_STATUS:
     case SLG4AX46073V_REG_VERSION:
     case SLG4AX46073V_REG_RESET:
+    case SLG4AX46073V_REG_WDT_FREQ:
 		return true;
 	default:
 		return false;
@@ -112,6 +116,7 @@ static bool slg4ax46073v_writeable_reg(struct device *dev, unsigned int reg)
     case SLG4AX46073V_REG_WDT_STATUS:
     case SLG4AX46073V_REG_VERSION:
     case SLG4AX46073V_REG_RESET:
+    case SLG4AX46073V_REG_WDT_FREQ:
 		return true;
 	default:
 		return false;
@@ -129,6 +134,7 @@ static bool slg4ax46073v_volatile_reg(struct device *dev, unsigned int reg)
     case SLG4AX46073V_REG_WDT_STATUS:
     case SLG4AX46073V_REG_VERSION:
     case SLG4AX46073V_REG_RESET:
+    case SLG4AX46073V_REG_WDT_FREQ:
 		return true;
 	default:
 		return false;
@@ -263,6 +269,8 @@ static int slg4ax46073v_reset_wdt( struct slg4ax46073v *slg4ax46073v )
     ret |= slg4ax46073v_disarm_wdt( slg4ax46073v );
     ret |= slg4ax46073v_arm_wdt( slg4ax46073v );
     ret |= slg4ax46073v_pet_wdt( slg4ax46073v );
+    // set WDT PWM value to 50%
+    slg4ax46073v_write_reg( slg4ax46073v, SLG4AX46073V_REG_WDT_FREQ, SLG4AX46073V_WDT_HALF);
     cancel_delayed_work(&slg4ax46073v->wdt_work);
     schedule_delayed_work(&slg4ax46073v->wdt_work, SLG4AX56073V_WDT_RESET_RATE);
     return ret;
@@ -277,7 +285,6 @@ static bool slg4ax46073v_wdt_fired( struct slg4ax46073v *slg4ax46073v )
 
 static void slg4ax46073v_reset(struct slg4ax46073v *slg4ax46073v)
 {
-    unsigned int regval;
     // disable Oscillator, disable WDT, disable tach
     regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT, SLG4AX46073V_VI_DISABLE_PWM_CLK0);
 
