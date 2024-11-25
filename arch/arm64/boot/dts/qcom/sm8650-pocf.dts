@@ -254,7 +254,7 @@
 
 	BACKLIGHT_PREBOOST: backlight_preboost {
 		compatible = "mps,mp9184";
-		en-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
+		en-gpio = <&tlmm 41 GPIO_ACTIVE_HIGH>;
 	};
 
 	// lcd bias power supplies
@@ -1617,8 +1617,8 @@
 &mdss_dsi0 {
 	panel: panel@0 {
 		// backlight ramp setup
-		backlight_ramp_step_size = <10>;
-		backlight_ramp_step_time_msec = <50>;
+		backlight_ramp_step_size = <0>;
+		backlight_ramp_step_time_msec = <0>;
 	};
 };
 
