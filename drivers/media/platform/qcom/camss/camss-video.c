@@ -781,6 +781,11 @@ static long video_ioctl(struct file *file, void *fh, bool valid_prio, unsigned i
 		case VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG:
 			ret = video_set_extra_output_plane_config(video, arg);
 			break;
+		case VIDIOC_PRIV_S_MULTI_VCDT_CFG:
+			// request the csid multi-vcdt feature to be enabled with the vc passed as parameter
+			csid->multi_vcdt_en = 1;
+			csid->multi_vcdt_vc = (uintptr_t)arg;
+			break;
 		default:
 			ret = -ENOTTY;
 	}
