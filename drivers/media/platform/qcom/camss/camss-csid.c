@@ -788,6 +788,10 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 		csid->res->parent_dev_ops->put(camss, csid->id);
 
 		csid->power_on = false;
+
+		// reset multi-vcdt config on power off
+		csid->multi_vcdt_en = 0;
+		csid->multi_vcdt_vc = 0;
 	}
 
 	return ret;
