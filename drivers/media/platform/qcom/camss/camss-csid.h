@@ -214,6 +214,10 @@ struct csid_device {
 	u64 path_cur_sof_isp_timestamp_converted[MSM_CSID_MAX_SRC_STREAMS];
 	u64 path_last_sof_kernel_ts[MSM_CSID_MAX_SRC_STREAMS];
 
+	// additional vc config
+	u32 multi_vcdt_en;
+	u32 multi_vcdt_vc;
+
 #define CSID_RX_DEBUG 1
 #if CSID_RX_DEBUG
 	bool rx_dbg_en;
