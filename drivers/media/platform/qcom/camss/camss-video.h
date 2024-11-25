@@ -23,6 +23,7 @@
 #define VIDIOC_PRIV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
 #define VIDIOC_PRIV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
 #define VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG _IOWR('V', BASE_VIDIOC_PRIVATE + 3, struct camss_extra_output_plane_cfg)
+#define VIDIOC_PRIV_S_MULTI_VCDT_CFG _IO('V', BASE_VIDIOC_PRIVATE + 4) // takes the second vc enabled as parameter
 // TODO: add layout config ioctl (to set plane stride and offsets)
 
 enum camss_extra_output_type
