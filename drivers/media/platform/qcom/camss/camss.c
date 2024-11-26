@@ -2403,8 +2403,8 @@ static const struct camss_subdev_resources csiphy_res_8550[] = {
 	}
 };
 
-static const struct resources_wrapper csid_wrapper_res_sm8550 = {
-	.reg = "csid_wrapper",
+static const struct camss_subdev_resources csid_wrapper_res_sm8550 = {
+	.reg = { "csid_wrapper" },
 };
 
 static const struct camss_subdev_resources csid_res_8550[] = {
@@ -3704,13 +3704,34 @@ static int camss_init_subdevices(struct camss *camss)
 
 	/* Get optional CSID wrapper regs shared between CSID devices */
 	if (res->csid_wrapper_res) {
-		char *reg = res->csid_wrapper_res->reg;
+		char *reg = res->csid_wrapper_res->reg[0];
 		void __iomem *base;
 
 		base = devm_platform_ioremap_resource_byname(pdev, reg);
-		if (IS_ERR(base))
+		if (IS_ERR(base)) {
+			dev_err(camss->dev,
+				"Failed to init csid_wrapper: %ld\n",
+				PTR_ERR(base));
 			return PTR_ERR(base);
+		}
+
 		camss->csid_wrapper_base = base;
+
+		for (i = 0; res->csid_wrapper_res->clock[i]; i++) {
+			char *clock = res->csid_wrapper_res->clock[i];
+			struct clk *clk = devm_clk_get(camss->dev, clock);
+
+			if (IS_ERR(clk)) {
+				dev_err(camss->dev, "Failed to get clk '%s'\n", clock);
+				return PTR_ERR(clk);
+			}
+
+			if (res->csid_wrapper_res->clock_rate[i][0])
+				clk_set_rate(clk, res->csid_wrapper_res->clock_rate[i][0]);
+
+			/* Don't forget to disable clocks on exit */
+			clk_prepare_enable(clk);
+		}
 	}
 
 	for (i = 0; i < camss->res->csid_num; i++) {
