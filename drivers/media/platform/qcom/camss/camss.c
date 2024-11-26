@@ -3767,7 +3767,6 @@ struct media_entity *camss_find_sensor_from_csid(struct media_entity *entity)
 	if (!(pad->flags & MEDIA_PAD_FL_SINK))
 		return NULL;
 	// This gets the pad on the csiphy device
-	struct media_link *link;
 	remote_pad = NULL;
 	//u32 found_index = 0;
 	remote_pad = media_pad_remote_pad_first(pad);
