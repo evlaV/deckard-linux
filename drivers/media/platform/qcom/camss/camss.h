@@ -66,10 +66,6 @@ struct resources_icc {
 	struct icc_bw_tbl icc_bw_tbl;
 };
 
-struct resources_wrapper {
-	char *reg;
-};
-
 enum pm_domain {
 	PM_DOMAIN_VFE0 = 0,
 	PM_DOMAIN_VFE1 = 1,
@@ -104,7 +100,7 @@ struct camss_resources {
 	const struct camss_subdev_resources *csid_res;
 	const struct camss_subdev_resources *ispif_res;
 	const struct camss_subdev_resources *vfe_res;
-	const struct resources_wrapper *csid_wrapper_res;
+	const struct camss_subdev_resources *csid_wrapper_res;
 	const struct resources_icc *icc_res;
 	const unsigned int icc_path_num;
 	const unsigned int csiphy_num;
