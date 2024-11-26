@@ -318,10 +318,14 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 		entity = pad->entity;
 		subdev = media_entity_to_v4l2_subdev(entity);
 
-		ret = v4l2_subdev_call(subdev, video, s_stream, 1);
-		if (ret < 0 && ret != -ENOIOCTLCMD) {
-			printk(KERN_ERR "");
-			goto error;
+		if(!v4l2_subdev_is_streaming(subdev)) {
+			ret = v4l2_subdev_call(subdev, video, s_stream, 1);
+			if (ret < 0 && ret != -ENOIOCTLCMD) {
+				printk(KERN_ERR "");
+				goto error;
+			}
+		} else {
+			dev_warn(video->camss->dev, "Skipping already streaming subdev %s when starting video pipeline %s \n", subdev->name, vdev->name);
 		}
 
 		/* find corresponding sink pad */
@@ -371,11 +375,14 @@ static void video_stop_streaming(struct vb2_queue *q)
 		entity = pad->entity;
 		subdev = media_entity_to_v4l2_subdev(entity);
 
-		ret = v4l2_subdev_call(subdev, video, s_stream, 0);
-
-		if (ret) {
-			dev_err(video->camss->dev, "Video pipeline stop failed: %d\n", ret);
-			return;
+		if(v4l2_subdev_is_streaming(subdev)) {
+			ret = v4l2_subdev_call(subdev, video, s_stream, 0);
+			if (ret) {
+				dev_err(video->camss->dev, "Video pipeline stop failed: %d\n", ret);
+				return;
+			}
+		} else {
+			dev_warn(video->camss->dev, "Skipping already idle subdev %s when stopping video pipeline %s \n", subdev->name, vdev->name);
 		}
 
 		/* find corresponding sink pad */
