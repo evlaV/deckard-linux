@@ -694,7 +694,7 @@ static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 	case VIDIOC_CSID_VFE_PRV_STATS_CFG:
 		if(csid->res->parent_dev_ops->set_statistics_config)
 		{
-			return csid->res->parent_dev_ops->set_statistics_config(csid->camss, csid->id, (u32)arg);
+			return csid->res->parent_dev_ops->set_statistics_config(csid->camss, csid->id, (uintptr_t)arg);
 		}
 		else
 		{
@@ -708,6 +708,8 @@ static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 
 	return 0;
 }
+
+static int csid_set_metadata_callbacks(struct csid_device *csid);
 
 /*
  * csid_set_power - Power on/off CSID module
