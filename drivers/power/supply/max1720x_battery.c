@@ -97,6 +97,10 @@
 #define MAX17320_PROTSTATUS_RESDFAULT (1 << 1)
 #define MAX17320_PROTSTATUS_SHDN (1 << 0)
 
+/* Battery Status Register bits for MAX17320 */
+#define MAX17320_BATTSTATUS_FULL (1 << 5)
+#define MAX17320_BATTSTATUS_DIS (1 << 6)
+
 /* ProtStatus register bits for MAX17330 */
 #define MAX17330_PROTSTATUS_CHGWDT (1 << 15)
 #define MAX17330_PROTSTATUS_TOOHOTC (1 << 14)
@@ -411,9 +415,6 @@
 #define NONVOLATILE_DATA_I2C_ADDR 0x0B
 
 struct max1720x_platform_data {
-	/* TODO POC-F Northgate seems to have a 2.5 mOhm resistor on it, even though 2 mOhm was spec'd
-	   Determine why and correct. For now change scale factor on rsense
-	*/
 	/*
 	 * rsense in miliOhms.
 	 * default 100 (if rsense = 0) as it is the recommended value by
@@ -443,7 +444,7 @@ struct max1720x_priv {
 	u8 nvmem_high_addr;
 	int cycles_reg_lsb_percent;
 	kernel_ulong_t driver_data;
-	int (*get_charging_status)(void);
+	int (*get_charging_status)(struct max1720x_priv *priv);
 	int (*get_battery_health)(struct max1720x_priv *priv, int *health);
 };
 
@@ -537,6 +538,22 @@ enum register_ids {
 	REMAINING_UPDATES_REG,
 	NDESIGNCAP_REG,
 	NFULLCFG_REG,
+	BATTSTATUS_REG,
+	AVGCELL1_REG,
+	AVGCELL2_REG,
+	AVGCELL3_REG,
+	AVGCELL4_REG,
+};
+
+static int max17320_get_charging_status(struct max1720x_priv *priv);
+
+static int (*get_charging_status_handlers[])(struct max1720x_priv *priv) = {
+	[ID_MAX1720X] = NULL,
+	[ID_MAX1730X] = NULL,
+	[ID_MAX17300] = NULL,
+	[ID_MAX17320] = max17320_get_charging_status,
+	[ID_MAX17330] = NULL,
+	[ID_MAX17332] = NULL,
 };
 
 static int max1720x_get_battery_health(struct max1720x_priv *priv, int *health);
@@ -718,6 +735,11 @@ static const u16 max17320_regs[] = {
 	[TEMP2_REG] = 0x139,
 	[TEMP3_REG] = 0x138,
 	[TEMP4_REG] = 0x137,
+	[BATTSTATUS_REG] = 0x116,
+	[AVGCELL1_REG] = 0xD4,
+	[AVGCELL2_REG] = 0xD3,
+	[AVGCELL3_REG] = 0xD2,
+	[AVGCELL4_REG] = 0xD1,
 };
 
 static const u16 max17330_regs[] = {
@@ -1095,6 +1117,41 @@ static ssize_t attte_show(struct device *dev,
 		rc += snprintf(buf + rc, PAGE_SIZE - rc, "Temperature limit : %d s\n", val/1000);
 
 	return sprintf(buf, "%d", (short)val);
+}
+
+static ssize_t cell_avg_show(struct device *dev,
+						     struct device_attribute *attr, char *buf)
+{
+	struct max1720x_priv *priv = dev_get_drvdata(dev);
+	int rc = 0, reg = 0, voltage_val;
+	u32 val = 0;
+	int ret;
+	int i;
+
+	reg = priv->regs[AVGCELL1_REG];
+	ret = max1720x_regmap_read(priv, reg, &val);
+	if (ret < 0) {
+		dev_err(dev, "AVG CELL 1 reading failed (%d)\n",
+				ret);
+		return ret;
+	}
+	voltage_val = (val * 625) / 8; /* CELL LSB: 78.125 uV */
+	rc += snprintf(buf + rc, PAGE_SIZE - rc, "Cell_1 : %d\n", voltage_val);
+
+	if (priv->driver_data == ID_MAX1720X ||
+		priv->driver_data == ID_MAX17320) {
+		for (i = 1; i < 4; i++) {
+			ret = max1720x_regmap_read(priv, (reg - i), &val);
+			if (ret < 0) {
+				dev_err(dev, "AVG CELL %d reading failed (%d)\n",
+						i + 1, ret);
+				return ret;
+			}
+			voltage_val = (val * 625) / 8; /* CELL LSB: 78.125 uV */
+			rc += snprintf(buf + rc, PAGE_SIZE - rc, "AvgCell_%d : %d\n", (i + 1), voltage_val);
+		}
+	}
+	return rc;
 }
 
 static ssize_t cell_show(struct device *dev,
@@ -4722,6 +4779,72 @@ static int max1720x_regmap_write(struct max1720x_priv *priv, unsigned int reg, u
 	return ret;
 }
 
+static int max1720x_cell_avg_get(struct max1720x_priv *priv, int *voltage)
+{
+	int rc = 0, reg = 0;
+	u32 val = 0;
+	int ret;
+	int i;
+
+	reg = priv->regs[AVGCELL1_REG];
+	ret = max1720x_regmap_read(priv, reg, &val);
+	if (ret < 0) {
+		dev_err(priv->dev, "AVG CELL 1 reading failed (%d)\n", ret);
+		return ret;
+	}
+	*voltage = val;
+
+	if (priv->driver_data == ID_MAX1720X ||
+		priv->driver_data == ID_MAX17320) {
+		for (i = 1; i < 4; i++) {
+			ret = max1720x_regmap_read(priv, (reg - i), &val);
+			if (ret < 0) {
+				dev_err(priv->dev, "AVG CELL %d reading failed (%d)\n",
+						i + 1, ret);
+				return ret;
+			}
+			*voltage += val;
+		}
+	}
+
+	*voltage = max1720x_raw_voltage_to_uvolts(priv, *voltage);
+
+	return rc;
+}
+
+static int max1720x_cell_get(struct max1720x_priv *priv, int *voltage)
+{
+	int rc = 0, reg = 0;
+	u32 val = 0;
+	int ret;
+	int i;
+
+	reg = priv->regs[CELL1_REG];
+	ret = max1720x_regmap_read(priv, reg, &val);
+	if (ret < 0) {
+		dev_err(priv->dev, "CELL 1 reading failed (%d)\n", ret);
+		return ret;
+	}
+	*voltage = val;
+
+	if (priv->driver_data == ID_MAX1720X ||
+		priv->driver_data == ID_MAX17320) {
+		for (i = 1; i < 4; i++) {
+			ret = max1720x_regmap_read(priv, (reg - i), &val);
+			if (ret < 0) {
+				dev_err(priv->dev, "CELL %d reading failed (%d)\n",
+						i + 1, ret);
+				return ret;
+			}
+			*voltage += val;
+		}
+	}
+
+	*voltage = max1720x_raw_voltage_to_uvolts(priv, *voltage);
+
+	return rc;
+}
+
 static int max1720x_get_temperature(struct max1720x_priv *priv, int *temp)
 {
 	int ret;
@@ -4814,6 +4937,36 @@ static int max1720x_get_temperature_alert_max(struct max1720x_priv *priv,
 	*temp = sign_extend32(data >> 8, 7) * 10;
 
 	return 0;
+}
+
+static int max17320_get_charging_status(struct max1720x_priv *priv)
+{
+	int ret;
+	u32 val;
+
+	/* Read Battery Status */
+	ret = max1720x_regmap_read(priv, priv->regs[BATTSTATUS_REG], &val);
+	if (ret < 0)
+		return ret;
+
+	if (val & MAX17320_BATTSTATUS_FULL)	{
+		return POWER_SUPPLY_STATUS_FULL;
+	}
+
+	/* Read Average Current */
+	ret = max1720x_regmap_read(priv, priv->regs[AVGCURRENT_REG], &val);
+	if (ret < 0)
+		return ret;
+	ret = max1720x_raw_current_to_uamps(priv, sign_extend32(val, 15));
+
+	/* Treat |current| < 5 mA as not charging to account for noise */
+	if (ret < -5000) {
+		return POWER_SUPPLY_STATUS_DISCHARGING;
+	} else if (ret > 5000) {
+		return POWER_SUPPLY_STATUS_CHARGING;
+	} else {
+		return POWER_SUPPLY_STATUS_NOT_CHARGING;
+	}
 }
 
 static int max1720x_get_battery_health(struct max1720x_priv *priv, int *health)
@@ -5092,22 +5245,27 @@ static int max1720x_get_property(struct power_supply *psy,
 		val->intval *= 10000; /* Units of LSB = 10mV */
 		break;
 	case POWER_SUPPLY_PROP_STATUS:
-		if (pdata && priv->get_charging_status)
-			val->intval = priv->get_charging_status();
+		if (priv->get_charging_status) {
+			ret = priv->get_charging_status(priv);
+			if (ret < 0)
+				return ret;
+
+			val->intval = ret;
+		}
 		else
 			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		ret = max1720x_regmap_read(priv, priv->regs[VCELL_REG], &reg);
+		ret = max1720x_cell_get(priv, &reg);
 		if (ret < 0)
 			return ret;
-		val->intval = max1720x_raw_voltage_to_uvolts(priv, reg);
+		val->intval = reg;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
-		ret = max1720x_regmap_read(priv, priv->regs[AVGVCELL_REG], &reg);
+		ret = max1720x_cell_avg_get(priv, &reg);
 		if (ret < 0)
 			return ret;
-		val->intval = max1720x_raw_voltage_to_uvolts(priv, reg);
+		val->intval = reg;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_OCV:
 		ret = max1720x_regmap_read(priv, priv->regs[VFOCV_REG], &reg);
@@ -5697,6 +5855,7 @@ static int max1720x_probe(struct i2c_client *client)
 	priv->regs = chip_regs[id->driver_data];
 	priv->nvmem_high_addr = nvmem_high_addrs[id->driver_data];
 	priv->cycles_reg_lsb_percent = cycles_reg_lsb_percents[id->driver_data];
+	priv->get_charging_status = get_charging_status_handlers[id->driver_data];
 	priv->get_battery_health = get_battery_health_handlers[id->driver_data];
 	register_to_read = 0x180; /* First register of nvm */
 	priv->driver_data = id->driver_data;
