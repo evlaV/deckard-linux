@@ -124,6 +124,10 @@
 			};
 		};
 	};
+
+	southgate_fg {
+		status = "disabled";
+	};
 };
 
 &fpga {
