@@ -3,129 +3,9 @@
 #include "sm8650-deckard.dtsi"
 
 / {
-    model = "SM8650 EV2 rev1 4slam 2et";
+	model = "SM8650 EV2 rev1 4slam 2et";
 
-	PREBOOST: preboost {
-		compatible = "mps,mp9184";
-		en-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
-	};
-
-	VREG_6DOF_1V8 {
-		compatible = "regulator-fixed2";
-		gpios = <&tlmm 36 GPIO_ACTIVE_HIGH>,
-			<&tlmm 12 GPIO_ACTIVE_HIGH>;
-		r-supply = <&VREG_L5M_1P8>;
-		l-supply = <&VREG_L5N_1P8>;
-
-		VREG_6DOF_1V8_R: r0 {
-			regulator-name = "6DOF_1V8_R";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-		};
-		VREG_6DOF_1V8_UR: r1 {
-			regulator-name = "6DOF_1V8_UR";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-		};
-		VREG_6DOF_1V8_L: l0 {
-			regulator-name = "6DOF_1V8_L";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-		};
-		VREG_6DOF_1V8_UL: l1 {
-			regulator-name = "6DOF_1V8_UL";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-		};
-	};
-
-	VREG_6DOF_1V2 {
-		compatible = "regulator-fixed2";
-		gpios = <&tlmm 37 GPIO_ACTIVE_HIGH>,
-			<&tlmm 15 GPIO_ACTIVE_HIGH>;
-		r-supply = <&VREG_L2M_1P2>;
-		l-supply = <&VREG_L2N_1P2>;
-
-		VREG_6DOF_1V2_R: r0 {
-			regulator-name = "6DOF_1V2_R";
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <1200000>;
-		};
-		VREG_6DOF_1V2_UR: r1 {
-			regulator-name = "6DOF_1V2_UR";
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <1200000>;
-		};
-		VREG_6DOF_1V2_L: l0 {
-			regulator-name = "6DOF_1V2_L";
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <1200000>;
-		};
-		VREG_6DOF_1V2_UL: l1 {
-			regulator-name = "6DOF_1V2_UL";
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <1200000>;
-		};
-	};
-
-	FPGA_clk: FPGA_clk {
-		compatible = "fpga-clock";
-		#clock-cells = <0>;
-		clock-output-names = "fpga_clk";
-		status = "okay";
-
-		pinctrl-names = "default";
-		pinctrl-0 = <&FPGA_clk_default>;
-
-		clocks = <&gcc GCC_GP3_CLK>;
-		clock-frequency = <24000000>;
-		clock-names = "pinclk";
-	};
-
-	fpga: fpga {
-		compatible = "valve,fpga";
-
-		clocks = <&FPGA_clk>;
-		clock-names = "fpga_clk";
-		v1v1-supply = <&VREG_L2G_1P1>;
-		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
-	};
-
-	// lcd bias power supplies
-	LCD_BIAS: lcd_bias {
-		compatible = "nexperia,nex10000ub";
-		status = "okay";
-		// left i2c, right i2c
-		i2c-adapter = <&i2c5 &i2c4>;
-
-		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
-		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
-
-		regulators {
-			vpos_r: vposr{
-				regulator-name = "lcdr_vpos";
-				regulator-min-microvolt = <5700000>;
-				regulator-max-microvolt = <5700000>;
-			};
-			vneg_r: vnegr{
-				regulator-name = "lcdr_vneg";
-				regulator-min-microvolt = <5700000>;
-				regulator-max-microvolt = <5700000>;
-			};
-			vpos_l: vposl{
-				regulator-name = "lcdl_vpos";
-				regulator-min-microvolt = <5700000>;
-				regulator-max-microvolt = <5700000>;
-			};
-			vneg_l: vnegl{
-				regulator-name = "lcdl_vneg";
-				regulator-min-microvolt = <5700000>;
-				regulator-max-microvolt = <5700000>;
-			};
-		};
-	};
-
-    cpus {
+	cpus {
 
 		CPU0: cpu@0 {
 			power-domains = <&CPU_PD0>;
@@ -220,8 +100,6 @@
 		};
 	};
 
-
-
 	psci {
 		compatible = "arm,psci-1.0";
 		method = "smc";
@@ -281,10 +159,176 @@
 		};
 	};
 
-    southgate_fg {
+	VREG_6DOF_1V8 {
+		compatible = "regulator-fixed2";
+		gpios = <&tlmm 36 GPIO_ACTIVE_HIGH>,
+			<&tlmm 12 GPIO_ACTIVE_HIGH>;
+		r-supply = <&VREG_L5M_1P8>;
+		l-supply = <&VREG_L5N_1P8>;
+
+		VREG_6DOF_1V8_R: r0 {
+			regulator-name = "6DOF_1V8_R";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+		VREG_6DOF_1V8_UR: r1 {
+			regulator-name = "6DOF_1V8_UR";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+		VREG_6DOF_1V8_L: l0 {
+			regulator-name = "6DOF_1V8_L";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+		VREG_6DOF_1V8_UL: l1 {
+			regulator-name = "6DOF_1V8_UL";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+	};
+
+	VREG_6DOF_1V2 {
+		compatible = "regulator-fixed2";
+		gpios = <&tlmm 37 GPIO_ACTIVE_HIGH>,
+			<&tlmm 15 GPIO_ACTIVE_HIGH>;
+		r-supply = <&VREG_L2M_1P2>;
+		l-supply = <&VREG_L2N_1P2>;
+
+		VREG_6DOF_1V2_R: r0 {
+			regulator-name = "6DOF_1V2_R";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+		VREG_6DOF_1V2_UR: r1 {
+			regulator-name = "6DOF_1V2_UR";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+		VREG_6DOF_1V2_L: l0 {
+			regulator-name = "6DOF_1V2_L";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+		VREG_6DOF_1V2_UL: l1 {
+			regulator-name = "6DOF_1V2_UL";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+	};
+
+	FPGA_clk: FPGA_clk {
+		compatible = "fpga-clock";
+		#clock-cells = <0>;
+		clock-output-names = "fpga_clk";
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&FPGA_clk_default>;
+
+		clocks = <&gcc GCC_GP3_CLK>;
+		clock-frequency = <24000000>;
+		clock-names = "pinclk";
+	};
+
+	fpga: fpga {
+		compatible = "valve,fpga";
+
+		clocks = <&FPGA_clk>;
+		clock-names = "fpga_clk";
+		v1v1-supply = <&VREG_L2G_1P1>;
+		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
+	};
+
+	PREBOOST: preboost {
+		compatible = "ti,tps61377";
+		en-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
+		pgood-gpio = <&tlmm 69 GPIO_ACTIVE_HIGH>;
+	};
+
+	// lcd bias power supplies
+	LCD_BIAS: lcd_bias {
+		compatible = "nexperia,nex10000ub";
+		status = "okay";
+		// left i2c, right i2c
+		i2c-adapter = <&i2c5 &i2c4>;
+
+		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+
+		regulators {
+			vpos_r: vposr{
+				regulator-name = "lcdr_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vneg_r: vnegr{
+				regulator-name = "lcdr_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vpos_l: vposl{
+				regulator-name = "lcdl_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vneg_l: vnegl{
+				regulator-name = "lcdl_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+		};
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		pinctrl-0 = <&volume_up_n>, <&select_n>;
+		pinctrl-names = "default";
+
+		key-volume-up {
+			label = "Volume Up";
+			linux,code = <KEY_VOLUMEUP>;
+			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
+			debounce-interval = <15>;
+			linux,can-disable;
+			wakeup-source;
+		};
+
+		key-select {
+			label = "Select";
+			linux,code = <KEY_SELECT>;
+			gpios = <&pm8550b_gpios 5 GPIO_ACTIVE_LOW>;
+			debounce-interval = <15>;
+			linux,can-disable;
+			wakeup-source;
+		};
+	};
+
+	rgb_3v0_vout: rgb_3v0_vout {
+		compatible = "regulator-valve_rgb_vout";
+		regulator-name = "exp_rgb_3v0_vout";
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3000000>;
+		enable-gpio = <&tlmm 38 GPIO_ACTIVE_HIGH>;
+		detect-gpio = <&pm8550b_gpios 6 GPIO_ACTIVE_LOW>;
+		enable-active-high;
+		vin-supply = <&VPH_PWR>;
+	};
+
+	southgate_fg {
 		status = "disabled";
 	};
-    
+};
+
+&pm8550_gpios {
+	select_n: select-n-state {
+		pins = "gpio5";
+		function = "normal";
+		power-source = <1>;
+		bias-pull-up;
+		input-enable;
+	};
 };
 
 &fpga {
@@ -296,12 +340,12 @@
 };
 
 &apps_rsc {
-    regulators-6 {
-        vdd-l6-supply = <&VREG_BOB2>;
-    };
-    regulators-7 {
-        vdd-l6-supply = <&VREG_BOB2>;
-    };
+	regulators-6 {
+		vdd-l6-supply = <&VREG_BOB2>;
+	};
+	regulators-7 {
+		vdd-l6-supply = <&VREG_BOB2>;
+	};
 };
 
 &pcie1 {
@@ -327,45 +371,75 @@
 
 &i2c5 {
 	status = "okay";
-    // BOOT EEPROM
-    eeprom_core@50 {
-        compatible  = "atmel,24c32";
-        status      = "okay";
+	// BOOT EEPROM
+	eeprom_core@50 {
+		compatible  = "atmel,24c32";
+		status      = "okay";
 		label		= "core_eeprom";
-        reg         = <0x50>;
-        wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
-        vcc-supply  = <&VREG_L15B_1P8>;
-    };
+		reg         = <0x50>;
+		wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+		vcc-supply  = <&VREG_L15B_1P8>;
+	};
 
-    max34417_1: max34417@12 {
-        compatible = "maxim,max34417";
-        reg = <0x12>;
-        maxim,sense-resistor = <1>;
-        vdd-supply = <&VDD_SENSOR_3V3>;
-        vio-supply = <&VREG_L15B_1P8>;
-        status = "okay";
+	// left backlight
+	mpq3367@38 {
+		compatible = "mps,mpq3367";
+		reg = <0x38>;
+		status = "okay";
+		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+		mode = "pwm";
+		regulator {
+			backlight_left: backlight{
+				regulator-name = "backlight_left";
+			};
+		};
+	};
 
-        // CH 1 : Kryo APC1 Cores
-        // CH 2 : Kryo APC2 Cores
-        // CH 3 : Kryo APC0 Cores
-        // CH 4 : Tensor Processor – NSP1
-        // Note: both 1.8 and 3.0V rails are always on for other sensors
-    };
+	max34417_1: max34417@12 {
+		compatible = "maxim,max34417";
+		reg = <0x12>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&VDD_SENSOR_3V3>;
+		vio-supply = <&VREG_L15B_1P8>;
+		status = "okay";
 
-    max34417_2: max34417@1a {
-        compatible = "maxim,max34417";
-        reg = <0x1a>;
-        maxim,sense-resistor = <1>;
-        vdd-supply = <&VDD_SENSOR_3V3>;
-        vio-supply = <&VREG_L15B_1P8>;
-        status = "okay";
+		// CH 1 : Kryo APC1 Cores
+		// CH 2 : Kryo APC2 Cores
+		// CH 3 : Kryo APC0 Cores
+		// CH 4 : Tensor Processor – NSP1
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
+	};
 
-        // CH 1 : GFX Power
-        // CH 2 : Tensor Processor – NSP2
-        // CH 3 : VPH Power
-        // CH 4 : Unused
-        // Note: both 1.8 and 3.0V rails are always on for other sensors
-    }; 
+	max34417_2: max34417@1a {
+		compatible = "maxim,max34417";
+		reg = <0x1a>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&VDD_SENSOR_3V3>;
+		vio-supply = <&VREG_L15B_1P8>;
+		status = "okay";
+
+		// CH 1 : GFX Power
+		// CH 2 : Tensor Processor – NSP2
+		// CH 3 : VPH Power
+		// CH 4 : Unused
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
+	};
+
+	// TODO enable verr ( varies based on common mode range )
+	max34417_3: max34417@10 {
+		compatible = "maxim,max34417";
+		reg = <0x1a>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&VDD_SENSOR_3V3>;
+		vio-supply = <&VREG_L15B_1P8>;
+		status = "okay";
+
+		// CH 1 : BOB
+		// CH 2 : S6C ~1.9V Subregulation
+		// CH 3 : S1C ~1.3V Subregulation
+		// CH 4 : S3C ~1V Subregulation
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
+	}; 
 };
 
 // Custom Connector I2C ( Paddle Card )
@@ -387,15 +461,15 @@
 		// ialrt-max   = <5000>;    /* mA */
 	};
 
-    // PADDLE EEPROM
-    eeprom@50 {
-        compatible  = "atmel,24c32";
-        status      = "okay";
+	// PADDLE EEPROM
+	eeprom@50 {
+		compatible  = "atmel,24c32";
+		status      = "okay";
 		label		= "strap_eeprom";
-        reg         = <0x50>;
-        //wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
-        vcc-supply  = <&VREG_L15B_1P8>;
-    };
+		reg         = <0x50>;
+		//wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+		vcc-supply  = <&VREG_L15B_1P8>;
+	};
 
 	// Northgate/Enthusiast Paddle Card Silego
 	slg46534v@48 {
@@ -589,7 +663,7 @@
 		minimal-reset-delay-ms = <100>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&host_spihid_default_state>;
-    };
+	};
 };
 #endif
 
@@ -655,7 +729,7 @@
 &i2c4 {
 	status = "okay";
 
-    /* FAN_I2C */
+	/* FAN_I2C */
 	slg4ax46073v@8 {
 		compatible = "silego,slg4ax46073v";
 		reg = <0x08>;
@@ -665,47 +739,40 @@
 		//vdd-fan-1-supply = <&VBATT_2S>; not modeled in dts
 		fan-alert-gpios = <&tlmm 174 GPIO_ACTIVE_HIGH>;
 		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
-        // bp pin removed in ev1
+		// bp pin removed in ev1
 
 		status = "ok";
 	};
 
-    mpq3367_right@38 {
-        compatible = "mps,mpq3367";
-        reg = <0x38>;
-        status = "okay";
-        en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
-        mode = "pwm";
-        regulator {
-            backlight_right: backlight{
-                regulator-name = "backlight_right";
-            };
-        };
-    };
-};
+	mpq3367_right@38 {
+		compatible = "mps,mpq3367";
+		reg = <0x38>;
+		status = "okay";
+		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+		mode = "pwm";
+		regulator {
+			backlight_right: backlight{
+				regulator-name = "backlight_right";
+			};
+		};
+	};
 
-// left display power and backlight
-&i2c5 {
-    status = "okay";
-    mpq3367@38 {
-        compatible = "mps,mpq3367";
-        reg = <0x38>;
-        status = "okay";
-        en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
-        mode = "pwm";
-        regulator {
-            backlight_left: backlight{
-                regulator-name = "backlight_left";
-            };
-        };
-    };
+	mp3317@28{
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "mps,mp3317";
+		reg = <0x28>;
+		en-gpios = <&tlmm 58 GPIO_ACTIVE_HIGH>;
+
+		status = "okay";
+	};
 };
 
 &cci2_i2c1 { // "CCI_5"
 	cam_u@60 {
 		compatible = "ovti,og0ve10x";
 		reg = <0x60>;
-        sensor-queue-index = <1>;
+		sensor-queue-index = <1>;
 		dual-i2c-available = <1>;
 		dual-i2c-main = <1>;
 
@@ -735,7 +802,7 @@
 	cam_u@3e {
 		compatible = "ovti,og0ve10x";
 		reg = <0x3E>;
-        sensor-queue-index = <1>;
+		sensor-queue-index = <1>;
 		dual-i2c-available = <1>;
 		dual-i2c-main = <0>;
 
@@ -767,7 +834,7 @@
 	cam@60 {
 		compatible = "ovti,og01a1bx";
 		reg = <0x60>;
-        sensor-queue-index = <0>;
+		sensor-queue-index = <0>;
 		dual-i2c-available = <1>;
 		dual-i2c-main = <1>;
 
@@ -798,7 +865,7 @@
 	cam@36 {
 		compatible = "ovti,og01a1bx";
 		reg = <0x36>;
-        sensor-queue-index = <0>;
+		sensor-queue-index = <0>;
 		dual-i2c-available = <1>;
 		dual-i2c-main = <0>;
 
@@ -827,44 +894,44 @@
 };
 
 &pm8550b_typec {
-    disable-cell-balancing;
+	disable-cell-balancing;
 };
 
 &i2c_hub_8 {
-    /* MAX98390 */
-    right_spkr_i2s: speaker@38 {
-        compatible = "maxim,max98390";
-        reg = <0x38>;
-        maxim,temperature_calib = <1024>; // TODO
-        maxim,r0_calib = <100232>; // TODO
-        reset-gpios = <&tlmm 73 GPIO_ACTIVE_LOW>;
-        // irq-gpios = <&tlmm 186 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
-        #sound-dai-cells = <0>;
-        sound-name-prefix = "Speaker Right";
-    };
+	/* MAX98390 */
+	right_spkr_i2s: speaker@38 {
+		compatible = "maxim,max98390";
+		reg = <0x38>;
+		maxim,temperature_calib = <1024>; // TODO
+		maxim,r0_calib = <100232>; // TODO
+		reset-gpios = <&tlmm 73 GPIO_ACTIVE_LOW>;
+		// irq-gpios = <&tlmm 186 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "Speaker Right";
+	};
 
-    /* MAX98390 */
-    left_spkr_i2s: speaker@3d {
-        compatible = "maxim,max98390";
-        reg = <0x3d>;
-        maxim,temperature_calib = <1024>; // TODO
-        maxim,r0_calib = <100232>; // TODO
-        reset-gpios = <&tlmm 161 GPIO_ACTIVE_LOW>;
-        // irq-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
-        #sound-dai-cells = <0>;
-        sound-name-prefix = "Speaker Left";
-    };
+	/* MAX98390 */
+	left_spkr_i2s: speaker@3d {
+		compatible = "maxim,max98390";
+		reg = <0x3d>;
+		maxim,temperature_calib = <1024>; // TODO
+		maxim,r0_calib = <100232>; // TODO
+		reset-gpios = <&tlmm 161 GPIO_ACTIVE_LOW>;
+		// irq-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "Speaker Left";
+	};
 };
 
 &sound {
-    enable-i2s;
-    // enable-hdmi;
-    codecs =
-       <&left_spkr_i2s>, <&right_spkr_i2s>,
-       <&lpass_vamacro 0>;
+	enable-i2s;
+	// enable-hdmi;
+	codecs =
+	   <&left_spkr_i2s>, <&right_spkr_i2s>,
+	   <&lpass_vamacro 0>;
 
-    pinctrl-0 = <&i2s2_active>;
-    pinctrl-names = "default";
+	pinctrl-0 = <&i2s2_active>;
+	pinctrl-names = "default";
 };
 
 // Disable Soundwire
