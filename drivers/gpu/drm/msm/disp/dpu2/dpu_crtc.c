@@ -900,13 +900,19 @@ void dpu_set_static_regs(struct dpu_kms *dpu)
 	u32 filter = FILTER_BILINEAR; //starting value
 	u32 vig_stage = 2;
 
+	for (i = 0; i < 2; i++)
+		dpu_write(dpu, LAYER_OP_MODE(i), BIT(7) | BIT(9) | BIT(11) | ((i & 1) ? BIT(31) : 0));
+
+	for (i = 2; i < 4; i++)
+		dpu_write(dpu, LAYER_OP_MODE(i), BIT(8) | BIT(10) | BIT(11) | ((i & 1) ? BIT(31) : 0));
+
 	for (i = 0; i < 4; i++) {
-		dpu_write(dpu, LAYER_OP_MODE(i), BIT(9) | BIT(10) | BIT(11) | ((i & 1) ? BIT(31) : 0));
+		//dpu_write(dpu, LAYER_OP_MODE(i), BIT(7) | BIT(8) | BIT(9) | BIT(10) | BIT(11) | ((i & 1) ? BIT(31) : 0));
 		dpu_write(dpu, LAYER_OUT_SIZE(i), 2160 << 16 | 1080); // 1080x2160
 		/* additive blending of 2 layers for CAC (red+blue and green layer)
 		 * (src and dst alpha to constant 1.0)
 		 */
-		for (j = 8; j < 11; j++) {
+		for (j = 6; j < 11; j++) {
 			dpu_write(dpu, LAYER_BLEND_OP(i, j), ALPHA_FG_CONST | ALPHA_BG_CONST << 8);
 			dpu_write(dpu, LAYER_BLEND_CONST_ALPHA(i, j), 0xff << 16 | 0xff);
 		}
@@ -915,14 +921,14 @@ void dpu_set_static_regs(struct dpu_kms *dpu)
 	/* layer to pipe mapping for CAC setup */
 	/* To disable VIG0+VIG1, none works, see snow pattern */
 	/* Moving VIG0+VIG1 to different stage vs VIG2/3, see snow pattern */
-	mixercfg_set_sspp_stage(&mixer_cfg[0], 0, 8); // red/blue for lm0
-	mixercfg_set_sspp_stage(&mixer_cfg[2], 1, 8); // red/blue for lm2
-	mixercfg_set_sspp_stage(&mixer_cfg[0], 2, 10); // red/blue for lm1
-	mixercfg_set_sspp_stage(&mixer_cfg[2], 3, 10); // red/blue for lm3
-	mixercfg_set_sspp_stage     (&mixer_cfg[0], 6, 9); // dma2: green for lm0
-	mixercfg_set_sspp_stage_rec1(&mixer_cfg[0], 6, 9); // dma2_rec1: green for lm1
-	mixercfg_set_sspp_stage     (&mixer_cfg[2], 7, 9); // dma3: green for lm2
-	mixercfg_set_sspp_stage_rec1(&mixer_cfg[2], 7, 9); // dma3_rec1: green for lm3
+	mixercfg_set_sspp_stage(&mixer_cfg[0], 0, 6); // red/blue for lm0
+	mixercfg_set_sspp_stage(&mixer_cfg[2], 1, 7); // red/blue for lm2
+	mixercfg_set_sspp_stage(&mixer_cfg[0], 2, 8); // red/blue for lm1
+	mixercfg_set_sspp_stage(&mixer_cfg[2], 3, 9); // red/blue for lm3
+	mixercfg_set_sspp_stage     (&mixer_cfg[0], 6, 10); // dma2: green for lm0
+	mixercfg_set_sspp_stage_rec1(&mixer_cfg[0], 6, 10); // dma2_rec1: green for lm1
+	mixercfg_set_sspp_stage     (&mixer_cfg[2], 7, 10); // dma3: green for lm2
+	mixercfg_set_sspp_stage_rec1(&mixer_cfg[2], 7, 10); // dma3_rec1: green for lm3
 
 	/* configure 4 mixer blending stage */
 	ctl_set_mixercfg(dpu, 0, 0, &mixer_cfg[0]);
