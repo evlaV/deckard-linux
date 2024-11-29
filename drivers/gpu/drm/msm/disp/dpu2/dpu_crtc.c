@@ -916,8 +916,8 @@ void dpu_set_static_regs(struct dpu_kms *dpu)
 	/* To disable VIG0+VIG1, none works, see snow pattern */
 	/* Moving VIG0+VIG1 to different stage vs VIG2/3, see snow pattern */
 	mixercfg_set_sspp_stage(&mixer_cfg[0], 0, 8); // red/blue for lm0
-	mixercfg_set_sspp_stage(&mixer_cfg[2], 1, 10); // red/blue for lm2
-	mixercfg_set_sspp_stage(&mixer_cfg[0], 2, 8); // red/blue for lm1
+	mixercfg_set_sspp_stage(&mixer_cfg[2], 1, 8); // red/blue for lm2
+	mixercfg_set_sspp_stage(&mixer_cfg[0], 2, 10); // red/blue for lm1
 	mixercfg_set_sspp_stage(&mixer_cfg[2], 3, 10); // red/blue for lm3
 	mixercfg_set_sspp_stage     (&mixer_cfg[0], 6, 9); // dma2: green for lm0
 	mixercfg_set_sspp_stage_rec1(&mixer_cfg[0], 6, 9); // dma2_rec1: green for lm1
