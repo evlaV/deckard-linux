@@ -901,26 +901,28 @@ void dpu_set_static_regs(struct dpu_kms *dpu)
 	u32 vig_stage = 2;
 
 	for (i = 0; i < 4; i++) {
-		dpu_write(dpu, LAYER_OP_MODE(i), BIT(1) | BIT(2) | ((i & 1) ? BIT(31) : 0));
+		dpu_write(dpu, LAYER_OP_MODE(i), BIT(9) | BIT(10) | BIT(11) | ((i & 1) ? BIT(31) : 0));
 		dpu_write(dpu, LAYER_OUT_SIZE(i), 2160 << 16 | 1080); // 1080x2160
 		/* additive blending of 2 layers for CAC (red+blue and green layer)
 		 * (src and dst alpha to constant 1.0)
 		 */
-		for (j = 0; j < 2; j++) {
+		for (j = 8; j < 11; j++) {
 			dpu_write(dpu, LAYER_BLEND_OP(i, j), ALPHA_FG_CONST | ALPHA_BG_CONST << 8);
 			dpu_write(dpu, LAYER_BLEND_CONST_ALPHA(i, j), 0xff << 16 | 0xff);
 		}
 	}
 
 	/* layer to pipe mapping for CAC setup */
-	mixercfg_set_sspp_stage(&mixer_cfg[0], 0, 1); // red/blue for lm0
-	mixercfg_set_sspp_stage(&mixer_cfg[2], 1, 1); // red/blue for lm2
-	mixercfg_set_sspp_stage(&mixer_cfg[0], 2, 1); // red/blue for lm1
-	mixercfg_set_sspp_stage(&mixer_cfg[2], 3, 1); // red/blue for lm3
-	mixercfg_set_sspp_stage     (&mixer_cfg[0], 6, 0); // dma2: green for lm0
-	mixercfg_set_sspp_stage_rec1(&mixer_cfg[0], 6, 0); // dma2_rec1: green for lm1
-	mixercfg_set_sspp_stage     (&mixer_cfg[2], 7, 0); // dma3: green for lm2
-	mixercfg_set_sspp_stage_rec1(&mixer_cfg[2], 7, 0); // dma3_rec1: green for lm3
+	/* To disable VIG0+VIG1 or VIG0+VIG2, none works, see snow pattern for both */
+	/* Moving VIG0+VIG1 to different stage vs VIG2/3, see snow pattern */
+	mixercfg_set_sspp_stage(&mixer_cfg[0], 0, 10); // red/blue for lm0
+	mixercfg_set_sspp_stage(&mixer_cfg[2], 1, 10); // red/blue for lm2
+	mixercfg_set_sspp_stage(&mixer_cfg[0], 2, 10); // red/blue for lm1
+	mixercfg_set_sspp_stage(&mixer_cfg[2], 3, 10); // red/blue for lm3
+	mixercfg_set_sspp_stage     (&mixer_cfg[0], 6, 9); // dma2: green for lm0
+	mixercfg_set_sspp_stage_rec1(&mixer_cfg[0], 6, 9); // dma2_rec1: green for lm1
+	mixercfg_set_sspp_stage     (&mixer_cfg[2], 7, 8); // dma3: green for lm2
+	mixercfg_set_sspp_stage_rec1(&mixer_cfg[2], 7, 8); // dma3_rec1: green for lm3
 
 	/* configure 4 mixer blending stage */
 	ctl_set_mixercfg(dpu, 0, 0, &mixer_cfg[0]);
