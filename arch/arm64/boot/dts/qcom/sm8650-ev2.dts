@@ -280,6 +280,11 @@
 					     <&CLUSTER_SLEEP_1>;
 		};
 	};
+
+    southgate_fg {
+		status = "disabled";
+	};
+    
 };
 
 &fpga {
