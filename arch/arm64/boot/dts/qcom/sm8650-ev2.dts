@@ -1,0 +1,872 @@
+/dts-v1/;
+
+#include "sm8650-deckard.dtsi"
+
+/ {
+    model = "SM8650 EV2 rev1 4slam 2et";
+
+	PREBOOST: preboost {
+		compatible = "mps,mp9184";
+		en-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
+	};
+
+	VREG_6DOF_1V8 {
+		compatible = "regulator-fixed2";
+		gpios = <&tlmm 36 GPIO_ACTIVE_HIGH>,
+			<&tlmm 12 GPIO_ACTIVE_HIGH>;
+		r-supply = <&VREG_L5M_1P8>;
+		l-supply = <&VREG_L5N_1P8>;
+
+		VREG_6DOF_1V8_R: r0 {
+			regulator-name = "6DOF_1V8_R";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+		VREG_6DOF_1V8_UR: r1 {
+			regulator-name = "6DOF_1V8_UR";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+		VREG_6DOF_1V8_L: l0 {
+			regulator-name = "6DOF_1V8_L";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+		VREG_6DOF_1V8_UL: l1 {
+			regulator-name = "6DOF_1V8_UL";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+	};
+
+	VREG_6DOF_1V2 {
+		compatible = "regulator-fixed2";
+		gpios = <&tlmm 37 GPIO_ACTIVE_HIGH>,
+			<&tlmm 15 GPIO_ACTIVE_HIGH>;
+		r-supply = <&VREG_L2M_1P2>;
+		l-supply = <&VREG_L2N_1P2>;
+
+		VREG_6DOF_1V2_R: r0 {
+			regulator-name = "6DOF_1V2_R";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+		VREG_6DOF_1V2_UR: r1 {
+			regulator-name = "6DOF_1V2_UR";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+		VREG_6DOF_1V2_L: l0 {
+			regulator-name = "6DOF_1V2_L";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+		VREG_6DOF_1V2_UL: l1 {
+			regulator-name = "6DOF_1V2_UL";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+		};
+	};
+
+	FPGA_clk: FPGA_clk {
+		compatible = "fpga-clock";
+		#clock-cells = <0>;
+		clock-output-names = "fpga_clk";
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&FPGA_clk_default>;
+
+		clocks = <&gcc GCC_GP3_CLK>;
+		clock-frequency = <24000000>;
+		clock-names = "pinclk";
+	};
+
+	fpga: fpga {
+		compatible = "valve,fpga";
+
+		clocks = <&FPGA_clk>;
+		clock-names = "fpga_clk";
+		v1v1-supply = <&VREG_L2G_1P1>;
+		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
+	};
+
+	// lcd bias power supplies
+	LCD_BIAS: lcd_bias {
+		compatible = "nexperia,nex10000ub";
+		status = "okay";
+		// left i2c, right i2c
+		i2c-adapter = <&i2c5 &i2c4>;
+
+		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+
+		regulators {
+			vpos_r: vposr{
+				regulator-name = "lcdr_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vneg_r: vnegr{
+				regulator-name = "lcdr_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vpos_l: vposl{
+				regulator-name = "lcdl_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+			vneg_l: vnegl{
+				regulator-name = "lcdl_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
+			};
+		};
+	};
+
+    cpus {
+
+		CPU0: cpu@0 {
+			power-domains = <&CPU_PD0>;
+			power-domain-names = "psci";
+		};
+
+		CPU1: cpu@100 {
+			power-domains = <&CPU_PD1>;
+			power-domain-names = "psci";
+		};
+
+		CPU2: cpu@200 {
+			power-domains = <&CPU_PD2>;
+			power-domain-names = "psci";
+		};
+
+		CPU3: cpu@300 {
+			power-domains = <&CPU_PD3>;
+			power-domain-names = "psci";
+		};
+
+		CPU4: cpu@400 {
+			power-domains = <&CPU_PD4>;
+			power-domain-names = "psci";
+		};
+
+		CPU5: cpu@500 {
+			power-domains = <&CPU_PD5>;
+			power-domain-names = "psci";
+		};
+
+		CPU6: cpu@600 {
+			power-domains = <&CPU_PD6>;
+			power-domain-names = "psci";
+		};
+
+		CPU7: cpu@700 {
+			power-domains = <&CPU_PD7>;
+			power-domain-names = "psci";
+		};
+
+		idle-states {
+			entry-method = "psci";
+
+			SILVER_CPU_SLEEP_0: cpu-sleep-0-0 {
+				compatible = "arm,idle-state";
+				idle-state-name = "silver-rail-power-collapse";
+				arm,psci-suspend-param = <0x40000004>;
+				entry-latency-us = <550>;
+				exit-latency-us = <750>;
+				min-residency-us = <6700>;
+				local-timer-stop;
+			};
+
+			GOLD_CPU_SLEEP_0: cpu-sleep-1-0 {
+				compatible = "arm,idle-state";
+				idle-state-name = "gold-rail-power-collapse";
+				arm,psci-suspend-param = <0x40000004>;
+				entry-latency-us = <600>;
+				exit-latency-us = <1300>;
+				min-residency-us = <8136>;
+				local-timer-stop;
+			};
+
+			GOLD_PLUS_CPU_SLEEP_0: cpu-sleep-2-0 {
+				compatible = "arm,idle-state";
+				idle-state-name = "gold-plus-rail-power-collapse";
+				arm,psci-suspend-param = <0x40000004>;
+				entry-latency-us = <500>;
+				exit-latency-us = <1350>;
+				min-residency-us = <7480>;
+				local-timer-stop;
+			};
+		};
+
+		domain-idle-states {
+			CLUSTER_SLEEP_0: cluster-sleep-0 {
+				compatible = "domain-idle-state";
+				arm,psci-suspend-param = <0x41000044>;
+				entry-latency-us = <750>;
+				exit-latency-us = <2350>;
+				min-residency-us = <9144>;
+			};
+
+			CLUSTER_SLEEP_1: cluster-sleep-1 {
+				compatible = "domain-idle-state";
+				arm,psci-suspend-param = <0x4100c344>;
+				entry-latency-us = <2800>;
+				exit-latency-us = <4400>;
+				min-residency-us = <10150>;
+			};
+		};
+	};
+
+
+
+	psci {
+		compatible = "arm,psci-1.0";
+		method = "smc";
+
+		CPU_PD0: power-domain-cpu0 {
+			#power-domain-cells = <0>;
+			power-domains = <&CLUSTER_PD>;
+			domain-idle-states = <&SILVER_CPU_SLEEP_0>;
+		};
+
+		CPU_PD1: power-domain-cpu1 {
+			#power-domain-cells = <0>;
+			power-domains = <&CLUSTER_PD>;
+			domain-idle-states = <&SILVER_CPU_SLEEP_0>;
+		};
+
+		CPU_PD2: power-domain-cpu2 {
+			#power-domain-cells = <0>;
+			power-domains = <&CLUSTER_PD>;
+			domain-idle-states = <&SILVER_CPU_SLEEP_0>;
+		};
+
+		CPU_PD3: power-domain-cpu3 {
+			#power-domain-cells = <0>;
+			power-domains = <&CLUSTER_PD>;
+			domain-idle-states = <&GOLD_CPU_SLEEP_0>;
+		};
+
+		CPU_PD4: power-domain-cpu4 {
+			#power-domain-cells = <0>;
+			power-domains = <&CLUSTER_PD>;
+			domain-idle-states = <&GOLD_CPU_SLEEP_0>;
+		};
+
+		CPU_PD5: power-domain-cpu5 {
+			#power-domain-cells = <0>;
+			power-domains = <&CLUSTER_PD>;
+			domain-idle-states = <&GOLD_CPU_SLEEP_0>;
+		};
+
+		CPU_PD6: power-domain-cpu6 {
+			#power-domain-cells = <0>;
+			power-domains = <&CLUSTER_PD>;
+			domain-idle-states = <&GOLD_CPU_SLEEP_0>;
+		};
+
+		CPU_PD7: power-domain-cpu7 {
+			#power-domain-cells = <0>;
+			power-domains = <&CLUSTER_PD>;
+			domain-idle-states = <&GOLD_PLUS_CPU_SLEEP_0>;
+		};
+
+		CLUSTER_PD: power-domain-cluster {
+			#power-domain-cells = <0>;
+			domain-idle-states = <&CLUSTER_SLEEP_0>,
+					     <&CLUSTER_SLEEP_1>;
+		};
+	};
+};
+
+&fpga {
+	// Setup FPGA Userspace Pin States
+	pinctrl-0 = <&fpga_cready>, <&fpga_cs>, <&fpga_crst>, <&fpga_cdone>, <&fpga_rst>;
+	pinctrl-names = "default";
+
+	status = "okay";
+};
+
+&apps_rsc {
+    regulators-6 {
+        vdd-l6-supply = <&VREG_BOB2>;
+    };
+    regulators-7 {
+        vdd-l6-supply = <&VREG_BOB2>;
+    };
+};
+
+&pcie1 {
+	vdda-supply = <&VPH_PWR>;
+	vddpe-3v3-supply = <&VPH_PWR>; // XXX
+
+	wake-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
+	perst-gpios = <&tlmm 97 GPIO_ACTIVE_LOW>;
+
+	pinctrl-0 = <&pcie1_default_state>;
+	pinctrl-names = "default";
+
+	status = "okay";
+};
+
+&pcie1_phy {
+	vdda-phy-supply = <&VREG_L3E_0P9>;
+	vdda-pll-supply = <&VREG_L3I_1P2>;
+	vdda-qref-supply = <&VREG_L1I_0P88>;
+
+	status = "okay";
+};
+
+&i2c5 {
+	status = "okay";
+    // BOOT EEPROM
+    eeprom_core@50 {
+        compatible  = "atmel,24c32";
+        status      = "okay";
+		label		= "core_eeprom";
+        reg         = <0x50>;
+        wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+        vcc-supply  = <&VREG_L15B_1P8>;
+    };
+
+    max34417_1: max34417@12 {
+        compatible = "maxim,max34417";
+        reg = <0x12>;
+        maxim,sense-resistor = <1>;
+        vdd-supply = <&VDD_SENSOR_3V3>;
+        vio-supply = <&VREG_L15B_1P8>;
+        status = "okay";
+
+        // CH 1 : Kryo APC1 Cores
+        // CH 2 : Kryo APC2 Cores
+        // CH 3 : Kryo APC0 Cores
+        // CH 4 : Tensor Processor – NSP1
+        // Note: both 1.8 and 3.0V rails are always on for other sensors
+    };
+
+    max34417_2: max34417@1a {
+        compatible = "maxim,max34417";
+        reg = <0x1a>;
+        maxim,sense-resistor = <1>;
+        vdd-supply = <&VDD_SENSOR_3V3>;
+        vio-supply = <&VREG_L15B_1P8>;
+        status = "okay";
+
+        // CH 1 : GFX Power
+        // CH 2 : Tensor Processor – NSP2
+        // CH 3 : VPH Power
+        // CH 4 : Unused
+        // Note: both 1.8 and 3.0V rails are always on for other sensors
+    }; 
+};
+
+// Custom Connector I2C ( Paddle Card )
+&i2c2 {
+	status = "okay";
+
+	max17320@36 {
+		compatible  = "maxim,max17320";
+		status				= "okay";
+		reg         = <0x36>;
+		rsense      = <25>;      /* 100's of microOhms */
+		// talrt-min   = <0>;       /* DegreeC */
+		// talrt-max   = <50>;      /* DegreeC */
+		// valrt-min   = <3000>;    /* mV */
+		// valrt-max   = <4500>;    /* mV */
+		// salrt-min   = <1>;       /* Percent */
+		// salrt-max   = <99>;      /* Percent */
+		// ialrt-min   = <(-5000)>; /* mA */
+		// ialrt-max   = <5000>;    /* mA */
+	};
+
+    // PADDLE EEPROM
+    eeprom@50 {
+        compatible  = "atmel,24c32";
+        status      = "okay";
+		label		= "strap_eeprom";
+        reg         = <0x50>;
+        //wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+        vcc-supply  = <&VREG_L15B_1P8>;
+    };
+
+	// Northgate/Enthusiast Paddle Card Silego
+	slg46534v@48 {
+		compatible = "silego,northgate";
+		reg = <0x48>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		status = "ok";
+	};
+};
+
+&pm8550ve_gpios {
+	gpio-line-names =
+		// GPIO01 - GPIO08
+		"",  "",  "",  "",  "",  "",  "",  "";
+};
+
+// FPGA SPI and Pin setup
+// Disable SPI7 from base POCF config
+&spi7 {
+	status = "disabled";
+};
+
+&spi0 {
+	status = "okay";
+
+	// Remove Hardware Chip Select
+	pinctrl-0 = <&qup_spi0_data_clk>;
+
+	cspi@0 {
+		status = "okay";
+		compatible = "linux,spidev";
+		spi-max-frequency = <8000000>;
+		reg = <0>;
+	};
+};
+
+&tlmm {
+	// TODO verify reserved pins for 8650
+	// qcom,gpios-reserved = <36 37 38 39>;
+	gpio-line-names =
+		// GPIO000 - GPIO015
+		"",  "",  "",  "",  "",  "",  "",  "fpga_rst",  "",  "",  "",  "nrf_time_sync",  "",  "",  "",  "",
+		// GPIO016 - GPIO031
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO032 - GPIO047
+		"",  "",  "",  "fpga_spi_cs",  "",  "",  "",  "fpga_crst",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO048 - GPIO063
+		"",  "",  "nrf_swdio",  "nrf_swclk",  "",  "",  "",  "",  "fpga_cam0_strobe",  "fpga_cam1_strobe",  "",  "",  "",  "",  "",  "",
+		// GPIO064 - GPIO079
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO080 - GPIO095
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO096 - GPIO111
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cam1_frame_sync",  "",
+		// GPIO112 - GPIO127
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cam0_frame_sync",  "",  "",  "",
+		// GPIO128 - GPIO143
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO144 - GPIO159
+		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "fpga_cdone",  "",  "",  "fpga_cready",  "",
+		// GPIO160 - GPIO175
+		"",  "",  "",  "",  "nrf_reset",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		// GPIO176 - GPIO189
+		"",  "",  "",  "",  "", "", "", "", "", "", "", "", "", "";
+};
+
+&tlmm {
+	status = "ok";
+
+	// FPGA Pins
+	fpga_rst: fpga_rst {
+		mux {
+			pins = "gpio7";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio7";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};
+
+	fpga_cs: fpga_cs {
+		mux {
+			pins = "gpio35";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio35";
+			bias-disable = <0>;
+			drive-strength = <2>;
+			output-enable;
+			// active-low;
+			output-high;
+		};
+	};
+
+	fpga_crst: fpga_crst {
+		mux {
+			pins = "gpio39";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio39";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};
+
+	fpga_cdone: fpga_cdone {
+		mux {
+			pins = "gpio155";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio155";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};	
+
+	fpga_cready: fpga_cready {
+		mux {
+			pins = "gpio158";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio158";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};
+};
+
+// nRF Pins
+&tlmm {
+	// nRF CS
+	qup_spi10_cs_nrf: qup-spi10-cs-state-nrf {
+		pins = "gpio13";
+		function = "qup2_se2";
+		drive-strength = <6>;
+		bias-disable;
+	};
+
+	// nRF SPI interrupt and reset pins
+	host_spihid_default_state: host-spihid-default {
+		irq0 {
+			pins = "gpio66";
+			function = "gpio";
+			bias-pull-up;
+		};
+
+		reset0 {
+			pins = "gpio137";
+			function = "gpio";
+			drive-strength = <2>;
+			output-low;
+			bias-pull-down;
+		};
+	};
+};
+
+#ifndef NRF_UART
+// nRF SPI HID
+&spi10 {
+	status = "okay";
+
+	pinctrl-0 = <&qup_spi10_data_clk>, <&qup_spi10_cs_nrf>;
+	pinctrl-names = "default";
+
+	hid@1 {
+		compatible = "hid-over-spi";
+		reg = <1>;
+		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 137 GPIO_ACTIVE_LOW>;
+		//vdd-supply = <&vdd_3v3_reg>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&host_spihid_default_state>;
+    };
+};
+#endif
+
+#if 0
+// Directly accessed via ADSP code, but we have the defines here for reference
+&cci0_i2c1 { // "CCI_1"
+	cam0@60 {
+		compatible = "ovti,ov6211x";
+		reg = <0x60>;
+
+		reset-gpios = <&tlmm 58 GPIO_ACTIVE_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk4_active>; // <&cam_et_l_default>;
+
+		clocks = <&camcc CAM_CC_MCLK4_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&EYETCK_DOVDD_1V8>;
+		AVDD-supply = <&VREG_L6N_2P8>;
+		DVDD-supply = <&VREG_L1N_1P1>;
+
+		id = "eyetracking_left";
+
+		port {
+			cam_et_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&csiphy2_ep>;
+			};
+		};
+	};
+};
+
+&cci1_i2c0 { // "CCI_2"
+	cam0@60 {
+		compatible = "ovti,ov6211x";
+		reg = <0x60>;
+
+		reset-gpios = <&tlmm 3 GPIO_ACTIVE_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk2_active>; // <&cam_et_r_default>;
+
+		clocks = <&camcc CAM_CC_MCLK2_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&EYETCK_DOVDD_1V8>;
+		AVDD-supply = <&VREG_L6M_2P8>;
+		DVDD-supply = <&VREG_L1M_1P1>;
+
+		id = "eyetracking_right";
+
+		port {
+			cam_et_r: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&csiphy4_ep>;
+			};
+		};
+	};
+};
+#endif
+
+&i2c4 {
+	status = "okay";
+
+    /* FAN_I2C */
+	slg4ax46073v@8 {
+		compatible = "silego,slg4ax46073v";
+		reg = <0x08>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		//vdd-fan-1-supply = <&VBATT_2S>; not modeled in dts
+		fan-alert-gpios = <&tlmm 174 GPIO_ACTIVE_HIGH>;
+		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
+        // bp pin removed in ev1
+
+		status = "ok";
+	};
+
+    mpq3367_right@38 {
+        compatible = "mps,mpq3367";
+        reg = <0x38>;
+        status = "okay";
+        en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+        mode = "pwm";
+        regulator {
+            backlight_right: backlight{
+                regulator-name = "backlight_right";
+            };
+        };
+    };
+};
+
+// left display power and backlight
+&i2c5 {
+    status = "okay";
+    mpq3367@38 {
+        compatible = "mps,mpq3367";
+        reg = <0x38>;
+        status = "okay";
+        en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+        mode = "pwm";
+        regulator {
+            backlight_left: backlight{
+                regulator-name = "backlight_left";
+            };
+        };
+    };
+};
+
+&cci2_i2c1 { // "CCI_5"
+	cam_u@60 {
+		compatible = "ovti,og0ve10x";
+		reg = <0x60>;
+        sensor-queue-index = <1>;
+		dual-i2c-available = <1>;
+		dual-i2c-main = <1>;
+
+		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 28 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk3_active>; // <&cam_6dof_ul_default>;
+
+		clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_UL>;
+		AVDD-supply = <&VREG_6DOF_2P8_UL>;
+		DVDD-supply = <&VREG_6DOF_1V2_UL>;
+
+		id = "upper_left";
+
+		port {
+			cam_6dof_ul: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&csiphy0_combo_ep>;
+			};
+		};
+	};
+
+	cam_u@3e {
+		compatible = "ovti,og0ve10x";
+		reg = <0x3E>;
+        sensor-queue-index = <1>;
+		dual-i2c-available = <1>;
+		dual-i2c-main = <0>;
+
+		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 68 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk5_active>; // <&cam_6dof_ur_default>;
+
+		clocks = <&camcc CAM_CC_MCLK5_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_UR>;
+		AVDD-supply = <&VREG_6DOF_2P8_UR>;
+		DVDD-supply = <&VREG_6DOF_1V2_UR>;
+
+		id = "upper_right";
+
+		port {
+			cam_6dof_ur: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&csiphy1_combo_ep>;
+			};
+		};
+	};
+};
+
+&cci2_i2c0 { // "CCI_4"
+	cam@60 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x60>;
+        sensor-queue-index = <0>;
+		dual-i2c-available = <1>;
+		dual-i2c-main = <1>;
+
+		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 123 GPIO_ACTIVE_HIGH>;
+		ircontrol-gpios = <&tlmm 200 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk1_active>; // <&cam_6dof_l_default>;
+
+		clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_L>;
+		AVDD-supply = <&VREG_6DOF_2P8_L>;
+		DVDD-supply = <&VREG_6DOF_1V2_L>;
+
+		id = "slam_left";
+
+		port {
+			cam_6dof_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&csiphy0_ep>;
+			};
+		};
+	};
+
+	cam@36 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x36>;
+        sensor-queue-index = <0>;
+		dual-i2c-available = <1>;
+		dual-i2c-main = <0>;
+
+		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 121 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_sensor_mclk0_active>; // <&cam_6dof_r_default>;
+
+		clocks = <&camcc CAM_CC_MCLK0_CLK>;
+		clock-names = "xclk";
+
+		DOVDD-supply = <&VREG_6DOF_1V8_R>;
+		AVDD-supply = <&VREG_6DOF_2P8_R>;
+		DVDD-supply = <&VREG_6DOF_1V2_R>;
+
+		id = "slam_right";
+
+		port {
+			cam_6dof_r: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&csiphy1_ep>;
+			};
+		};
+	};
+};
+
+&pm8550b_typec {
+    disable-cell-balancing;
+};
+
+&i2c_hub_8 {
+    /* MAX98390 */
+    right_spkr_i2s: speaker@38 {
+        compatible = "maxim,max98390";
+        reg = <0x38>;
+        maxim,temperature_calib = <1024>; // TODO
+        maxim,r0_calib = <100232>; // TODO
+        reset-gpios = <&tlmm 73 GPIO_ACTIVE_LOW>;
+        // irq-gpios = <&tlmm 186 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
+        #sound-dai-cells = <0>;
+        sound-name-prefix = "Speaker Right";
+    };
+
+    /* MAX98390 */
+    left_spkr_i2s: speaker@3d {
+        compatible = "maxim,max98390";
+        reg = <0x3d>;
+        maxim,temperature_calib = <1024>; // TODO
+        maxim,r0_calib = <100232>; // TODO
+        reset-gpios = <&tlmm 161 GPIO_ACTIVE_LOW>;
+        // irq-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
+        #sound-dai-cells = <0>;
+        sound-name-prefix = "Speaker Left";
+    };
+};
+
+&sound {
+    enable-i2s;
+    // enable-hdmi;
+    codecs =
+       <&left_spkr_i2s>, <&right_spkr_i2s>,
+       <&lpass_vamacro 0>;
+
+    pinctrl-0 = <&i2s2_active>;
+    pinctrl-names = "default";
+};
+
+// Disable Soundwire
+&wsa_swr_active {
+	status = "disabled";
+};
+
+&wsa_swr_sleep {
+	status = "disabled";
+};

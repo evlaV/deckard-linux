@@ -247,6 +247,7 @@ dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-pocf.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-pocf-v2.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev1.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev1-psci.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev2.dtb
 #dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-qrd.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-crd.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-qcp.dtb
