@@ -80,6 +80,7 @@ struct dpu_hw_scaler3_de_cfg {
 /**
  * struct dpu_hw_scaler3_cfg : QSEEDv3 configuration
  * @enable:        scaler enable
+ * @cac_enable:        CAC enable
  * @dir_en:        direction detection block enable
  * @ init_phase_x: horizontal initial phase
  * @ phase_step_x: horizontal phase step
@@ -115,6 +116,7 @@ struct dpu_hw_scaler3_de_cfg {
  */
 struct dpu_hw_scaler3_cfg {
 	u32 enable;
+	u32 cac_enable;
 	u32 dir_en;
 	int32_t init_phase_x[DPU_MAX_PLANES];
 	int32_t phase_step_x[DPU_MAX_PLANES];
@@ -126,8 +128,10 @@ struct dpu_hw_scaler3_cfg {
 	u32 src_width[DPU_MAX_PLANES];
 	u32 src_height[DPU_MAX_PLANES];
 
-	u32 dst_width;
-	u32 dst_height;
+	u32 dst_width[DPU_MAX_PLANES];
+	u32 dst_height[DPU_MAX_PLANES];
+	u32 dst_x[DPU_MAX_PLANES];
+	u32 dst_y[DPU_MAX_PLANES];
 
 	u32 y_rgb_filter_cfg;
 	u32 uv_filter_cfg;
@@ -154,6 +158,16 @@ struct dpu_hw_scaler3_cfg {
 	struct dpu_hw_scaler3_de_cfg de;
 
 	u32 dir_weight;
+};
+
+/**
+ * struct dpu_hw_scaler3_cac_cfg : QSEEDv3 CAC configuration
+ * @ phase_step_x: horizontal phase step
+ * @ phase_step_y: vertical phase step
+ */
+struct dpu_hw_scaler3_cac_cfg {
+	int32_t phase_step_x[DPU_MAX_PLANES];
+	int32_t phase_step_y[DPU_MAX_PLANES];
 };
 
 /**
@@ -345,6 +359,10 @@ void dpu_hw_setup_scaler3(struct dpu_hw_blk_reg_map *c,
 		struct dpu_hw_scaler3_cfg *scaler3_cfg,
 		u32 scaler_offset, u32 scaler_version,
 		const struct msm_format *format);
+
+void dpu_hw_setup_cac(struct dpu_hw_blk_reg_map *c,
+		struct dpu_hw_scaler3_cac_cfg *scaler3_cac_cfg,
+		u32 scaler_offset);
 
 void dpu_hw_csc_setup(struct dpu_hw_blk_reg_map  *c,
 		u32 csc_reg_off,
