@@ -19,6 +19,7 @@
 
 /* SSPP registers */
 #define SSPP_SRC_SIZE                      0x00
+#define SSPP_SRC_IMG_SIZE                  0x04
 #define SSPP_SRC_XY                        0x08
 #define SSPP_OUT_SIZE                      0x0c
 #define SSPP_OUT_XY                        0x10
@@ -72,18 +73,20 @@
 #define SSPP_EXCL_REC_XY_REC1              0x188
 #define SSPP_EXCL_REC_SIZE                 0x1B4
 #define SSPP_EXCL_REC_XY                   0x1B8
+#define SSPP_UBWC_STATIC_CTRL_REC1         0x1C0
+#define SSPP_CAC_CTRL                      0x328
 #define SSPP_CLK_CTRL                      0x330
 
 /* SSPP_SRC_OP_MODE & OP_MODE_REC1 */
-#define MDSS_MDP_OP_DEINTERLACE            BIT(22)
+#define MDSS_MDP_OP_PE_OVERRIDE            BIT(31)
 #define MDSS_MDP_OP_DEINTERLACE_ODD        BIT(23)
+#define MDSS_MDP_OP_DEINTERLACE            BIT(22)
 #define MDSS_MDP_OP_IGC_ROM_1              BIT(18)
 #define MDSS_MDP_OP_IGC_ROM_0              BIT(17)
 #define MDSS_MDP_OP_IGC_EN                 BIT(16)
 #define MDSS_MDP_OP_FLIP_UD                BIT(14)
 #define MDSS_MDP_OP_FLIP_LR                BIT(13)
 #define MDSS_MDP_OP_BWC_EN                 BIT(0)
-#define MDSS_MDP_OP_PE_OVERRIDE            BIT(31)
 #define MDSS_MDP_OP_BWC_LOSSLESS           (0 << 1)
 #define MDSS_MDP_OP_BWC_Q_HIGH             (1 << 1)
 #define MDSS_MDP_OP_BWC_Q_MED              (2 << 1)
@@ -298,6 +301,8 @@ static void dpu_hw_sspp_setup_format(struct dpu_sw_pipe *pipe,
 		case UBWC_4_0:
 			DPU_REG_WRITE(c, SSPP_UBWC_STATIC_CTRL,
 					MSM_FORMAT_IS_YUV(fmt) ? 0 : BIT(30));
+			DPU_REG_WRITE(c, SSPP_UBWC_STATIC_CTRL_REC1,
+					MSM_FORMAT_IS_YUV(fmt) ? 0 : BIT(30));
 			break;
 		}
 	}
@@ -444,7 +449,7 @@ static void dpu_hw_sspp_setup_rects(struct dpu_sw_pipe *pipe,
 }
 
 static void dpu_hw_sspp_setup_sourceaddress(struct dpu_sw_pipe *pipe,
-		struct dpu_hw_fmt_layout *layout)
+		struct dpu_hw_fmt_layout *layout, bool cac)
 {
 	struct dpu_hw_sspp *ctx = pipe->sspp;
 	u32 ystride0, ystride1;
@@ -493,6 +498,13 @@ static void dpu_hw_sspp_setup_sourceaddress(struct dpu_sw_pipe *pipe,
 		}
 	}
 
+	if (cac) {
+		ystride0 = (layout->plane_pitch[0]) |
+			(layout->plane_pitch[0] << 16);
+		ystride1 = (layout->plane_pitch[2]) |
+			(layout->plane_pitch[2] << 16);
+	}
+
 	DPU_REG_WRITE(&ctx->hw, SSPP_SRC_YSTRIDE0, ystride0);
 	DPU_REG_WRITE(&ctx->hw, SSPP_SRC_YSTRIDE1, ystride1);
 }
@@ -526,7 +538,7 @@ static void dpu_hw_sspp_setup_solidfill(struct dpu_sw_pipe *pipe, u32 color)
 
 	/* cleanup source addresses */
 	memset(&cfg, 0, sizeof(cfg));
-	ctx->ops.setup_sourceaddress(pipe, &cfg);
+	ctx->ops.setup_sourceaddress(pipe, &cfg, false);
 
 	if (pipe->multirect_index == DPU_SSPP_RECT_SOLO ||
 	    pipe->multirect_index == DPU_SSPP_RECT_0)
@@ -586,6 +598,36 @@ static bool dpu_hw_sspp_setup_clk_force_ctrl(struct dpu_hw_sspp *ctx, bool enabl
 	return dpu_hw_clk_force_ctrl(&ctx->hw, &sspp_clk_ctrl, enable);
 }
 
+static void dpu_hw_sspp_setup_cac(struct dpu_hw_sspp *ctx, struct cac_blob *cac)
+{
+	struct dpu_hw_blk_reg_map *c;
+	struct dpu_hw_scaler3_cac_cfg dcac;
+	if (!ctx)
+		return;
+
+	c = &ctx->hw;
+
+	if (ctx->idx == SSPP_DMA0 || ctx->idx == SSPP_DMA1) {
+		DPU_REG_WRITE(c, SSPP_MULTIRECT_OPMODE, 3);
+		DPU_REG_WRITE(c, SSPP_CAC_CTRL, 0x100);
+		return;
+	}
+
+	if (!cac)
+		return;
+
+	DPU_REG_WRITE(c, SSPP_CAC_CTRL, 0x101);
+	DPU_REG_WRITE(c, SSPP_MULTIRECT_OPMODE, 3);
+	DPU_REG_WRITE(c, SSPP_SRC_IMG_SIZE, cac->src_unpack.size);
+
+	dcac.phase_step_x[0] = cac->phase_step_r_h;
+	dcac.phase_step_x[1] = cac->phase_step_b_h;
+	dcac.phase_step_y[0] = cac->phase_step_r_v;
+	dcac.phase_step_y[1] = cac->phase_step_b_v;
+
+	dpu_hw_setup_cac(c, &dcac, ctx->cap->sblk->scaler_blk.base);
+}
+
 static void _setup_layer_ops(struct dpu_hw_sspp *c,
 		unsigned long features, const struct dpu_mdss_version *mdss_rev)
 {
@@ -594,6 +636,7 @@ static void _setup_layer_ops(struct dpu_hw_sspp *c,
 	c->ops.setup_sourceaddress = dpu_hw_sspp_setup_sourceaddress;
 	c->ops.setup_solidfill = dpu_hw_sspp_setup_solidfill;
 	c->ops.setup_pe = dpu_hw_sspp_setup_pe_config;
+	c->ops.setup_cac = dpu_hw_sspp_setup_cac;
 
 	if (test_bit(DPU_SSPP_QOS, &features)) {
 		c->ops.setup_qos_lut = dpu_hw_sspp_setup_qos_lut;
