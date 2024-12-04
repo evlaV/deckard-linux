@@ -212,7 +212,7 @@ static void dpu_hw_sspp_setup_rects_v13(struct dpu_sw_pipe *pipe,
 }
 
 static void dpu_hw_sspp_setup_sourceaddress_v13(struct dpu_sw_pipe *pipe,
-						struct dpu_hw_fmt_layout *layout)
+						struct dpu_hw_fmt_layout *layout, bool cac)
 {
 	struct dpu_hw_sspp *ctx = pipe->sspp;
 	int i;
