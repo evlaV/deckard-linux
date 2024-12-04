@@ -49,6 +49,23 @@ static u32 dpu_hw_util_log_mask = DPU_DBG_MASK_NONE;
 #define QSEED3_PHASE_INIT_UV_H             0x98
 #define QSEED3_PHASE_INIT_UV_V             0x9C
 #define QSEED3_COEF_LUT                    0x100
+#define QSEED3_CAC_RE_PRELOAD              0xa0
+#define QSEED3_CAC_RE_PHASE_INIT_Y_V       0xa4
+#define QSEED3_CAC_RE_PHASE_INIT_UV_V      0xa8
+#define QSEED3_CAC_LE_PHASE_INIT2_Y_H      0xac
+#define QSEED3_CAC_LE_PHASE_INIT2_Y_V      0xb0
+#define QSEED3_CAC_LE_PHASE_INIT2_UV_H     0xb4
+#define QSEED3_CAC_LE_PHASE_INIT2_UV_V     0xb8
+#define QSEED3_CAC_RE_PHASE_INIT2_Y_V      0xbc
+#define QSEED3_CAC_RE_PHASE_INIT2_UV_V     0xc0
+#define QSEED3_CAC_LE_Y                    0xc4
+#define QSEED3_CAC_LE_UV                   0xc8
+#define QSEED3_CAC_RE_Y                    0xcc
+#define QSEED3_CAC_RE_UV                   0xd0
+#define QSEED3_DST_UV_SIZE                 0xd4
+#define QSEED3_DST_LE_OFFSET               0xd8
+#define QSEED3_DST_RE_OFFSET               0xdc
+
 #define QSEED3_FILTERS                     5
 #define QSEED3_LUT_REGIONS                 4
 #define QSEED3_CIRCULAR_LUTS               9
@@ -285,13 +302,18 @@ void dpu_hw_setup_scaler3(struct dpu_hw_blk_reg_map *c,
 		const struct msm_format *format)
 {
 	u32 op_mode = 0;
-	u32 phase_init, preload, src_y_rgb, src_uv, dst;
+	u32 phase_init, preload, src_y_rgb, src_uv, dst, dst_uv, dst_offset;
 
 	if (!scaler3_cfg->enable)
 		goto end;
 
 	op_mode |= BIT(0);
 	op_mode |= (scaler3_cfg->y_rgb_filter_cfg & 0x3) << 16;
+
+	if (scaler3_cfg->cac_enable) {
+		op_mode |= BIT(1);
+		op_mode |= (scaler3_cfg->uv_filter_cfg & 0x3) << 24;
+	}
 
 	if (format && MSM_FORMAT_IS_YUV(format)) {
 		op_mode |= BIT(12);
@@ -313,8 +335,14 @@ void dpu_hw_setup_scaler3(struct dpu_hw_blk_reg_map *c,
 	src_uv = (scaler3_cfg->src_width[1] & 0x1FFFF) |
 		((scaler3_cfg->src_height[1] & 0x1FFFF) << 16);
 
-	dst = (scaler3_cfg->dst_width & 0x1FFFF) |
-		((scaler3_cfg->dst_height & 0x1FFFF) << 16);
+	dst = (scaler3_cfg->dst_width[0] & 0x1FFFF) |
+		((scaler3_cfg->dst_height[0] & 0x1FFFF) << 16);
+
+	dst_uv = (scaler3_cfg->dst_width[1] & 0x1FFFF) |
+		((scaler3_cfg->dst_height[1] & 0x1FFFF) << 16);
+
+	dst_offset = ((scaler3_cfg->dst_x[1] - scaler3_cfg->dst_x[0]) & 0x1FFFF) |
+		(((scaler3_cfg->dst_y[1] - scaler3_cfg->dst_y[0]) & 0x1FFFF) << 16);
 
 	if (scaler3_cfg->de.enable) {
 		_dpu_hw_setup_scaler3_de(c, &scaler3_cfg->de, scaler_offset);
@@ -366,6 +394,10 @@ void dpu_hw_setup_scaler3(struct dpu_hw_blk_reg_map *c,
 
 	DPU_REG_WRITE(c, QSEED3_DST_SIZE + scaler_offset, dst);
 
+	DPU_REG_WRITE(c, QSEED3_DST_UV_SIZE + scaler_offset, dst_uv);
+
+	DPU_REG_WRITE(c, QSEED3_DST_LE_OFFSET + scaler_offset, dst_offset);
+
 end:
 	if (format && !MSM_FORMAT_IS_DX(format))
 		op_mode |= BIT(14);
@@ -379,6 +411,20 @@ end:
 	}
 
 	DPU_REG_WRITE(c, QSEED3_OP_MODE + scaler_offset, op_mode);
+}
+
+void dpu_hw_setup_cac(struct dpu_hw_blk_reg_map *c,
+		struct dpu_hw_scaler3_cac_cfg *cac,
+		u32 scaler_offset)
+{
+	DPU_REG_WRITE(c, QSEED3_CAC_LE_PHASE_INIT2_Y_H + scaler_offset,
+			cac->phase_step_x[0]);
+	DPU_REG_WRITE(c, QSEED3_CAC_LE_PHASE_INIT2_Y_V + scaler_offset,
+			cac->phase_step_y[0]);
+	DPU_REG_WRITE(c, QSEED3_CAC_LE_PHASE_INIT2_UV_H + scaler_offset,
+			cac->phase_step_x[1]);
+	DPU_REG_WRITE(c, QSEED3_CAC_LE_PHASE_INIT2_UV_V + scaler_offset,
+			cac->phase_step_y[1]);
 }
 
 void dpu_hw_csc_setup(struct dpu_hw_blk_reg_map *c,
