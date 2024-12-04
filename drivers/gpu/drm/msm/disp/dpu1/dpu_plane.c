@@ -481,8 +481,8 @@ static void _dpu_plane_setup_scaler3(struct dpu_hw_sspp *pipe_hw,
 		&& (src_w == dst_w))
 		return;
 
-	scale_cfg->dst_width = dst_w;
-	scale_cfg->dst_height = dst_h;
+	scale_cfg->dst_width[0] = dst_w;
+	scale_cfg->dst_height[0] = dst_h;
 	scale_cfg->y_rgb_filter_cfg = DPU_SCALE_BIL;
 	scale_cfg->uv_filter_cfg = DPU_SCALE_BIL;
 	scale_cfg->alpha_filter_cfg = DPU_SCALE_ALPHA_BIL;
@@ -1221,9 +1221,10 @@ static int dpu_plane_virtual_assign_resources(struct drm_crtc *crtc,
 			if ((i % PIPES_PER_STAGE == 0) &&
 			    drm_rect_width(&r_pipe_cfg->src_rect) != 0 &&
 			    dpu_plane_try_multirect_parallel(pipe, pipe_cfg, r_pipe, r_pipe_cfg,
-							      pipe->sspp,
-							      msm_framebuffer_format(plane_state->fb),
-							      dpu_kms->catalog->caps->max_linewidth)) {
+							     pipe->sspp,
+							     msm_framebuffer_format(plane_state->fb),
+							     dpu_kms->catalog->caps->max_linewidth,
+							     dpu_kms->planar_cac_enable)) {
 				i++;
 			} else {
 				/* multirect is not possible, use two SSPP blocks */
@@ -1349,10 +1350,12 @@ static void dpu_plane_sspp_update_pipe(struct drm_plane *plane,
 	struct dpu_plane *pdpu = to_dpu_plane(plane);
 	struct drm_plane_state *state = plane->state;
 	struct dpu_plane_state *pstate = to_dpu_plane_state(state);
+	struct dpu_kms *kms = _dpu_plane_get_kms(&pdpu->base);
 
 	if (layout && pipe->sspp->ops.setup_sourceaddress) {
 		trace_dpu_plane_set_scanout(pipe, layout);
-		pipe->sspp->ops.setup_sourceaddress(pipe, layout);
+		pipe->sspp->ops.setup_sourceaddress(pipe, layout,
+						    kms->planar_cac_enable);
 	}
 
 	/* override for color fill */
