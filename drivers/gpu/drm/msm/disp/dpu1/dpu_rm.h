@@ -105,8 +105,20 @@ struct dpu_hw_sspp *dpu_rm_reserve_sspp(struct dpu_rm *rm,
 					struct drm_crtc *crtc,
 					struct dpu_rm_sspp_requirements *reqs);
 
+/**
+ * dpu_rm_release_all_sspp - Given the CRTC, release all SSPP
+ *	blocks previously reserved for that use case.
+ * @rm: DPU Resource Manager handle
+ * @crtc: DRM CRTC handle
+ */
 void dpu_rm_release_all_sspp(struct dpu_global_state *global_state,
 			     struct drm_crtc *crtc);
+
+/**
+ * dpu_rm_reserve_cac_sspp - Reserve the hidden SSPP for the provided CRTC
+ * @dpu_kms: dpu_kms handle
+ */
+int dpu_rm_reserve_cac_sspp(struct dpu_kms *rm);
 
 /**
  * Get hw resources of the given type that are assigned to this crtc.
