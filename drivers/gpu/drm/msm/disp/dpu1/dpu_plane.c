@@ -934,7 +934,8 @@ static int dpu_plane_atomic_check_nosspp(struct drm_plane *plane,
 				DRM_RECT_ARG(&pipe_cfg->src_rect), DRM_RECT_ARG(&pipe_cfg->dst_rect));
 
 		/* Split wide rect into 2 rect */
-		if ((drm_rect_width(&pipe_cfg->src_rect) > max_linewidth) ||
+		if (kms->planar_cac_enable ||
+		     (drm_rect_width(&pipe_cfg->src_rect) > max_linewidth) ||
 		     _dpu_plane_calc_clk(mode, pipe_cfg) > max_mdp_clk_rate) {
 
 			if (drm_rect_width(&pipe_cfg->src_rect) > 2 * max_linewidth) {
@@ -999,9 +1000,10 @@ static int dpu_plane_is_multirect_capable(struct dpu_hw_sspp *sspp,
 
 static int dpu_plane_is_parallel_capable(struct dpu_sw_pipe_cfg *pipe_cfg,
 					 const struct msm_format *fmt,
-					 uint32_t max_linewidth)
+					 uint32_t max_linewidth,
+					 bool cac)
 {
-	if (MSM_FORMAT_IS_UBWC(fmt) &&
+	if ((!cac) && MSM_FORMAT_IS_UBWC(fmt) &&
 	    drm_rect_width(&pipe_cfg->src_rect) > max_linewidth / 2)
 		return false;
 
@@ -1011,10 +1013,11 @@ static int dpu_plane_is_parallel_capable(struct dpu_sw_pipe_cfg *pipe_cfg,
 static int dpu_plane_is_multirect_parallel_capable(struct dpu_hw_sspp *sspp,
 						   struct dpu_sw_pipe_cfg *pipe_cfg,
 						   const struct msm_format *fmt,
-						   uint32_t max_linewidth)
+						   uint32_t max_linewidth,
+						   bool cac)
 {
 	return dpu_plane_is_multirect_capable(sspp, pipe_cfg, fmt) &&
-		dpu_plane_is_parallel_capable(pipe_cfg, fmt, max_linewidth);
+		dpu_plane_is_parallel_capable(pipe_cfg, fmt, max_linewidth, cac);
 }
 
 static bool dpu_plane_get_single_pipe_in_stage(struct dpu_plane_state *pstate,
@@ -1066,7 +1069,7 @@ static int dpu_plane_atomic_check_sspp(struct drm_plane *plane,
 static bool dpu_plane_try_multirect_parallel(struct dpu_sw_pipe *pipe, struct dpu_sw_pipe_cfg *pipe_cfg,
 					     struct dpu_sw_pipe *r_pipe, struct dpu_sw_pipe_cfg *r_pipe_cfg,
 					     struct dpu_hw_sspp *sspp, const struct msm_format *fmt,
-					     uint32_t max_linewidth)
+					     uint32_t max_linewidth, bool cac)
 {
 	r_pipe->sspp = NULL;
 
@@ -1077,8 +1080,8 @@ static bool dpu_plane_try_multirect_parallel(struct dpu_sw_pipe *pipe, struct dp
 	r_pipe->multirect_mode = DPU_SSPP_MULTIRECT_NONE;
 
 	if (drm_rect_width(&r_pipe_cfg->src_rect) != 0) {
-		if (!dpu_plane_is_multirect_parallel_capable(pipe->sspp, pipe_cfg, fmt, max_linewidth) ||
-		    !dpu_plane_is_multirect_parallel_capable(pipe->sspp, r_pipe_cfg, fmt, max_linewidth))
+		if (!dpu_plane_is_multirect_parallel_capable(pipe->sspp, pipe_cfg, fmt, max_linewidth, cac) ||
+		    !dpu_plane_is_multirect_parallel_capable(pipe->sspp, r_pipe_cfg, fmt, max_linewidth, cac))
 			return false;
 
 		r_pipe->sspp = pipe->sspp;
@@ -1124,8 +1127,8 @@ static int dpu_plane_try_multirect_shared(struct dpu_plane_state *pstate,
 	if (MSM_FORMAT_IS_UBWC(prev_fmt))
 		max_tile_height = max(max_tile_height, prev_fmt->tile_height);
 
-	if (dpu_plane_is_parallel_capable(pipe_cfg, fmt, max_linewidth) &&
-	    dpu_plane_is_parallel_capable(prev_pipe_cfg, prev_fmt, max_linewidth) &&
+	if (dpu_plane_is_parallel_capable(pipe_cfg, fmt, max_linewidth, false) &&
+	    dpu_plane_is_parallel_capable(prev_pipe_cfg, prev_fmt, max_linewidth, false) &&
 	    (pipe_cfg->dst_rect.x1 >= prev_pipe_cfg->dst_rect.x2 ||
 	     prev_pipe_cfg->dst_rect.x1 >= pipe_cfg->dst_rect.x2)) {
 		pipe->sspp = prev_pipe->sspp;
@@ -1483,9 +1486,12 @@ static void dpu_plane_sspp_update_pipe(struct drm_plane *plane,
 		return;
 	}
 
+	/* skip source rect setup for fetch SSPP in CAC case */
 	if (pipe->sspp->ops.setup_rects) {
-		pipe->sspp->ops.setup_rects(pipe,
-				pipe_cfg);
+		if (!(kms->planar_cac_enable &&
+		    (pipe->sspp->idx == SSPP_DMA0 || pipe->sspp->idx == SSPP_DMA1)))
+			pipe->sspp->ops.setup_rects(pipe,
+					pipe_cfg);
 	}
 
 	_dpu_plane_setup_scaler(pipe, fmt, false, pipe_cfg);
@@ -1493,6 +1499,10 @@ static void dpu_plane_sspp_update_pipe(struct drm_plane *plane,
 	if (pipe->sspp->ops.setup_multirect)
 		pipe->sspp->ops.setup_multirect(
 				pipe);
+
+
+	if (kms->planar_cac_enable && pipe->sspp->ops.setup_cac)
+		pipe->sspp->ops.setup_cac(pipe->sspp, NULL);
 
 	if (pipe->sspp->ops.setup_format) {
 		unsigned int rotation = pipe_cfg->rotation;
