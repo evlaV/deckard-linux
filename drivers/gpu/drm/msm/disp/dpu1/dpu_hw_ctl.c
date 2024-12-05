@@ -239,6 +239,13 @@ static void dpu_hw_ctl_update_pending_flush_sspp(struct dpu_hw_ctl *ctx,
 	}
 }
 
+static void dpu_hw_ctl_update_pending_flush_sspp_cac(struct dpu_hw_ctl *ctx)
+{
+	/* Add 2nd stage SSPP SSPP_VIG0~3 SSPP_DMA0~3 for planar CAC mode */
+	ctx->pending_flush_mask |= BIT(0) | BIT(1) | BIT(2) | BIT(11) |
+				   BIT(12) | BIT(18) | BIT(24) | BIT(25);
+}
+
 static void dpu_hw_ctl_update_pending_flush_mixer(struct dpu_hw_ctl *ctx,
 	enum dpu_lm lm)
 {
@@ -768,6 +775,7 @@ static void _setup_ctl_ops(struct dpu_hw_ctl_ops *ops,
 	ops->clear_all_blendstages = dpu_hw_ctl_clear_all_blendstages;
 	ops->setup_blendstage = dpu_hw_ctl_setup_blendstage;
 	ops->update_pending_flush_sspp = dpu_hw_ctl_update_pending_flush_sspp;
+	ops->update_pending_flush_sspp_cac = dpu_hw_ctl_update_pending_flush_sspp_cac;
 	ops->update_pending_flush_mixer = dpu_hw_ctl_update_pending_flush_mixer;
 	if (cap & BIT(DPU_CTL_DSPP_SUB_BLOCK_FLUSH))
 		ops->update_pending_flush_dspp = dpu_hw_ctl_update_pending_flush_dspp_sub_blocks;

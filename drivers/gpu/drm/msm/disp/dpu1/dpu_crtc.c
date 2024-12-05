@@ -418,6 +418,9 @@ static void _dpu_crtc_blend_setup_pipe(struct drm_crtc *crtc,
 
 	sspp_idx = pipe->sspp->idx;
 
+	if (!plane)
+		goto skip_plane_log;
+
 	state = plane->state;
 
 	trace_dpu_crtc_setup_mixer(DRMID(crtc), DRMID(plane),
@@ -433,6 +436,7 @@ static void _dpu_crtc_blend_setup_pipe(struct drm_crtc *crtc,
 			 state->fb ? state->fb->base.id : -1,
 			 pipe->multirect_index);
 
+skip_plane_log:
 	stage_cfg->stage[stage][stage_idx] = sspp_idx;
 	stage_cfg->multirect_index[stage][stage_idx] = pipe->multirect_index;
 
@@ -445,20 +449,24 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	struct dpu_crtc *dpu_crtc, struct dpu_crtc_mixer *mixer,
 	struct dpu_hw_stage_cfg *stage_cfg)
 {
+	struct dpu_kms *dpu_kms = _dpu_crtc_get_kms(crtc);
 	struct drm_plane *plane;
 	struct drm_framebuffer *fb;
 	struct drm_plane_state *state;
 	struct dpu_crtc_state *cstate = to_dpu_crtc_state(crtc->state);
 	struct dpu_plane_state *pstate = NULL;
+	struct dpu_sw_pipe *cac_pipe;
 	const struct msm_format *format;
 	struct dpu_hw_ctl *ctl = mixer->lm_ctl;
-
-	uint32_t lm_idx, stage, i, pipe_idx, head_pipe_in_stage, lms_in_pair;
+	u32 vig_stage = dpu_kms->cac_vig_lm_stage;
+	bool skip_plane;
+	uint32_t lm_idx, stage, i, j, pipe_idx, head_pipe_in_stage, lms_in_pair;
 	bool bg_alpha_enable = false;
 	DECLARE_BITMAP(fetch_active, SSPP_MAX);
 
 	memset(fetch_active, 0, sizeof(fetch_active));
 	drm_atomic_crtc_for_each_plane(plane, crtc) {
+		skip_plane = false;
 		state = plane->state;
 		if (!state)
 			continue;
@@ -484,6 +492,13 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 				lms_in_pair = min(cstate->num_mixers - (stage * PIPES_PER_STAGE),
 						  PIPES_PER_STAGE);
 				set_bit(pstate->pipe[pipe_idx].sspp->idx, fetch_active);
+				/* skip CAC SSPP that's only for fetch */
+				if (dpu_kms->planar_cac_enable &&
+				    (pstate->pipe[pipe_idx].sspp->idx == SSPP_DMA0 ||
+				    pstate->pipe[pipe_idx].sspp->idx == SSPP_DMA1)) {
+						skip_plane = true;
+						continue;
+				}
 				_dpu_crtc_blend_setup_pipe(crtc, plane,
 							   &mixer[head_pipe_in_stage],
 							   lms_in_pair,
@@ -493,6 +508,9 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 							   &stage_cfg[stage]);
 			}
 		}
+
+		if (skip_plane)
+			continue;
 
 		/* blend config update */
 		for (lm_idx = 0; lm_idx < cstate->num_mixers; lm_idx++) {
@@ -507,6 +525,93 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 		}
 	}
 
+	DRM_DEBUG_ATOMIC("checking CAC blending\n");
+	if (!dpu_kms->planar_cac_enable || !pstate)
+		goto skip_cac_blend;
+
+	/*
+	 * Add hidden SSPP into mixer config.
+	 * 4 pipes from rec0/Red rec1/Blue in VIG0/2 come first as the left half screen,
+	 * then 4 pipes rec0/Red rec1/Blue in VIG1/3 come next as the right half screen.
+	 * But all blue channel is not blended in mixer, because they are already
+	 * merged into red channel in CAC operation.
+	 * rec0/rec1 for green channel in DMA2 as the left half screen later,
+	 * rec0/rec1 for green channel in DMA3 as the right half screen.
+	 * So there are 2 hidden planes (8 pipes) with planar format that send output
+	 * to mixers.
+	 */
+	for (i = 0; i < PLANAR_CAC_PIPES; i += PIPES_PER_PLANE) {
+		/* loop mixer pair */
+		for (stage = 0; stage < PIPES_PER_PLANE / STAGES_PER_PLANE; stage++) {
+			/* loop pipe per mixer pair */
+			for (j = 0; j < PIPES_PER_STAGE; j++) {
+				pipe_idx = i + stage * PIPES_PER_STAGE + j;
+				cac_pipe = &dpu_kms->cac_pipes[pipe_idx];
+				DRM_DEBUG_ATOMIC("CAC pipe %i sspp %p\n",
+						 pipe_idx, cac_pipe->sspp);
+				if (!cac_pipe->sspp)
+					continue;
+
+				/*
+				 * Only blend rec0 for red for VIG 0~3 because
+				 * blue is already merged with red channel in the
+				 * QSEED output data.
+				 */
+				if (i < PLANAR_CAC_SSPP_VIG * 2) {
+					if(j % 2)
+						continue;
+					cac_pipe->multirect_index = DPU_SSPP_RECT_SOLO;
+				}
+
+				set_bit(cac_pipe->sspp->idx, fetch_active);
+				DRM_DEBUG_ATOMIC("crtc %d stage:%d - CAC SSPP%d multirect_idx %d\n",
+						 crtc->base.id,
+						 vig_stage + (i >= PLANAR_CAC_SSPP_VIG * 2),
+						 cac_pipe->sspp->idx - SSPP_NONE,
+						 cac_pipe->multirect_index);
+
+				/* VIG0/2 form up the left half of screen, output to vig_stage and vig_stage + 1
+				 * VIG1/3 form up the right half of screen, output to vig_stage and vig_stage + 1
+				 * DMA2/3 go to stage: vig_stage + 1
+				 */
+				_dpu_crtc_blend_setup_pipe(crtc, NULL, mixer,
+							   cstate->num_mixers,
+							   vig_stage +(i >= 2 * 2) + (i >= PLANAR_CAC_SSPP_VIG * 2),
+							   format, 0,
+							   cac_pipe, j,
+							   &stage_cfg[stage]);
+				/* recover multi-rect mode for blue channel */
+				if (i < PLANAR_CAC_SSPP_VIG * 2) {
+					if(j % 2)
+						continue;
+					cac_pipe->multirect_index = DPU_SSPP_RECT_0;
+				}
+			}
+		}
+		/* to blend CAC hidden plane to setup alpha with op_mode DPU_BLEND_BG_ALPHA_BG_CONST */
+		if (pstate->base.pixel_blend_mode != DRM_MODE_BLEND_PIXEL_NONE &&
+		    format->alpha_enable)
+			WARN(1, "to fix alpha setup for planar CAC mode");
+		for (lm_idx = 0; lm_idx < cstate->num_mixers; lm_idx++) {
+			/* flush the 2nd stage SSPPs in planar CAC mode */
+			mixer[lm_idx].lm_ctl->ops.update_pending_flush_sspp_cac(mixer[lm_idx].lm_ctl);
+			/* add the stages to blend for extra CAC layers */
+			_dpu_crtc_setup_blend_cfg(mixer + lm_idx, pstate,
+						  format, true, vig_stage);
+			_dpu_crtc_setup_blend_cfg(mixer + lm_idx, pstate,
+						  format, true, vig_stage + 1);
+			_dpu_crtc_setup_blend_cfg(mixer + lm_idx, pstate,
+						  format, true, vig_stage + 2);
+
+			/* hack reg LM_OP_MODE to blend stage of VIG0~3 */
+			mixer[lm_idx].mixer_op_mode |= 1 << (vig_stage);
+			mixer[lm_idx].mixer_op_mode |= 1 << (vig_stage + 1);
+			/* hack reg LM_OP_MODE to blend stage of DMA2/3 */
+			mixer[lm_idx].mixer_op_mode |= 1 << (vig_stage + 2);
+		}
+	}
+
+skip_cac_blend:
 	if (ctl->ops.set_active_pipes)
 		ctl->ops.set_active_pipes(ctl, fetch_active);
 
@@ -525,6 +630,8 @@ static void _dpu_crtc_blend_setup(struct drm_crtc *crtc)
 	struct dpu_hw_ctl *ctl;
 	struct dpu_hw_mixer *lm;
 	struct dpu_hw_stage_cfg stage_cfg[STAGES_PER_PLANE];
+	enum dpu_stage stage;
+	struct dpu_kms *dpu_kms = _dpu_crtc_get_kms(crtc);
 	int i;
 
 	DRM_DEBUG_ATOMIC("%s\n", dpu_crtc->name);
@@ -534,6 +641,10 @@ static void _dpu_crtc_blend_setup(struct drm_crtc *crtc)
 		if (mixer[i].lm_ctl->ops.clear_all_blendstages)
 			mixer[i].lm_ctl->ops.clear_all_blendstages(
 					mixer[i].lm_ctl);
+
+		lm = mixer[i].hw_lm;
+		for (stage = DPU_STAGE_0; stage < DPU_STAGE_0 + lm->cap->sblk->maxblendstages; stage++)
+			lm->ops.clear_blend_config(lm, stage);
 	}
 
 	/* initialize stage cfg */
@@ -563,6 +674,9 @@ static void _dpu_crtc_blend_setup(struct drm_crtc *crtc)
 		ctl->ops.setup_blendstage(ctl, mixer[i].hw_lm->idx,
 			&stage_cfg[i / PIPES_PER_STAGE]);
 	}
+
+	if (!dpu_kms->planar_cac_enable)
+		return;
 }
 
 /**
