@@ -1742,6 +1742,206 @@ int dpu_crtc_vblank(struct drm_crtc *crtc, bool en)
 	return 0;
 }
 
+static inline void cac_blob_to_rect(struct drm_rect *rect, struct cac_rect *cr)
+{
+		rect->x1 = 0xffff & cr->xy;
+		rect->x2 = (0xffff & cr->size) + rect->x1;
+		rect->y1 = cr->xy >> 16;
+		rect->y2 = (cr->size >> 16) + rect->y1;
+}
+
+static inline void cac_blob_size_to_cfg(u32 csz, u32 *width, u32 *height)
+{
+	*width = 0xffff & csz;
+	*height = csz >> 16;
+}
+
+#define FILTER_BILINEAR                 0x3
+
+/* setup all SSPP rectx and QSEED3 related register per user land requirement */
+static void dpu_crtc_set_cac_blob(struct msm_kms *kms,
+				  struct dpu_crtc_state *cstate,
+				  struct cac_blob *cac)
+{
+	int i, j, rect1;
+	struct dpu_sw_pipe *cac_pipe;
+	struct dpu_hw_sspp *sspp;
+	struct dpu_sw_pipe_cfg *cac_pipe_cfg;
+	struct dpu_hw_pixel_ext pe_ext;
+	struct dpu_kms *dpu_kms = to_dpu_kms(kms);
+	u32 flags = 0;
+
+	struct dpu_hw_scaler3_cfg scaler3_cfg = {
+		.enable = 1,
+		.cac_enable = 1,
+		.preload_x = {0x7, 0x7, 0, 0},
+		.preload_y = {0x3, 0x3, 0, 0},
+		.y_rgb_filter_cfg = FILTER_BILINEAR,
+		.uv_filter_cfg = FILTER_BILINEAR,
+	};
+	/*qseed3 op_mode: BIT_WIDTH:bit14=1, CAC_MODE[bit2:1]=1, EN:0=1 to make dpu_hw_setup_scaler3() */
+	const struct msm_format *fmt_red = mdp_get_format(kms, DRM_FORMAT_PLANAR_CAC_R, 0);
+	const struct msm_format *fmt_blue = mdp_get_format(kms, DRM_FORMAT_PLANAR_CAC_B, 0);
+	const struct msm_format *fmt_green = mdp_get_format(kms, DRM_FORMAT_PLANAR_CAC_G, 0);
+
+	/* all RECTx will read data for VIG 0~3 and DMA 2/3 */
+	for (i = 0; i < PLANAR_CAC_PIPES_WITH_FETCH; i++) {
+		cac_pipe = &dpu_kms->cac_pipes[i];
+		if (i & 1) {
+			cac_pipe->multirect_index = DPU_SSPP_RECT_1;
+			cac_pipe->multirect_mode = DPU_SSPP_MULTIRECT_PARALLEL;
+		} else {
+			cac_pipe->multirect_index = DPU_SSPP_RECT_0;
+			cac_pipe->multirect_mode = DPU_SSPP_MULTIRECT_PARALLEL;
+		}
+	}
+
+	/*
+	 * requirements:
+	 * cac->src_g.size==cac->dst_g.size
+	 * cac->dst_b is contained within cac->dst_r
+	 * cac[i].src_unpack.size==cac[i^2].src_unpack.size
+	 */
+
+	/* VIG 0 rec0/rec1 fetch from the DMA0 rec0 internal memory, scaled separately and combined */
+	for (i = 0; i < PLANAR_CAC_SSPP_VIG; i++, cac++) {
+		scaler3_cfg.init_phase_x[0] = cac->phase_init_r_h;
+		scaler3_cfg.init_phase_x[1] = cac->phase_init_b_h;
+		scaler3_cfg.init_phase_y[0] = cac->phase_init_r_v;
+		scaler3_cfg.init_phase_y[1] = cac->phase_init_b_v;
+
+		cac_blob_size_to_cfg(cac->src_r.size, &scaler3_cfg.src_width[0],
+				     &scaler3_cfg.src_height[0]);
+		cac_blob_size_to_cfg(cac->src_b.size, &scaler3_cfg.src_width[1],
+				     &scaler3_cfg.src_height[1]);
+		cac_blob_size_to_cfg(cac->dst_r.size, &scaler3_cfg.dst_width[0],
+				     &scaler3_cfg.dst_height[0]);
+		cac_blob_size_to_cfg(cac->dst_b.size, &scaler3_cfg.dst_width[1],
+				     &scaler3_cfg.dst_height[1]);
+		cac_blob_size_to_cfg(cac->dst_r.xy, &scaler3_cfg.dst_x[0],
+				     &scaler3_cfg.dst_y[0]);
+		cac_blob_size_to_cfg(cac->dst_b.xy, &scaler3_cfg.dst_x[1],
+				     &scaler3_cfg.dst_y[1]);
+
+		cac_pipe = &dpu_kms->cac_pipes[i*PIPES_PER_STAGE];
+		sspp = cac_pipe->sspp;
+
+		sspp->ops.setup_cac(sspp, cac);
+		/* setup img size as 6.9 does. the green size is passed in that? */
+		if ((i & 2) == 0)
+			sspp->ops.setup_cac(dpu_kms->cac_pipes[(PLANAR_CAC_SSPP_VIG + i)*2].sspp, cac);
+
+		sspp->ops.setup_cdp(cac_pipe, fmt_red, true);
+
+		sspp->ops.setup_scaler(sspp, &scaler3_cfg, fmt_red);
+
+		/* set split_order for VIG2/3 rec0/1 and DMA2/3 rec1 */
+		sspp->ops.setup_format(cac_pipe, fmt_red, flags);
+		sspp->ops.setup_format(&dpu_kms->cac_pipes[i*PIPES_PER_STAGE + 1], fmt_blue, flags);
+
+		/* VIG0~3 rect0 for red channel */
+		cac_pipe_cfg = &dpu_kms->cac_pipe_cfg[i*PIPES_PER_STAGE];
+		cac_blob_to_rect(&cac_pipe_cfg->src_rect, &cac->src_r);
+		cac_blob_to_rect(&cac_pipe_cfg->dst_rect, &cac->dst_r);
+		cac_blob_to_rect(&cac_pipe_cfg->img_rect, &cac->src_unpack);
+
+		/* VIG0~3 rect1 for blue channel */
+		cac_pipe_cfg = &dpu_kms->cac_pipe_cfg[i*PIPES_PER_STAGE + 1];
+		cac_blob_to_rect(&cac_pipe_cfg->src_rect, &cac->src_b);
+		cac_blob_to_rect(&cac_pipe_cfg->dst_rect, &cac->dst_b);
+
+		/*
+		 * For SSPP DMA 2/3, the first 2 cac blobs are for rect0,
+		 * and the later 2 blobs are for rect1 in sequence.
+		 */
+		j = (i & 1) << 1;
+		rect1 = i & 2 ? 1 : 0;
+		cac_pipe_cfg = &dpu_kms->cac_pipe_cfg[PLANAR_CAC_SSPP_VIG * 2 + j + rect1];
+		cac_blob_to_rect(&cac_pipe_cfg->src_rect, &cac->src_g);
+		cac_blob_to_rect(&cac_pipe_cfg->dst_rect, &cac->dst_g);
+		cac_blob_to_rect(&cac_pipe_cfg->img_rect, &cac->src_unpack);
+
+		/* for fetch channel. The index offset for DMA0 and VIG0 is decided in dpu_rm.c */
+		cac_pipe_cfg = &dpu_kms->cac_pipe_cfg[PLANAR_CAC_SSPP*2 + j + rect1];
+		cac_blob_to_rect(&cac_pipe_cfg->src_rect, &cac->src_unpack);
+	}
+
+	/* config SSPP for green channel without scaling */
+	for (i = PLANAR_CAC_SSPP_VIG; i < PLANAR_CAC_SSPP; i++) {
+		cac_pipe = &dpu_kms->cac_pipes[i*PIPES_PER_STAGE];
+		cac_pipe->sspp->ops.setup_cdp(cac_pipe, fmt_red, true);
+
+		sspp->ops.setup_format(cac_pipe, fmt_green, 0);
+		sspp->ops.setup_format(&dpu_kms->cac_pipes[i*PIPES_PER_STAGE + 1], fmt_green, flags);
+	}
+
+	memset(&pe_ext, 0, sizeof(struct dpu_hw_pixel_ext));
+	for (i = 0; i < PLANAR_CAC_PIPES_WITH_FETCH; i++) {
+
+		/* configure QSEED3 for all hidden VIG SSPP */
+		cac_pipe = &dpu_kms->cac_pipes[i];
+		sspp = cac_pipe->sspp;
+		cac_pipe_cfg = &dpu_kms->cac_pipe_cfg[i];
+
+		if (cac_pipe->sspp->idx <= SSPP_DMA1)
+			sspp->ops.setup_pe(cac_pipe->sspp, &pe_ext);
+
+		/* call dpu_hw_sspp_setup_rects to set src/dst and size/xy for all SSPP per cfg */
+		sspp->ops.setup_rects(cac_pipe, cac_pipe_cfg);
+	}
+}
+
+static int
+crtc_atomic_set_property(struct drm_crtc *crtc,
+			 struct drm_crtc_state *state,
+			 struct drm_property *property, uint64_t val)
+{
+	struct msm_drm_private *priv = crtc->dev->dev_private;
+	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
+	struct dpu_crtc_state *cstate = to_dpu_crtc_state(state);
+	struct drm_property_blob *blob;
+
+	if (property != dpu_kms->cac_prop)
+		return -ENOENT;
+
+	dpu_kms->cac_blob_id = val;
+
+	blob = drm_property_lookup_blob(crtc->dev, (uint32_t) val);
+	if (!blob)
+		return -EINVAL;
+
+	DRM_DEBUG_DRIVER("Set CAC blob property: id %lld length %ld\n",
+			 val, blob->length);
+	if (blob->length != sizeof(struct cac_blob) * PLANAR_CAC_SSPP_VIG) {
+		drm_property_blob_put(blob);
+		return -EINVAL;
+	}
+
+	dpu_crtc_set_cac_blob(priv->kms, cstate, blob->data);
+	drm_property_blob_put(blob);
+	dpu_kms->planar_cac_enable = 1;
+	/* use the last 2 stage for hidden SSPP, it's DPU_STAGE_9/10 for now */
+	/* TODO: change max val per catalog */
+	dpu_kms->cac_vig_lm_stage = DPU_STAGE_MAX - 3;
+
+	return 0;
+}
+
+static int
+crtc_atomic_get_property(struct drm_crtc *crtc,
+			 const struct drm_crtc_state *state,
+			 struct drm_property *property, uint64_t *val)
+{
+	struct msm_drm_private *priv = crtc->dev->dev_private;
+	struct dpu_kms *dpu = to_dpu_kms(priv->kms);
+
+	if (property != dpu->cac_prop)
+		return -ENOENT;
+
+	*val = dpu->cac_blob_id;
+	return 0;
+}
+
 /**
  * dpu_crtc_get_num_lm - Get mixer number in this CRTC pipeline
  * @state: Pointer to drm crtc state object
@@ -1929,6 +2129,8 @@ static const struct drm_crtc_funcs dpu_crtc_funcs = {
 	.disable_vblank = msm_crtc_disable_vblank,
 	.get_vblank_timestamp = drm_crtc_vblank_helper_get_vblank_timestamp,
 	.get_vblank_counter = dpu_crtc_get_vblank_counter,
+	.atomic_set_property = crtc_atomic_set_property,
+	.atomic_get_property = crtc_atomic_get_property,
 };
 
 static const struct drm_crtc_helper_funcs dpu_crtc_helper_funcs = {
