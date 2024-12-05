@@ -428,6 +428,9 @@ static void _dpu_crtc_blend_setup_pipe(struct drm_crtc *crtc,
 
 	sspp_idx = pipe->sspp->idx;
 
+	if (!plane)
+		goto skip_plane_log;
+
 	state = plane->state;
 
 	trace_dpu_crtc_setup_mixer(DRMID(crtc), DRMID(plane),
@@ -443,6 +446,7 @@ static void _dpu_crtc_blend_setup_pipe(struct drm_crtc *crtc,
 			 state->fb ? state->fb->base.id : -1,
 			 pipe->multirect_index);
 
+skip_plane_log:
 	stage_cfg->stage[stage][stage_idx] = sspp_idx;
 	stage_cfg->multirect_index[stage][stage_idx] = pipe->multirect_index;
 
@@ -455,14 +459,18 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	struct dpu_crtc *dpu_crtc, struct dpu_crtc_mixer *mixer,
 	struct dpu_hw_stage_cfg *stage_cfg)
 {
+	struct dpu_kms *dpu_kms = _dpu_crtc_get_kms(crtc);
 	struct drm_plane *plane;
 	struct drm_framebuffer *fb;
 	struct drm_plane_state *state;
 	struct dpu_crtc_state *cstate = to_dpu_crtc_state(crtc->state);
 	struct dpu_plane_state *pstate = NULL;
+	struct dpu_sw_pipe *cac_pipe;
 	const struct msm_format *format;
 	struct dpu_hw_ctl *ctl = mixer->lm_ctl;
-	u32 lm_idx, stage, i, pipe_idx, head_pipe_in_stage, lms_in_pair;
+	u32 vig_stage = dpu_kms->cac_vig_lm_stage;
+	bool skip_plane;
+	u32 lm_idx, stage, i, j, pipe_idx, head_pipe_in_stage, lms_in_pair;
 	bool bg_alpha_enable = false;
 	DECLARE_BITMAP(active_fetch, SSPP_MAX);
 	DECLARE_BITMAP(active_pipes, SSPP_MAX);
@@ -470,6 +478,7 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	memset(active_fetch, 0, sizeof(active_fetch));
 	memset(active_pipes, 0, sizeof(active_pipes));
 	drm_atomic_crtc_for_each_plane(plane, crtc) {
+		skip_plane = false;
 		state = plane->state;
 		if (!state)
 			continue;
@@ -495,7 +504,13 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 				lms_in_pair = min(cstate->num_mixers - (stage * PIPES_PER_STAGE),
 						  PIPES_PER_STAGE);
 				set_bit(pstate->pipe[pipe_idx].sspp->idx, active_fetch);
-				set_bit(pstate->pipe[pipe_idx].sspp->idx, active_pipes);
+				/* skip CAC SSPP that's only for fetch */
+				if (dpu_kms->planar_cac_enable &&
+				    (pstate->pipe[pipe_idx].sspp->idx == SSPP_DMA0 ||
+				    pstate->pipe[pipe_idx].sspp->idx == SSPP_DMA1)) {
+						skip_plane = true;
+						continue;
+				}
 				_dpu_crtc_blend_setup_pipe(crtc, plane,
 							   &mixer[head_pipe_in_stage],
 							   lms_in_pair,
@@ -505,6 +520,9 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 							   &stage_cfg[stage]);
 			}
 		}
+
+		if (skip_plane)
+			continue;
 
 		/* blend config update */
 		for (lm_idx = 0; lm_idx < cstate->num_mixers; lm_idx++) {
@@ -628,6 +646,8 @@ static void _dpu_crtc_blend_setup(struct drm_crtc *crtc)
 	struct dpu_hw_mixer *lm;
 	struct dpu_hw_stage_cfg stage_cfg[STAGES_PER_PLANE];
 	DECLARE_BITMAP(active_lms, LM_MAX);
+	enum dpu_stage stage;
+	struct dpu_kms *dpu_kms = _dpu_crtc_get_kms(crtc);
 	int i;
 
 	DRM_DEBUG_ATOMIC("%s\n", dpu_crtc->name);
@@ -637,6 +657,11 @@ static void _dpu_crtc_blend_setup(struct drm_crtc *crtc)
 		if (mixer[i].lm_ctl->ops.clear_all_blendstages)
 			mixer[i].lm_ctl->ops.clear_all_blendstages(
 					mixer[i].lm_ctl);
+
+		lm = mixer[i].hw_lm;
+		for (stage = DPU_STAGE_0; stage < DPU_STAGE_0 + lm->cap->sblk->maxblendstages; stage++)
+			lm->ops.clear_blend_config(lm, stage);
+
 		if (mixer[i].lm_ctl->ops.set_active_fetch_pipes)
 			mixer[i].lm_ctl->ops.set_active_fetch_pipes(mixer[i].lm_ctl, NULL);
 		if (mixer[i].lm_ctl->ops.set_active_pipes)
@@ -683,6 +708,9 @@ static void _dpu_crtc_blend_setup(struct drm_crtc *crtc)
 			lm->ops.setup_blendstage(lm, mixer[i].hw_lm->idx,
 				&stage_cfg[i / PIPES_PER_STAGE]);
 	}
+
+	if (!dpu_kms->planar_cac_enable)
+		return;
 }
 
 /**
