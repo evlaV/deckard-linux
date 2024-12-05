@@ -491,6 +491,18 @@ static const struct msm_format mdp_formats[] = {
 		BPC8A, BPC8, BPC8, BPC8,
 		C3_ALPHA, C1_B_Cb, C0_G_Y, C2_R_Cr),
 
+	INTERLEAVED_RGBX_FMT(PLANAR_CAC_R, 4,
+		BPC8A, BPC8, BPC8, BPC8,
+		C0_G_Y, C3_ALPHA, C3_ALPHA, C3_ALPHA),
+
+	INTERLEAVED_RGBX_FMT(PLANAR_CAC_B, 4,
+		BPC8A, BPC8, BPC8, BPC8,
+		C3_ALPHA, C3_ALPHA, C1_B_Cb, C3_ALPHA),
+
+	INTERLEAVED_RGBX_FMT(PLANAR_CAC_G, 4,
+		BPC8A, BPC8, BPC8, BPC8,
+		C3_ALPHA, C0_G_Y, C3_ALPHA, C3_ALPHA),
+
 	/* --- RGB formats above / YUV formats below this line --- */
 
 	/* 2 plane YUV */
