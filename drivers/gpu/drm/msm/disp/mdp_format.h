@@ -24,6 +24,11 @@ enum msm_format_flags {
 #define MSM_FORMAT_FLAG_UNPACK_TIGHT	BIT(MSM_FORMAT_FLAG_UNPACK_TIGHT_BIT)
 #define MSM_FORMAT_FLAG_UNPACK_ALIGN_MSB BIT(MSM_FORMAT_FLAG_UNPACK_ALIGN_MSB_BIT)
 
+/* Define special drm format for planar CAC mode. */
+#define DRM_FORMAT_PLANAR_CAC_R fourcc_code('C', 'A', 'C', 'R') /* [31:0] 8:8:8:8 little endian */
+#define DRM_FORMAT_PLANAR_CAC_B fourcc_code('C', 'A', 'C', 'B') /* [31:0] 8:8:8:8 little endian */
+#define DRM_FORMAT_PLANAR_CAC_G fourcc_code('C', 'A', 'C', 'G') /* [31:0] 8:8:8:8 little endian */
+
 /**
  * DPU HW,Component order color map
  */
