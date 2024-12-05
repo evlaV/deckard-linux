@@ -870,6 +870,39 @@ void dpu_rm_release_all_sspp(struct dpu_global_state *global_state,
 		ARRAY_SIZE(global_state->sspp_to_crtc_id), crtc_id);
 }
 
+/**
+ * dpu_rm_reserve_cac_sspp - Reserve fixed SSPPs for CAC mode
+ * @dpu_kms: DPU kms structure that contain hidden pipes array
+ */
+int dpu_rm_reserve_cac_sspp(struct dpu_kms *dpu_kms)
+{
+	struct dpu_global_state *global_state = dpu_kms_get_existing_global_state(dpu_kms);
+	const struct dpu_rm *rm = global_state->rm;
+	int i;
+
+	/*
+	 * RECT0/RECT1 are used for below hidden SSPPs in planar CAC mode.
+	 * RECT1 for blue in VIG0~4 are not blended due to content is combined with red.
+	 * VIG0/2 are for the lm0/1 and VIG1/3 are for lm2/3.
+	 * DMA2 are for the lm0/1 and DMA3 are for lm2/3.
+	 * DMA0/1 are added to the list but not reserved. So they can be allocated
+	 * by plane, but config to rect can be refered from the cac_pipe array.
+	 */
+	u32 csspp[] = {SSPP_VIG0, SSPP_VIG1, SSPP_VIG2, SSPP_VIG3, SSPP_DMA2, SSPP_DMA3, SSPP_DMA0, SSPP_DMA1};
+
+	for (i = 0; i < PLANAR_CAC_SSPP; i++) {
+		global_state->sspp_to_crtc_id[csspp[i] - SSPP_NONE] = HIDEN_CAC_SSPP_CRTC;
+		dpu_kms->cac_pipes[i * 2].sspp = rm->hw_sspp[csspp[i] - SSPP_NONE];
+		dpu_kms->cac_pipes[i * 2 + 1].sspp = rm->hw_sspp[csspp[i] - SSPP_NONE];
+	}
+	for (i = PLANAR_CAC_SSPP; i < PLANAR_CAC_SSPP_WITH_FETCH; i++) {
+		dpu_kms->cac_pipes[i * 2].sspp = rm->hw_sspp[csspp[i] - SSPP_NONE];
+		dpu_kms->cac_pipes[i * 2 + 1].sspp = rm->hw_sspp[csspp[i] - SSPP_NONE];
+	}
+
+	return 0;
+}
+
 static char *dpu_hw_blk_type_name[] = {
 	[DPU_HW_BLK_TOP] = "TOP",
 	[DPU_HW_BLK_SSPP] = "SSPP",
