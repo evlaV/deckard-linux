@@ -164,6 +164,13 @@ struct dpu_hw_ctl_ops {
 		enum dpu_sspp blk);
 
 	/**
+	 * OR the 2nd stage SSPPs bits to the cached pending_flush_mask
+	 * No effect on hardware
+	 * @ctx       : ctl path ctx pointer
+	 */
+	void (*update_pending_flush_sspp_cac)(struct dpu_hw_ctl *ctx);
+
+	/**
 	 * OR in the given flushbits to the cached pending_flush_mask
 	 * No effect on hardware
 	 * @ctx       : ctl path ctx pointer
