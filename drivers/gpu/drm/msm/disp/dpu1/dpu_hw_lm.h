@@ -38,10 +38,23 @@ struct dpu_hw_lm_ops {
 		struct dpu_hw_mixer_cfg *cfg);
 
 	/*
+	 * Clear alpha blending configuration
+	 * for the specified stage
+	 */
+	void (*clear_blend_config)(struct dpu_hw_mixer *ctx, uint32_t stage);
+
+	/*
 	 * Alpha blending configuration
 	 * for the specified stage
 	 */
 	void (*setup_blend_config)(struct dpu_hw_mixer *ctx, uint32_t stage,
+		uint32_t fg_alpha, uint32_t bg_alpha, uint32_t blend_op);
+
+	/*
+	 * extra alpha blending configuration
+	 * for the specified stage in CAC mode
+	 */
+	void (*setup_blend_config_cac)(struct dpu_hw_mixer *ctx, uint32_t stage,
 		uint32_t fg_alpha, uint32_t bg_alpha, uint32_t blend_op);
 
 	/*
