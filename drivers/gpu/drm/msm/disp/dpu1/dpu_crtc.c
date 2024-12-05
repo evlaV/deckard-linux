@@ -322,7 +322,8 @@ static bool dpu_crtc_get_scanout_position(struct drm_crtc *crtc,
 static void _dpu_crtc_setup_blend_cfg(struct dpu_crtc_mixer *mixer,
 				      struct dpu_plane_state *pstate,
 				      const struct msm_format *format,
-				      const struct dpu_mdss_version *mdss_ver)
+				      const struct dpu_mdss_version *mdss_ver,
+				      bool planar_cac, enum dpu_stage cac_stage)
 {
 	struct dpu_hw_mixer *lm = mixer->hw_lm;
 	u32 blend_op;
@@ -330,12 +331,18 @@ static void _dpu_crtc_setup_blend_cfg(struct dpu_crtc_mixer *mixer,
 
 	if (mdss_ver->core_major_ver < 12) {
 		max_alpha = 0xff;
-		fg_alpha = pstate->base.alpha >> 8;
+		if (!planar_cac)
+			fg_alpha = pstate->base.alpha >> 8;
+		else
+			fg_alpha = max_alpha;
 	} else {
 		max_alpha = 0x3ff;
 		fg_alpha = pstate->base.alpha >> 6;
 	}
-	bg_alpha = max_alpha - fg_alpha;
+	if (!planar_cac)
+		bg_alpha = max_alpha - fg_alpha;
+	else
+		bg_alpha = max_alpha;
 
 	/* default to opaque blending */
 	if (pstate->base.pixel_blend_mode == DRM_MODE_BLEND_PIXEL_NONE ||
@@ -367,8 +374,14 @@ static void _dpu_crtc_setup_blend_cfg(struct dpu_crtc_mixer *mixer,
 		}
 	}
 
-	lm->ops.setup_blend_config(lm, pstate->stage,
-				fg_alpha, bg_alpha, blend_op);
+	/* No valid plane stage for hidden SSPP in planar mode. use cac_stage */
+	if (cac_stage && planar_cac && lm->ops.setup_blend_config_cac)
+		lm->ops.setup_blend_config_cac(lm, cac_stage,
+					       fg_alpha, bg_alpha, blend_op);
+	else
+		lm->ops.setup_blend_config(lm, pstate->stage,
+					fg_alpha, bg_alpha, blend_op);
+
 
 	DRM_DEBUG_ATOMIC("format:%p4cc, alpha_en:%u blend_op:0x%x\n",
 		  &format->pixel_format, format->alpha_enable, blend_op);
@@ -496,7 +509,7 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 		/* blend config update */
 		for (lm_idx = 0; lm_idx < cstate->num_mixers; lm_idx++) {
 			_dpu_crtc_setup_blend_cfg(mixer + lm_idx, pstate, format,
-						  ctl->mdss_ver);
+						  ctl->mdss_ver, false, 0);
 
 			if (bg_alpha_enable && !format->alpha_enable)
 				mixer[lm_idx].mixer_op_mode = 0;
@@ -506,6 +519,93 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 		}
 	}
 
+	DRM_DEBUG_ATOMIC("checking CAC blending\n");
+	if (!dpu_kms->planar_cac_enable || !pstate)
+		goto skip_cac_blend;
+
+	/*
+	 * Add hidden SSPP into mixer config.
+	 * 4 pipes from rec0/Red rec1/Blue in VIG0/2 come first as the left half screen,
+	 * then 4 pipes rec0/Red rec1/Blue in VIG1/3 come next as the right half screen.
+	 * But all blue channel is not blended in mixer, because they are already
+	 * merged into red channel in CAC operation.
+	 * rec0/rec1 for green channel in DMA2 as the left half screen later,
+	 * rec0/rec1 for green channel in DMA3 as the right half screen.
+	 * So there are 2 hidden planes (8 pipes) with planar format that send output
+	 * to mixers.
+	 */
+	for (i = 0; i < PLANAR_CAC_PIPES; i += PIPES_PER_PLANE) {
+		/* loop mixer pair */
+		for (stage = 0; stage < PIPES_PER_PLANE / STAGES_PER_PLANE; stage++) {
+			/* loop pipe per mixer pair */
+			for (j = 0; j < PIPES_PER_STAGE; j++) {
+				pipe_idx = i + stage * PIPES_PER_STAGE + j;
+				cac_pipe = &dpu_kms->cac_pipes[pipe_idx];
+				DRM_DEBUG_ATOMIC("CAC pipe %i sspp %p\n",
+						 pipe_idx, cac_pipe->sspp);
+				if (!cac_pipe->sspp)
+					continue;
+
+				/*
+				 * Only blend rec0 for red for VIG 0~3 because
+				 * blue is already merged with red channel in the
+				 * QSEED output data.
+				 */
+				if (i < PLANAR_CAC_SSPP_VIG * 2) {
+					if(j % 2)
+						continue;
+					cac_pipe->multirect_index = DPU_SSPP_RECT_SOLO;
+				}
+
+				set_bit(cac_pipe->sspp->idx, active_fetch);
+				DRM_DEBUG_ATOMIC("crtc %d stage:%d - CAC SSPP%d multirect_idx %d\n",
+						 crtc->base.id,
+						 vig_stage + (i >= PLANAR_CAC_SSPP_VIG * 2),
+						 cac_pipe->sspp->idx - SSPP_NONE,
+						 cac_pipe->multirect_index);
+
+				/* VIG0/2 form up the left half of screen, output to vig_stage and vig_stage + 1
+				 * VIG1/3 form up the right half of screen, output to vig_stage and vig_stage + 1
+				 * DMA2/3 go to stage: vig_stage + 1
+				 */
+				_dpu_crtc_blend_setup_pipe(crtc, NULL, mixer,
+							   cstate->num_mixers,
+							   vig_stage +(i >= 2 * 2) + (i >= PLANAR_CAC_SSPP_VIG * 2),
+							   format, 0,
+							   cac_pipe, j,
+							   &stage_cfg[stage]);
+				/* recover multi-rect mode for blue channel */
+				if (i < PLANAR_CAC_SSPP_VIG * 2) {
+					if(j % 2)
+						continue;
+					cac_pipe->multirect_index = DPU_SSPP_RECT_0;
+				}
+			}
+		}
+		/* to blend CAC hidden plane to setup alpha with op_mode DPU_BLEND_BG_ALPHA_BG_CONST */
+		if (pstate->base.pixel_blend_mode != DRM_MODE_BLEND_PIXEL_NONE &&
+		    format->alpha_enable)
+			WARN(1, "to fix alpha setup for planar CAC mode");
+		for (lm_idx = 0; lm_idx < cstate->num_mixers; lm_idx++) {
+			/* flush the 2nd stage SSPPs in planar CAC mode */
+			mixer[lm_idx].lm_ctl->ops.update_pending_flush_sspp_cac(mixer[lm_idx].lm_ctl);
+			/* add the stages to blend for extra CAC layers */
+			_dpu_crtc_setup_blend_cfg(mixer + lm_idx, pstate,
+						  format, ctl->mdss_ver, true, vig_stage);
+			_dpu_crtc_setup_blend_cfg(mixer + lm_idx, pstate,
+						  format, ctl->mdss_ver, true, vig_stage + 1);
+			_dpu_crtc_setup_blend_cfg(mixer + lm_idx, pstate,
+						  format, ctl->mdss_ver, true, vig_stage + 2);
+
+			/* hack reg LM_OP_MODE to blend stage of VIG0~3 */
+			mixer[lm_idx].mixer_op_mode |= 1 << (vig_stage);
+			mixer[lm_idx].mixer_op_mode |= 1 << (vig_stage + 1);
+			/* hack reg LM_OP_MODE to blend stage of DMA2/3 */
+			mixer[lm_idx].mixer_op_mode |= 1 << (vig_stage + 2);
+		}
+	}
+
+skip_cac_blend:
 	if (ctl->ops.set_active_fetch_pipes)
 		ctl->ops.set_active_fetch_pipes(ctl, active_fetch);
 
