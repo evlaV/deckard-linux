@@ -320,14 +320,19 @@ static bool dpu_crtc_get_scanout_position(struct drm_crtc *crtc,
 }
 
 static void _dpu_crtc_setup_blend_cfg(struct dpu_crtc_mixer *mixer,
-		struct dpu_plane_state *pstate, const struct msm_format *format)
+		struct dpu_plane_state *pstate, const struct msm_format *format,
+		bool planar_cac, enum dpu_stage cac_stage)
 {
 	struct dpu_hw_mixer *lm = mixer->hw_lm;
 	uint32_t blend_op;
 	uint32_t fg_alpha, bg_alpha;
 
-	fg_alpha = pstate->base.alpha >> 8;
-	bg_alpha = 0xff - fg_alpha;
+	if (!planar_cac) {
+		fg_alpha = pstate->base.alpha >> 8;
+		bg_alpha = 0xff - fg_alpha;
+	} else {
+		fg_alpha = bg_alpha = 0xff;
+	}
 
 	/* default to opaque blending */
 	if (pstate->base.pixel_blend_mode == DRM_MODE_BLEND_PIXEL_NONE ||
@@ -359,8 +364,14 @@ static void _dpu_crtc_setup_blend_cfg(struct dpu_crtc_mixer *mixer,
 		}
 	}
 
-	lm->ops.setup_blend_config(lm, pstate->stage,
-				fg_alpha, bg_alpha, blend_op);
+	/* No valid plane stage for hidden SSPP in planar mode. use cac_stage */
+	if (cac_stage && planar_cac && lm->ops.setup_blend_config_cac)
+		lm->ops.setup_blend_config_cac(lm, cac_stage,
+					       fg_alpha, bg_alpha, blend_op);
+	else
+		lm->ops.setup_blend_config(lm, pstate->stage,
+					fg_alpha, bg_alpha, blend_op);
+
 
 	DRM_DEBUG_ATOMIC("format:%p4cc, alpha_en:%u blend_op:0x%x\n",
 		  &format->pixel_format, format->alpha_enable, blend_op);
@@ -485,7 +496,8 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 
 		/* blend config update */
 		for (lm_idx = 0; lm_idx < cstate->num_mixers; lm_idx++) {
-			_dpu_crtc_setup_blend_cfg(mixer + lm_idx, pstate, format);
+			_dpu_crtc_setup_blend_cfg(mixer + lm_idx, pstate,
+						  format, false, 0);
 
 			if (bg_alpha_enable && !format->alpha_enable)
 				mixer[lm_idx].mixer_op_mode = 0;
