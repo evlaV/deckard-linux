@@ -65,7 +65,6 @@
 #define PLANAR_CAC_PIPES	12
 #define PLANAR_CAC_PIPES_WITH_FETCH	16
 
-
 extern bool dpu_use_virtual_planes;
 
 struct dpu_kms {
@@ -106,6 +105,7 @@ struct dpu_kms {
 
 	struct drm_property *cac_prop;
 	bool planar_cac_enable;
+	u32 cac_vig_lm_stage;	/* stage in LM to blend SSPP_VIG0~3 */
 	u32 cac_blob_id;
 
 	/* reference count bandwidth requests, so we know when we can

@@ -848,7 +848,6 @@ static int _dpu_kms_drm_obj_init(struct dpu_kms *dpu_kms)
 		}
 
 		if (dpu_use_planar_cac && i == 0) {
-			//dpu_kms->planar_cac_enable = true;
 			dpu_kms->cac_blob_id = -1;
 			dpu_kms->cac_prop = drm_property_create(dev, DRM_MODE_PROP_BLOB,
 								"CAC_BLOB", 0);

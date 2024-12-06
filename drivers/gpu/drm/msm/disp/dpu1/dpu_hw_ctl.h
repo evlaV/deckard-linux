@@ -153,6 +153,13 @@ struct dpu_hw_ctl_ops {
 		enum dpu_sspp blk);
 
 	/**
+	 * OR the 2nd stage SSPPs bits to the cached pending_flush_mask
+	 * No effect on hardware
+	 * @ctx       : ctl path ctx pointer
+	 */
+	void (*update_pending_flush_sspp_cac)(struct dpu_hw_ctl *ctx);
+
+	/**
 	 * OR in the given flushbits to the cached pending_flush_mask
 	 * No effect on hardware
 	 * @ctx       : ctl path ctx pointer
@@ -191,9 +198,8 @@ struct dpu_hw_ctl_ops {
 	/**
 	 * Write the value of the pending_flush_mask to hardware
 	 * @ctx       : ctl path ctx pointer
-	 * @mode_changed : mode changed flag
 	 */
-	void (*trigger_flush)(struct dpu_hw_ctl *ctx, bool mode_changed);
+	void (*trigger_flush)(struct dpu_hw_ctl *ctx);
 
 	/**
 	 * Read the value of the flush register

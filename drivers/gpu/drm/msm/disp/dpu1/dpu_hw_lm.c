@@ -16,8 +16,6 @@
 #define LM_OUT_SIZE                       0x04
 #define LM_BORDER_COLOR_0                 0x08
 #define LM_BORDER_COLOR_1                 0x010
-#define LM_BLEND_OP                       0x38
-#define LM_BLEND_CONST_ALPHA              0x3c
 
 /* These register are offset to mixer base + stage base */
 #define LM_BLEND0_OP                     0x00
@@ -67,9 +65,6 @@ static void dpu_hw_lm_setup_out(struct dpu_hw_mixer *ctx,
 	else
 		op_mode &= ~BIT(31);
 	DPU_REG_WRITE(c, LM_OP_MODE, op_mode);
-
-	DPU_REG_WRITE(c, LM_BLEND_OP, 0x00000100);
-	DPU_REG_WRITE(c, LM_BLEND_CONST_ALPHA, 0x00ff00ff);
 }
 
 static void dpu_hw_lm_setup_border_color(struct dpu_hw_mixer *ctx,
@@ -98,6 +93,23 @@ static int dpu_hw_lm_collect_misr(struct dpu_hw_mixer *ctx, u32 *misr_value)
 	return dpu_hw_collect_misr(&ctx->hw, LM_MISR_CTRL, LM_MISR_SIGNATURE, misr_value);
 }
 
+static void dpu_hw_lm_clear_blend_config_combined_alpha(struct dpu_hw_mixer *ctx,
+							u32 stage)
+{
+	struct dpu_hw_blk_reg_map *c = &ctx->hw;
+	int stage_off;
+
+	if (stage == DPU_STAGE_BASE)
+		return;
+
+	stage_off = _stage_offset(ctx, stage);
+	if (WARN_ON(stage_off < 0))
+		return;
+
+	DPU_REG_WRITE(c, LM_BLEND0_CONST_ALPHA + stage_off, 0);
+	DPU_REG_WRITE(c, LM_BLEND0_OP + stage_off, 0);
+}
+
 static void dpu_hw_lm_setup_blend_config_combined_alpha(struct dpu_hw_mixer *ctx,
 	u32 stage, u32 fg_alpha, u32 bg_alpha, u32 blend_op)
 {
@@ -113,18 +125,45 @@ static void dpu_hw_lm_setup_blend_config_combined_alpha(struct dpu_hw_mixer *ctx
 		return;
 
 	const_alpha = (bg_alpha & 0xFF) | ((fg_alpha & 0xFF) << 16);
-	if (blend_op != (1 << 8)) {
-		printk("====== blend_op 0x%x expected, but 0x%x\n",
-			1 << 8, blend_op);
-		blend_op = (1 << 8);
-	}
-	if (const_alpha != (0xff << 16 | 0xff)) {
-		printk("====== const_alpha 0xff00ff expected, but 0x%x\n",
-			const_alpha );
-		const_alpha = (0xff << 16 | 0xff);
-	}
 	DPU_REG_WRITE(c, LM_BLEND0_CONST_ALPHA + stage_off, const_alpha);
 	DPU_REG_WRITE(c, LM_BLEND0_OP + stage_off, blend_op);
+}
+
+static void dpu_hw_lm_setup_blend_config_cac(struct dpu_hw_mixer *ctx,
+	u32 stage, u32 fg_alpha, u32 bg_alpha, u32 blend_op)
+{
+	struct dpu_hw_blk_reg_map *c = &ctx->hw;
+	int stage_off;
+	u32 blend_alpha;
+
+	if (stage == DPU_STAGE_BASE)
+		return;
+
+	stage_off = _stage_offset(ctx, stage);
+	if (WARN_ON(stage_off < 0))
+		return;
+
+	blend_alpha = (bg_alpha & 0xFF) | ((fg_alpha & 0xFF) << 16);
+	DPU_REG_WRITE(c, LM_BLEND0_FG_ALPHA + stage_off, blend_alpha);
+	DPU_REG_WRITE(c, LM_BLEND0_OP + stage_off, blend_op);
+}
+
+static void dpu_hw_lm_clear_blend_config(struct dpu_hw_mixer *ctx,
+					 u32 stage)
+{
+	struct dpu_hw_blk_reg_map *c = &ctx->hw;
+	int stage_off;
+
+	if (stage == DPU_STAGE_BASE)
+		return;
+
+	stage_off = _stage_offset(ctx, stage);
+	if (WARN_ON(stage_off < 0))
+		return;
+
+	DPU_REG_WRITE(c, LM_BLEND0_FG_ALPHA + stage_off, 0);
+	DPU_REG_WRITE(c, LM_BLEND0_BG_ALPHA + stage_off, 0);
+	DPU_REG_WRITE(c, LM_BLEND0_OP + stage_off, 0);
 }
 
 static void dpu_hw_lm_setup_blend_config(struct dpu_hw_mixer *ctx,
@@ -154,7 +193,7 @@ static void dpu_hw_lm_setup_color3(struct dpu_hw_mixer *ctx,
 	/* read the existing op_mode configuration */
 	op_mode = DPU_REG_READ(c, LM_OP_MODE);
 
-	op_mode = (op_mode & (BIT(31) | BIT(30))) | mixer_op_mode | BIT(2);
+	op_mode = (op_mode & (BIT(31) | BIT(30))) | mixer_op_mode;
 
 	DPU_REG_WRITE(c, LM_OP_MODE, op_mode);
 }
@@ -163,10 +202,14 @@ static void _setup_mixer_ops(struct dpu_hw_lm_ops *ops,
 		unsigned long features)
 {
 	ops->setup_mixer_out = dpu_hw_lm_setup_out;
-	if (test_bit(DPU_MIXER_COMBINED_ALPHA, &features))
+	if (test_bit(DPU_MIXER_COMBINED_ALPHA, &features)) {
 		ops->setup_blend_config = dpu_hw_lm_setup_blend_config_combined_alpha;
-	else
+		ops->clear_blend_config = dpu_hw_lm_clear_blend_config_combined_alpha;
+		ops->setup_blend_config_cac = dpu_hw_lm_setup_blend_config_cac;
+	} else {
 		ops->setup_blend_config = dpu_hw_lm_setup_blend_config;
+		ops->clear_blend_config = dpu_hw_lm_clear_blend_config;
+	}
 	ops->setup_alpha_out = dpu_hw_lm_setup_color3;
 	ops->setup_border_color = dpu_hw_lm_setup_border_color;
 	ops->setup_misr = dpu_hw_lm_setup_misr;

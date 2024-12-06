@@ -1575,7 +1575,7 @@ static void _dpu_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	if (extra_flush_bits && ctl->ops.update_pending_flush)
 		ctl->ops.update_pending_flush(ctl, extra_flush_bits);
 
-	ctl->ops.trigger_flush(ctl, drm_enc->crtc->state->mode_changed);
+	ctl->ops.trigger_flush(ctl);
 
 	if (ctl->ops.get_pending_flush)
 		ret = ctl->ops.get_pending_flush(ctl);
@@ -2185,7 +2185,7 @@ void dpu_encoder_helper_phys_cleanup(struct dpu_encoder_phys *phys_enc)
 	if (ctl->ops.reset_intf_cfg)
 		ctl->ops.reset_intf_cfg(ctl, &intf_cfg);
 
-	ctl->ops.trigger_flush(ctl, false);
+	ctl->ops.trigger_flush(ctl);
 	ctl->ops.trigger_start(ctl);
 	ctl->ops.clear_pending_flush(ctl);
 }

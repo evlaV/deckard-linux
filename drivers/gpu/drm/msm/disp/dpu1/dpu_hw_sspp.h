@@ -20,7 +20,6 @@ struct dpu_hw_sspp;
 #define DPU_SSPP_SOURCE_ROTATED_90	BIT(2)
 #define DPU_SSPP_ROT_90			BIT(3)
 #define DPU_SSPP_SOLID_FILL		BIT(4)
-#define DPU_SSPP_SRC_SPLIT_ORDER	BIT(5)
 
 
 /**
@@ -39,7 +38,6 @@ enum {
  * DPU_SSPP_RECT_SOLO - multirect disabled
  * DPU_SSPP_RECT_0 - rect0 of a multirect pipe
  * DPU_SSPP_RECT_1 - rect1 of a multirect pipe
- * DPU_SSPP_RECT_CAC - CAC mode of a multirect pipe
  *
  * Note: HW supports multirect with either RECT0 or
  * RECT1. Considering no benefit of such configs over
@@ -50,7 +48,6 @@ enum dpu_sspp_multirect_index {
 	DPU_SSPP_RECT_SOLO = 0,
 	DPU_SSPP_RECT_0,
 	DPU_SSPP_RECT_1,
-	DPU_SSPP_RECT_CAC,
 };
 
 enum dpu_sspp_multirect_mode {
