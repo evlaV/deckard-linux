@@ -1944,6 +1944,7 @@ static int mp3317_leds_probe(struct i2c_client *client)
 		struct mp3317 *chip;
 		struct mp3317_led *led;
 		int ret;
+		unsigned int rval;
 
 		chip = devm_kzalloc(&client->dev, sizeof(chip),
 				GFP_KERNEL);
@@ -1955,6 +1956,13 @@ static int mp3317_leds_probe(struct i2c_client *client)
 
 		if(IS_ERR(chip->regmap))
 				return PTR_ERR(chip->regmap);
+
+		// check for i2c comms
+		ret = regmap_read(chip->regmap, MP3317_EN_CTL, &rval);
+			if ( ret ) {
+			dev_err(&chip->client->dev, "I2C comms failed: %d\n", ret );
+		return ret;
+		}
 
 		chip->en_gpio = devm_gpiod_get(&client->dev, "en", GPIOD_OUT_LOW);
 		if (IS_ERR(chip->en_gpio)) {
