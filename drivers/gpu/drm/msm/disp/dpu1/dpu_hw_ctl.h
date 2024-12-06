@@ -28,9 +28,9 @@ struct dpu_hw_ctl;
  * @multirect_index: index of the rectangle of SSPP.
  */
 struct dpu_hw_stage_cfg {
-	enum dpu_sspp stage[DPU_STAGE_MAX][PIPES_PER_LM_PAIR];
+	enum dpu_sspp stage[DPU_STAGE_MAX][PIPES_PER_STAGE];
 	enum dpu_sspp_multirect_index multirect_index
-					[DPU_STAGE_MAX][PIPES_PER_LM_PAIR];
+					[DPU_STAGE_MAX][PIPES_PER_STAGE];
 };
 
 /**
@@ -151,6 +151,13 @@ struct dpu_hw_ctl_ops {
 	 */
 	void (*update_pending_flush_sspp)(struct dpu_hw_ctl *ctx,
 		enum dpu_sspp blk);
+
+	/**
+	 * OR the 2nd stage SSPPs bits to the cached pending_flush_mask
+	 * No effect on hardware
+	 * @ctx       : ctl path ctx pointer
+	 */
+	void (*update_pending_flush_sspp_cac)(struct dpu_hw_ctl *ctx);
 
 	/**
 	 * OR in the given flushbits to the cached pending_flush_mask

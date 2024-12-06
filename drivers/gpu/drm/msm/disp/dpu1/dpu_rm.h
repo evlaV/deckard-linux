@@ -101,6 +101,11 @@ struct dpu_hw_sspp *dpu_rm_reserve_sspp(struct dpu_rm *rm,
 					struct dpu_rm_sspp_requirements *reqs);
 
 /**
+ * dpu_rm_reserve_cac_sspp - Reserve the hidden SSPP for the provided CRTC
+ * @dpu_kms: dpu_kms handle
+ */
+int dpu_rm_reserve_cac_sspp(struct dpu_kms *rm);
+/**
  * dpu_rm_release_all_sspp - Given the CRTC, release all SSPP
  *	blocks previously reserved for that use case.
  * @rm: DPU Resource Manager handle
