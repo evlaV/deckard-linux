@@ -931,7 +931,8 @@ static int dpu_plane_atomic_check_nopipe(struct drm_plane *plane,
 				DRM_RECT_ARG(&pipe_cfg->src_rect), DRM_RECT_ARG(&pipe_cfg->dst_rect));
 
 		/* Split super wide rect into 2 rect */
-		if ((drm_rect_width(&pipe_cfg->src_rect) > max_linewidth) ||
+		if (kms->planar_cac_enable ||
+		     (drm_rect_width(&pipe_cfg->src_rect) > max_linewidth) ||
 		     _dpu_plane_calc_clk(mode, pipe_cfg) > max_mdp_clk_rate) {
 
 			if (drm_rect_width(&pipe_cfg->src_rect) > 2 * max_linewidth) {

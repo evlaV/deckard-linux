@@ -16,7 +16,6 @@
 
 #define DPU_CRTC_NAME_SIZE	12
 
-
 /* define the maximum number of in-flight frame events */
 #define DPU_CRTC_FRAME_EVENT_SIZE	4
 

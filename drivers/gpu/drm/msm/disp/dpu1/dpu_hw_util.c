@@ -410,12 +410,6 @@ end:
 			op_mode |= (scaler3_cfg->alpha_filter_cfg & 0x3) << 29;
 	}
 
-	if ( ((3 << 24) | (3 << 16) | 0x4003) != op_mode) {
-		printk("--------- qseed3 opmode 0x%x expected, but 0x%x\n",
-			(3 << 24) | (3 << 16) | 0x4003,
-			op_mode);
-	op_mode = (3 << 24) | (3 << 16) | 0x4003;
-	}
 	DPU_REG_WRITE(c, QSEED3_OP_MODE + scaler_offset, op_mode);
 }
 
@@ -513,10 +507,8 @@ void _dpu_hw_setup_qos_lut(struct dpu_hw_blk_reg_map *c, u32 offset,
 			   bool qos_8lvl,
 			   const struct dpu_hw_qos_cfg *cfg)
 {
-	DPU_REG_WRITE(c, offset + QOS_DANGER_LUT, 0xffff);
-	//DPU_REG_WRITE(c, offset + QOS_DANGER_LUT, cfg->danger_lut);
-	DPU_REG_WRITE(c, offset + QOS_SAFE_LUT, 0);
-	//DPU_REG_WRITE(c, offset + QOS_SAFE_LUT, cfg->safe_lut);
+	DPU_REG_WRITE(c, offset + QOS_DANGER_LUT, cfg->danger_lut);
+	DPU_REG_WRITE(c, offset + QOS_SAFE_LUT, cfg->safe_lut);
 
 	if (qos_8lvl) {
 		DPU_REG_WRITE(c, offset + QOS_CREQ_LUT_0, cfg->creq_lut);
