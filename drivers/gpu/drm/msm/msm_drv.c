@@ -125,6 +125,9 @@ static int msm_drm_init(struct device *dev, const struct drm_driver *drv)
 		goto err_put_dev;
 	}
 
+	INIT_LIST_HEAD(&priv->vms);
+	mutex_init(&priv->vm_lock);
+
 	INIT_LIST_HEAD(&priv->objects);
 	mutex_init(&priv->obj_lock);
 

@@ -14,6 +14,11 @@ static void
 msm_gem_vm_free(struct drm_gpuvm *gpuvm)
 {
 	struct msm_gem_vm *vm = container_of(gpuvm, struct msm_gem_vm, base);
+	struct msm_drm_private *priv = gpuvm->drm->dev_private;
+
+	mutex_lock(&priv->vm_lock);
+	list_del(&vm->node);
+	mutex_unlock(&priv->vm_lock);
 
 	drm_mm_takedown(&vm->mm);
 	if (vm->mmu)
@@ -495,6 +500,7 @@ struct drm_gpuvm *
 msm_gem_vm_create(struct drm_device *drm, struct msm_mmu *mmu, const char *name,
 		  u64 va_start, u64 va_size, bool managed)
 {
+	struct msm_drm_private *priv = drm->dev_private;
 	struct msm_gem_vm *vm;
 	struct drm_gem_object *dummy_gem;
 	int ret = 0;
@@ -520,6 +526,19 @@ msm_gem_vm_create(struct drm_device *drm, struct msm_mmu *mmu, const char *name,
 			goto err_free_dummy;
 	}
 
+	/* For userspace pgtables, generate a VM name based on comm and PID nr: */
+	if (!name) {
+		char tmpname[TASK_COMM_LEN];
+		struct pid *pid = get_pid(task_tgid(current));
+
+		get_task_comm(tmpname, current);
+		rcu_read_lock();
+		snprintf(vm->name, sizeof(name), "%s[%d]", tmpname, pid_nr(pid));
+		rcu_read_unlock();
+
+		name = vm->name;
+	}
+
 	drm_gpuvm_init(&vm->base, name, 0, drm, dummy_gem,
 		       va_start, va_size, 0, 0, &msm_gpuvm_ops);
 	drm_gem_object_put(dummy_gem);
@@ -532,6 +551,10 @@ msm_gem_vm_create(struct drm_device *drm, struct msm_mmu *mmu, const char *name,
 	vm->managed = managed;
 
 	drm_mm_init(&vm->mm, va_start, va_size);
+
+	mutex_lock(&priv->vm_lock);
+	list_add_tail(&vm->node, &priv->vms);
+	mutex_unlock(&priv->vm_lock);
 
 	return &vm->base;
 
