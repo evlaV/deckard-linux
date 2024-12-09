@@ -407,16 +407,6 @@ static inline void msm_gem_submit_put(struct msm_gem_submit *submit)
 
 void msm_submit_retire(struct msm_gem_submit *submit);
 
-/* helper to determine of a buffer in submit should be dumped, used for both
- * devcoredump and debugfs cmdstream dumping:
- */
-static inline bool
-should_dump(struct msm_gem_submit *submit, int idx)
-{
-	extern bool rd_full;
-	return rd_full || (submit->bos[idx].flags & MSM_SUBMIT_BO_DUMP);
-}
-
 struct drm_gem_object *msm_gem_vbo_new(struct drm_device *dev, u64 size, u32 flags,
 		struct drm_gpuvm *vm);
 int msm_gem_is_vbo(struct drm_gem_object *obj);
@@ -425,6 +415,5 @@ int msm_gem_vbo_get_iova(struct drm_gem_object *obj,
 void msm_gem_vbo_bind(struct drm_gem_object *vbo, struct drm_gem_object *obj,
 		u64 src_offset, u64 dst_offset, u64 length);
 void msm_gem_vbo_unbind(struct drm_gem_object *vbo, struct drm_gem_object *obj, u64 offset, u64 length);
-
 
 #endif /* __MSM_GEM_H__ */
