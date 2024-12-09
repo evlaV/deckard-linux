@@ -53,6 +53,9 @@ struct msm_gem_vm {
 	/** @base: Inherit from drm_gpuvm. */
 	struct drm_gpuvm base;
 
+	/** @name: Storage for dynamically generated VM name for user VMs */
+	char name[32];
+
 	/**
 	 * @sched: Scheduler used for asynchronous VM_BIND request.
 	 *
@@ -93,6 +96,11 @@ struct msm_gem_vm {
 	 * will be non-NULL:
 	 */
 	struct pid *pid;
+
+	/**
+	 * @node: List node in msm_drm_private.vms list
+	 */
+	struct list_head node;
 
 	/** @faults: the number of GPU hangs associated with this address space */
 	int faults;

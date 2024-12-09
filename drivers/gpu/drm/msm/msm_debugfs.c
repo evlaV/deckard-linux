@@ -10,6 +10,7 @@
 #include <linux/fault-inject.h>
 
 #include <drm/drm_debugfs.h>
+#include <drm/drm_drv.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_file.h>
 #include <drm/drm_framebuffer.h>
@@ -256,6 +257,24 @@ static int msm_mm_show(struct seq_file *m, void *arg)
 	return 0;
 }
 
+static int msm_gpuvas_show(struct seq_file *m, void *arg)
+{
+	struct drm_info_node *node = m->private;
+	struct drm_device *dev = node->minor->dev;
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_gem_vm *vm;
+
+	mutex_lock(&priv->vm_lock);
+	list_for_each_entry(vm, &priv->vms, node) {
+		mutex_lock(&vm->op_lock);
+		drm_debugfs_gpuva_info(m, &vm->base);
+		mutex_unlock(&vm->op_lock);
+	}
+	mutex_unlock(&priv->vm_lock);
+
+	return 0;
+}
+
 static int msm_fb_show(struct seq_file *m, void *arg)
 {
 	struct drm_info_node *node = m->private;
@@ -285,6 +304,7 @@ static struct drm_info_list msm_debugfs_list[] = {
 		{"gem", msm_gem_show},
 		{"gemstat", msm_gemstat_show},
 		{ "mm", msm_mm_show },
+		DRM_DEBUGFS_GPUVA_INFO(msm_gpuvas_show, NULL),
 };
 
 static struct drm_info_list msm_kms_debugfs_list[] = {

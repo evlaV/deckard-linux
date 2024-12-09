@@ -127,6 +127,10 @@ struct msm_drm_private {
 	 */
 	atomic64_t total_mem;
 
+	/** @vms: List of all VMs, protected by @vm_lock */
+	struct list_head vms;
+	struct mutex vm_lock;
+
 	/**
 	 * List of all GEM objects (mainly for debugfs, protected by obj_lock
 	 * (acquire before per GEM object lock)
