@@ -2314,7 +2314,7 @@ a6xx_create_private_vm(struct msm_gpu *gpu, bool kernel_managed)
 	if (IS_ERR(mmu))
 		return ERR_CAST(mmu);
 
-	return msm_gem_vm_create(gpu->dev, mmu, "gpu", 0x100000000ULL,
+	return msm_gem_vm_create(gpu->dev, mmu, NULL, 0x100000000ULL,
 				 adreno_private_vm_size(gpu), kernel_managed);
 }
 
