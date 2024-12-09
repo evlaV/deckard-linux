@@ -1,3 +1,4 @@
+#include <dt-bindings/phy/phy.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include "sm8650.dtsi"
 #include "pm8010.dtsi"
@@ -128,6 +129,19 @@
 			};
 		};
 	};
+
+	backlight: backlight {
+		compatible = "mpq3367-backlight";
+		preboost-gpio = <&tlmm 41 GPIO_ACTIVE_HIGH>;
+		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>,
+			   <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+		bias-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>,
+			     <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+		i2c-adapter = <&i2c4 &i2c5>;
+	};
+
+
+
 };
 
 &apps_rsc {
@@ -586,6 +600,14 @@
 	};
 };
 
+&dispcc {
+	status = "okay";
+};
+
+&gpi_dma1 {
+	status = "okay";
+};
+
 &gpu {
 	status = "okay";
 };
@@ -631,6 +653,86 @@
 
 		status = "okay";
 	};
+};
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_mdp {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&vreg_l3i_1p2>;
+	status = "okay";
+
+	qcom,dual-dsi-mode;
+	qcom,master-dsi;
+
+
+	panel: panel@0 {
+		reg = <0>;
+		compatible = "pocf,jdi-lpm026m648c";
+		dual-panel;
+
+		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
+			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
+		enp-gpios = <&tlmm 32 GPIO_ACTIVE_HIGH>;
+
+		wled1-supply = <&backlight>;
+		vdda-supply = <&vreg_l12b_1p8>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				panel0_in: endpoint {
+					remote-endpoint = <&mdss_dsi0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				panel1_in: endpoint {
+					remote-endpoint = <&mdss_dsi1_out>;
+				};
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	remote-endpoint = <&panel0_in>;
+	data-lanes = <0 1 2>;
+};
+
+&mdss_dsi0_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+	phy-type = <PHY_TYPE_CPHY>;
+	status = "okay";
+};
+
+&mdss_dsi1 {
+	vdda-supply = <&vreg_l3i_1p2>;
+	status = "okay";
+
+	qcom,dual-dsi-mode;
+
+	assigned-clocks = <&dispcc DISP_CC_MDSS_BYTE1_CLK_SRC>, <&dispcc DISP_CC_MDSS_PCLK1_CLK_SRC>;
+	assigned-clock-parents = <&mdss_dsi0_phy 0>, <&mdss_dsi0_phy 1>;
+};
+
+&mdss_dsi1_out {
+	remote-endpoint = <&panel1_in>;
+	data-lanes = <0 1 2>;
+};
+
+&mdss_dsi1_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+	status = "okay";
+	phy-type = <PHY_TYPE_CPHY>;
 };
 
 &pcie0 {
