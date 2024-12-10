@@ -130,15 +130,13 @@ struct mp3317_led {
 	   struct regmap *regmap;
 
 	   bool isenable;
-	   bool isleft;
 };
 
 
 struct mp3317 {
 		struct i2c_client *client;
 		struct regmap *regmap;
-		struct mp3317_led left;
-		struct mp3317_led right;
+		struct mp3317_led led;
 		struct gpio_desc *en_gpio;
 
 		unsigned long rst;
@@ -608,44 +606,54 @@ static ssize_t led_max_current_store(struct device *dev,
 		return count;
 }
 
-static ssize_t led_current_show(struct device *dev, 
+static ssize_t led_left_current_show(struct device *dev,
 								   struct device_attribute *attr, char *buf)
 {
-		struct led_classdev *lcdev = dev_get_drvdata(dev);
-		struct mp3317_led *led = container_of(lcdev, struct mp3317_led, wled);
-		int ret;
-		int max_current;
-		uint rval;
-		int val;
+	struct led_classdev *lcdev = dev_get_drvdata(dev);
+	struct mp3317_led *led = container_of(lcdev, struct mp3317_led, wled);
+	int ret;
+	int max_current;
+	uint rval;
+	int val;
 
-		if(led->isleft)
-		{
-				ret = regmap_read(led->regmap, MP3317_ILEDL_H, &rval);
-				if(ret)
-						return ret;
-				val = rval & 0x0f;
-				ret = regmap_read(led->regmap, MP3317_ILEDL_L, &rval);
-				if(ret)
-						return ret;
-				val = val << 8;
-				val |= rval;
-		}else
-		{
-				ret = regmap_read(led->regmap, MP3317_ILEDR_H, &rval);
-				if(ret)
-						return ret;
-				val = rval & 0x0f;
-				ret = regmap_read(led->regmap, MP3317_ILEDR_L, &rval);
-				if(ret)
-						return ret;
-				val = val << 8;
-				val |= rval;               
-		}
-		
-		max_current = get_max_current(led);
-		
+	ret = regmap_read(led->regmap, MP3317_ILEDL_H, &rval);
+	if(ret)
+			return ret;
+	val = rval & 0x0f;
+	ret = regmap_read(led->regmap, MP3317_ILEDL_L, &rval);
+	if(ret)
+			return ret;
+	val = val << 8;
+	val |= rval;
 
-		return sysfs_emit(buf, "%dmA\n", (val  * max_current + 4096 / 2) /4096);
+	max_current = get_max_current(led);
+
+	return sysfs_emit(buf, "%dmA\n", (val  * max_current + 4096 / 2) /4096);
+}
+
+static ssize_t led_right_current_show(struct device *dev,
+								   struct device_attribute *attr, char *buf)
+{
+	struct led_classdev *lcdev = dev_get_drvdata(dev);
+	struct mp3317_led *led = container_of(lcdev, struct mp3317_led, wled);
+	int ret;
+	int max_current;
+	uint rval;
+	int val;
+
+	ret = regmap_read(led->regmap, MP3317_ILEDR_H, &rval);
+	if(ret)
+			return ret;
+	val = rval & 0x0f;
+	ret = regmap_read(led->regmap, MP3317_ILEDR_L, &rval);
+	if(ret)
+			return ret;
+	val = val << 8;
+	val |= rval;
+
+	max_current = get_max_current(led);
+	
+	return sysfs_emit(buf, "%dmA\n", (val  * max_current + 4096 / 2) /4096);
 }
 /*
  * Input mA
@@ -659,18 +667,18 @@ static ssize_t led_current_store(struct device *dev,
 		struct mp3317_led *led = container_of(lcdev, struct mp3317_led, wled);
 		int ret;
 		int max_current;
-		int val;
+		int left_val, right_val, val;
 		struct mp3317 *chip = 0;
 
-		if(led->isleft) chip = container_of(led, struct mp3317, left);
-		else            chip = container_of(led, struct mp3317, right);
+		chip = container_of(led, struct mp3317, led);
 
-		
+		ret = sscanf(buf, "%d %d", &left_val, &right_val);
+		if(ret != 2){
+			dev_err(dev, "invalid params for set current <left> <right> ( %d )\n", ret);
+			return -EINVAL;
+		}
 
-		ret = kstrtoint(buf, 10, &val);
-		if(ret)
-				return ret;
-
+		val = left_val > right_val ? left_val : right_val;
 
 		if(val < 60)
 				set_headroom(led, 0);
@@ -731,22 +739,19 @@ static ssize_t led_current_store(struct device *dev,
 			  val = (val * 1000 * 4096 + (max_current* 1000) /2) / (max_current* 1000);
 		}
 
-   
-		if(led->isleft){
-				ret = regmap_write(led->regmap, MP3317_ILEDL_L, val & 0xff);
-				if(ret)
-						return ret;
-				ret = regmap_write(led->regmap, MP3317_ILEDL_H, (val & 0xf00) >> 8);
-				if(ret)
-						return ret;
-		} else {
-				ret = regmap_write(led->regmap, MP3317_ILEDR_L, val & 0xff);
-				if(ret)
-						return ret;
-				ret = regmap_write(led->regmap, MP3317_ILEDR_H, (val & 0xf00) >> 8);
-				if(ret)
-						return ret;
-		}
+		ret = regmap_write(led->regmap, MP3317_ILEDL_L, left_val & 0xff);
+		if(ret)
+				return ret;
+		ret = regmap_write(led->regmap, MP3317_ILEDL_H, (left_val & 0xf00) >> 8);
+		if(ret)
+				return ret;
+
+		ret = regmap_write(led->regmap, MP3317_ILEDR_L, right_val & 0xff);
+		if(ret)
+				return ret;
+		ret = regmap_write(led->regmap, MP3317_ILEDR_H, (right_val & 0xf00) >> 8);
+		if(ret)
+				return ret;
 
 		return count;
 }
@@ -855,8 +860,7 @@ static ssize_t led_rst_show(struct device *dev,
 		struct mp3317_led *led = container_of(lcdev, struct mp3317_led, wled);
 		struct mp3317 *chip = 0;
 
-		if(led->isleft) chip = container_of(led, struct mp3317, left);
-		else            chip = container_of(led, struct mp3317, right);
+		chip = container_of(led, struct mp3317, led);
 
 		return sysfs_emit(buf, "%ldΩ\n", chip->rst);
 }
@@ -875,8 +879,7 @@ static ssize_t led_rst_store(struct device *dev,
 		unsigned long val ;
 		u8 ret;
 		
-		if(led->isleft) chip = container_of(led, struct mp3317, left);
-		else            chip = container_of(led, struct mp3317, right);
+		chip = container_of(led, struct mp3317, led);
 
 		ret = kstrtoul(buf, 10 , &val);
 		if(ret)
@@ -888,7 +891,9 @@ static ssize_t led_rst_store(struct device *dev,
 
 static DEVICE_ATTR_RW(led_current_state);
 static DEVICE_ATTR_RW(led_max_current);
-static DEVICE_ATTR_RW(led_current);
+static DEVICE_ATTR_WO(led_current);
+static DEVICE_ATTR_RO(led_left_current);
+static DEVICE_ATTR_RO(led_right_current);
 static DEVICE_ATTR_RW(led_cphyst);
 static DEVICE_ATTR_RW(led_headroom_l);
 static DEVICE_ATTR_RW(led_rst);
@@ -897,6 +902,8 @@ static struct attribute *current_attrs[] = {
 	&dev_attr_led_current_state.attr,
 	&dev_attr_led_max_current.attr,
 	&dev_attr_led_current.attr,
+	&dev_attr_led_left_current.attr,
+	&dev_attr_led_right_current.attr,
 	&dev_attr_led_cphyst.attr,
 	&dev_attr_led_headroom_l.attr,
 	&dev_attr_led_rst.attr,
@@ -1833,12 +1840,12 @@ static struct attribute *channel_right_attrs[] = {
 };
 
 static const struct attribute_group channel_left_set = {
-		.name = "Channel",
+		.name = "Channel left",
 		.attrs = channel_left_attrs
 };
 
 static const struct attribute_group channel_right_set = {
-		.name = "Channel",
+		.name = "Channel right",
 		.attrs = channel_right_attrs
 };
 
@@ -1858,19 +1865,12 @@ static struct attribute *main_attrs[] = {
 static const struct attribute_group main_set = {
 		.attrs = main_attrs
 };
-static const struct attribute_group *mp3317_left_groups[] = {	
+static const struct attribute_group *mp3317_groups[] = {	
 	&Vout_Set,						
 	&current_set,						
 	&main_set,						
-	&channel_left_set,						
-	NULL,							
-};
-
-static const struct attribute_group *mp3317_right_groups[] = {	
-	&Vout_Set,						
-	&current_set,						
-	&main_set,						
-	&channel_right_set,						
+	&channel_left_set,
+	&channel_right_set,					
 	NULL,							
 };
 
@@ -1882,58 +1882,48 @@ static const struct regmap_config MP3317_regmap_config = {
 /*
  * Control ILED value (reg04h,reg05h|reg06h,reg07h)
  */
+ // sets current of both leds
 static int led_brightness_set(struct led_classdev *led_cdev,
 				  enum led_brightness brightness)
 {
-		struct mp3317_led *led = container_of(led_cdev, struct mp3317_led, wled);
-		int ret;
+	struct mp3317_led *led = container_of(led_cdev, struct mp3317_led, wled);
+	int ret;
 
-		if(led->isleft){
-				ret = regmap_write(led->regmap, MP3317_ILEDL_L, brightness & 0xff);
-				if(ret)
-						return ret;
-				ret = regmap_write(led->regmap, MP3317_ILEDL_H, (brightness & 0xf00) >> 8);
-				if(ret)
-						return ret;
-		} else {
-				ret = regmap_write(led->regmap, MP3317_ILEDR_L, brightness & 0xff);
-				if(ret)
-						return ret;
-				ret = regmap_write(led->regmap, MP3317_ILEDR_H, (brightness & 0xf00) >> 8);
-				if(ret)
-						return ret;
-		}
-		led_update_brightness(led_cdev);
-		return 0;
+	ret = regmap_write(led->regmap, MP3317_ILEDL_L, brightness & 0xff);
+	if(ret)
+			return ret;
+	ret = regmap_write(led->regmap, MP3317_ILEDL_H, (brightness & 0xf00) >> 8);
+	if(ret)
+			return ret;
+
+	ret = regmap_write(led->regmap, MP3317_ILEDR_L, brightness & 0xff);
+	if(ret)
+			return ret;
+	ret = regmap_write(led->regmap, MP3317_ILEDR_H, (brightness & 0xf00) >> 8);
+	if(ret)
+			return ret;
+
+	led_update_brightness(led_cdev);
+	return 0;
 }
 
+// returns brightness of left led
 static enum led_brightness mp3317_led_get(struct led_classdev *cdev)
 {
-		struct mp3317_led *led = container_of(cdev, struct mp3317_led, wled);
-		int ret;
-		int rval, val;
+	struct mp3317_led *led = container_of(cdev, struct mp3317_led, wled);
+	int ret;
+	int rval, val;
 
-		if(led->isleft){
-				ret = regmap_read(led->regmap, MP3317_ILEDL_L, &rval);
-				if(ret)
-						return ret;
 
-				val = rval;
-				ret = regmap_read(led->regmap, MP3317_ILEDL_H, &rval);
-				if(ret)
-						return ret;
-				val |= (rval & 0x0f) << 8;
-		} else {
-				ret = regmap_read(led->regmap, MP3317_ILEDR_L, &rval);
-				if(ret)
-						return ret;
-				val = rval;
-				ret = regmap_read(led->regmap, MP3317_ILEDR_H, &rval);
-				if(ret)
-						return ret;
-				val |= (rval & 0x0f) << 8;
-		}
+	ret = regmap_read(led->regmap, MP3317_ILEDL_L, &rval);
+	if(ret)
+			return ret;
 
+	val = rval;
+	ret = regmap_read(led->regmap, MP3317_ILEDL_H, &rval);
+	if(ret)
+			return ret;
+	val |= (rval & 0x0f) << 8;
 
 	return val;
 }
@@ -1957,14 +1947,7 @@ static int mp3317_leds_probe(struct i2c_client *client)
 		if(IS_ERR(chip->regmap))
 				return PTR_ERR(chip->regmap);
 
-		// check for i2c comms
-		ret = regmap_read(chip->regmap, MP3317_EN_CTL, &rval);
-			if ( ret ) {
-			dev_err(&chip->client->dev, "I2C comms failed: %d\n", ret );
-		return ret;
-		}
-
-		chip->en_gpio = devm_gpiod_get(&client->dev, "en", GPIOD_OUT_LOW);
+		chip->en_gpio = devm_gpiod_get(&chip->client->dev, "en", GPIOD_OUT_LOW);
 		if (IS_ERR(chip->en_gpio)) {
 			dev_err(&client->dev, "cannot get en gpio %ld\n",
 				PTR_ERR(chip->en_gpio));
@@ -1977,16 +1960,22 @@ static int mp3317_leds_probe(struct i2c_client *client)
 		gpiod_set_value(chip->en_gpio, 1);
 		usleep_range(10000,20000);
 
+		// check for i2c comms
+		ret = regmap_read(chip->regmap, MP3317_EN_CTL, &rval);
+		if ( ret ) {
+			dev_err(&chip->client->dev, "I2C comms failed: %d\n", ret );
+			return ret;
+		}
+
 		chip->rst = 60000;
-		led = &chip->left;
-		led->wled.name = "mp3317_led_left";
+		led = &chip->led;
+		led->wled.name = "mp3317_led";
 		led->regmap = chip->regmap;
-		led->isleft = true;
 		led->wled.max_brightness = MAX_BRIGHTNESS;
 		led->wled.brightness_set_blocking = led_brightness_set;
 		led->wled.brightness_get =mp3317_led_get;
-		led->wled.groups = mp3317_left_groups;
-		
+		led->wled.groups = mp3317_groups;
+
 		ret = devm_led_classdev_register_ext(&chip->client->dev, &led->wled, NULL);
 		if(ret){
 				dev_err(&chip->client->dev, "Unable register led:%s\n",
@@ -1994,24 +1983,7 @@ static int mp3317_leds_probe(struct i2c_client *client)
 			return ret;
 		}
 
-		// config left led
-		deckard_config_mp3317(&chip->client->dev, led);
-
-		led = &chip->right;
-		led->wled.name = "mp3317_led_right";
-		led->regmap = chip->regmap;
-		led->wled.max_brightness = MAX_BRIGHTNESS;
-		led->wled.brightness_set_blocking = led_brightness_set;
-		led->wled.brightness_get =mp3317_led_get;
-		led->wled.groups = mp3317_right_groups;
-		ret = devm_led_classdev_register_ext(&chip->client->dev, &led->wled, NULL);
-		if(ret){
-				dev_err(&chip->client->dev, "Unable register led:%s\n",
-				led->wled.name);
-			return ret;    
-		}
-
-		// config right led
+		// set default config led
 		deckard_config_mp3317(&chip->client->dev, led);
 		
 		return 0;

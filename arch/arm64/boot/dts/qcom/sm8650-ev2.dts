@@ -311,7 +311,9 @@
 		regulator-min-microvolt = <3000000>;
 		regulator-max-microvolt = <3000000>;
 		enable-gpio = <&tlmm 38 GPIO_ACTIVE_HIGH>;
-		detect-gpio = <&pm8550b_gpios 6 GPIO_ACTIVE_LOW>;
+		detect-gpio = <&pm8550b_gpios 6 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&detect_n>;
 		enable-active-high;
 		vin-supply = <&VPH_PWR>;
 	};
@@ -347,9 +349,17 @@
 	regulator-always-on; // AON CAM ADSP TEST
 };
 
-&pm8550_gpios {
+&pm8550b_gpios {
 	select_n: select-n-state {
 		pins = "gpio5";
+		function = "normal";
+		power-source = <1>;
+		bias-pull-up;
+		input-enable;
+	};
+
+	detect_n: detect-n-state {
+		pins = "gpio6";
 		function = "normal";
 		power-source = <1>;
 		bias-pull-up;

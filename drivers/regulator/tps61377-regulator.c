@@ -29,7 +29,6 @@ static int tps61377_reg_disable(struct regulator_dev *rdev)
 {
 	struct tps61377_data *tps61377 = rdev_get_drvdata(rdev);
 
-	dev_err(tps61377->dev, "disabling preboost\n");
 	gpiod_set_value(tps61377->en_gpio, 0);
 	return 0;
 }
@@ -61,12 +60,31 @@ static const struct regulator_ops tps61377_ops = {
     .get_status = tps61377_reg_get_status,
 };
 
+static ssize_t pgood_show(struct device *dev, struct device_attribute *attr,
+						char *buf)
+{
+	struct tps61377_data *tps61377= dev_get_drvdata(dev);
+	return sprintf(buf, "%d\n", gpiod_get_value(tps61377->pgood_gpio));
+}
+static DEVICE_ATTR_RO(pgood);
+
+static struct attribute *status_attrs[] = {
+		&dev_attr_pgood.attr,
+		NULL,
+};
+
+static const struct attribute_group control_attr_group = {
+		.name = "status",
+		.attrs = status_attrs,
+};
+
 static int tps61377_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct regulator_config cfg = { };
 	struct regulator_dev *rdev;
 	struct tps61377_data *tps61377;
+	int ret;
 
 	tps61377 = devm_kzalloc(dev, sizeof(*tps61377), GFP_KERNEL);
 	if (!tps61377)
@@ -76,9 +94,9 @@ static int tps61377_probe(struct platform_device *pdev)
 	if (IS_ERR(tps61377->en_gpio))
 		return PTR_ERR(tps61377->en_gpio);
 
-	tps61377->en_gpio = devm_gpiod_get(dev, "pgood", GPIOD_IN);
-	if (IS_ERR(tps61377->en_gpio))
-		return PTR_ERR(tps61377->en_gpio);
+	tps61377->pgood_gpio = devm_gpiod_get(dev, "pgood", GPIOD_IN);
+	if (IS_ERR(tps61377->pgood_gpio))
+		return PTR_ERR(tps61377->pgood_gpio);
 
 	cfg.dev = dev;
 	cfg.init_data = of_get_regulator_init_data(dev, dev->of_node, &tps61377->desc);
@@ -100,6 +118,11 @@ static int tps61377_probe(struct platform_device *pdev)
 
 	tps61377->dev = dev;
 	platform_set_drvdata(pdev, tps61377);
+
+	ret = sysfs_create_group(&pdev->dev.kobj, &control_attr_group);
+	if (ret != 0)
+		return ret;
+
 	return 0;
 }
 

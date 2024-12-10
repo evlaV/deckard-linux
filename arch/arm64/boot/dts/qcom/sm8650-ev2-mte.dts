@@ -925,7 +925,7 @@
 		compatible = "ovti,ov6211x";
 		reg = <0x60>;
 
-		reset-gpios = <&tlmm 58 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&tlmm 195 GPIO_ACTIVE_LOW>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&cam_sensor_mclk4_active>; // <&cam_et_l_default>;
 
