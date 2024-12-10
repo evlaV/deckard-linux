@@ -44,6 +44,8 @@
 #define	CONVERT_S3_15(val) \
 	(((((u64)val) & ~BIT_ULL(63)) >> 17) & GENMASK_ULL(17, 0))
 
+static void dpu_crtc_set_cac_blob(struct msm_kms *kms, struct cac_blob *cac);
+
 static struct dpu_kms *_dpu_crtc_get_kms(struct drm_crtc *crtc)
 {
 	struct msm_drm_private *priv = crtc->dev->dev_private;
@@ -986,6 +988,8 @@ static void dpu_crtc_atomic_begin(struct drm_crtc *crtc,
 {
 	struct dpu_crtc_state *cstate = to_dpu_crtc_state(crtc->state);
 	struct drm_encoder *encoder;
+	struct msm_drm_private *priv = crtc->dev->dev_private;
+	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
 
 	if (!crtc->state->enable) {
 		DRM_DEBUG_ATOMIC("crtc%d -> enable %d, skip atomic_begin\n",
@@ -1012,6 +1016,9 @@ static void dpu_crtc_atomic_begin(struct drm_crtc *crtc,
 	_dpu_crtc_blend_setup(crtc);
 
 	_dpu_crtc_setup_cp_blocks(crtc);
+
+	if (dpu_kms->planar_cac_enable)
+		dpu_crtc_set_cac_blob(priv->kms, dpu_kms->cac_blobs);
 
 	/*
 	 * PP_DONE irq is only used by command mode for now.
@@ -1760,7 +1767,6 @@ static inline void cac_blob_size_to_cfg(u32 csz, u32 *width, u32 *height)
 
 /* setup all SSPP rectx and QSEED3 related register per user land requirement */
 static void dpu_crtc_set_cac_blob(struct msm_kms *kms,
-				  struct dpu_crtc_state *cstate,
 				  struct cac_blob *cac)
 {
 	int i, j, rect1;
@@ -1917,7 +1923,7 @@ crtc_atomic_set_property(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
-	dpu_crtc_set_cac_blob(priv->kms, cstate, blob->data);
+	memcpy(dpu_kms->cac_blobs, blob->data, blob->length);
 	drm_property_blob_put(blob);
 	dpu_kms->planar_cac_enable = 1;
 	/* use the last 2 stage for hidden SSPP, it's DPU_STAGE_9/10 for now */
