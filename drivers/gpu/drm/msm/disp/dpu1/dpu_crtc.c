@@ -1239,6 +1239,9 @@ static void dpu_crtc_disable(struct drm_crtc *crtc,
 	pm_runtime_put_sync(crtc->dev->dev);
 }
 
+static int crtc_atomic_set_property(struct drm_crtc *crtc, struct drm_crtc_state *state, struct drm_property *property, uint64_t val);
+static int crtc_atomic_get_property(struct drm_crtc *crtc, const struct drm_crtc_state *state, struct drm_property *property, uint64_t *val);
+
 static void dpu_crtc_enable(struct drm_crtc *crtc,
 		struct drm_atomic_state *state)
 {
@@ -1246,6 +1249,8 @@ static void dpu_crtc_enable(struct drm_crtc *crtc,
 	struct drm_encoder *encoder;
 	bool request_bandwidth = false;
 	struct drm_crtc_state *old_crtc_state;
+	struct msm_drm_private *priv;
+	uint64_t val;
 
 	old_crtc_state = drm_atomic_get_old_crtc_state(state, crtc);
 
@@ -1272,6 +1277,16 @@ static void dpu_crtc_enable(struct drm_crtc *crtc,
 		drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask)
 			dpu_encoder_assign_crtc(encoder, crtc);
 	}
+
+	printk(KERN_CRIT "dpu1: dpu_crtc_enable()");
+
+	priv = crtc->dev->dev_private;
+	
+	crtc_atomic_get_property(crtc,crtc->state, to_dpu_kms(priv->kms)->cac_prop, &val);
+	
+	printk(KERN_CRIT "dpu1: dpu_crtc_enable() crtc_atomic_get_property: val=%llu",val);
+
+	crtc_atomic_set_property(crtc, crtc->state, to_dpu_kms(priv->kms)->cac_prop, val);
 
 	/* Enable/restore vblank irq handling */
 	drm_crtc_vblank_on(crtc);
@@ -1567,15 +1582,24 @@ crtc_atomic_set_property(struct drm_crtc *crtc,
 	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
 	struct dpu_crtc_state *cstate = to_dpu_crtc_state(state);
 	struct drm_property_blob *blob;
+	struct dpu_crtc *dpu_crtc = to_dpu_crtc(crtc);
 
 	if (property != dpu_kms->cac_prop)
+	{
+		printk(KERN_CRIT "fail1");
 		return -ENOENT;
+	}
 
 	dpu_kms->cac_blob_id = val;
 
 	blob = drm_property_lookup_blob(crtc->dev, (uint32_t) val);
 	if (!blob)
+	{
+		printk(KERN_CRIT "fail2");
 		return -EINVAL;
+	}
+
+	printk(KERN_CRIT "dpu1: Set CAC blob property: dpu_crtc->enabled=[%d] : id %lld length %ld\n", dpu_crtc->enabled, val, blob->length);
 
 	DRM_DEBUG_DRIVER("Set CAC blob property: id %lld length %ld\n",
 			 val, blob->length);
@@ -1583,6 +1607,9 @@ crtc_atomic_set_property(struct drm_crtc *crtc,
 		drm_property_blob_put(blob);
 		return -EINVAL;
 	}
+
+	if( ! dpu_crtc->enabled ) //hack
+		return 0;
 
 	dpu_crtc_set_cac_blob(priv->kms, cstate, blob->data);
 	drm_property_blob_put(blob);
