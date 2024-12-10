@@ -125,6 +125,7 @@ struct dpu_kms {
 	 */
 	struct dpu_sw_pipe cac_pipes[PLANAR_CAC_PIPES_WITH_FETCH];
 	struct dpu_sw_pipe_cfg cac_pipe_cfg[PLANAR_CAC_PIPES_WITH_FETCH];
+	struct cac_blob cac_blobs[PLANAR_CAC_SSPP_VIG];
 };
 
 struct vsync_info {
