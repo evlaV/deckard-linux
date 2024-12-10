@@ -398,8 +398,9 @@ enable_charger:
 	regmap_write(regmap, CHGR_IPRE_CFG_ADDR, IPRE_250MA); // (250 mA for 2S?)
 	// NOTE When we measure this current the divider seems to be closer to 57 than 60... Not sure why this is. so all are currents are a little lower than this.
 	// regmap_write(regmap, CHGR_ICHG_CFG_ADDR, 2700/60); // 2.7 A for 2S - 1C
-	regmap_write(regmap, CHGR_ICHG_CFG_ADDR, 2040/60); // 2.04 A for 2S - 0.75C
+	// regmap_write(regmap, CHGR_ICHG_CFG_ADDR, 2040/60); // 2.04 A for 2S - 0.75C
 	// regmap_write(regmap, CHGR_ICHG_CFG_ADDR, 1380/60); // 1.38 A for 2S - 0.5C
+	regmap_write(regmap, CHGR_ICHG_CFG_ADDR, 1200/60); // 1.20 A for 2S - C/2.25
 	regmap_write(regmap, CHGR_VFLT_CFG_ADDR, (4450-3600)/10); // 4.45V float (8.9V for 2S)
 	regmap_write(regmap, CHGR_TERM_CFG_ADDR, CHGR_TERM_CFG_I_TERM); // enabled and min (100mA)
 
