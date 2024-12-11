@@ -25,6 +25,8 @@ static int q6v5_load_state_toggle(struct qcom_q6v5 *q6v5, bool enable)
 {
 	int ret;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	if (!q6v5->qmp)
 		return 0;
 
@@ -32,6 +34,8 @@ static int q6v5_load_state_toggle(struct qcom_q6v5 *q6v5, bool enable)
 		       q6v5->load_state, enable ? "on" : "off");
 	if (ret)
 		dev_err(q6v5->dev, "failed to toggle load state\n");
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	return ret;
 }
@@ -45,6 +49,7 @@ static int q6v5_load_state_toggle(struct qcom_q6v5 *q6v5, bool enable)
 int qcom_q6v5_prepare(struct qcom_q6v5 *q6v5)
 {
 	int ret;
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	ret = icc_set_bw(q6v5->path, 0, UINT_MAX);
 	if (ret < 0) {
@@ -65,6 +70,7 @@ int qcom_q6v5_prepare(struct qcom_q6v5 *q6v5)
 	q6v5->handover_issued = false;
 
 	enable_irq(q6v5->handover_irq);
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	return 0;
 }
@@ -80,9 +86,11 @@ int qcom_q6v5_unprepare(struct qcom_q6v5 *q6v5)
 {
 	disable_irq(q6v5->handover_irq);
 	q6v5_load_state_toggle(q6v5, false);
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	/* Disable interconnect vote, in case handover never happened */
 	icc_set_bw(q6v5->path, 0, 0);
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	return !q6v5->handover_issued;
 }
@@ -93,6 +101,7 @@ static irqreturn_t q6v5_wdog_interrupt(int irq, void *data)
 	struct qcom_q6v5 *q6v5 = data;
 	size_t len;
 	char *msg;
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	/* Sometimes the stop triggers a watchdog rather than a stop-ack */
 	if (!q6v5->running) {
@@ -108,6 +117,7 @@ static irqreturn_t q6v5_wdog_interrupt(int irq, void *data)
 
 	q6v5->running = false;
 	rproc_report_crash(q6v5->rproc, RPROC_WATCHDOG);
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	return IRQ_HANDLED;
 }
@@ -117,6 +127,7 @@ static irqreturn_t q6v5_fatal_interrupt(int irq, void *data)
 	struct qcom_q6v5 *q6v5 = data;
 	size_t len;
 	char *msg;
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	if (!q6v5->running)
 		return IRQ_HANDLED;
@@ -129,6 +140,7 @@ static irqreturn_t q6v5_fatal_interrupt(int irq, void *data)
 
 	q6v5->running = false;
 	rproc_report_crash(q6v5->rproc, RPROC_FATAL_ERROR);
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	return IRQ_HANDLED;
 }
@@ -136,6 +148,7 @@ static irqreturn_t q6v5_fatal_interrupt(int irq, void *data)
 static irqreturn_t q6v5_ready_interrupt(int irq, void *data)
 {
 	struct qcom_q6v5 *q6v5 = data;
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	complete(&q6v5->start_done);
 
@@ -154,6 +167,7 @@ static irqreturn_t q6v5_ready_interrupt(int irq, void *data)
 int qcom_q6v5_wait_for_start(struct qcom_q6v5 *q6v5, int timeout)
 {
 	int ret;
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	ret = wait_for_completion_timeout(&q6v5->start_done, timeout);
 	if (!ret)
@@ -166,6 +180,7 @@ EXPORT_SYMBOL_GPL(qcom_q6v5_wait_for_start);
 static irqreturn_t q6v5_handover_interrupt(int irq, void *data)
 {
 	struct qcom_q6v5 *q6v5 = data;
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	if (q6v5->handover)
 		q6v5->handover(q6v5);
@@ -180,6 +195,7 @@ static irqreturn_t q6v5_handover_interrupt(int irq, void *data)
 static irqreturn_t q6v5_stop_interrupt(int irq, void *data)
 {
 	struct qcom_q6v5 *q6v5 = data;
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	complete(&q6v5->stop_done);
 
@@ -196,6 +212,7 @@ static irqreturn_t q6v5_stop_interrupt(int irq, void *data)
 int qcom_q6v5_request_stop(struct qcom_q6v5 *q6v5, struct qcom_sysmon *sysmon)
 {
 	int ret;
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	q6v5->running = false;
 
@@ -225,6 +242,7 @@ EXPORT_SYMBOL_GPL(qcom_q6v5_request_stop);
  */
 unsigned long qcom_q6v5_panic(struct qcom_q6v5 *q6v5)
 {
+	pr_info("%s:%d\n", __func__, __LINE__);
 	qcom_smem_state_update_bits(q6v5->state,
 				    BIT(q6v5->stop_bit), BIT(q6v5->stop_bit));
 
@@ -248,6 +266,7 @@ int qcom_q6v5_init(struct qcom_q6v5 *q6v5, struct platform_device *pdev,
 		   void (*handover)(struct qcom_q6v5 *q6v5))
 {
 	int ret;
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	q6v5->rproc = rproc;
 	q6v5->dev = &pdev->dev;

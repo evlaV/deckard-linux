@@ -74,6 +74,8 @@ static irqreturn_t qcom_ipcc_irq_fn(int irq, void *data)
 	struct qcom_ipcc *ipcc = data;
 	u32 hwirq;
 	int virq;
+	
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	for (;;) {
 		hwirq = readl(ipcc->base + IPCC_REG_RECV_ID);

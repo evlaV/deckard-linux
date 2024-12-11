@@ -640,6 +640,10 @@ static int rproc_handle_devmem(struct rproc *rproc, void *ptr,
 		return -EINVAL;
 	}
 
+	dev_info(dev, "mapping devmem pa 0x%x, da 0x%x, len 0x%x\n",
+		rsc->pa, rsc->da, rsc->len);
+
+
 	mapping = kzalloc(sizeof(*mapping), GFP_KERNEL);
 	if (!mapping)
 		return -ENOMEM;

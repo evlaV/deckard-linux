@@ -129,6 +129,8 @@ static int qcom_rproc_pds_attach(struct qcom_adsp *adsp, const char **pd_names,
 	};
 	int ret;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	/* Handle single power domain */
 	if (dev->pm_domain)
 		goto out;
@@ -150,6 +152,8 @@ static void qcom_rproc_pds_detach(struct qcom_adsp *adsp)
 	struct device *dev = adsp->dev;
 	struct dev_pm_domain_list *pds = adsp->pd_list;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	dev_pm_domain_detach_list(pds);
 
 	if (dev->pm_domain || pds)
@@ -161,6 +165,8 @@ static int qcom_rproc_pds_enable(struct qcom_adsp *adsp)
 	struct device *dev = adsp->dev;
 	struct dev_pm_domain_list *pds = adsp->pd_list;
 	int ret, i = 0;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	if (!dev->pm_domain && !pds)
 		return 0;
@@ -192,6 +198,8 @@ static void qcom_rproc_pds_disable(struct qcom_adsp *adsp)
 	struct device *dev = adsp->dev;
 	struct dev_pm_domain_list *pds = adsp->pd_list;
 	int i = 0;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	if (!dev->pm_domain && !pds)
 		return;
@@ -252,6 +260,8 @@ static int qcom_adsp_shutdown(struct qcom_adsp *adsp)
 	unsigned long timeout;
 	unsigned int val;
 	int ret;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	/* Reset the retention logic */
 	val = readl(adsp->qdsp6ss_base + RET_CFG_REG);
@@ -317,13 +327,19 @@ static int adsp_load(struct rproc *rproc, const struct firmware *fw)
 	struct qcom_adsp *adsp = rproc->priv;
 	int ret;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	ret = qcom_mdt_load_no_init(adsp->dev, fw, rproc->firmware, 0,
 				    adsp->mem_region, adsp->mem_phys,
 				    adsp->mem_size, &adsp->mem_reloc);
 	if (ret)
 		return ret;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	qcom_pil_info_store(adsp->info_name, adsp->mem_phys, adsp->mem_size);
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	return 0;
 }
@@ -331,6 +347,8 @@ static int adsp_load(struct rproc *rproc, const struct firmware *fw)
 static void adsp_unmap_carveout(struct rproc *rproc)
 {
 	struct qcom_adsp *adsp = rproc->priv;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	if (adsp->has_iommu)
 		iommu_unmap(rproc->domain, adsp->mem_phys, adsp->mem_size);
@@ -343,6 +361,8 @@ static int adsp_map_carveout(struct rproc *rproc)
 	long long sid;
 	unsigned long iova;
 	int ret;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	if (!adsp->has_iommu)
 		return 0;
@@ -367,6 +387,8 @@ static int adsp_map_carveout(struct rproc *rproc)
 		return ret;
 	}
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	return 0;
 }
 
@@ -376,15 +398,21 @@ static int adsp_start(struct rproc *rproc)
 	int ret;
 	unsigned int val;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	ret = qcom_q6v5_prepare(&adsp->q6v5);
 	if (ret)
 		return ret;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	ret = adsp_map_carveout(rproc);
 	if (ret) {
 		dev_err(adsp->dev, "ADSP smmu mapping failed\n");
 		goto disable_irqs;
 	}
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	ret = clk_prepare_enable(adsp->xo);
 	if (ret)
@@ -394,11 +422,15 @@ static int adsp_start(struct rproc *rproc)
 	if (ret < 0)
 		goto disable_xo_clk;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	ret = clk_bulk_prepare_enable(adsp->num_clks, adsp->clks);
 	if (ret) {
 		dev_err(adsp->dev, "adsp clk_enable failed\n");
 		goto disable_power_domain;
 	}
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	/* Enable the XO clock */
 	writel(1, adsp->qdsp6ss_base + QDSP6SS_XO_CBCR);
@@ -409,17 +441,25 @@ static int adsp_start(struct rproc *rproc)
 	/* Enable the QDSP6 core clock */
 	writel(1, adsp->qdsp6ss_base + QDSP6SS_CORE_CBCR);
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	/* Program boot address */
 	writel(adsp->mem_phys >> 4, adsp->qdsp6ss_base + RST_EVB_REG);
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	if (adsp->lpass_efuse)
 		writel(LPASS_EFUSE_Q6SS_EVB_SEL, adsp->lpass_efuse);
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	/* De-assert QDSP6 stop core. QDSP6 will execute after out of reset */
 	writel(LPASS_BOOT_CORE_START, adsp->qdsp6ss_base + CORE_START_REG);
 
 	/* Trigger boot FSM to start QDSP6 */
 	writel(LPASS_BOOT_CMD_START, adsp->qdsp6ss_base + BOOT_CMD_REG);
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	/* Wait for core to come out of reset */
 	ret = readl_poll_timeout(adsp->qdsp6ss_base + BOOT_STATUS_REG,
@@ -429,11 +469,15 @@ static int adsp_start(struct rproc *rproc)
 		goto disable_adsp_clks;
 	}
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	ret = qcom_q6v5_wait_for_start(&adsp->q6v5, msecs_to_jiffies(5 * HZ));
 	if (ret == -ETIMEDOUT) {
 		dev_err(adsp->dev, "start timed out\n");
 		goto disable_adsp_clks;
 	}
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	return 0;
 
@@ -455,6 +499,8 @@ static void qcom_adsp_pil_handover(struct qcom_q6v5 *q6v5)
 {
 	struct qcom_adsp *adsp = container_of(q6v5, struct qcom_adsp, q6v5);
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	clk_disable_unprepare(adsp->xo);
 	qcom_rproc_pds_disable(adsp);
 }
@@ -465,15 +511,23 @@ static int adsp_stop(struct rproc *rproc)
 	int handover;
 	int ret;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	ret = qcom_q6v5_request_stop(&adsp->q6v5, adsp->sysmon);
 	if (ret == -ETIMEDOUT)
 		dev_err(adsp->dev, "timed out on wait\n");
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	ret = adsp->shutdown(adsp);
 	if (ret)
 		dev_err(adsp->dev, "failed to shutdown: %d\n", ret);
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	adsp_unmap_carveout(rproc);
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	handover = qcom_q6v5_unprepare(&adsp->q6v5);
 	if (handover)
@@ -499,6 +553,8 @@ static int adsp_parse_firmware(struct rproc *rproc, const struct firmware *fw)
 	struct qcom_adsp *adsp = rproc->priv;
 	int ret;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	ret = qcom_register_dump_segments(rproc, fw);
 	if (ret) {
 		dev_err(&rproc->dev, "Error in registering dump segments\n");
@@ -519,6 +575,8 @@ static unsigned long adsp_panic(struct rproc *rproc)
 {
 	struct qcom_adsp *adsp = rproc->priv;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	return qcom_q6v5_panic(&adsp->q6v5);
 }
 
@@ -535,6 +593,8 @@ static int adsp_init_clock(struct qcom_adsp *adsp, const char **clk_ids)
 {
 	int num_clks = 0;
 	int i, ret;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	adsp->xo = devm_clk_get(adsp->dev, "xo");
 	if (IS_ERR(adsp->xo)) {
@@ -561,6 +621,9 @@ static int adsp_init_clock(struct qcom_adsp *adsp, const char **clk_ids)
 
 static int adsp_init_reset(struct qcom_adsp *adsp)
 {
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	adsp->pdc_sync_reset = devm_reset_control_get_optional_exclusive(adsp->dev,
 			"pdc_sync");
 	if (IS_ERR(adsp->pdc_sync_reset)) {
@@ -588,6 +651,8 @@ static int adsp_init_mmio(struct qcom_adsp *adsp,
 	struct resource *efuse_region;
 	struct device_node *syscon;
 	int ret;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	adsp->qdsp6ss_base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(adsp->qdsp6ss_base)) {
@@ -632,6 +697,8 @@ static int adsp_alloc_memory_region(struct qcom_adsp *adsp)
 	struct reserved_mem *rmem = NULL;
 	struct device_node *node;
 
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	node = of_parse_phandle(adsp->dev->of_node, "memory-region", 0);
 	if (node)
 		rmem = of_reserved_mem_lookup(node);
@@ -662,6 +729,8 @@ static int adsp_probe(struct platform_device *pdev)
 	struct qcom_adsp *adsp;
 	struct rproc *rproc;
 	int ret;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
 
 	desc = of_device_get_match_data(&pdev->dev);
 	if (!desc)
