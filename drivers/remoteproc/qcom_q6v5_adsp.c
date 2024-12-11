@@ -39,6 +39,7 @@
 #define EVB_MASK			GENMASK(27, 4)
 /*QDSP6SS register offsets*/
 #define RST_EVB_REG			0x10
+#define BOOT_PARAMS(i)			(0x60 + ((i) * 4))
 #define CORE_START_REG			0x400
 #define BOOT_CMD_REG			0x404
 #define BOOT_STATUS_REG			0x408
@@ -62,6 +63,8 @@
 struct adsp_pil_data {
 	int crash_reason_smem;
 	const char *firmware_name;
+	const char *dtb_firmware_name;
+	const char *rsc_firmware_name;
 
 	const char *ssr_name;
 	const char *sysmon_name;
@@ -100,13 +103,22 @@ struct qcom_adsp {
 	int crash_reason_smem;
 	const char *info_name;
 
+	const char *dtb_firmware_name;
+	const struct firmware *dtb_firmware;
+	const char *rsc_firmware_name;
+	const struct firmware *rsc_firmware;
+
 	struct completion start_done;
 	struct completion stop_done;
 
 	phys_addr_t mem_phys;
+	phys_addr_t dtb_mem_phys;	
 	phys_addr_t mem_reloc;
+	phys_addr_t dtb_mem_reloc;	
 	void *mem_region;
+	void *dtb_mem_region;	
 	size_t mem_size;
+	size_t dtb_mem_size;	
 	bool has_iommu;
 
 	struct dev_pm_domain_list *pd_list;
@@ -329,6 +341,27 @@ static int adsp_load(struct rproc *rproc, const struct firmware *fw)
 
 	pr_info("%s:%d\n", __func__, __LINE__);
 
+	if (adsp->dtb_firmware_name) {
+		ret = request_firmware(&adsp->dtb_firmware, adsp->dtb_firmware_name, adsp->dev);
+		if (ret) {
+			dev_err(adsp->dev, "request_firmware failed for %s: %d\n",
+				adsp->dtb_firmware_name, ret);
+			return ret;
+		}
+
+		ret = qcom_mdt_load_no_init(adsp->dev, adsp->dtb_firmware,
+					    adsp->dtb_firmware_name, 0,
+					    adsp->dtb_mem_region,
+					    adsp->dtb_mem_phys,
+					    adsp->dtb_mem_size,
+					    &adsp->dtb_mem_reloc);
+		if (ret)
+			return ret;
+	}
+
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
 	ret = qcom_mdt_load_no_init(adsp->dev, fw, rproc->firmware, 0,
 				    adsp->mem_region, adsp->mem_phys,
 				    adsp->mem_size, &adsp->mem_reloc);
@@ -385,6 +418,19 @@ static int adsp_map_carveout(struct rproc *rproc)
 	if (ret) {
 		dev_err(adsp->dev, "Unable to map ADSP Physical Memory\n");
 		return ret;
+	}
+
+	if (adsp->dtb_firmware_name) {
+		/* Add SID configuration for ADSP Firmware to SMMU */
+		iova =  adsp->dtb_mem_phys | (sid << 32);
+
+		ret = iommu_map(rproc->domain, iova, adsp->dtb_mem_phys,
+				adsp->dtb_mem_size, IOMMU_READ | IOMMU_WRITE,
+				GFP_KERNEL);
+		if (ret) {
+			dev_err(adsp->dev, "Unable to map ADSP DTB Physical Memory\n");
+			return ret;
+		}
 	}
 
 	pr_info("%s:%d\n", __func__, __LINE__);
@@ -445,6 +491,11 @@ static int adsp_start(struct rproc *rproc)
 
 	/* Program boot address */
 	writel(adsp->mem_phys >> 4, adsp->qdsp6ss_base + RST_EVB_REG);
+
+	if (adsp->dtb_mem_phys) {
+		writel(adsp->dtb_mem_phys, adsp->qdsp6ss_base + BOOT_PARAMS(0));
+		writel(adsp->dtb_mem_size, adsp->qdsp6ss_base + BOOT_PARAMS(5));
+	}
 
 	pr_info("%s:%d\n", __func__, __LINE__);
 
@@ -562,10 +613,30 @@ static int adsp_parse_firmware(struct rproc *rproc, const struct firmware *fw)
 	}
 
 	if (adsp->has_iommu) {
-		ret = rproc_elf_load_rsc_table(rproc, fw);
-		if (ret) {
-			dev_err(&rproc->dev, "Error in loading resource table\n");
-			return ret;
+		if (adsp->rsc_firmware_name) {
+			ret = request_firmware(&adsp->rsc_firmware, adsp->rsc_firmware_name,
+					       adsp->dev);
+			if (ret) {
+				dev_err(adsp->dev, "request_firmware failed for %s: %d\n",
+						adsp->rsc_firmware_name, ret);
+				return ret;
+			}
+
+			rproc->cached_table = kmemdup(adsp->rsc_firmware->data,
+						      adsp->rsc_firmware->size,
+						      GFP_KERNEL);
+			if (!rproc->cached_table)
+				return -ENOMEM;
+
+			rproc->table_ptr = rproc->cached_table;
+			rproc->table_sz = adsp->rsc_firmware->size;
+
+			release_firmware(adsp->rsc_firmware);
+		} else {
+			ret = rproc_elf_load_rsc_table(rproc, fw);
+			if (ret) {
+				dev_err(&rproc->dev, "Error in loading resource table\n");
+			}
 		}
 	}
 	return 0;
@@ -719,6 +790,32 @@ static int adsp_alloc_memory_region(struct qcom_adsp *adsp)
 		return -EBUSY;
 	}
 
+	if (!adsp->dtb_firmware_name)
+		return 0;
+
+	node = of_parse_phandle(adsp->dev->of_node, "memory-region", 1);
+	if (!node) {
+		dev_err(adsp->dev, "no dtb memory-region specified\n");
+		return -EINVAL;
+	}
+
+	rmem = of_reserved_mem_lookup(node);
+	of_node_put(node);
+	if (!rmem) {
+		dev_err(adsp->dev, "unable to resolve dtb memory-region\n");
+		return -EINVAL;
+	}
+
+	adsp->dtb_mem_phys = adsp->dtb_mem_reloc = rmem->base;
+	adsp->dtb_mem_size = rmem->size;
+	adsp->dtb_mem_region = devm_ioremap_wc(adsp->dev, adsp->dtb_mem_phys,
+					       adsp->dtb_mem_size);
+	if (!adsp->dtb_mem_region) {
+		dev_err(adsp->dev, "unable to map dtb memory region: %pa+%zx\n",
+			&rmem->base, adsp->dtb_mem_size);
+		return -EBUSY;
+	}
+
 	return 0;
 }
 
@@ -726,6 +823,8 @@ static int adsp_probe(struct platform_device *pdev)
 {
 	const struct adsp_pil_data *desc;
 	const char *firmware_name;
+	const char *dtb_fw_name = NULL;
+	const char *rsc_fw_name = NULL;
 	struct qcom_adsp *adsp;
 	struct rproc *rproc;
 	int ret;
@@ -744,6 +843,22 @@ static int adsp_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	if (desc->dtb_firmware_name) {
+		dtb_fw_name = desc->dtb_firmware_name;
+		ret = of_property_read_string_index(pdev->dev.of_node, "firmware-name", 1,
+						    &dtb_fw_name);
+		if (ret < 0 && ret != -EINVAL)
+			return ret;
+	}
+
+	if (desc->rsc_firmware_name) {
+		rsc_fw_name = desc->rsc_firmware_name;
+		ret = of_property_read_string_index(pdev->dev.of_node, "firmware-name", 2,
+						    &rsc_fw_name);
+		if (ret < 0 && ret != -EINVAL)
+			return ret;
+	}
+
 	rproc = devm_rproc_alloc(&pdev->dev, pdev->name, &adsp_ops,
 				 firmware_name, sizeof(*adsp));
 	if (!rproc) {
@@ -760,6 +875,10 @@ static int adsp_probe(struct platform_device *pdev)
 	adsp->rproc = rproc;
 	adsp->info_name = desc->sysmon_name;
 	adsp->has_iommu = desc->has_iommu;
+	if (dtb_fw_name)
+		adsp->dtb_firmware_name = dtb_fw_name;
+	if (rsc_fw_name)
+		adsp->rsc_firmware_name = rsc_fw_name;
 
 	platform_set_drvdata(pdev, adsp);
 
