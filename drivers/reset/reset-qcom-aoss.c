@@ -41,6 +41,20 @@ static const struct qcom_aoss_desc sdm845_aoss_desc = {
 	.num_resets = ARRAY_SIZE(sdm845_aoss_resets),
 };
 
+static const struct qcom_aoss_reset_map sm8650_aoss_resets[] = {
+	[AOSS_CC_MSS_RESTART] = {0x4000},
+	[AOSS_CC_CAMSS_RESTART] = {0x7004},
+	[AOSS_CC_VENUS_RESTART] = {0x7008},
+	[AOSS_CC_GPU_RESTART] = {0x700C},
+	[AOSS_CC_DISPSS_RESTART] = {0x7010},
+	[AOSS_CC_LPASS_RESTART] = {0x7014},
+};
+
+static const struct qcom_aoss_desc sm8650_aoss_desc = {
+	.resets = sm8650_aoss_resets,
+	.num_resets = ARRAY_SIZE(sm8650_aoss_resets),
+};
+
 static inline struct qcom_aoss_reset_data *to_qcom_aoss_reset_data(
 				struct reset_controller_dev *rcdev)
 {
@@ -114,6 +128,7 @@ static int qcom_aoss_reset_probe(struct platform_device *pdev)
 
 static const struct of_device_id qcom_aoss_reset_of_match[] = {
 	{ .compatible = "qcom,sdm845-aoss-cc", .data = &sdm845_aoss_desc },
+	{ .compatible = "qcom,sm8650-aoss-cc", .data = &sm8650_aoss_desc },
 	{}
 };
 MODULE_DEVICE_TABLE(of, qcom_aoss_reset_of_match);
