@@ -13,6 +13,7 @@
 
 #define RPMH_SDM845_PDC_SYNC_RESET	0x100
 #define RPMH_SC7280_PDC_SYNC_RESET	0x1000
+#define RPMH_SM8650_PDC_SYNC_RESET	0x10000
 
 struct qcom_pdc_reset_map {
 	u8 bit;
@@ -79,6 +80,29 @@ static const struct qcom_pdc_reset_desc sc7280_pdc_reset_desc = {
 	.offset = RPMH_SC7280_PDC_SYNC_RESET,
 };
 
+static const struct qcom_pdc_reset_map sm8650_pdc_resets[] = {
+	[PDC_APPS_SYNC_RESET] = {0},
+	[PDC_SP_SYNC_RESET] = {1},
+	[PDC_AUDIO_SYNC_RESET] = {2},
+	[PDC_AOP_SYNC_RESET] = {3},
+	[PDC_DEBUG_SYNC_RESET] = {4},
+	[PDC_GPU_SYNC_RESET] = {5},
+	[PDC_DISPLAY_SYNC_RESET] = {6},
+	[PDC_COMPUTE_SYNC_RESET] = {7},
+	[PDC_TME_SYNC_RESET] = {8},
+	[PDC_MODEM_SYNC_RESET] = {9},
+	[PDC_WLAN_RF_SYNC_RESET] = {10},
+	[PDC_WLAN_BB_SYNC_RESET] = {11},
+	[PDC_CAM_SYNC_RESET] = {12},
+	[PDC_PCIE_SYNC_RESET] = {13},
+};
+
+static const struct qcom_pdc_reset_desc sm8650_pdc_reset_desc = {
+	.resets = sm8650_pdc_resets,
+	.num_resets = ARRAY_SIZE(sm8650_pdc_resets),
+	.offset = RPMH_SM8650_PDC_SYNC_RESET,
+};
+
 static inline struct qcom_pdc_reset_data *to_qcom_pdc_reset_data(
 				struct reset_controller_dev *rcdev)
 {
@@ -143,6 +167,7 @@ static int qcom_pdc_reset_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id qcom_pdc_reset_of_match[] = {
+	{ .compatible = "qcom,sm8650-pdc-global", .data = &sm8650_pdc_reset_desc },
 	{ .compatible = "qcom,sc7280-pdc-global", .data = &sc7280_pdc_reset_desc },
 	{ .compatible = "qcom,sdm845-pdc-global", .data = &sdm845_pdc_reset_desc },
 	{}
