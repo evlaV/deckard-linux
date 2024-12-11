@@ -3448,7 +3448,7 @@ static struct clk_branch gcc_lpass_cfg_noc_sway_clk = {
 
 static struct clk_branch gcc_turing_cfg_ahb_clk = {
 	.halt_reg = 0x45008,
-	.halt_check = BRANCH_HALT_SKIP,
+	.halt_check = BRANCH_HALT,
 	.clkr = {
 		.enable_reg = 0x45008,
 		.enable_mask = BIT(0),

@@ -211,6 +211,7 @@
 #define GCC_TURING_CFG_AHB_CLK					198
 #define GCC_TURING_Q6_AXI_CLK					199
 
+
 /* GCC resets */
 #define GCC_CAMERA_BCR						0
 #define GCC_DISPLAY_BCR						1
