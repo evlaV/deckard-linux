@@ -55,6 +55,11 @@
 			no-map;
 		};
 
+		adsp_mhi_mem: adsp-mhi@81f00000 {
+			reg = <0 0x81f00000 0 0x20000>;
+			no-map;
+		};
+
 		cpucp_fw_mem: cpucp-fw@d8040000 {
 			reg = <0x0 0xd8040000 0x0 0x1b2000>;
 			no-map;
@@ -72,6 +77,15 @@
 
 		q6_cdsp_dtb_mem: q6-cdsp-dtb@9de00000 {
 			reg = <0 0x9de00000 0 0x80000>;
+		};
+
+		q6_adsp_dtb_mem: q6-adsp-dtb@9de80000 {
+			reg = <0 0x9de80000 0 0x80000>;
+			no-map;
+		};
+
+		adspslpi_mem: adspslpi@9df00000 {
+			reg = <0 0x9df00000 0 0x4080000>;
 			no-map;
 		};
 
@@ -98,7 +112,6 @@
 		/delete-node/ power-domain-cluster;
 	};
 
-	/delete-node/ smp2p-adsp;
 	/delete-node/ smp2p-modem;
 
 	soc@0 {
@@ -259,57 +272,12 @@
 
 /delete-node/ &ipa;
 
-&lpass_wsa2macro {
-	/delete-property/ clocks;
-	status = "disabled";
-};
-
-&lpass_rxmacro {
-	/delete-property/ clocks;
-	status = "disabled";
-};
-
-&lpass_txmacro {
-	/delete-property/ clocks;
-	status = "disabled";
-};
-
-&lpass_wsamacro {
-	clocks = <&audiocc LPASS_AUDIO_CC_WSA_MCLK_CLK>,
-		 <&audiocc LPASS_AUDIO_CC_WSA_2X_MCLK_CLK>,
-		 <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
-		 <&lpasscc LPASS_CORE_CC_SYSNOC_MPORT_CORE_CLK>,
-		 <&aoncc LPASS_AON_CC_TX_MCLK_CLK>,
-		 <&lpass_vamacro>;
-	clock-names = "mclk",
-		      "npl",
-		      "macro",
-		      "dcodec",
-		      "va",
-		      "fsgen";
-};
-
-&lpass_vamacro {
-	clocks = <&aoncc LPASS_AON_CC_TX_MCLK_CLK>,
-		 <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
-		 <&lpasscc LPASS_CORE_CC_SYSNOC_MPORT_CORE_CLK>;
-	clock-names = "mclk",
-		      "macro",
-		      "dcodec";
-};
-
-&lpass_tlmm {
-	clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>;
-	clock-names = "core";
-};
-
 &iris {
 	video-firmware {
 		iommus = <&apps_smmu 0x1942 0x0000>;
 	};
 };
 
-/delete-node/ &remoteproc_adsp;
 /delete-node/ &remoteproc_mpss;
 
 &gpu {
