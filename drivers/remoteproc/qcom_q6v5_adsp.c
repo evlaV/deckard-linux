@@ -47,7 +47,8 @@
 /*TCSR register offsets*/
 #define LPASS_MASTER_IDLE_REG		0x8
 #define LPASS_HALTACK_REG		0x4
-#define LPASS_PWR_ON_REG		0x10
+//#define LPASS_PWR_ON_REG		0x10
+#define LPASS_PWR_ON_REG		0xc
 #define LPASS_HALTREQ_REG		0x0
 
 #define SID_MASK_DEFAULT        0xF
@@ -59,6 +60,8 @@
 #define LPASS_BOOT_CORE_START	BIT(0)
 #define LPASS_BOOT_CMD_START	BIT(0)
 #define LPASS_EFUSE_Q6SS_EVB_SEL 0x0
+
+struct qcom_adsp;
 
 struct adsp_pil_data {
 	int crash_reason_smem;
@@ -78,6 +81,8 @@ struct adsp_pil_data {
 	const char **pd_names;
 	unsigned int num_pds;
 	const char *load_state;
+
+	int (*clk_setup)(struct qcom_adsp *adsp);
 };
 
 struct qcom_adsp {
@@ -128,6 +133,7 @@ struct qcom_adsp {
 	struct qcom_rproc_ssr ssr_subdev;
 	struct qcom_sysmon *sysmon;
 
+	int (*clk_setup)(struct qcom_adsp *adsp);
 	int (*shutdown)(struct qcom_adsp *adsp);
 };
 
@@ -438,6 +444,113 @@ static int adsp_map_carveout(struct rproc *rproc)
 	return 0;
 }
 
+#define PLL_MODE           0x00
+#if 0
+#define PLL_ACTIVE_FLAG    BIT(30)
+#define PLL_ACK_LATCH      BIT(29)
+#define PLL_UPDATE         BIT(22)
+#define PLL_VOTE_FSM_RESET BIT(21)
+#define PLL_VOTE_FSM_ENA   BIT(20)
+#define PLL_RESET_N        BIT(2)
+#endif
+
+#define PLL_OPMODE 0x04
+#define PLL_STATE 0x08
+#define PLL_STATUS 0x0c
+#define PLL_L_VAL 0x10
+#define PLL_ALPHA_VAL 0x14
+#define PLL_USER_CTL 0x18
+#define PLL_USER_CTL_U 0x1c
+#define PLL_CONFIG_CTL 0x20
+#define PLL_CONFIG_CTL_U 0x24
+#define PLL_CONFIG_CTL_U1 0x28
+#define PLL_TEST_CTL 0x2c
+#define PLL_TEST_CTL_U 0x30
+#define PLL_TEST_CTL_U1 0x34
+#define PLL_TEST_CTL_U2 0x38
+#define PLL_SSC 0x3c
+
+#define write32(x, y) writel(y, x)
+
+static inline void
+clk_pll_configure_lucid_ole(void __iomem *pll_reg, u32 freq)
+{
+   u16 l = freq / 19200000;
+   u16 alpha = (freq % 19200000) * 32 / 9375;
+
+   write32(pll_reg + PLL_MODE, 0x00);
+
+   // Add RINGOSC_CAL_L extra shift?
+   write32(pll_reg + PLL_L_VAL, 0x44 << 24 | 0x44 << 16 | l);
+   write32(pll_reg + PLL_ALPHA_VAL, alpha);
+   write32(pll_reg + PLL_USER_CTL, 0x00008400 | 1);
+   write32(pll_reg + PLL_USER_CTL_U, 0x00000005);
+   write32(pll_reg + PLL_CONFIG_CTL, 0x20485699);
+   write32(pll_reg + PLL_CONFIG_CTL_U, 0x00182261);
+   write32(pll_reg + PLL_CONFIG_CTL_U1, 0x82AA299C);
+   write32(pll_reg + PLL_TEST_CTL, 0);
+   write32(pll_reg + PLL_TEST_CTL_U, 0x00000003);
+   write32(pll_reg + PLL_TEST_CTL_U1, 0x00009000);
+   write32(pll_reg + PLL_TEST_CTL_U2, 0x00000034);
+
+#define PLL_UPDATE_BYPASS	BIT(23)
+	write32(pll_reg + PLL_MODE, PLL_UPDATE_BYPASS);
+
+#define PLL_STANDBY		0x0
+#define PLL_RUN			0x1
+
+#define PLL_LOCK_DET BIT(31)
+#define OUT_MAIN_HW_CTL BIT(3)
+#define PLL_RESET_N  BIT(2)
+#define PLL_OUTCTRL  BIT(0)
+
+	write32(pll_reg + PLL_OPMODE, PLL_STANDBY);
+	write32(pll_reg + PLL_MODE, PLL_RESET_N | PLL_UPDATE_BYPASS);
+
+	write32(pll_reg + PLL_OPMODE, PLL_RUN);
+
+	//usleep_range(1000, 2000);
+	//printk("PLL_MODE= 0x%.8x\n", readl(pll_reg + PLL_MODE));
+	while ((readl(pll_reg + PLL_MODE) & PLL_LOCK_DET) == 0);
+
+	write32(pll_reg + PLL_MODE, PLL_RESET_N | PLL_OUTCTRL);// | OUT_MAIN_HW_CTL);
+}
+
+static int cdsp_sm8650_clk_setup(struct qcom_adsp *adsp)
+{
+	void __iomem *turingcc = devm_ioremap(adsp->dev, 0x32008000, 0x20000);
+	WARN_ON(IS_ERR_OR_NULL(turingcc));
+
+	// 0x32008404 ?
+	writel_relaxed(1, turingcc + 0x404); // TURING_Q6SS_Q6_AXIM_CBCR
+	//writel_relaxed(1, turingcc + 0x220); // TURING_CENG_CBCR
+	writel_relaxed(1, turingcc + 0x22c); // TURING_NSPNOC_CBCR
+	writel_relaxed(1, turingcc + 0x414); // TURING_Q6SS_AHBS_AON_CBCR
+	writel_relaxed(1, turingcc + 0x248);
+	writel_relaxed(1, turingcc + 0x410);
+
+	// TURING_QDSP6SS_PLL_PLL_CM_PLL_LUCID_OLE
+	// Set it to use TURBO_L3 frequency - 1843.2 MHz
+	clk_pll_configure_lucid_ole(adsp->qdsp6ss_base + 0x40000, 1843200000);
+
+#define CDSP_QDSP6SS_CORE_CBCR 0x48040
+#define CDSP_QDSP6SS_CORE_CMD_RCGR 0x48020
+#define CDSP_QDSP6SS_CORE_CFG_RCGR 0x48024
+#define CDSP_QDSP6SS_XO_CBCR 0x48120 // ACD_XO
+#define CDSP_QDSP6SS_SLEEP_CBCR 0x48060 // XXX
+
+	writel(0x200, adsp->qdsp6ss_base + CDSP_QDSP6SS_CORE_CFG_RCGR);
+	writel(1, adsp->qdsp6ss_base + CDSP_QDSP6SS_CORE_CMD_RCGR);
+
+	writel(1, adsp->qdsp6ss_base + CDSP_QDSP6SS_XO_CBCR);
+	writel(1, adsp->qdsp6ss_base + CDSP_QDSP6SS_SLEEP_CBCR);
+	writel(1, adsp->qdsp6ss_base + CDSP_QDSP6SS_CORE_CBCR);
+
+	usleep_range(1000, 2000);
+
+	return 0;
+}
+
 static int adsp_start(struct rproc *rproc)
 {
 	struct qcom_adsp *adsp = rproc->priv;
@@ -478,14 +591,20 @@ static int adsp_start(struct rproc *rproc)
 
 	pr_info("%s:%d\n", __func__, __LINE__);
 
-	/* Enable the XO clock */
-	writel(1, adsp->qdsp6ss_base + QDSP6SS_XO_CBCR);
+	if (adsp->clk_setup) {
+		ret = adsp->clk_setup(adsp);
+		if (ret)
+			goto disable_adsp_clks;
+	} else {
+		/* Enable the XO clock */
+		writel(1, adsp->qdsp6ss_base + QDSP6SS_XO_CBCR);
 
-	/* Enable the QDSP6SS sleep clock */
-	writel(1, adsp->qdsp6ss_base + QDSP6SS_SLEEP_CBCR);
+		/* Enable the QDSP6SS sleep clock */
+		writel(1, adsp->qdsp6ss_base + QDSP6SS_SLEEP_CBCR);
 
-	/* Enable the QDSP6 core clock */
-	writel(1, adsp->qdsp6ss_base + QDSP6SS_CORE_CBCR);
+		/* Enable the QDSP6 core clock */
+		writel(1, adsp->qdsp6ss_base + QDSP6SS_CORE_CBCR);
+	}
 
 	pr_info("%s:%d\n", __func__, __LINE__);
 
@@ -494,6 +613,11 @@ static int adsp_start(struct rproc *rproc)
 
 	if (adsp->dtb_mem_phys) {
 		writel(adsp->dtb_mem_phys, adsp->qdsp6ss_base + BOOT_PARAMS(0));
+		writel(0, adsp->qdsp6ss_base + BOOT_PARAMS(1));
+		writel(0x008A022D, adsp->qdsp6ss_base + BOOT_PARAMS(2)); // chip_family << 16 | soc_id
+		writel(0x00000200, adsp->qdsp6ss_base + BOOT_PARAMS(3)); // (SOCINFO_MAJOR(ver) >> 16) << 8) | SOCINFO_MINOR(ver) & 0xff
+		//writel(0x0B000100, adsp->qdsp6ss_base + BOOT_PARAMS(4)); // hw_plat << 16 | (plat_ver >> 16) << 8) | plat_ver & 0xff
+		writel(0x0A000100, adsp->qdsp6ss_base + BOOT_PARAMS(4)); // hw_plat << 16 | (plat_ver >> 16) << 8) | plat_ver & 0xff
 		writel(adsp->dtb_mem_size, adsp->qdsp6ss_base + BOOT_PARAMS(5));
 	}
 
@@ -507,10 +631,14 @@ static int adsp_start(struct rproc *rproc)
 	/* De-assert QDSP6 stop core. QDSP6 will execute after out of reset */
 	writel(LPASS_BOOT_CORE_START, adsp->qdsp6ss_base + CORE_START_REG);
 
+	usleep_range(1000, 2000);
+
 	/* Trigger boot FSM to start QDSP6 */
 	writel(LPASS_BOOT_CMD_START, adsp->qdsp6ss_base + BOOT_CMD_REG);
 
 	pr_info("%s:%d\n", __func__, __LINE__);
+
+	usleep_range(1000, 2000);
 
 	/* Wait for core to come out of reset */
 	ret = readl_poll_timeout(adsp->qdsp6ss_base + BOOT_STATUS_REG,
@@ -875,6 +1003,7 @@ static int adsp_probe(struct platform_device *pdev)
 	adsp->rproc = rproc;
 	adsp->info_name = desc->sysmon_name;
 	adsp->has_iommu = desc->has_iommu;
+	adsp->clk_setup = desc->clk_setup;
 	if (dtb_fw_name)
 		adsp->dtb_firmware_name = dtb_fw_name;
 	if (rsc_fw_name)
@@ -983,6 +1112,27 @@ static const struct adsp_pil_data adsp_sc7280_resource_init = {
 	.num_clks = 1,
 };
 
+static const struct adsp_pil_data cdsp_sm8650_resource_init = {
+	.crash_reason_smem = 601,
+	.firmware_name = "cdsp.mdt",
+	.dtb_firmware_name = "cdsp_dtb.mdt",
+	.rsc_firmware_name = "cdsp_rsc.bin",
+	.load_state = "cdsp",
+	.ssr_name = "cdsp",
+	.sysmon_name = "cdsp",
+	.ssctl_id = 0x17,
+	.has_iommu = true,
+	//.auto_boot = true,
+	.clk_ids = (const char*[]) {
+		"ahb",
+		NULL
+	},
+	.num_clks = 3,
+	.clk_setup = cdsp_sm8650_clk_setup,
+	.pd_names = (const char*[]) { "cx", "mxc", "nsp" },
+	.num_pds = 3,
+};
+
 static const struct adsp_pil_data cdsp_resource_init = {
 	.crash_reason_smem = 601,
 	.firmware_name = "cdsp.mdt",
@@ -1022,6 +1172,7 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,sc7280-adsp-pil", .data = &adsp_sc7280_resource_init },
 	{ .compatible = "qcom,sc7280-wpss-pil", .data = &wpss_resource_init },
 	{ .compatible = "qcom,sdm845-adsp-pil", .data = &adsp_resource_init },
+	{ .compatible = "qcom,sm8650-cdsp-pil", .data = &cdsp_sm8650_resource_init },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);
