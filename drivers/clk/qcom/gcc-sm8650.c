@@ -3402,6 +3402,19 @@ static struct clk_branch gcc_usb3_prim_phy_pipe_clk = {
 	},
 };
 
+static struct clk_branch gcc_cfg_noc_lpass_clk = {
+	.halt_reg = 0x47164,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x47164,
+		.enable_mask = BIT(0),
+		.hw.init = &(struct clk_init_data){
+			.name = "gcc_cfg_noc_lpass_clk",
+			.ops = &clk_branch2_aon_ops,
+		},
+	},
+};
+
 static struct clk_branch gcc_video_axi0_clk = {
 	.halt_reg = 0x32018,
 	.halt_check = BRANCH_HALT_SKIP,
@@ -3774,6 +3787,7 @@ static struct clk_regmap *gcc_sm8650_clocks[] = {
 	[GCC_TURING_Q6_AXI_CLK] = &gcc_turing_q6_axi_clk.clkr,
 	[GCC_CAMERA_AHB_CLK] = &gcc_camera_ahb_clk.clkr,
 	[GCC_DISP_AHB_CLK] = &gcc_disp_ahb_clk.clkr,
+	[GCC_CFG_NOC_LPASS_CLK] = &gcc_cfg_noc_lpass_clk.clkr,
 };
 
 static const struct qcom_reset_map gcc_sm8650_resets[] = {
@@ -3906,6 +3920,7 @@ static int gcc_sm8650_probe(struct platform_device *pdev)
 	qcom_branch_set_clk_en(regmap, 0x71004); /* GCC_GPU_CFG_AHB_CLK */
 	qcom_branch_set_clk_en(regmap, 0x32004); /* GCC_VIDEO_AHB_CLK */
 	qcom_branch_set_clk_en(regmap, 0x32030); /* GCC_VIDEO_XO_CLK */
+	qcom_branch_set_clk_en(regmap, 0x47000); /* GCC_LPASS_CFG_NOC_SWAY_CLK */
 
 	qcom_branch_set_force_mem_core(regmap, gcc_ufs_phy_ice_core_clk, true);
 

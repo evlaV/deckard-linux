@@ -210,7 +210,7 @@
 #define GCC_LPASS_CFG_NOC_SWAY_CLK				197
 #define GCC_TURING_CFG_AHB_CLK					198
 #define GCC_TURING_Q6_AXI_CLK					199
-
+#define GCC_CFG_NOC_LPASS_CLK					200
 
 /* GCC resets */
 #define GCC_CAMERA_BCR						0
