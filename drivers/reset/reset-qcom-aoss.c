@@ -48,6 +48,7 @@ static const struct qcom_aoss_reset_map sm8650_aoss_resets[] = {
 	[AOSS_CC_GPU_RESTART] = {0x700C},
 	[AOSS_CC_DISPSS_RESTART] = {0x7010},
 	[AOSS_CC_LPASS_RESTART] = {0x7014},
+	[AOSS_CC_COMPUTESS_RESTART] = {0x7020},
 };
 
 static const struct qcom_aoss_desc sm8650_aoss_desc = {
