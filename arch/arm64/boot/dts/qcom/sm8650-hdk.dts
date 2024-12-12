@@ -1081,14 +1081,16 @@
 
 &remoteproc_adsp {
 	firmware-name = "qcom/sm8650/adsp.mbn",
-			"qcom/sm8650/adsp_dtb.mbn";
+			"qcom/sm8650/adsp_dtb.mbn",
+			"qcom/sm8650/adsp_rsc.bin";
 
 	status = "okay";
 };
 
 &remoteproc_cdsp {
 	firmware-name = "qcom/sm8650/cdsp.mbn",
-			"qcom/sm8650/cdsp_dtb.mbn";
+			"qcom/sm8650/cdsp_dtb.mbn",
+			"qcom/sm8650/cdsp_rsc.bin";
 
 	status = "okay";
 };

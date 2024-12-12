@@ -11,6 +11,8 @@
 #include <dt-bindings/clock/qcom,sm8650-tcsr.h>
 #include <dt-bindings/clock/qcom,lpasscorecc-sm8550.h>
 #include <dt-bindings/clock/qcom,sm8650-videocc.h>
+#include <dt-bindings/reset/qcom,sdm845-pdc.h>
+#include <dt-bindings/reset/qcom,sdm845-aoss.h>
 #include <dt-bindings/dma/qcom-gpi.h>
 #include <dt-bindings/firmware/qcom,scm.h>
 #include <dt-bindings/gpio/gpio.h>
@@ -1400,6 +1402,11 @@
 		/* Merged tz_reserved, xbl_sc, cpucp_fw and qtee regions */
 		tz_merged_mem: tz-merged@d8000000 {
 			reg = <0 0xd8000000 0 0x800000>;
+			no-map;
+		};
+
+		cdsp_priv_mem: tz-merged@dbc00000 {
+			reg = <0 0xdbc00000 0 0x4000000>;
 			no-map;
 		};
 
@@ -3667,6 +3674,11 @@
 			#hwlock-cells = <1>;
 		};
 
+		tcsr_lpass: syscon@1fb0000 {
+			compatible = "qcom,sm8650-tcsr-lpass", "syscon";
+			reg = <0 0x01fb0000 0 0x10000>;
+		};
+
 		tcsr: clock-controller@1fc0000 {
 			compatible = "qcom,sm8650-tcsr", "syscon";
 			reg = <0 0x01fc0000 0 0xa0000>;
@@ -5500,6 +5512,12 @@
 			interrupt-controller;
 		};
 
+		pdc_reset: reset-controller@b5e0000 {
+			compatible = "qcom,sc7280-pdc-global";
+			reg = <0 0x0b5e0000 0 0x20000>;
+			#reset-cells = <1>;
+		};
+
 		tsens0: thermal-sensor@c228000 {
 			compatible = "qcom,sm8650-tsens", "qcom,tsens-v2";
 			reg = <0 0x0c228000 0 0x1000>, /* TM */
@@ -5543,6 +5561,12 @@
 			#qcom,sensors = <13>;
 
 			#thermal-sensor-cells = <1>;
+		};
+
+		aoss_reset: reset-controller@c2f0000 {
+			compatible = "qcom,sm8650-aoss-cc";
+			reg = <0 0x0c2f0000 0 0x10000>;
+			#reset-cells = <1>;
 		};
 
 		aoss_qmp: power-management@c300000 {
@@ -7114,8 +7138,8 @@
 		};
 
 		remoteproc_cdsp: remoteproc@32300000 {
-			compatible = "qcom,sm8650-cdsp-pas";
-			reg = <0 0x32300000 0 0x1400000>;
+			compatible = "qcom,sm8650-cdsp-pil";
+			reg = <0 0x32300000 0 0x100000>;
 
 			interrupts-extended = <&intc GIC_SPI 578 IRQ_TYPE_EDGE_RISING>,
 					      <&smp2p_cdsp_in 0 IRQ_TYPE_EDGE_RISING>,
@@ -7128,8 +7152,12 @@
 					  "handover",
 					  "stop-ack";
 
-			clocks = <&rpmhcc RPMH_CXO_CLK>;
-			clock-names = "xo";
+			clocks = <&rpmhcc RPMH_CXO_CLK>,
+			          <&gcc GCC_TURING_CFG_AHB_CLK>;
+			clock-names = "xo",
+				      "ahb";
+
+			qcom,halt-regs = <&tcsr_lpass 0xc000>;
 
 			interconnects = <&nsp_noc MASTER_CDSP_PROC QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
@@ -7140,6 +7168,16 @@
 			power-domain-names = "cx",
 					     "mxc",
 					     "nsp";
+
+			iommus = <&apps_smmu 0xc00 0x0>, // CDSP
+				 <&apps_smmu 0xc20 0x0>, // UBWCDMA
+				 <&apps_smmu 0xc05 0x0>,
+				 <&apps_smmu 0xc0d 0x0>;
+
+			resets = <&pdc_reset PDC_COMPUTE_SYNC_RESET>,
+			         <&aoss_reset AOSS_CC_COMPUTESS_RESTART>;
+			reset-names = "pdc_sync",
+				      "restart";
 
 			memory-region = <&cdsp_mem>, <&q6_cdsp_dtb_mem>, <&global_sync_mem>;
 

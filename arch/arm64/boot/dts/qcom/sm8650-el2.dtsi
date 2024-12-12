@@ -60,8 +60,28 @@
 			no-map;
 		};
 
+		global_sync_mem: global-sync@82600000 {
+			reg = <0 0x82600000 0 0x100000>;
+			no-map;
+		};
+
+		cdsp_mem: cdsp@9ca00000 {
+			reg = <0 0x9ca00000 0 0x1400000>;
+			no-map;
+		};
+
+		q6_cdsp_dtb_mem: q6-cdsp-dtb@9de00000 {
+			reg = <0 0x9de00000 0 0x80000>;
+			no-map;
+		};
+
 		video_mem: video@9bb00000 {
 			reg = <0 0x9bb00000 0 0x800000>;
+			no-map;
+		};
+
+		llcc_lpi_mem: llcc-lpi@ff800000 {
+			reg = <0 0xff800000 0 0x600000>;
 			no-map;
 		};
 	};
@@ -79,7 +99,6 @@
 	};
 
 	/delete-node/ smp2p-adsp;
-	/delete-node/ smp2p-cdsp;
 	/delete-node/ smp2p-modem;
 
 	soc@0 {
@@ -291,7 +310,6 @@
 };
 
 /delete-node/ &remoteproc_adsp;
-/delete-node/ &remoteproc_cdsp;
 /delete-node/ &remoteproc_mpss;
 
 &gpu {
