@@ -651,6 +651,17 @@ config SC_LPASS_CORECC_7280
 	  Say Y if you want to use LPASS clocks and power domains of the LPASS
 	  core clock controller.
 
+config SC_LPASS_CORECC_8650
+	tristate "SM8650 LPASS Core & Audio Clock Controller"
+	depends on ARM64 || COMPILE_TEST
+	select SC_GCC_8650
+	select QCOM_GDSC
+	help
+	  Support for the LPASS(Low Power Audio Subsystem) core clock controller
+	  on SM8650 devices.
+	  Say Y if you want to use LPASS clocks and power domains of the LPASS
+	  core clock controller.
+
 config SC_VIDEOCC_7180
 	tristate "SC7180 Video Clock Controller"
 	depends on ARM64 || COMPILE_TEST
