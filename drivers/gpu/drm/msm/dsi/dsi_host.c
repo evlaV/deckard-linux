@@ -2016,7 +2016,7 @@ int msm_dsi_host_init(struct msm_dsi *msm_dsi)
 	spin_lock_init(&msm_host->intr_lock);
 
 	/* setup workqueue */
-	msm_host->workqueue = alloc_ordered_workqueue("dsi_drm_work", 0);
+	msm_host->workqueue = alloc_ordered_workqueue("dsi_drm_work_%d", WQ_SYSFS | __WQ_FORCE_ALLOW_SYSFS, msm_host->id);
 	if (!msm_host->workqueue)
 		return -ENOMEM;
 
