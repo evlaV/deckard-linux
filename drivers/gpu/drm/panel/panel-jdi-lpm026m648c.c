@@ -549,11 +549,6 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 	dsi_write_panel_on(panel);
 	get_panel_info(panel);
 
-	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->backlight_drivers),
-				    ctx->backlight_drivers);
-	if (ret < 0)
-		goto power_off;
-
 	ctx->backlight->props.pulse_offset_rows = GPO1_TES1;
 	lpm026m648c_backlight_work_init(ctx);
 
