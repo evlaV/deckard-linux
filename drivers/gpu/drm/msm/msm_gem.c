@@ -54,6 +54,9 @@ static void msm_gem_close(struct drm_gem_object *obj, struct drm_file *file)
 	if (msm_context_is_vmbind(ctx))
 		return;
 
+	if (!ctx->vm)
+		return;
+
 	/*
 	 * TODO we might need to kick this to a queue to avoid blocking
 	 * in CLOSE ioctl
