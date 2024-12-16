@@ -227,7 +227,9 @@ static int msm_drm_init(struct device *dev, const struct drm_driver *drv)
 	ddev->dev_private = priv;
 	priv->dev = ddev;
 
-	priv->wq = alloc_ordered_workqueue("msm", 0);
+	// this will create: /sys/bus/workqueue/devices/msm
+	priv->wq = alloc_ordered_workqueue("msm", WQ_SYSFS | __WQ_FORCE_ALLOW_SYSFS);
+
 	if (!priv->wq) {
 		ret = -ENOMEM;
 		goto err_put_dev;
