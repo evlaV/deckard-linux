@@ -124,7 +124,7 @@ static int msm_drm_init(struct device *dev, const struct drm_driver *drv,
 	INIT_LIST_HEAD(&priv->objects);
 	mutex_init(&priv->obj_lock);
 
-	/*
+	/*workqueu
 	 * Initialize the LRUs:
 	 */
 	drm_gem_lru_init(&priv->lru.unbacked);

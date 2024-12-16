@@ -182,7 +182,7 @@ static inline int msm_kms_init(struct msm_kms *kms,
 
 	kms->funcs = funcs;
 
-	kms->wq = alloc_ordered_workqueue("msm", 0);
+	kms->wq = alloc_ordered_workqueue("msm", WQ_SYSFS | __WQ_FORCE_ALLOW_SYSFS);
 	if (!kms->wq)
 		return -ENOMEM;
 
