@@ -5,7 +5,8 @@
  * Read trace_gpuvis.h for the documentation.
  * This file defines a bunch of implementations for functions that don't
  * exist in userspace, but we want to use the same definitions of what we
- * use in kernelspace, so we polyfill it.
+ * use in kernelspace, so we fill these in such that everything works from
+ * userspace as well.
  */
 
 
