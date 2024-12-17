@@ -1783,45 +1783,65 @@
 &camss {
 	status = "okay";
 
-	ports {
-		#address-cells = <1>;
-		#size-cells = <0>;
+	// vdda-csi01-0p9-supply = <&VREG_L2I_0P8>;
+	// vdda-csi01-1p2-supply = <&VREG_L3I_1P2>;
 
+	ports {
 		port@0 {
-			reg = <0>;
-			csiphy0_ep: endpoint {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csiphy0_ep: endpoint@0 {
+				reg = <0>;
 				clock-lanes = <4>;
 				data-lanes = <0 1>;
 				remote-endpoint = <&cam_6dof_l>;
 			};
-		};
 
-		port@1 {
-			reg = <1>;
-			csiphy1_ep: endpoint {
-				clock-lanes = <4>;
-				data-lanes = <0 1>;
-				remote-endpoint = <&cam_6dof_r>;
-			};
-		};
-
-		port@6 {
-			reg = <6>;
-			csiphy0_combo_ep: endpoint {
+			csiphy0_combo_ep: endpoint@1 {
+				reg = <1>;
 				clock-lanes = <3>;
 				data-lanes = <2>;
 				remote-endpoint = <&cam_6dof_ul>;
 			};
 		};
 
-		port@7 {
-			reg = <7>;
-			csiphy1_combo_ep: endpoint {
+		port@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csiphy1_ep: endpoint@0 {
+				reg = <0>;
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_6dof_r>;
+			};
+
+			csiphy1_combo_ep: endpoint@1 {
+				reg = <1>;
 				clock-lanes = <3>;
 				data-lanes = <2>;
 				remote-endpoint = <&cam_6dof_ur>;
 			};
 		};
+
+#if 0
+		port@2 {
+			csiphy2_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&cam_et_l>;
+			};
+		};
+
+		port@4 {
+			csiphy4_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&cam_et_r>;
+			};
+		};
+#endif
 	};
 };
 
