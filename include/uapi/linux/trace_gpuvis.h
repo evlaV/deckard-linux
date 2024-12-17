@@ -34,11 +34,12 @@
  *    - TRACE_BEGIN_CTX_CONDITIONAL(...)/ TRACE_END_CTX_CONDITIONAL(cond, ...):
  *      Allows specifying a chunk of code in `cond` that emits the begin and end
  *      events only if `cond` evaluates to `true`.  Note that you _must_ pair
- *      with an appropriate begin macro, attempting to use `TRACE_BEGIN_CTX()`
- *      with `TRACE_END_CTX_CONDITIONAL()` will result in a compiler error.
- *      There are some helper macros at the bottom of this file such as
- *      `TRACE_LONGER_THAN(us)` which suppresses printing unless the duration
- *      of the trace is longer than `us` microseconds.
+ *      with another `*_CONDITIONAL()` macro, attempting to mix, for example,
+ *      `TRACE_BEGIN_CTX()` with `TRACE_END_CTX_CONDITIONAL()` will result in a
+ *      compiler error.  There are some helper macros at the bottom of this file
+ *      such as `TRACE_LONGER_THAN(us)` which suppresses printing unless the
+ *      duration of the trace is longer than `us` microseconds, which is a
+ *      common conditional.
  *
  *
  * Some helpful usage notes:
@@ -57,7 +58,7 @@
  *    - By default, `TRACE_END_CTX()` calls inherit most information from
  *      their corresponding `TRACE_BEGIN_CTX()` call, such as payload.
  *      To manually prevent this, simply set the payload to `" "` or even
- *      `TRACE_BASIC`, to suppress file information as well.
+ *      `TRACE_BASIC`, to suppress file/line information as well.
  *
  *
  * Here is an example of all four usage notes at once, in the form of a userspace
@@ -66,7 +67,7 @@
  * preprocessor define `-DTRACE_STDOUT_OVERRIDE`.
  *
 
-#include <uapi/linux/trace_gpuvis.h>
+#include <linux/trace_gpuvis.h>
 
 bool my_custom_conditional(struct gpuvis_trace_context_t * begin_ctx)
 {
@@ -161,7 +162,7 @@ TRACE_EVENT(gpuvis_print,
 #endif
 
 
-// Begin helper functions that hopefully get inlined into your code
+// Begin helper functions that hopefully get inlined into your code and optimized to death
 #ifndef _UAPI_TRACE_GPUVIS_H
 #define _UAPI_TRACE_GPUVIS_H
 
@@ -239,13 +240,9 @@ void gpuvis_trace_add_payload(struct gpuvis_trace_context_t *ctx,
  *
  * 1. TRACE_BEGIN_CTX()
  *    In this scenario, we eagerly print `begin_ctx`, then lazily print `end_ctx()` at scope's end.
- *      - if (!conditional) { gpuvis_trace_report(begin_ctx) }
- *      - gpuvis_trace_end(begin_ctx, end_ctx) -> gpuvis_trace_report(end_ctx)
  * 
  * 2. TRACE_BEGIN_CTX() -> TRACE_END_CTX()
  *    In this scenario, we eagerly print `begin_ctx`, then print `end_ctx` at `TRACE_END_CTX()` time.
- *      - if (!conditional) { gpuvis_trace_report(begin_ctx) }
- *      - gpuvis_trace_end(begin_ctx, end_ctx) -> gpuvis_trace_report(end_ctx)
  * 
  * 3. TRACE_BEGIN_CTX_CONDITIONAL() -> TRACE_END_CTX_CONDITIONAL()
  *    In this scenario, we delay printing `begin_ctx`, then print it with `end_ctx`, with the appropriate `dtime` adjustment
@@ -253,8 +250,9 @@ void gpuvis_trace_add_payload(struct gpuvis_trace_context_t *ctx,
  * 4. TRACE_BEGIN_CTX_CONDITIONAL()
  *    I kind of consider this an error, but we'll just print `begin_ctx` like in (3), then print an `end_ctx` like in (1).
  * 
- *
- * To support these, 
+ * This complexity is why we have things like `gpuvis_trace_set_reported()` and whatnot.
+ * I find it somewhat unsatisfying that we have _both_ a "reported" boolean, AND the concept of an "uninitialized" variable.
+ * I feel we should be able to get all our behavior with just one concept, but this works, so we're keeping it for now.
  */
 
 // This is used for a normal printing to the buffer, only `gpuvis_trace_end()` ever
