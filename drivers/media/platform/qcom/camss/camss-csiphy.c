@@ -24,16 +24,11 @@
 
 #define MSM_CSIPHY_NAME "msm_csiphy"
 
-struct csiphy_format {
-	u32 code;
-	u8 bpp;
-};
-
-static const struct csiphy_format csiphy_formats_8x16[] = {
-	{ MEDIA_BUS_FMT_UYVY8_2X8, 8 },
-	{ MEDIA_BUS_FMT_VYUY8_2X8, 8 },
-	{ MEDIA_BUS_FMT_YUYV8_2X8, 8 },
-	{ MEDIA_BUS_FMT_YVYU8_2X8, 8 },
+static const struct csiphy_format_info formats_8x16[] = {
+	{ MEDIA_BUS_FMT_UYVY8_1X16, 8 },
+	{ MEDIA_BUS_FMT_VYUY8_1X16, 8 },
+	{ MEDIA_BUS_FMT_YUYV8_1X16, 8 },
+	{ MEDIA_BUS_FMT_YVYU8_1X16, 8 },
 	{ MEDIA_BUS_FMT_SBGGR8_1X8, 8 },
 	{ MEDIA_BUS_FMT_SGBRG8_1X8, 8 },
 	{ MEDIA_BUS_FMT_SGRBG8_1X8, 8 },
@@ -49,11 +44,11 @@ static const struct csiphy_format csiphy_formats_8x16[] = {
 	{ MEDIA_BUS_FMT_Y10_1X10, 10 },
 };
 
-static const struct csiphy_format csiphy_formats_8x96[] = {
-	{ MEDIA_BUS_FMT_UYVY8_2X8, 8 },
-	{ MEDIA_BUS_FMT_VYUY8_2X8, 8 },
-	{ MEDIA_BUS_FMT_YUYV8_2X8, 8 },
-	{ MEDIA_BUS_FMT_YVYU8_2X8, 8 },
+static const struct csiphy_format_info formats_8x96[] = {
+	{ MEDIA_BUS_FMT_UYVY8_1X16, 8 },
+	{ MEDIA_BUS_FMT_VYUY8_1X16, 8 },
+	{ MEDIA_BUS_FMT_YUYV8_1X16, 8 },
+	{ MEDIA_BUS_FMT_YVYU8_1X16, 8 },
 	{ MEDIA_BUS_FMT_SBGGR8_1X8, 8 },
 	{ MEDIA_BUS_FMT_SGBRG8_1X8, 8 },
 	{ MEDIA_BUS_FMT_SGRBG8_1X8, 8 },
@@ -73,11 +68,11 @@ static const struct csiphy_format csiphy_formats_8x96[] = {
 	{ MEDIA_BUS_FMT_Y10_1X10, 10 },
 };
 
-static const struct csiphy_format csiphy_formats_sdm845[] = {
-	{ MEDIA_BUS_FMT_UYVY8_2X8, 8 },
-	{ MEDIA_BUS_FMT_VYUY8_2X8, 8 },
-	{ MEDIA_BUS_FMT_YUYV8_2X8, 8 },
-	{ MEDIA_BUS_FMT_YVYU8_2X8, 8 },
+static const struct csiphy_format_info formats_sdm845[] = {
+	{ MEDIA_BUS_FMT_UYVY8_1X16, 8 },
+	{ MEDIA_BUS_FMT_VYUY8_1X16, 8 },
+	{ MEDIA_BUS_FMT_YUYV8_1X16, 8 },
+	{ MEDIA_BUS_FMT_YVYU8_1X16, 8 },
 	{ MEDIA_BUS_FMT_SBGGR8_1X8, 8 },
 	{ MEDIA_BUS_FMT_SGBRG8_1X8, 8 },
 	{ MEDIA_BUS_FMT_SGRBG8_1X8, 8 },
@@ -98,6 +93,21 @@ static const struct csiphy_format csiphy_formats_sdm845[] = {
 	{ MEDIA_BUS_FMT_Y10_1X10, 10 },
 };
 
+const struct csiphy_formats csiphy_formats_8x16 = {
+	.nformats = ARRAY_SIZE(formats_8x16),
+	.formats = formats_8x16
+};
+
+const struct csiphy_formats csiphy_formats_8x96 = {
+	.nformats = ARRAY_SIZE(formats_8x96),
+	.formats = formats_8x96
+};
+
+const struct csiphy_formats csiphy_formats_sdm845 = {
+	.nformats = ARRAY_SIZE(formats_sdm845),
+	.formats = formats_sdm845
+};
+
 /*
  * csiphy_get_bpp - map media bus format to bits per pixel
  * @formats: supported media bus formats array
@@ -106,7 +116,7 @@ static const struct csiphy_format csiphy_formats_sdm845[] = {
  *
  * Return number of bits per pixel
  */
-static u8 csiphy_get_bpp(const struct csiphy_format *formats,
+static u8 csiphy_get_bpp(const struct csiphy_format_info *formats,
 			 unsigned int nformats, u32 code)
 {
 	unsigned int i;
@@ -127,15 +137,50 @@ static u8 csiphy_get_bpp(const struct csiphy_format *formats,
 static int csiphy_set_clock_rates(struct csiphy_device *csiphy)
 {
 	struct device *dev = csiphy->camss->dev;
-	int i;
+	s64 link_freq;
+	int i, j;
 	int ret;
+
+	u8 bpp = csiphy_get_bpp(csiphy->res->formats->formats, csiphy->res->formats->nformats,
+				csiphy->fmt[MSM_CSIPHY_PAD_SINK].code);
+	u8 num_lanes = csiphy->cfg.csi2->lane_cfg.num_data;
+
+	link_freq = camss_get_link_freq(&csiphy->subdev.entity, bpp, num_lanes);
+	if (link_freq < 0)
+		link_freq  = 0;
 
 	for (i = 0; i < csiphy->nclocks; i++) {
 		struct camss_clock *clock = &csiphy->clock[i];
 
 		if (csiphy->rate_set[i]) {
-			// XXX: just use the highest phy clock rate because dealing with combo mode is too much effort
-			csiphy->timer_clk_rate = 400000000;
+			u64 min_rate = link_freq / 4;
+			long round_rate;
+
+			camss_add_clock_margin(&min_rate);
+
+			for (j = 0; j < clock->nfreqs; j++)
+				if (min_rate < clock->freq[j])
+					break;
+
+			if (j == clock->nfreqs) {
+				dev_err(dev,
+					"Pixel clock is too high for CSIPHY\n");
+				return -EINVAL;
+			}
+
+			/* if sensor pixel clock is not available */
+			/* set highest possible CSIPHY clock rate */
+			if (min_rate == 0)
+				j = clock->nfreqs - 1;
+
+			round_rate = clk_round_rate(clock->clk, clock->freq[j]);
+			if (round_rate < 0) {
+				dev_err(dev, "clk round rate failed: %ld\n",
+					round_rate);
+				return -EINVAL;
+			}
+
+			csiphy->timer_clk_rate = round_rate;
 
 			ret = clk_set_rate(clock->clk, csiphy->timer_clk_rate);
 			if (ret < 0) {
@@ -167,27 +212,40 @@ static int csiphy_set_power(struct v4l2_subdev *sd, int on)
 		if (ret < 0)
 			return ret;
 
+		ret = regulator_bulk_enable(csiphy->num_supplies,
+					    csiphy->supplies);
+		if (ret < 0) {
+			pm_runtime_put_sync(dev);
+			return ret;
+		}
+
 		ret = csiphy_set_clock_rates(csiphy);
 		if (ret < 0) {
+			regulator_bulk_disable(csiphy->num_supplies,
+					       csiphy->supplies);
 			pm_runtime_put_sync(dev);
 			return ret;
 		}
 
 		ret = camss_enable_clocks(csiphy->nclocks, csiphy->clock, dev);
 		if (ret < 0) {
+			regulator_bulk_disable(csiphy->num_supplies,
+					       csiphy->supplies);
 			pm_runtime_put_sync(dev);
 			return ret;
 		}
 
 		enable_irq(csiphy->irq);
 
-		csiphy->ops->reset(csiphy);
+		csiphy->res->hw_ops->reset(csiphy);
 
-		csiphy->ops->hw_version_read(csiphy, dev);
+		csiphy->res->hw_ops->hw_version_read(csiphy, dev);
 	} else {
 		disable_irq(csiphy->irq);
 
 		camss_disable_clocks(csiphy->nclocks, csiphy->clock);
+
+		regulator_bulk_disable(csiphy->num_supplies, csiphy->supplies);
 
 		pm_runtime_put_sync(dev);
 	}
@@ -208,14 +266,12 @@ static int csiphy_stream_on(struct csiphy_device *csiphy)
 {
 	struct csiphy_config *cfg = &csiphy->cfg;
 	s64 link_freq;
-	u8 lane_mask = csiphy->ops->get_lane_mask(&cfg->csi2->lane_cfg);
-	u8 bpp = csiphy_get_bpp(csiphy->formats, csiphy->nformats,
+	u8 lane_mask = csiphy->res->hw_ops->get_lane_mask(&cfg->csi2->lane_cfg);
+	u8 bpp = csiphy_get_bpp(csiphy->res->formats->formats, csiphy->res->formats->nformats,
 				csiphy->fmt[MSM_CSIPHY_PAD_SINK].code);
 	u8 num_lanes = csiphy->cfg.csi2->lane_cfg.num_data;
-	//u8 val;
+	u8 val;
 
-	// XXX link_freq is going to be for the first camera in combo mode
-	// (probably doesn't matter but something to keep in mind if the cameras have different link freq)
 	link_freq = camss_get_link_freq(&csiphy->subdev.entity, bpp, num_lanes);
 
 	if (link_freq < 0) {
@@ -224,11 +280,9 @@ static int csiphy_stream_on(struct csiphy_device *csiphy)
 		return -EINVAL;
 	}
 
-#if 0
-	// not used for 8250
 	if (csiphy->base_clk_mux) {
 		val = readl_relaxed(csiphy->base_clk_mux);
-		if (cfg->combo_mode && (lane_mask & 0x18) == 0x18) {
+		if (csiphy->combo_mode && (lane_mask & 0x18) == 0x18) {
 			val &= ~0xf0;
 			val |= cfg->csid_id << 4;
 		} else {
@@ -240,12 +294,8 @@ static int csiphy_stream_on(struct csiphy_device *csiphy)
 		/* Enforce reg write ordering between clk mux & lane enabling */
 		wmb();
 	}
-#endif
 
-	if (csiphy->stream_on_count++)
-		return 0;
-
-	csiphy->ops->lanes_enable(csiphy, cfg, link_freq, lane_mask);
+	csiphy->res->hw_ops->lanes_enable(csiphy, cfg, link_freq, lane_mask);
 
 	return 0;
 }
@@ -258,9 +308,7 @@ static int csiphy_stream_on(struct csiphy_device *csiphy)
  */
 static void csiphy_stream_off(struct csiphy_device *csiphy)
 {
-	if (--csiphy->stream_on_count)
-		return;
-	csiphy->ops->lanes_disable(csiphy, &csiphy->cfg);
+	csiphy->res->hw_ops->lanes_disable(csiphy, &csiphy->cfg);
 }
 
 
@@ -287,7 +335,7 @@ static int csiphy_set_stream(struct v4l2_subdev *sd, int enable)
 /*
  * __csiphy_get_format - Get pointer to format structure
  * @csiphy: CSIPHY device
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @pad: pad from which format is requested
  * @which: TRY or ACTIVE format
  *
@@ -308,7 +356,7 @@ __csiphy_get_format(struct csiphy_device *csiphy,
 /*
  * csiphy_try_format - Handle try format by pad subdev method
  * @csiphy: CSIPHY device
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @pad: pad on which format is requested
  * @fmt: pointer to v4l2 format structure
  * @which: wanted subdev format
@@ -321,18 +369,17 @@ static void csiphy_try_format(struct csiphy_device *csiphy,
 {
 	unsigned int i;
 
-	switch (pad) {
+	switch (pad & 1) {
 	case MSM_CSIPHY_PAD_SINK:
-	case MSM_CSIPHY_PAD_SINK2:
 		/* Set format on sink pad */
 
-		for (i = 0; i < csiphy->nformats; i++)
-			if (fmt->code == csiphy->formats[i].code)
+		for (i = 0; i < csiphy->res->formats->nformats; i++)
+			if (fmt->code == csiphy->res->formats->formats[i].code)
 				break;
 
 		/* If not found, use UYVY as default */
-		if (i >= csiphy->nformats)
-			fmt->code = MEDIA_BUS_FMT_UYVY8_2X8;
+		if (i >= csiphy->res->formats->nformats)
+			fmt->code = MEDIA_BUS_FMT_UYVY8_1X16;
 
 		fmt->width = clamp_t(u32, fmt->width, 1, 8191);
 		fmt->height = clamp_t(u32, fmt->height, 1, 8191);
@@ -343,7 +390,6 @@ static void csiphy_try_format(struct csiphy_device *csiphy,
 		break;
 
 	case MSM_CSIPHY_PAD_SRC:
-	case MSM_CSIPHY_PAD_SRC2:
 		/* Set and return a format same as sink pad */
 
 		*fmt = *__csiphy_get_format(csiphy, sd_state,
@@ -357,7 +403,7 @@ static void csiphy_try_format(struct csiphy_device *csiphy,
 /*
  * csiphy_enum_mbus_code - Handle pixel format enumeration
  * @sd: CSIPHY V4L2 subdevice
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @code: pointer to v4l2_subdev_mbus_code_enum structure
  * return -EINVAL or zero on success
  */
@@ -368,11 +414,11 @@ static int csiphy_enum_mbus_code(struct v4l2_subdev *sd,
 	struct csiphy_device *csiphy = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	if (code->pad == MSM_CSIPHY_PAD_SINK || code->pad == MSM_CSIPHY_PAD_SINK2) {
-		if (code->index >= csiphy->nformats)
+	if ((code->pad & 1) == MSM_CSIPHY_PAD_SINK) {
+		if (code->index >= csiphy->res->formats->nformats)
 			return -EINVAL;
 
-		code->code = csiphy->formats[code->index].code;
+		code->code = csiphy->res->formats->formats[code->index].code;
 	} else {
 		if (code->index > 0)
 			return -EINVAL;
@@ -390,7 +436,7 @@ static int csiphy_enum_mbus_code(struct v4l2_subdev *sd,
 /*
  * csiphy_enum_frame_size - Handle frame size enumeration
  * @sd: CSIPHY V4L2 subdevice
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @fse: pointer to v4l2_subdev_frame_size_enum structure
  * return -EINVAL or zero on success
  */
@@ -427,7 +473,7 @@ static int csiphy_enum_frame_size(struct v4l2_subdev *sd,
 /*
  * csiphy_get_format - Handle get format by pads subdev method
  * @sd: CSIPHY V4L2 subdevice
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @fmt: pointer to v4l2 subdev format structure
  *
  * Return -EINVAL or zero on success
@@ -451,7 +497,7 @@ static int csiphy_get_format(struct v4l2_subdev *sd,
 /*
  * csiphy_set_format - Handle set format by pads subdev method
  * @sd: CSIPHY V4L2 subdevice
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @fmt: pointer to v4l2 subdev format structure
  *
  * Return -EINVAL or zero on success
@@ -472,7 +518,7 @@ static int csiphy_set_format(struct v4l2_subdev *sd,
 	*format = fmt->format;
 
 	/* Propagate the format from sink to source */
-	if (fmt->pad == MSM_CSIPHY_PAD_SINK || fmt->pad == MSM_CSIPHY_PAD_SINK2) {
+	if ((fmt->pad & 1) == MSM_CSIPHY_PAD_SINK) {
 		format = __csiphy_get_format(csiphy, sd_state,
 					     fmt->pad + 1,
 					     fmt->which);
@@ -498,22 +544,35 @@ static int csiphy_set_format(struct v4l2_subdev *sd,
 static int csiphy_init_formats(struct v4l2_subdev *sd,
 			       struct v4l2_subdev_fh *fh)
 {
+	struct csiphy_device *csiphy = v4l2_get_subdevdata(sd);
 	int ret;
+
 	struct v4l2_subdev_format format = {
 		.pad = MSM_CSIPHY_PAD_SINK,
 		.which = fh ? V4L2_SUBDEV_FORMAT_TRY :
 			      V4L2_SUBDEV_FORMAT_ACTIVE,
 		.format = {
-			.code = MEDIA_BUS_FMT_UYVY8_2X8,
+			.code = MEDIA_BUS_FMT_UYVY8_1X16,
 			.width = 1920,
 			.height = 1080
 		}
 	};
 
 	ret = csiphy_set_format(sd, fh ? fh->state : NULL, &format);
-	format.pad = MSM_CSIPHY_PAD_SINK2;
-	ret|= csiphy_set_format(sd, fh ? fh->state : NULL, &format);
-	return ret;
+	if (ret || !csiphy->combo_mode)
+		return ret;
+
+	format.pad += 2;
+	return csiphy_set_format(sd, fh ? fh->state : NULL, &format);
+}
+
+static bool csiphy_match_clock_name(const char *clock_name, const char *format,
+				    int index)
+{
+	char name[16]; /* csiphyXXX_timer\0 */
+
+	snprintf(name, sizeof(name), format, index);
+	return !strcmp(clock_name, name);
 }
 
 /*
@@ -526,34 +585,21 @@ static int csiphy_init_formats(struct v4l2_subdev *sd,
  */
 int msm_csiphy_subdev_init(struct camss *camss,
 			   struct csiphy_device *csiphy,
-			   const struct resources *res, u8 id)
+			   const struct camss_subdev_resources *res, u8 id)
 {
 	struct device *dev = camss->dev;
 	struct platform_device *pdev = to_platform_device(dev);
-	int i, j;
+	int i, j, k;
 	int ret;
 
 	csiphy->camss = camss;
 	csiphy->id = id;
-	csiphy->cfg.combo_mode = 0;
+	csiphy->combo_mode = false;
+	csiphy->res = &res->csiphy;
 
-	if (camss->version == CAMSS_8x16) {
-		csiphy->ops = &csiphy_ops_2ph_1_0;
-		csiphy->formats = csiphy_formats_8x16;
-		csiphy->nformats = ARRAY_SIZE(csiphy_formats_8x16);
-	} else if (camss->version == CAMSS_8x96 ||
-		   camss->version == CAMSS_660) {
-		csiphy->ops = &csiphy_ops_3ph_1_0;
-		csiphy->formats = csiphy_formats_8x96;
-		csiphy->nformats = ARRAY_SIZE(csiphy_formats_8x96);
-	} else if (camss->version == CAMSS_845 ||
-		   camss->version == CAMSS_8250) {
-		csiphy->ops = &csiphy_ops_3ph_1_0;
-		csiphy->formats = csiphy_formats_sdm845;
-		csiphy->nformats = ARRAY_SIZE(csiphy_formats_sdm845);
-	} else {
-		return -EINVAL;
-	}
+	ret = csiphy->res->hw_ops->init(csiphy);
+	if (ret)
+		return ret;
 
 	/* Memory */
 
@@ -561,8 +607,8 @@ int msm_csiphy_subdev_init(struct camss *camss,
 	if (IS_ERR(csiphy->base))
 		return PTR_ERR(csiphy->base);
 
-	if (camss->version == CAMSS_8x16 ||
-	    camss->version == CAMSS_8x96) {
+	if (camss->res->version == CAMSS_8x16 ||
+	    camss->res->version == CAMSS_8x96) {
 		csiphy->base_clk_mux =
 			devm_platform_ioremap_resource_byname(pdev, res->reg[1]);
 		if (IS_ERR(csiphy->base_clk_mux))
@@ -581,7 +627,7 @@ int msm_csiphy_subdev_init(struct camss *camss,
 	snprintf(csiphy->irq_name, sizeof(csiphy->irq_name), "%s_%s%d",
 		 dev_name(dev), MSM_CSIPHY_NAME, csiphy->id);
 
-	ret = devm_request_irq(dev, csiphy->irq, csiphy->ops->isr,
+	ret = devm_request_irq(dev, csiphy->irq, csiphy->res->hw_ops->isr,
 			       IRQF_TRIGGER_RISING | IRQF_NO_AUTOEN,
 			       csiphy->irq_name, csiphy);
 	if (ret < 0) {
@@ -636,22 +682,46 @@ int msm_csiphy_subdev_init(struct camss *camss,
 		for (j = 0; j < clock->nfreqs; j++)
 			clock->freq[j] = res->clock_rate[i][j];
 
-		if (!strcmp(clock->name, "csiphy0_timer") ||
-		    !strcmp(clock->name, "csiphy1_timer") ||
-		    !strcmp(clock->name, "csiphy2_timer") ||
-		    !strcmp(clock->name, "csiphy3_timer") ||
-		    !strcmp(clock->name, "csiphy4_timer") ||
-		    !strcmp(clock->name, "csiphy5_timer"))
-			csiphy->rate_set[i] = true;
+		for (k = 0; k < camss->res->csiphy_num; k++) {
+			csiphy->rate_set[i] = csiphy_match_clock_name(clock->name,
+								      "csiphy%d_timer", k);
+			if (csiphy->rate_set[i])
+				break;
 
-		if (camss->version == CAMSS_660 &&
-		    (!strcmp(clock->name, "csi0_phy") ||
-		     !strcmp(clock->name, "csi1_phy") ||
-		     !strcmp(clock->name, "csi2_phy")))
-			csiphy->rate_set[i] = true;
+			if (camss->res->version == CAMSS_660) {
+				csiphy->rate_set[i] = csiphy_match_clock_name(clock->name,
+									      "csi%d_phy", k);
+				if (csiphy->rate_set[i])
+					break;
+			}
+
+			csiphy->rate_set[i] = csiphy_match_clock_name(clock->name, "csiphy%d", k);
+			if (csiphy->rate_set[i])
+				break;
+		}
 	}
 
-	return 0;
+	/* CSIPHY supplies */
+	for (i = 0; i < ARRAY_SIZE(res->regulators); i++) {
+		if (res->regulators[i])
+			csiphy->num_supplies++;
+	}
+
+	if (csiphy->num_supplies) {
+		csiphy->supplies = devm_kmalloc_array(camss->dev,
+						      csiphy->num_supplies,
+						      sizeof(*csiphy->supplies),
+						      GFP_KERNEL);
+		if (!csiphy->supplies)
+			return -ENOMEM;
+	}
+
+	for (i = 0; i < csiphy->num_supplies; i++)
+		csiphy->supplies[i].supply = res->regulators[i];
+
+	ret = devm_regulator_bulk_get(camss->dev, csiphy->num_supplies,
+				      csiphy->supplies);
+	return ret;
 }
 
 /*
@@ -667,7 +737,6 @@ static int csiphy_link_setup(struct media_entity *entity,
 			     const struct media_pad *local,
 			     const struct media_pad *remote, u32 flags)
 {
-#if 0
 	if ((local->flags & MEDIA_PAD_FL_SOURCE) &&
 	    (flags & MEDIA_LNK_FL_ENABLED)) {
 		struct v4l2_subdev *sd;
@@ -685,17 +754,14 @@ static int csiphy_link_setup(struct media_entity *entity,
 
 		csiphy->cfg.csid_id = csid->id;
 	}
-#endif
 
 	return 0;
 }
 
 static bool csiphy_has_pad_interdep(struct media_entity *entity,
-				    unsigned int pad0,
-				    unsigned int pad1)
+				    unsigned int pad0, unsigned int pad1)
 {
-	// this returns true for pads in the same SINK/SRC pair
-	return ((pad0|1) == (pad1|1));
+	return ((pad0 | 1) == (pad1 | 1));
 }
 
 static const struct v4l2_subdev_core_ops csiphy_core_ops = {
@@ -742,6 +808,7 @@ int msm_csiphy_register_entity(struct csiphy_device *csiphy,
 	struct v4l2_subdev *sd = &csiphy->subdev;
 	struct media_pad *pads = csiphy->pads;
 	struct device *dev = csiphy->camss->dev;
+	unsigned int pads_num = 2;
 	int ret;
 
 	v4l2_subdev_init(sd, &csiphy_v4l2_ops);
@@ -758,15 +825,20 @@ int msm_csiphy_register_entity(struct csiphy_device *csiphy,
 	}
 
 	pads[MSM_CSIPHY_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
-	pads[MSM_CSIPHY_PAD_SINK2].flags = MEDIA_PAD_FL_SINK;
 	pads[MSM_CSIPHY_PAD_SRC].flags = MEDIA_PAD_FL_SOURCE;
-	pads[MSM_CSIPHY_PAD_SRC2].flags = MEDIA_PAD_FL_SOURCE;
+
+	/* csiphy->combo_mode is not yet set at this point */
+	if (true) {
+		pads[MSM_CSIPHY_PAD_SINK + 2].flags = MEDIA_PAD_FL_SINK;
+		pads[MSM_CSIPHY_PAD_SRC + 2].flags = MEDIA_PAD_FL_SOURCE;
+		pads_num += 2;
+	}
 
 	sd->entity.function = MEDIA_ENT_F_PROC_VIDEO_PIXEL_FORMATTER;
 	sd->entity.ops = &csiphy_media_ops;
-	ret = media_entity_pads_init(&sd->entity, MSM_CSIPHY_PADS_NUM, pads);
+	ret = media_entity_pads_init(&sd->entity, pads_num, pads);
 	if (ret < 0) {
-		dev_err(dev, "Failed to init media entity: %d\n", ret);
+		dev_err(dev, "Failed to init csiphy media entity: %d\n", ret);
 		return ret;
 	}
 

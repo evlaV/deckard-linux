@@ -29,10 +29,12 @@
 #define VFE_480_CSID_OFFSET 0x1200
 #define VFE_480_LITE_CSID_OFFSET 0x200
 
-#define VFE_880_LITE_CSID_OFFSET 0x1000
+#define CSID_HW_VERSION		0x0
+#define		HW_VERSION_STEPPING	0
+#define		HW_VERSION_REVISION	16
+#define		HW_VERSION_GENERATION	28
 
 #define MSM_CSID_NAME "msm_csid"
-#define MSM_VFE_NAME "msm_vfe"
 
 const char * const csid_testgen_modes[] = {
 	"Disabled",
@@ -46,6 +48,450 @@ const char * const csid_testgen_modes[] = {
 	"Color box",
 	"Color bars",
 	NULL
+};
+
+static const struct csid_format_info formats_4_1[] = {
+	{
+		MEDIA_BUS_FMT_UYVY8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_VYUY8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_YUYV8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_YVYU8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_Y10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+};
+
+static const struct csid_format_info formats_4_7[] = {
+	{
+		MEDIA_BUS_FMT_UYVY8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_VYUY8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_YUYV8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_YVYU8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR14_1X14,
+		DATA_TYPE_RAW_14BIT,
+		DECODE_FORMAT_UNCOMPRESSED_14_BIT,
+		14,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG14_1X14,
+		DATA_TYPE_RAW_14BIT,
+		DECODE_FORMAT_UNCOMPRESSED_14_BIT,
+		14,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG14_1X14,
+		DATA_TYPE_RAW_14BIT,
+		DECODE_FORMAT_UNCOMPRESSED_14_BIT,
+		14,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB14_1X14,
+		DATA_TYPE_RAW_14BIT,
+		DECODE_FORMAT_UNCOMPRESSED_14_BIT,
+		14,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_Y10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+};
+
+static const struct csid_format_info formats_gen2[] = {
+	{
+		MEDIA_BUS_FMT_UYVY8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_VYUY8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_YUYV8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_YVYU8_1X16,
+		DATA_TYPE_YUV422_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		2,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_Y8_1X8,
+		DATA_TYPE_RAW_8BIT,
+		DECODE_FORMAT_UNCOMPRESSED_8_BIT,
+		8,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_Y10_1X10,
+		DATA_TYPE_RAW_10BIT,
+		DECODE_FORMAT_UNCOMPRESSED_10_BIT,
+		10,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB12_1X12,
+		DATA_TYPE_RAW_12BIT,
+		DECODE_FORMAT_UNCOMPRESSED_12_BIT,
+		12,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SBGGR14_1X14,
+		DATA_TYPE_RAW_14BIT,
+		DECODE_FORMAT_UNCOMPRESSED_14_BIT,
+		14,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGBRG14_1X14,
+		DATA_TYPE_RAW_14BIT,
+		DECODE_FORMAT_UNCOMPRESSED_14_BIT,
+		14,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SGRBG14_1X14,
+		DATA_TYPE_RAW_14BIT,
+		DECODE_FORMAT_UNCOMPRESSED_14_BIT,
+		14,
+		1,
+	},
+	{
+		MEDIA_BUS_FMT_SRGGB14_1X14,
+		DATA_TYPE_RAW_14BIT,
+		DECODE_FORMAT_UNCOMPRESSED_14_BIT,
+		14,
+		1,
+	},
+};
+
+const struct csid_formats csid_formats_4_1 = {
+	.nformats = ARRAY_SIZE(formats_4_1),
+	.formats = formats_4_1
+};
+
+const struct csid_formats csid_formats_4_7 = {
+	.nformats = ARRAY_SIZE(formats_4_7),
+	.formats = formats_4_7
+};
+
+const struct csid_formats csid_formats_gen2 = {
+	.nformats = ARRAY_SIZE(formats_gen2),
+	.formats = formats_gen2
 };
 
 u32 csid_find_code(u32 *codes, unsigned int ncodes,
@@ -68,9 +514,9 @@ u32 csid_find_code(u32 *codes, unsigned int ncodes,
 	return codes[0];
 }
 
-const struct csid_format *csid_get_fmt_entry(const struct csid_format *formats,
-					     unsigned int nformats,
-					     u32 code)
+const struct csid_format_info *csid_get_fmt_entry(const struct csid_format_info *formats,
+						  unsigned int nformats,
+						  u32 code)
 {
 	unsigned int i;
 
@@ -89,28 +535,136 @@ const struct csid_format *csid_get_fmt_entry(const struct csid_format *formats,
  */
 static int csid_set_clock_rates(struct csid_device *csid)
 {
-	//const struct csid_format *fmt;
-	//s64 link_freq;
-	int i;
+	struct device *dev = csid->camss->dev;
+	const struct csid_format_info *fmt;
+	s64 link_freq;
+	int i, j;
 	int ret;
 
-#if 0
-	fmt = csid_get_fmt_entry(csid->formats, csid->nformats,
+	fmt = csid_get_fmt_entry(csid->res->formats->formats, csid->res->formats->nformats,
 				 csid->fmt[MSM_CSIPHY_PAD_SINK].code);
 	link_freq = camss_get_link_freq(&csid->subdev.entity, fmt->bpp,
 					csid->phy.lane_cnt);
 	if (link_freq < 0)
 		link_freq = 0;
-#endif
 
 	for (i = 0; i < csid->nclocks; i++) {
 		struct camss_clock *clock = &csid->clock[i];
-		// just set lowest clock rate for each clock for now (should be more than enough)
-		if (clock->nfreqs)
+
+		if (!strcmp(clock->name, "csi0") ||
+		    !strcmp(clock->name, "csi1") ||
+		    !strcmp(clock->name, "csi2") ||
+		    !strcmp(clock->name, "csi3")) {
+			u64 min_rate = link_freq / 4;
+			long rate;
+
+			camss_add_clock_margin(&min_rate);
+
+			for (j = 0; j < clock->nfreqs; j++)
+				if (min_rate < clock->freq[j])
+					break;
+
+			if (j == clock->nfreqs) {
+				dev_err(dev,
+					"Pixel clock is too high for CSID\n");
+				return -EINVAL;
+			}
+
+			/* if sensor pixel clock is not available */
+			/* set highest possible CSID clock rate */
+			if (min_rate == 0)
+				j = clock->nfreqs - 1;
+
+			rate = clk_round_rate(clock->clk, clock->freq[j]);
+			if (rate < 0) {
+				dev_err(dev, "clk round rate failed: %ld\n",
+					rate);
+				return -EINVAL;
+			}
+
+			ret = clk_set_rate(clock->clk, rate);
+			if (ret < 0) {
+				dev_err(dev, "clk set rate failed: %d\n", ret);
+				return ret;
+			}
+		} else if (clock->nfreqs) {
 			clk_set_rate(clock->clk, clock->freq[0]);
+		}
 	}
 
 	return 0;
+}
+
+/*
+ * csid_hw_version - CSID hardware version query
+ * @csid: CSID device
+ *
+ * Return HW version or error
+ */
+u32 csid_hw_version(struct csid_device *csid)
+{
+	u32 hw_version;
+	u32 hw_gen;
+	u32 hw_rev;
+	u32 hw_step;
+
+	hw_version = readl_relaxed(csid->base + CSID_HW_VERSION);
+	hw_gen = (hw_version >> HW_VERSION_GENERATION) & 0xF;
+	hw_rev = (hw_version >> HW_VERSION_REVISION) & 0xFFF;
+	hw_step = (hw_version >> HW_VERSION_STEPPING) & 0xFFFF;
+	dev_dbg(csid->camss->dev, "CSID:%d HW Version = %u.%u.%u\n",
+		csid->id, hw_gen, hw_rev, hw_step);
+
+	return hw_version;
+}
+
+/*
+ * csid_src_pad_code - Pick an output/src format based on the input/sink format
+ * @csid: CSID device
+ * @sink_code: The sink format of the input
+ * @match_format_idx: Request preferred index, as defined by subdevice csid
+ *                    format. Set @match_code to 0 if used.
+ * @match_code: Request preferred code, set @match_format_idx to 0 if used
+ *
+ * Return 0 on failure or src format code otherwise
+ */
+u32 csid_src_pad_code(struct csid_device *csid, u32 sink_code,
+		      unsigned int match_format_idx, u32 match_code)
+{
+	if (csid->camss->res->version == CAMSS_8x16) {
+		if (match_format_idx > 0)
+			return 0;
+
+		return sink_code;
+	}
+
+	switch (sink_code) {
+	case MEDIA_BUS_FMT_SBGGR10_1X10:
+	{
+		u32 src_code[] = {
+			MEDIA_BUS_FMT_SBGGR10_1X10,
+			MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_LE,
+		};
+
+		return csid_find_code(src_code, ARRAY_SIZE(src_code),
+				      match_format_idx, match_code);
+	}
+	case MEDIA_BUS_FMT_Y10_1X10:
+	{
+		u32 src_code[] = {
+			MEDIA_BUS_FMT_Y10_1X10,
+			MEDIA_BUS_FMT_Y10_2X8_PADHI_LE,
+		};
+
+		return csid_find_code(src_code, ARRAY_SIZE(src_code),
+				      match_format_idx, match_code);
+	}
+	default:
+		if (match_format_idx > 0)
+			return 0;
+
+		return sink_code;
+	}
 }
 
 static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
@@ -119,8 +673,8 @@ static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 
 	switch (cmd) {
 	case VIDIOC_CSID_VFE_PRV_S_REGS:
-		if(csid->ops->set_csid_vfe_registers) {
-			return csid->ops->set_csid_vfe_registers(csid, arg);
+		if(csid->res->hw_ops->set_csid_vfe_registers) {
+			return csid->res->hw_ops->set_csid_vfe_registers(csid, arg);
 		}
 		else {
 			// Operation not supported
@@ -128,29 +682,23 @@ static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		}
 		break;
 	case VIDIOC_CSID_VFE_PRV_G_REGS:
-   		if(csid->ops->get_csid_vfe_registers) {
-			return csid->ops->get_csid_vfe_registers(csid, arg);
+		if(csid->res->hw_ops->get_csid_vfe_registers) {
+			return csid->res->hw_ops->get_csid_vfe_registers(csid, arg);
 		}
 		else {
 			// Operation not supported
- 			return -EINVAL;
+			return -EINVAL;
 		}
- 		break;
+		break;
 	case VIDIOC_CSID_VFE_PRV_STATS_CFG:
-		if(csid->ops->set_statistics_config)
+		if(csid->res->parent_dev_ops->set_statistics_config)
 		{
-			return csid->ops->set_statistics_config(csid, (u32)arg);
+			return csid->res->parent_dev_ops->set_statistics_config(csid->camss, csid->id, (uintptr_t)arg);
 		}
 		else
 		{
 			// Operation not supported
 			return -EINVAL;
-		}
-		break;
-	case VIDIOC_CSID_VFE_PRV_S_BPL:
-		{
-			csid->video_out.active_fmt.fmt.pix_mp.plane_fmt[0].bytesperline = (u32)arg;
-			return 0;
 		}
 		break;
 	default:
@@ -159,6 +707,8 @@ static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 
 	return 0;
 }
+
+static int csid_set_metadata_callbacks(struct csid_device *csid);
 
 /*
  * csid_set_power - Power on/off CSID module
@@ -172,62 +722,77 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 	struct csid_device *csid = v4l2_get_subdevdata(sd);
 	struct camss *camss = csid->camss;
 	struct device *dev = camss->dev;
-	u32 version = camss->version;
-	u32 id = csid->id;
 	int ret = 0;
 
 	if (on) {
-		if (id < IFE_FULL_COUNT) {
-			camss->genpd_link[id] = device_link_add(camss->dev, camss->genpd[id],
-								DL_FLAG_STATELESS |
-								DL_FLAG_PM_RUNTIME |
-								DL_FLAG_RPM_ACTIVE);
-			// XXX: missing turn off on failure
-		}
+		/*
+		 * From SDM845 onwards, the VFE needs to be powered on before
+		 * switching on the CSID. Do so unconditionally, as there is no
+		 * drawback in following the same powering order on older SoCs.
+		 */
+		ret = csid->res->parent_dev_ops->get(camss, csid->id);
+		if (ret < 0)
+			return ret;
 
 		ret = pm_runtime_resume_and_get(dev);
 		if (ret < 0)
 			return ret;
 
+		ret = regulator_bulk_enable(csid->num_supplies,
+					    csid->supplies);
+		if (ret < 0) {
+			pm_runtime_put_sync(dev);
+			return ret;
+		}
+
 		ret = csid_set_clock_rates(csid);
 		if (ret < 0) {
+			regulator_bulk_disable(csid->num_supplies,
+					       csid->supplies);
 			pm_runtime_put_sync(dev);
 			return ret;
 		}
 
 		ret = camss_enable_clocks(csid->nclocks, csid->clock, dev);
 		if (ret < 0) {
+			regulator_bulk_disable(csid->num_supplies,
+					       csid->supplies);
 			pm_runtime_put_sync(dev);
 			return ret;
 		}
+
+		csid->phy.need_vc_update = true;
 
 		enable_irq(csid->irq);
-		enable_irq(csid->ife_irq);
 
-		ret = csid->ops->reset(csid);
+		ret = csid->res->hw_ops->reset(csid);
 		if (ret < 0) {
-			disable_irq(csid->ife_irq);
 			disable_irq(csid->irq);
 			camss_disable_clocks(csid->nclocks, csid->clock);
+			regulator_bulk_disable(csid->num_supplies,
+					       csid->supplies);
 			pm_runtime_put_sync(dev);
 			return ret;
 		}
-
-		csid->ops->hw_version(csid);
 
 		csid_set_metadata_callbacks(csid);
 
+		csid->res->hw_ops->hw_version(csid);
+
 		csid->power_on = true;
 	} else {
-		disable_irq(csid->ife_irq);
 		disable_irq(csid->irq);
 		camss_disable_clocks(csid->nclocks, csid->clock);
+		regulator_bulk_disable(csid->num_supplies,
+				       csid->supplies);
 		pm_runtime_put_sync(dev);
-
-		if (id < IFE_FULL_COUNT)
-			device_link_del(camss->genpd_link[id]);
+		csid->res->parent_dev_ops->put(camss, csid->id);
 
 		csid->power_on = false;
+
+		// reset multi-vcdt config on power off
+		csid->multi_vcdt_en = 0;
+		csid->multi_vcdt_vc = 0;
 	}
 
 	return ret;
@@ -255,11 +820,15 @@ static int csid_set_stream(struct v4l2_subdev *sd, int enable)
 			return ret;
 		}
 
-		if (!media_pad_remote_pad_first(&csid->pads[MSM_CSID_PAD_SINK]))
+		if (!csid->testgen.enabled &&
+		    !media_pad_remote_pad_first(&csid->pads[MSM_CSID_PAD_SINK]))
 			return -ENOLINK;
 	}
 
-	csid->ops->configure_stream(csid, enable);
+	//if (csid->phy.need_vc_update) {
+		csid->res->hw_ops->configure_stream(csid, enable);
+		csid->phy.need_vc_update = false;
+	//}
 
 	return 0;
 }
@@ -267,7 +836,7 @@ static int csid_set_stream(struct v4l2_subdev *sd, int enable)
 /*
  * __csid_get_format - Get pointer to format structure
  * @csid: CSID device
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @pad: pad from which format is requested
  * @which: TRY or ACTIVE format
  *
@@ -288,7 +857,7 @@ __csid_get_format(struct csid_device *csid,
 /*
  * csid_try_format - Handle try format by pad subdev method
  * @csid: CSID device
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @pad: pad on which format is requested
  * @fmt: pointer to v4l2 format structure
  * @which: wanted subdev format
@@ -300,18 +869,18 @@ static void csid_try_format(struct csid_device *csid,
 			    enum v4l2_subdev_format_whence which)
 {
 	unsigned int i;
-	u32 code;
+
 	switch (pad) {
 	case MSM_CSID_PAD_SINK:
 		/* Set format on sink pad */
 
-		for (i = 0; i < csid->nformats; i++)
-			if (fmt->code == csid->formats[i].code)
+		for (i = 0; i < csid->res->formats->nformats; i++)
+			if (fmt->code == csid->res->formats->formats[i].code)
 				break;
 
 		/* If not found, use UYVY as default */
-		if (i >= csid->nformats)
-			fmt->code = MEDIA_BUS_FMT_UYVY8_2X8;
+		if (i >= csid->res->formats->nformats)
+			fmt->code = MEDIA_BUS_FMT_UYVY8_1X16;
 
 		fmt->width = clamp_t(u32, fmt->width, 1, 8191);
 		fmt->height = clamp_t(u32, fmt->height, 1, 8191);
@@ -322,13 +891,31 @@ static void csid_try_format(struct csid_device *csid,
 		break;
 
 	case MSM_CSID_PAD_SRC:
-		/* Test generator is disabled, */
-		/* keep pad formats in sync */
-		code = fmt->code;
+		if (!csid->testgen_mode || csid->testgen_mode->cur.val == 0) {
+			/* Test generator is disabled, */
+			/* keep pad formats in sync */
+			u32 code = fmt->code;
 
-		*fmt = *__csid_get_format(csid, sd_state,
-						MSM_CSID_PAD_SINK, which);
-		fmt->code = csid->ops->src_pad_code(csid, fmt->code, 0, code);
+			*fmt = *__csid_get_format(csid, sd_state,
+						      MSM_CSID_PAD_SINK, which);
+			fmt->code = csid->res->hw_ops->src_pad_code(csid, fmt->code, 0, code);
+		} else {
+			/* Test generator is enabled, set format on source */
+			/* pad to allow test generator usage */
+
+			for (i = 0; i < csid->res->formats->nformats; i++)
+				if (csid->res->formats->formats[i].code == fmt->code)
+					break;
+
+			/* If not found, use UYVY as default */
+			if (i >= csid->res->formats->nformats)
+				fmt->code = MEDIA_BUS_FMT_UYVY8_1X16;
+
+			fmt->width = clamp_t(u32, fmt->width, 1, 8191);
+			fmt->height = clamp_t(u32, fmt->height, 1, 8191);
+
+			fmt->field = V4L2_FIELD_NONE;
+		}
 		break;
 	}
 
@@ -338,7 +925,7 @@ static void csid_try_format(struct csid_device *csid,
 /*
  * csid_enum_mbus_code - Handle pixel format enumeration
  * @sd: CSID V4L2 subdevice
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @code: pointer to v4l2_subdev_mbus_code_enum structure
  * return -EINVAL or zero on success
  */
@@ -349,21 +936,28 @@ static int csid_enum_mbus_code(struct v4l2_subdev *sd,
 	struct csid_device *csid = v4l2_get_subdevdata(sd);
 
 	if (code->pad == MSM_CSID_PAD_SINK) {
-		if (code->index >= csid->nformats)
+		if (code->index >= csid->res->formats->nformats)
 			return -EINVAL;
 
-		code->code = csid->formats[code->index].code;
+		code->code = csid->res->formats->formats[code->index].code;
 	} else {
-		struct v4l2_mbus_framefmt *sink_fmt;
+		if (csid->testgen_mode->cur.val == 0) {
+			struct v4l2_mbus_framefmt *sink_fmt;
 
-		sink_fmt = __csid_get_format(csid, sd_state,
-						MSM_CSID_PAD_SINK,
-						code->which);
+			sink_fmt = __csid_get_format(csid, sd_state,
+						     MSM_CSID_PAD_SINK,
+						     code->which);
 
-		code->code = csid->ops->src_pad_code(csid, sink_fmt->code,
-						code->index, 0);
-		if (!code->code)
-			return -EINVAL;
+			code->code = csid->res->hw_ops->src_pad_code(csid, sink_fmt->code,
+								     code->index, 0);
+			if (!code->code)
+				return -EINVAL;
+		} else {
+			if (code->index >= csid->res->formats->nformats)
+				return -EINVAL;
+
+			code->code = csid->res->formats->formats[code->index].code;
+		}
 	}
 
 	return 0;
@@ -372,7 +966,7 @@ static int csid_enum_mbus_code(struct v4l2_subdev *sd,
 /*
  * csid_enum_frame_size - Handle frame size enumeration
  * @sd: CSID V4L2 subdevice
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @fse: pointer to v4l2_subdev_frame_size_enum structure
  * return -EINVAL or zero on success
  */
@@ -409,7 +1003,7 @@ static int csid_enum_frame_size(struct v4l2_subdev *sd,
 /*
  * csid_get_format - Handle get format by pads subdev method
  * @sd: CSID V4L2 subdevice
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @fmt: pointer to v4l2 subdev format structure
  *
  * Return -EINVAL or zero on success
@@ -433,7 +1027,7 @@ static int csid_get_format(struct v4l2_subdev *sd,
 /*
  * csid_set_format - Handle set format by pads subdev method
  * @sd: CSID V4L2 subdevice
- * @cfg: V4L2 subdev pad configuration
+ * @sd_state: V4L2 subdev state
  * @fmt: pointer to v4l2 subdev format structure
  *
  * Return -EINVAL or zero on success
@@ -482,13 +1076,37 @@ static int csid_init_formats(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 		.which = fh ? V4L2_SUBDEV_FORMAT_TRY :
 			      V4L2_SUBDEV_FORMAT_ACTIVE,
 		.format = {
-			.code = MEDIA_BUS_FMT_UYVY8_2X8,
+			.code = MEDIA_BUS_FMT_UYVY8_1X16,
 			.width = 1920,
 			.height = 1080
 		}
 	};
 
 	return csid_set_format(sd, fh ? fh->state : NULL, &format);
+}
+
+/*
+ * csid_set_test_pattern - Set test generator's pattern mode
+ * @csid: CSID device
+ * @value: desired test pattern mode
+ *
+ * Return 0 on success or a negative error code otherwise
+ */
+static int csid_set_test_pattern(struct csid_device *csid, s32 value)
+{
+	struct csid_testgen_config *tg = &csid->testgen;
+	const struct csid_hw_ops *hw_ops = csid->res->hw_ops;
+
+	/* If CSID is linked to CSIPHY, do not allow to enable test generator */
+	if (value && media_pad_remote_pad_first(&csid->pads[MSM_CSID_PAD_SINK]))
+		return -EBUSY;
+
+	if (!hw_ops->configure_testgen_pattern)
+		return -EOPNOTSUPP;
+
+	tg->enabled = !!value;
+
+	return hw_ops->configure_testgen_pattern(csid, value);
 }
 
 /*
@@ -504,6 +1122,9 @@ static int csid_s_ctrl(struct v4l2_ctrl *ctrl)
 	int ret = -EINVAL;
 
 	switch (ctrl->id) {
+	case V4L2_CID_TEST_PATTERN:
+		ret = csid_set_test_pattern(csid, ctrl->val);
+		break;
 	}
 
 	return ret;
@@ -522,7 +1143,7 @@ static const struct v4l2_ctrl_ops csid_ctrl_ops = {
  * Return 0 on success or a negative error code otherwise
  */
 int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
-			 const struct resources *res, u8 id)
+			 const struct camss_subdev_resources *res, u8 id)
 {
 	struct device *dev = camss->dev;
 	struct platform_device *pdev = to_platform_device(dev);
@@ -531,64 +1152,60 @@ int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
 
 	csid->camss = camss;
 	csid->id = id;
+	csid->res = &res->csid;
 
-	if (camss->version == CAMSS_845 ||
-		   camss->version == CAMSS_8250) {
-		csid->ops = &csid_ops_gen2;
-	} else {
+	if (dev_WARN_ONCE(dev, !csid->res->parent_dev_ops,
+			  "Error: CSID depends on VFE/IFE device ops!\n")) {
 		return -EINVAL;
 	}
-	csid->ops->subdev_init(csid);
+
+	csid->res->hw_ops->subdev_init(csid);
 
 	/* Memory */
 
-	csid->ife_base = devm_platform_ioremap_resource_byname(pdev, res->reg[0]);
-	if (IS_ERR(csid->ife_base))
-		return PTR_ERR(csid->ife_base);
-
-	/* separate CSID base for 8650 non-lite IFE */
-	if (res->reg[1]) {
-		csid->base = devm_platform_ioremap_resource_byname(pdev, res->reg[1]);
+	if (camss->res->version == CAMSS_8250) {
+		/* for titan 480, CSID registers are inside the VFE region,
+		 * between the VFE "top" and "bus" registers. this requires
+		 * VFE to be initialized before CSID
+		 */
+		if (id >= 2) /* VFE/CSID lite */
+			csid->base = csid->res->parent_dev_ops->get_base_address(camss, id)
+				+ VFE_480_LITE_CSID_OFFSET;
+		else
+			csid->base = csid->res->parent_dev_ops->get_base_address(camss, id)
+				 + VFE_480_CSID_OFFSET;
+	} else {
+		csid->base = devm_platform_ioremap_resource_byname(pdev, res->reg[0]);
 		if (IS_ERR(csid->base))
 			return PTR_ERR(csid->base);
-	} else {
-		csid->base = csid->ife_base + VFE_880_LITE_CSID_OFFSET;
+#if 0
+		/* CSID "top" is a new function in new version HW,
+		 * CSID can connect to VFE & SFE(Sensor Front End).
+		 * this connection is controlled by CSID "top" registers.
+		 * There is only one CSID "top" region for all CSIDs.
+		 */
+		if (!csid_is_lite(csid) && res->reg[1] && !camss->csid_top_base) {
+			camss->csid_top_base =
+				devm_platform_ioremap_resource_byname(pdev, res->reg[1]);
+
+			if (IS_ERR(camss->csid_top_base))
+				return PTR_ERR(camss->csid_top_base);
+		}
+#endif
 	}
 
 	/* Interrupt */
 
-	ret = platform_get_irq_byname(pdev, res->interrupt[1]);
+	ret = platform_get_irq_byname(pdev, res->interrupt[0]);
 	if (ret < 0)
 		return ret;
 
 	csid->irq = ret;
 	snprintf(csid->irq_name, sizeof(csid->irq_name), "%s_%s%d",
 		 dev_name(dev), MSM_CSID_NAME, csid->id);
-	ret = devm_request_irq(dev, csid->irq, csid->ops->isr,
+	ret = devm_request_irq(dev, csid->irq, csid->res->hw_ops->isr,
 			       IRQF_TRIGGER_RISING | IRQF_NO_AUTOEN,
 			       csid->irq_name, csid);
-	if (ret < 0) {
-		dev_err(dev, "request_irq failed: %d\n", ret);
-		return ret;
-	}
-
-	ret = irq_set_affinity(csid->irq,cpumask_of(3));
-	if (ret < 0) {
-		dev_err(dev, "irq_set_affinity failed: %d\n", ret);
-	}
-
-	/* IFE interrupt */
-
-	ret = platform_get_irq_byname(pdev, res->interrupt[0]);
-	if (ret < 0)
-		return ret;
-
-	csid->ife_irq = ret;
-	snprintf(csid->ife_irq_name, sizeof(csid->ife_irq_name), "%s_%s%d",
-		 dev_name(dev), MSM_VFE_NAME, csid->id);
-	ret = devm_request_irq(dev, csid->ife_irq, csid->ops->ife_isr,
-			       IRQF_TRIGGER_RISING | IRQF_NO_AUTOEN,
-			       csid->ife_irq_name, csid);
 	if (ret < 0) {
 		dev_err(dev, "request_irq failed: %d\n", ret);
 		return ret;
@@ -633,6 +1250,29 @@ int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
 		for (j = 0; j < clock->nfreqs; j++)
 			clock->freq[j] = res->clock_rate[i][j];
 	}
+
+	/* Regulator */
+	for (i = 0; i < ARRAY_SIZE(res->regulators); i++) {
+		if (res->regulators[i])
+			csid->num_supplies++;
+	}
+
+	if (csid->num_supplies) {
+		csid->supplies = devm_kmalloc_array(camss->dev,
+						    csid->num_supplies,
+						    sizeof(*csid->supplies),
+						    GFP_KERNEL);
+		if (!csid->supplies)
+			return -ENOMEM;
+	}
+
+	for (i = 0; i < csid->num_supplies; i++)
+		csid->supplies[i].supply = res->regulators[i];
+
+	ret = devm_regulator_bulk_get(camss->dev, csid->num_supplies,
+				      csid->supplies);
+	if (ret)
+		return ret;
 
 	init_completion(&csid->reset_complete);
 
@@ -692,27 +1332,49 @@ static int csid_link_setup(struct media_entity *entity,
 		struct csid_device *csid;
 		struct csiphy_device *csiphy;
 		struct csiphy_lanes_cfg *lane_cfg;
-		const struct csiphy_csi2_cfg *cfg;
+		struct csiphy_csi2_cfg *csi2;
 
 		sd = media_entity_to_v4l2_subdev(entity);
 		csid = v4l2_get_subdevdata(sd);
 
+		/* If test generator is enabled */
+		/* do not allow a link from CSIPHY to CSID */
+		if (csid->testgen_mode && csid->testgen_mode->cur.val != 0)
+			return -EBUSY;
+
 		sd = media_entity_to_v4l2_subdev(remote->entity);
 		csiphy = v4l2_get_subdevdata(sd);
 
+		csi2 = csiphy->cfg.csi2;
+		if (csiphy->combo_mode && remote->index >= 2)
+			csi2 = csiphy->cfg2.csi2;
+
 		/* If a sensor is not linked to CSIPHY */
 		/* do no allow a link from CSIPHY to CSID */
-		cfg = csiphy->cfg.csi2;
-		if (remote->index >= 2)
-			cfg = csiphy->cfg.csi2_sec;
-		if (!cfg)
+		if (!csi2)
 			return -EPERM;
 
 		csid->phy.csiphy_id = csiphy->id;
 
-		lane_cfg = &cfg->lane_cfg;
+		lane_cfg = &csi2->lane_cfg;
 		csid->phy.lane_cnt = lane_cfg->num_data;
 		csid->phy.lane_assign = csid_get_lane_assign(lane_cfg);
+	}
+	/* Decide which virtual channels to enable based on which source pads are enabled */
+	if (local->flags & MEDIA_PAD_FL_SOURCE) {
+		struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
+		struct csid_device *csid = v4l2_get_subdevdata(sd);
+		struct device *dev = csid->camss->dev;
+
+		if (flags & MEDIA_LNK_FL_ENABLED)
+			csid->phy.en_vc |= BIT(local->index - 1);
+		else
+			csid->phy.en_vc &= ~BIT(local->index - 1);
+
+		csid->phy.need_vc_update = true;
+
+		dev_dbg(dev, "%s: Enabled CSID virtual channels mask 0x%x\n",
+			__func__, csid->phy.en_vc);
 	}
 
 	return 0;
@@ -781,10 +1443,20 @@ int msm_csid_register_entity(struct csid_device *csid,
 		return ret;
 	}
 
-	if (csid->ctrls.error) {
-		dev_err(dev, "Failed to init ctrl: %d\n", csid->ctrls.error);
-		ret = csid->ctrls.error;
-		goto free_ctrl;
+	if (csid->res->hw_ops->configure_testgen_pattern) {
+		csid->testgen_mode =
+			v4l2_ctrl_new_std_menu_items(&csid->ctrls,
+						     &csid_ctrl_ops,
+						     V4L2_CID_TEST_PATTERN,
+						     csid->testgen.nmodes, 0,
+						     0, csid->testgen.modes);
+
+		if (csid->ctrls.error) {
+			dev_err(dev, "Failed to init ctrl: %d\n",
+				csid->ctrls.error);
+			ret = csid->ctrls.error;
+			goto free_ctrl;
+		}
 	}
 
 	csid->subdev.ctrl_handler = &csid->ctrls;
@@ -813,38 +1485,6 @@ int msm_csid_register_entity(struct csid_device *csid,
 		goto media_cleanup;
 	}
 
-	// only register rdi0 path
-	{
-		struct camss_video *video_out = &csid->video_out;
-		char name[32];
-
-		video_out->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-		video_out->camss = csid->camss;
-		video_out->ops = &csid->video_ops;
-		video_out->bpl_alignment = 16;
-		video_out->line_based = 0;
-
-		snprintf(name, ARRAY_SIZE(name), "%s%d_%s%d",
-			 MSM_VFE_NAME, csid->id, "rdi", 0);
-		ret = msm_video_register(video_out, v4l2_dev, name, 0);
-		if (ret < 0) {
-			dev_err(dev, "Failed to register video node: %d\n",
-				ret);
-			goto media_cleanup;  // XXX
-		}
-
-		ret = media_create_pad_link(
-				&sd->entity, MSM_CSID_PAD_FIRST_SRC + 0,
-				&video_out->vdev.entity, 0,
-				MEDIA_LNK_FL_IMMUTABLE | MEDIA_LNK_FL_ENABLED);
-		if (ret < 0) {
-			dev_err(dev, "Failed to link %s->%s entities: %d\n",
-				sd->entity.name, video_out->vdev.entity.name,
-				ret);
-			goto media_cleanup; // XXX
-		}
-	}
-
 	return 0;
 
 media_cleanup:
@@ -853,6 +1493,22 @@ free_ctrl:
 	v4l2_ctrl_handler_free(&csid->ctrls);
 
 	return ret;
+}
+
+/*
+ * msm_csid_unregister_entity - Unregister CSID module subdev node
+ * @csid: CSID device
+ */
+void msm_csid_unregister_entity(struct csid_device *csid)
+{
+	v4l2_device_unregister_subdev(&csid->subdev);
+	media_entity_cleanup(&csid->subdev.entity);
+	v4l2_ctrl_handler_free(&csid->ctrls);
+}
+
+inline bool csid_is_lite(struct csid_device *csid)
+{
+	return csid->camss->res->csid_res[csid->id].csid.is_lite;
 }
 
 int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size, struct v4l2_subdev **sd) {
@@ -884,7 +1540,7 @@ int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size
 		qm.index = v4l2_ctrl_g_ctrl(ctrl);
 
 		v4l2_querymenu(subdev->ctrl_handler, &qm);
-		size = (size_t*)qm.value;
+		*size = (size_t) qm.value;
 	}
 
 
@@ -948,15 +1604,4 @@ static int csid_set_metadata_callbacks(struct csid_device *csid) {
 	csid->do_post_sof_work = (void*)(uintptr_t)addr;
 	csid->capture_subdev = sd;
 	return 0;
-}
-
-/*
- * msm_csid_unregister_entity - Unregister CSID module subdev node
- * @csid: CSID device
- */
-void msm_csid_unregister_entity(struct csid_device *csid)
-{
-	v4l2_device_unregister_subdev(&csid->subdev);
-	media_entity_cleanup(&csid->subdev.entity);
-	v4l2_ctrl_handler_free(&csid->ctrls);
 }

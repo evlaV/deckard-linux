@@ -114,7 +114,7 @@ static void csiphy_lanes_enable(struct csiphy_device *csiphy,
 	val |= lane_mask << 1;
 	writel_relaxed(val, csiphy->base + CAMSS_CSI_PHY_GLBL_PWR_CFG);
 
-	val = cfg->combo_mode << 4;
+	val = (csiphy->combo_mode ? 1 << 4 : 0);
 	writel_relaxed(val, csiphy->base + CAMSS_CSI_PHY_GLBL_RESET);
 
 	for (i = 0; i <= c->num_data; i++) {
@@ -180,6 +180,11 @@ static irqreturn_t csiphy_isr(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
+static int csiphy_init(struct csiphy_device *csiphy)
+{
+	return 0;
+}
+
 const struct csiphy_hw_ops csiphy_ops_2ph_1_0 = {
 	.get_lane_mask = csiphy_get_lane_mask,
 	.hw_version_read = csiphy_hw_version_read,
@@ -187,4 +192,5 @@ const struct csiphy_hw_ops csiphy_ops_2ph_1_0 = {
 	.lanes_enable = csiphy_lanes_enable,
 	.lanes_disable = csiphy_lanes_disable,
 	.isr = csiphy_isr,
+	.init = csiphy_init,
 };

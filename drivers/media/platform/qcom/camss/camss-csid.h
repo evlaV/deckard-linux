@@ -18,8 +18,6 @@
 #include <media/v4l2-mediabus.h>
 #include <media/v4l2-subdev.h>
 
-#include "camss-video.h"
-
 #define MSM_CSID_PAD_SINK 0
 #define MSM_CSID_PAD_FIRST_SRC 1
 #define MSM_CSID_PADS_NUM 5
@@ -58,7 +56,6 @@
 #define VIDIOC_CSID_VFE_PRV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
 #define VIDIOC_CSID_VFE_PRV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
 #define VIDIOC_CSID_VFE_PRV_STATS_CFG _IO('V', BASE_VIDIOC_PRIVATE + 3)
-#define VIDIOC_CSID_VFE_PRV_S_BPL _IO('V', BASE_VIDIOC_PRIVATE + 4)  // Set bytes per line. Must be called after set format
 
 enum csid_vfe_private_register_type {
 	CSID_VFE_PRV_REG_TYPE_CSID = 0,
@@ -90,7 +87,7 @@ enum csid_testgen_mode {
 	CSID_PAYLOAD_MODE_NUM_SUPPORTED_GEN2 = 9, /* excluding disabled */
 };
 
-struct csid_format {
+struct csid_format_info {
 	u32 code;
 	u8 data_type;
 	u8 decode_format;
@@ -98,10 +95,34 @@ struct csid_format {
 	u8 spp; /* bus samples per pixel */
 };
 
+struct csid_formats {
+	unsigned int nformats;
+	const struct csid_format_info *formats;
+};
+
+struct csid_testgen_config {
+	enum csid_testgen_mode mode;
+	const char * const*modes;
+	u8 nmodes;
+	u8 enabled;
+};
+
 struct csid_phy_config {
 	u8 csiphy_id;
 	u8 lane_cnt;
 	u32 lane_assign;
+	u32 en_vc;
+	u8 need_vc_update;
+};
+
+struct camss_buf_done_info {
+	u32 status; // reg
+	u64 sof_isp_ts_conv;
+	u64 eof_isp_ts_conv;
+	s64 isp_to_kernel_raw_ts_offset;
+	u64 sof_kernel_ts;
+	void* sensor_metadata_buffer_addr;
+	size_t sensor_metadata_buffer_size;
 };
 
 struct csid_device;
@@ -112,6 +133,13 @@ struct csid_hw_ops {
 	 * @csid: CSID device
 	 */
 	void (*configure_stream)(struct csid_device *csid, u8 enable);
+
+	/*
+	 * configure_testgen_pattern - Validates and configures output pattern mode
+	 * of test pattern generator
+	 * @csid: CSID device
+	 */
+	int (*configure_testgen_pattern)(struct csid_device *csid, s32 val);
 
 	/*
 	 * hw_version - Read hardware version register from hardware
@@ -127,7 +155,6 @@ struct csid_hw_ops {
 	 * Return IRQ_HANDLED on success
 	 */
 	irqreturn_t (*isr)(int irq, void *dev);
-	irqreturn_t (*ife_isr)(int irq, void *dev);
 
 	/*
 	 * reset - Trigger reset on CSID module and wait to complete
@@ -156,11 +183,26 @@ struct csid_hw_ops {
 	 */
 	void (*subdev_init)(struct csid_device *csid);
 
+	/*
+	 * reg_update - receive message from other sub device
+	 * @csid: CSID device
+	 * @port_id: Port id
+	 * @is_clear: Indicate if it is clearing reg update or setting reg update
+	 */
+	void (*reg_update)(struct csid_device *csid, int port_id, bool is_clear);
+
 	// Allow CSID and VFE registers read/write from userspace using ioctls
 	int (*set_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
 	int (*get_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
 	// Configure which of the additional ISP output (frameheader, statistics) is streamed and provided with the metadata buffers
 	long (*set_statistics_config)(struct csid_device *csid, u32 stats_cfg);
+};
+
+struct csid_subdev_resources {
+	bool is_lite;
+	const struct csid_hw_ops *hw_ops;
+	const struct parent_dev_ops *parent_dev_ops;
+	const struct csid_formats *formats;
 };
 
 struct csid_device {
@@ -169,56 +211,54 @@ struct csid_device {
 	struct v4l2_subdev subdev;
 	struct media_pad pads[MSM_CSID_PADS_NUM];
 	void __iomem *base;
-	void __iomem *ife_base;
 	u32 irq;
-	u32 ife_irq;
+	u32 reg_update;
 	char irq_name[30];
-	char ife_irq_name[30];
 	struct camss_clock *clock;
 	int nclocks;
+	struct regulator_bulk_data *supplies;
+	int num_supplies;
 	struct completion reset_complete;
+	struct csid_testgen_config testgen;
 	struct csid_phy_config phy;
 	struct v4l2_mbus_framefmt fmt[MSM_CSID_PADS_NUM];
 	struct v4l2_ctrl_handler ctrls;
 	struct v4l2_ctrl *testgen_mode;
-	const struct csid_format *formats;
-	unsigned int nformats;
-	const struct csid_hw_ops *ops;
-	struct camss_video_ops video_ops;
-	struct camss_video video_out;
-	// output buffers currently submitted to HW:
-	struct camss_buffer *out_buf[2];
-	// output buffers not yet submitted to HW:
-	struct list_head pending_bufs;
-	unsigned int sequence;
-	bool stream_on;
+	const struct csid_subdev_resources *res;
+
 	bool power_on;
 
 	struct v4l2_subdev *capture_subdev;
 	size_t metadata_size;
 	void* (*get_metadata) (struct v4l2_subdev*);
 	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp, u8 group);
-	u64 last_sof_isp_timestamp_converted;
-	u64 cur_sof_isp_timestamp_converted;
-	u64 kernel_ts_raw_to_monotonic_offset;
-	u64 cur_eof_isp_timestamp_converted;
-	u64 last_sof_kernel_ts;
-	u64 last_eof_kernel_ts;
-	u64 isp_to_kernel_raw_ts_offset;
 
-	void *sof_addr_upper;
-	void *sof_addr_lower;
-	void *eof_addr_upper;
-	void *eof_addr_lower;
+	// keep track of sof per-path/stream otherwise non-synced stream going through the same csid won't have the right sof metadata
+	u64 path_cur_sof_isp_timestamp_converted[MSM_CSID_MAX_SRC_STREAMS];
+	u64 path_last_sof_kernel_ts[MSM_CSID_MAX_SRC_STREAMS];
 
-	u32 required_comp_done_mask; // bitfield where the index of each mandatory comp group for frames is set
-	u32 stats_cfg; // user-provided bitfield that indicates which statistics/frameheaders must be provided in the metadata buffers
-	u32 stats_comp_done_mask; // composite group mask used to configure IRQs and test IRQ statuses
+	// additional vc config
+	u32 multi_vcdt_en;
+	u32 multi_vcdt_vc;
 
-	spinlock_t output_lock;
+#define CSID_RX_DEBUG 1
+#if CSID_RX_DEBUG
+	bool rx_dbg_en;
+
+	// need to store attributes variables since we have one group per csid and want
+	// access the csid_device from attr_rx_stats_en/attr_rx_stats using container_of
+	char rx_dbg_attr_group_name[256];
+	struct attribute_group rx_dbg_attr_group;
+	struct attribute *rx_dbg_attrs[3];
+	struct device_attribute rx_dbg_en_attr;
+	struct device_attribute rx_dbg_stats_attr;
+
+	// debug rx irq counters
+	u32 rx_dbg_irq_counters[32];
+#endif
 };
 
-struct resources;
+struct camss_subdev_resources;
 
 /*
  * csid_find_code - Find a format code in an array using array index or format code
@@ -234,19 +274,19 @@ u32 csid_find_code(u32 *codes, unsigned int ncode,
 		   unsigned int match_format_idx, u32 match_code);
 
 /*
- * csid_get_fmt_entry - Find csid_format entry with matching format code
- * @formats: Array of format csid_format entries
+ * csid_get_fmt_entry - Find csid_format_info entry with matching format code
+ * @formats: Array of format csid_format_info entries
  * @nformats: Length of @nformats array
  * @code: Desired format code
  *
  * Return formats[0] on failure to find code
  */
-const struct csid_format *csid_get_fmt_entry(const struct csid_format *formats,
-					     unsigned int nformats,
-					     u32 code);
+const struct csid_format_info *csid_get_fmt_entry(const struct csid_format_info *formats,
+						  unsigned int nformats,
+						  u32 code);
 
 int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
-			 const struct resources *res, u8 id);
+			 const struct camss_subdev_resources *res, u8 id);
 
 int msm_csid_register_entity(struct csid_device *csid,
 			     struct v4l2_device *v4l2_dev);
@@ -257,13 +297,45 @@ void msm_csid_get_csid_id(struct media_entity *entity, u8 *id);
 
 int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size, struct v4l2_subdev **sd);
 int get_post_sof_cb_address(struct media_entity *entity, u64 *addr);
-static int csid_set_metadata_callbacks(struct csid_device *csid);
 
 extern const char * const csid_testgen_modes[];
+
+extern const struct csid_formats csid_formats_4_1;
+extern const struct csid_formats csid_formats_4_7;
+extern const struct csid_formats csid_formats_gen2;
 
 extern const struct csid_hw_ops csid_ops_4_1;
 extern const struct csid_hw_ops csid_ops_4_7;
 extern const struct csid_hw_ops csid_ops_gen2;
+extern const struct csid_hw_ops csid_ops_gen3;
 
+/*
+ * csid_is_lite - Check if CSID is CSID lite.
+ * @csid: CSID Device
+ *
+ * Return whether CSID is CSID lite
+ */
+bool csid_is_lite(struct csid_device *csid);
+
+/*
+ * csid_hw_version - CSID hardware version query
+ * @csid: CSID device
+ *
+ * Return HW version or error
+ */
+u32 csid_hw_version(struct csid_device *csid);
+
+/*
+ * csid_src_pad_code - Pick an output/src format based on the input/sink format
+ * @csid: CSID device
+ * @sink_code: The sink format of the input
+ * @match_format_idx: Request preferred index, as defined by subdevice csid
+ *                    format. Set @match_code to 0 if used.
+ * @match_code: Request preferred code, set @match_format_idx to 0 if used
+ *
+ * Return 0 on failure or src format code otherwise
+ */
+u32 csid_src_pad_code(struct csid_device *csid, u32 sink_code,
+		      unsigned int match_format_idx, u32 match_code);
 
 #endif /* QC_MSM_CAMSS_CSID_H */

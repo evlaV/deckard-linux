@@ -19,8 +19,6 @@
 
 #define MSM_CSIPHY_PAD_SINK 0
 #define MSM_CSIPHY_PAD_SRC 1
-#define MSM_CSIPHY_PAD_SINK2 2
-#define MSM_CSIPHY_PAD_SRC2 3
 #define MSM_CSIPHY_PADS_NUM 4
 
 struct csiphy_lane {
@@ -39,9 +37,19 @@ struct csiphy_csi2_cfg {
 };
 
 struct csiphy_config {
-	u8 combo_mode;
+	u8 combo_id;
+	u8 csid_id;
 	struct csiphy_csi2_cfg *csi2;
-	struct csiphy_csi2_cfg *csi2_sec;
+};
+
+struct csiphy_format_info {
+	u32 code;
+	u8 bpp;
+};
+
+struct csiphy_formats {
+	unsigned int nformats;
+	const struct csiphy_format_info *formats;
 };
 
 struct csiphy_device;
@@ -63,6 +71,12 @@ struct csiphy_hw_ops {
 	void (*lanes_disable)(struct csiphy_device *csiphy,
 			      struct csiphy_config *cfg);
 	irqreturn_t (*isr)(int irq, void *dev);
+	int (*init)(struct csiphy_device *csiphy);
+};
+
+struct csiphy_subdev_resources {
+	const struct csiphy_hw_ops *hw_ops;
+	const struct csiphy_formats *formats;
 };
 
 struct csiphy_device {
@@ -78,24 +92,30 @@ struct csiphy_device {
 	bool *rate_set;
 	int nclocks;
 	u32 timer_clk_rate;
+	struct regulator_bulk_data *supplies;
+	int num_supplies;
 	struct csiphy_config cfg;
+	struct csiphy_config cfg2;
 	struct v4l2_mbus_framefmt fmt[MSM_CSIPHY_PADS_NUM];
-	const struct csiphy_hw_ops *ops;
-	const struct csiphy_format *formats;
-	unsigned int nformats;
-	unsigned stream_on_count;
+	const struct csiphy_subdev_resources *res;
+	bool combo_mode;
+	void *data;
 };
 
-struct resources;
+struct camss_subdev_resources;
 
 int msm_csiphy_subdev_init(struct camss *camss,
 			   struct csiphy_device *csiphy,
-			   const struct resources *res, u8 id);
+			   const struct camss_subdev_resources *res, u8 id);
 
 int msm_csiphy_register_entity(struct csiphy_device *csiphy,
 			       struct v4l2_device *v4l2_dev);
 
 void msm_csiphy_unregister_entity(struct csiphy_device *csiphy);
+
+extern const struct csiphy_formats csiphy_formats_8x16;
+extern const struct csiphy_formats csiphy_formats_8x96;
+extern const struct csiphy_formats csiphy_formats_sdm845;
 
 extern const struct csiphy_hw_ops csiphy_ops_2ph_1_0;
 extern const struct csiphy_hw_ops csiphy_ops_3ph_1_0;
