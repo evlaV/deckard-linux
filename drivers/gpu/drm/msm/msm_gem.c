@@ -519,8 +519,12 @@ int msm_gem_pin_vma_locked(struct drm_gem_object *obj, struct msm_gem_vma *vma)
 	if (msm_obj->flags & MSM_BO_MAP_PRIV)
 		prot |= IOMMU_PRIV;
 
-	if (msm_obj->flags & MSM_BO_CACHED_COHERENT)
-		prot |= IOMMU_CACHE;
+ 	if (msm_obj->flags & MSM_BO_CACHED_COHERENT)
+ 		prot |= IOMMU_CACHE;
+	else if (prot == 1)
+		prot |= IOMMU_QCOM_SYS_CACHE;
+	else if (prot == 2)
+		prot |= IOMMU_USE_LLC_NWA;
 
 	msm_gem_assert_locked(obj);
 
