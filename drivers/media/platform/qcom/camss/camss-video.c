@@ -405,10 +405,6 @@ static void video_stop_streaming(struct vb2_queue *q)
 	video_device_pipeline_stop(vdev);
 
 	video->ops->flush_buffers(video, VB2_BUF_STATE_ERROR);
-
-	// clear temporary extra output configuration after streaming is stopped
-	video->has_extra_output_plane_cfg = false;
-	memset(&video->extra_output_plane_cfg, 0, sizeof(video->extra_output_plane_cfg));
 }
 
 static void video_unprepare_streaming(struct vb2_queue *q)
@@ -635,6 +631,11 @@ static int video_s_fmt(struct file *file, void *fh, struct v4l2_format *f)
 	if (vb2_is_busy(&video->vb2_q))
 		return -EBUSY;
 
+	// clear any previous additional output plane configuration when setting the format
+	// (extra output config act as an extension of the format so should be used after the format has been set)
+	video->has_extra_output_plane_cfg = false;
+	memset(&video->extra_output_plane_cfg, 0, sizeof(video->extra_output_plane_cfg));
+
 	ret = __video_try_fmt(video, f);
 	if (ret < 0)
 		return ret;
@@ -722,24 +723,26 @@ static struct csid_device* video_get_csid_device(struct camss_video *video)
 
 static int video_set_extra_output_plane_config(struct camss_video *video, struct camss_extra_output_plane_cfg *config)
 {
-	if(video->active_fmt.fmt.pix_mp.num_planes >= 3) {
-		dev_warn(video->camss->dev, "camss-video: failed to configure extra output plane. Max number of plane reached. \n");
+	// cannot configure output if queue is already active and has buffers
+	if (vb2_is_busy(&video->vb2_q)) {
+		dev_warn(video->camss->dev, "camss-video: cannot configure extra output plane when queue is active \n");
+		return -EBUSY;
+	}
+
+	// camss always configure a single plane for the output image data so expect 1 active plane when no extra output has been configured
+	if(!video->has_extra_output_plane_cfg && (video->active_fmt.fmt.pix_mp.num_planes != 1)) {
+		dev_warn(video->camss->dev, "camss-video: unexpected plane count (%d) in the active format. Expected 1.\n", video->active_fmt.fmt.pix_mp.num_planes);
 		return -EINVAL;
 	}
 
-	if(video->has_extra_output_plane_cfg) {
-		dev_warn(video->camss->dev, "camss-video: failed to configure extra output plane. Extra planes already configured. \n");
-		return -EINVAL;
-	}
-
-	// TODO: make sure we're not streaming yet and have no buffers enqueued yet
-	video->extra_output_plane_cfg = *config;
 	video->has_extra_output_plane_cfg = true;
-	// Add an additional plane to the active format with the required size
-	video->extra_output_addr_idx = (video->active_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12) ? 2 : 1;
-	video->active_fmt.fmt.pix_mp.num_planes += 1;
-	// always put the extra output in plane 1 (never used in any camss format)
+	video->extra_output_plane_cfg = *config;
+
+	// update the plane count to have the additional plane and update its size requirement
+	video->active_fmt.fmt.pix_mp.num_planes = 2; // always put the extra output in plane 1 (never used in camss formats)
 	video->active_fmt.fmt.pix_mp.plane_fmt[1].sizeimage = video->extra_output_plane_cfg.plane_size;
+	// get which index is used to store the additional plane address, NV12 format will use 2 addresses (Y/CbCr planes)
+	video->extra_output_addr_idx = (video->active_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12) ? 2 : 1;
 
 	dev_warn(video->camss->dev, "camss-video: extra output plane configured \n");
 
