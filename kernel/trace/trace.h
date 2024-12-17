@@ -472,6 +472,8 @@ extern u64 tracing_event_time_stamp(struct trace_buffer *buffer, struct ring_buf
 extern int tracing_set_filter_buffering(struct trace_array *tr, bool set);
 extern int tracing_set_clock(struct trace_array *tr, const char *clockstr);
 
+extern ktime_t trace_clock_gettime(struct trace_array *tr);
+extern ktime_t trace_clock_gettime_top(void);
 extern bool trace_clock_in_ns(struct trace_array *tr);
 
 extern unsigned long trace_adjust_address(struct trace_array *tr, unsigned long addr);
