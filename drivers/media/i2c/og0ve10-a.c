@@ -76,7 +76,7 @@ struct sensor_register {
 // Version 1.2 support histogram streaming.
 
 #define METADATA_MAJOR_VERSION 3
-#define METADATA_MINOR_VERSION 0
+#define METADATA_MINOR_VERSION 1
 
 #define DRIVER_MAJOR_VERSION 1
 #define DRIVER_MINOR_VERSION 1
