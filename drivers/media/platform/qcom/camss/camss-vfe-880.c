@@ -508,7 +508,7 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 			}
 		}
 
-		metadata_send(&vfe->camss->metadata[vfe->id], ts_monotonic_raw, sof_isp_timestamp_converted, buf_done_info->eof_isp_ts_conv, buf_done_info->sof_kernel_ts, ts_monotonic_raw,
+		metadata_send(&vfe->camss->metadata[vfe->id], ts_monotonic_raw, sof_isp_timestamp_converted, buf_done_info->eof_isp_ts_conv, buf_done_info->sof_kernel_ts, buf_done_info->isp_to_kernel_raw_ts_offset,
 			ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
 	}
 
