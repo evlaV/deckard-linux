@@ -94,6 +94,7 @@ struct lpm026m648c_ctx {
 	struct mipi_dsi_device *dsi[2];
 	u8 panel_mfg_info[PANEL_MFG_INFO_NUM_BYTES*2];
 	u8 panel_read_data[512];
+	int panel_read_id, panel_read_reg_addr, panel_read_num_bytes;
 
 	struct drm_dsc_config dsc_cfg;
 	bool is_dual_panel;
@@ -644,11 +645,152 @@ static int panel_info_show(struct seq_file *s, void *data)
 	return 0;
 }
 
+static int panel_mfg_info_show(struct seq_file *s, void *data)
+{
+	struct drm_panel *panel = s->private;
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(ctx->panel_mfg_info); i++) {
+		seq_printf(s, "%u ",  ctx->panel_mfg_info[i]);
+	}
+	seq_printf(s, "\n");
+	return 0;
+}
+
+static int panel_read_show(struct seq_file *s, void *data)
+{
+	int ret;
+	unsigned int i;
+	struct drm_panel *panel = s->private;
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+	ret = mipi_dsi_generic_read(ctx->dsi[ctx->panel_read_id], &ctx->panel_read_reg_addr, 1, ctx->panel_read_data, ctx->panel_read_num_bytes);
+	if ( ret < 0 )
+	{
+		DRM_DEV_ERROR(ctx->dev, "failed to read panel %d reg %u\n", ctx->panel_read_id, ctx->panel_read_reg_addr);
+		return ret;
+	}
+	else
+	{
+		for (i = 0; i < ctx->panel_read_num_bytes; i++) {
+			seq_printf(s, "%x ",  ctx->panel_read_data[i]);
+		}
+		seq_printf(s, "\n");
+		return 0;
+	}
+}
+
+static ssize_t panel_read_write(struct file *file,
+					  const char __user *userbuf,
+					  size_t count, loff_t *ppos)
+{
+	int ret;
+	struct seq_file *s = file->private_data;
+	struct drm_panel *panel = s->private;
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+	u8 buf[32];
+
+	if (copy_from_user(buf, userbuf, count))
+		return -EOVERFLOW;
+
+	ret = sscanf(buf, "%d %2x %d", &ctx->panel_read_id, &ctx->panel_read_reg_addr, &ctx->panel_read_num_bytes);
+	if(ret != 3)
+	{
+		DRM_DEV_ERROR(ctx->dev, "panel read got wrong number of input parameters from sscanf");
+		return -EINVAL;
+	}
+	if( ctx->panel_read_id != 0 && ctx->panel_read_id != 1)
+	{
+		// invalid panel id
+		DRM_DEV_ERROR(ctx->dev, "panel read found invalid id value %u", ctx->panel_read_id);
+		ctx->panel_read_id = 0;
+		return -EINVAL;
+	}
+	return count;
+}
+
+static ssize_t panel_write_write(struct file *file,
+					  const char __user *userbuf,
+					  size_t count, loff_t *ppos)
+{
+	int ret;
+	int id, addr, len, i, v;
+	char char_data[256];
+	u8 payload[256];
+	u8 buf[256];
+	struct seq_file *s = file->private_data;
+	struct drm_panel *panel = s->private;
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+
+	if (copy_from_user(buf, userbuf, count))
+		return -EOVERFLOW;
+
+	// get the base parameters
+	ret = sscanf(buf, "%d %2x %d %s", &id, &addr, &len, char_data);
+	if(ret != 4)
+	{
+		DRM_DEV_ERROR(ctx->dev, "panel write got wrong number of input parameters (%d) from sscanf", ret);
+		return -EINVAL;
+	}
+	if(id != 0 && id != 1)
+	{
+		// invalid panel id
+		DRM_DEV_ERROR(ctx->dev, "panel read found invalid id value %u", ctx->panel_read_id);
+		ctx->panel_read_id = 0;
+		return -EINVAL;
+	}
+	// we limit writes to a total of 256 bytes
+	if(len >256)
+	{
+		DRM_DEV_ERROR(ctx->dev, "jdi4k panel write exceed max length %d\n", len);
+		return -EINVAL;
+	}
+	payload[0] = addr;
+	// get the data payload
+	for(i=0;i<len;i++)
+	{
+	    if(sscanf(char_data + i * 2, "%2x", &v) != 1) break;
+        payload[i+1] = (unsigned char)v;
+	}
+
+	if (addr >= 0xb0)
+		ret = mipi_dsi_generic_write(ctx->dsi[id], payload, ARRAY_SIZE(payload));
+	else
+		ret = mipi_dsi_dcs_write_buffer(ctx->dsi[id], payload, ARRAY_SIZE(payload));
+	if (ret < 0)
+	{
+		DRM_DEV_ERROR(ctx->dev, "failed to tx cmd [%.2x], err: %d\n", payload[0], ret);
+	}
+
+	return count;
+}
+
+static int panel_write_show(struct seq_file *s, void *data)
+{
+	return 0;
+}
+
+static int panel_available_show(struct seq_file *s, void *data)
+{
+	struct drm_panel *panel = s->private;
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+	seq_printf(s, "%d\n",  ctx->enabled );
+	return 0;
+}
+
 DEFINE_SHOW_ATTRIBUTE(panel_info);
+DEFINE_SHOW_ATTRIBUTE(panel_mfg_info);
+DEFINE_SHOW_ATTRIBUTE(panel_available);
+DEFINE_SHOW_STORE_ATTRIBUTE(panel_read);
+DEFINE_SHOW_STORE_ATTRIBUTE(panel_write);
 
 static void lpm026m648c_debugfs_init(struct drm_panel *panel, struct dentry *root)
 {
 	debugfs_create_file("panel_info", 0600, root, panel, &panel_info_fops);
+	debugfs_create_file("panel_mfg_info", 0600, root, panel, &panel_mfg_info_fops);
+	debugfs_create_file("panel_available", 0600, root, panel, &panel_available_fops);
+	debugfs_create_file("panel_write", 0600, root, panel, &panel_write_fops);
+	debugfs_create_file("panel_read", 0600, root, panel, &panel_read_fops);
 }
 
 static const struct drm_panel_funcs lpm026m648c_drm_funcs = {
