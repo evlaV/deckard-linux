@@ -110,6 +110,10 @@ static int iris_probe(struct platform_device *pdev)
 	struct iris_core *core;
 	u64 dma_mask;
 	int ret;
+	static int defer;
+
+	if (defer++ < 8)
+		return -EPROBE_DEFER;
 
 	core = devm_kzalloc(&pdev->dev, sizeof(*core), GFP_KERNEL);
 	if (!core)
