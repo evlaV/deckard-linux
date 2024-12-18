@@ -440,7 +440,6 @@ static irqreturn_t csid_isr(int irq, void *dev)
 					update_isp_to_kernel_raw_ts_offset_estimate(ts_monotonic_raw, sof_isp_timestamp);
 
 					csid->path_cur_sof_isp_timestamp_converted[i] = sof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
-
 					if(csid->do_post_sof_work != NULL) {
 						u8 group = (sof_timestamp_lower & 1) ? 1 : 0;
 						csid->do_post_sof_work(csid->capture_subdev, csid->path_cur_sof_isp_timestamp_converted[i], ts_monotonic_raw, group);
