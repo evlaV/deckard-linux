@@ -145,15 +145,15 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 
 		newname = kasprintf(GFP_KERNEL, "qcom/%s", fwname);
 
-		ret = qcom_mdt_load(dev, fw, newname, pasid,
-				mem_region, mem_phys, mem_size, NULL);
+		ret = -EOPNOTSUPP; //qcom_mdt_load(dev, fw, newname, pasid,
+				//mem_region, mem_phys, mem_size, NULL);
 		kfree(newname);
 	}
 	if (ret)
 		goto out;
 
 	/* Send the image to the secure world */
-	ret = qcom_pas_auth_and_reset(pasid);
+	ret = -EOPNOTSUPP; //ret = qcom_pas_auth_and_reset(pasid);
 
 	/*
 	 * If the pas call returns -EOPNOTSUPP we assume that this target
