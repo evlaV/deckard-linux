@@ -571,6 +571,7 @@ config VIDEO_OV5695
 
 config VIDEO_OV6211
 	tristate "OmniVision OV6211 sensor support"
+	select V4L2_CCI_I2C
 	help
 	  This is a Video4Linux2 sensor driver for the OmniVision
 	  OV6211 camera.
