@@ -1020,6 +1020,12 @@ config LEDS_ACER_A500
 	  This option enables support for the Power Button LED of
 	  Acer Iconia Tab A500.
 
+config LEDS_MP3317
+    tristate "LED driver for MP3317"
+    depends on I2C
+    help
+      Say Y to enable the MP3317 IR LED driver on the I2C bus.
+
 source "drivers/leds/blink/Kconfig"
 
 comment "Flash and Torch LED drivers"

@@ -1596,6 +1596,12 @@ config REGULATOR_TPS51632
 	  The voltage output can be configure through I2C interface or PWM
 	  interface.
 
+config REGULATOR_TPS61377
+	tristate "TI TPS61377 Boost Converter"
+	help
+	  This driver supports TPS61377 synchronous boost converter 
+	  with programmable peak current limit.
+
 config REGULATOR_TPS6105X
 	tristate "TI TPS6105X Power regulators"
 	depends on TPS6105X
