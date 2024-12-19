@@ -98,7 +98,6 @@ static int reg_valve_5v_exp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct device_node *node;
-	struct regulator_dev *rdev;
 	struct valve_5v_exp_vreg *vreg;
 	struct regulator_init_data *init_data;
 	struct regulator_config reg_config = {};
@@ -130,14 +129,6 @@ static int reg_valve_5v_exp_probe(struct platform_device *pdev)
 	vreg->gpio = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
 	if (IS_ERR(vreg->gpio))
 		return PTR_ERR(vreg->gpio);
-
-	rdev = devm_regulator_register(dev, &vreg->desc, &reg_config);
-	if (IS_ERR(rdev)) {
-		// free init_data on failure?
-		printk("devm_regulator_register failed\n");
-		of_node_put(node);
-		return PTR_ERR(rdev);
-	}
 
 	platform_set_drvdata(pdev, vreg);
 
