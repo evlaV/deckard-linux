@@ -304,8 +304,6 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	unsigned GPO1_TES1 = 233, GPO1_TEW1 = 17;
     _get_per_mode_settings(ctx->current_mode, &VFP, &VID_VS_DELAY, &VBP);
 
-    printk("RAD panel on\n");
-
 	pps_cmd[0] = 0xe6;
 	drm_dsc_pps_payload_pack((void*) &pps_cmd[1], &ctx->dsc_cfg);
 
@@ -380,8 +378,6 @@ static void get_panel_info(struct drm_panel *panel)
 	u8 *panel_mfg_info = ctx->panel_mfg_info;
 	int ret;
 	unsigned int id, offset;
-
-    printk("RAD pael info\n");
 
 	// read panel info from register 0xBF
 	// only DVT+ panels will have data other than synaptics driver IDs populated
@@ -765,10 +761,6 @@ static int rad_prepare(struct drm_panel *panel)
 		DRM_DEV_ERROR(ctx->dev, "preboost on failed\n");
 		goto power_off;
 	}
-
-	//we need to delay to wait for hiccup mode to exit --
-	//at a minimum it is about 70ms we need to wait here...
-	usleep_range(400000, 450000);
 
 	// turn on backlight drivers
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
