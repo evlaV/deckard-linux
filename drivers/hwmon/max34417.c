@@ -183,8 +183,6 @@ static ssize_t perr_verr_show(struct device *dev,
 	const struct max34417_data *data = dev_get_drvdata(dev);
 
 	return sprintf(buf, "%s\n", perr_verr_modes[data->perr_verr]);
-
-	return sprintf(buf, "disabled\n");
 }
 
 static ssize_t measurement_mode_store(struct device *dev,
@@ -781,7 +779,7 @@ static int max34417_probe(struct i2c_client *client)
 
 	data->client = client;
 	data->rsense = r_sense;
-	data->perr_verr = 0; /* disabled by default */
+	data->perr_verr = 1; /* enabled by default */
 	if (max34417_calc_correction(dev)) {
 		dev_err(dev, "Could not calculate power correction\n");
 		return -EINVAL;
@@ -838,7 +836,6 @@ static int max34417_probe(struct i2c_client *client)
 static int max34417_detect(struct i2c_client *client,
 			   struct i2c_board_info *info)
 {
-	struct i2c_adapter *adapter = client->adapter;
 	int regval;
 
 	/*--------------------
