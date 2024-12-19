@@ -16,6 +16,8 @@ struct mp9184_data {
 	struct gpio_desc *en_gpio;
 };
 
+#define MP9184_ENABLE_TIME_USEC 400000
+
 static int reg_enable(struct regulator_dev *rdev)
 {
 	struct mp9184_data *mp9184 = rdev_get_drvdata(rdev);
@@ -34,7 +36,8 @@ static int reg_enable(struct regulator_dev *rdev)
 	dev_err(mp9184->dev, "preboost startup done\n");
 	//we need to delay to wait for hiccup mode to exit --
 	//at a minimum it is about 70ms we need to wait here...
-	usleep_range(400000, 450000);
+	// we we do via the enable time function
+	//usleep_range(400000, 450000);
 
 	mp9184->is_enabled = true;
 
@@ -58,10 +61,15 @@ static int reg_is_enabled(struct regulator_dev *rdev)
 	return mp9184->is_enabled;
 }
 
+static int regulator_enable_time(struct regulator_dev *rdev) {
+	return MP9184_ENABLE_TIME_USEC;
+}
+
 static const struct regulator_ops mp9184_ops = {
 	.enable = reg_enable,
 	.disable = reg_disable,
 	.is_enabled = reg_is_enabled,
+	.enable_time = regulator_enable_time,
 };
 
 static int mp9184_probe(struct platform_device *pdev)
