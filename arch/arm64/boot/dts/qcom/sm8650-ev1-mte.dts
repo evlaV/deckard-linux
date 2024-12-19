@@ -1304,6 +1304,8 @@
 &pm8550b_typec {
 	status = "okay";
 
+	disable-cell-balancing;
+
 	vdd-pdphy-supply = <&vreg_l5b_3p1>;
 
 	io-channels = <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_SNS_CHGR(7)>,
