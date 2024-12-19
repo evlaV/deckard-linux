@@ -1,280 +1,523 @@
-// SPDX-License-Identifier: GPL-2.0
-// Copyright (c) 2024-2025 Linaro Ltd
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Copyright (C) 2011-2013 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright (C) 2014-2017 Mentor Graphics Inc.
+ * 
+ * Based on OV6211 driver. Adapted by arcturus.industries
+ */
 
+#include <linux/unaligned.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
+#include <linux/clkdev.h>
+#include <linux/ctype.h>
 #include <linux/delay.h>
+#include <linux/device.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
+#include <linux/init.h>
 #include <linux/module.h>
-#include <linux/pm_runtime.h>
+#include <linux/of_device.h>
 #include <linux/regulator/consumer.h>
-#include <linux/units.h>
-#include <media/v4l2-cci.h>
+#include <linux/slab.h>
+#include <linux/types.h>
+#include <media/v4l2-async.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-event.h>
 #include <media/v4l2-fwnode.h>
+#include <media/v4l2-subdev.h>
 
-#define OV6211_LINK_FREQ_480MHZ		(480 * HZ_PER_MHZ)
-#define OV6211_MCLK_FREQ_24MHZ		(24 * HZ_PER_MHZ)
+#define OV6211_LINK_FREQUENCY 240000000
 
-#define OV6211_REG_CHIP_ID		CCI_REG16(0x300a)
-#define OV6211_CHIP_ID			0x6710
+#define OV6211_REG_CHIP_ID		0x300a
 
-#define OV6211_REG_MODE_SELECT		CCI_REG8(0x0100)
-#define OV6211_MODE_STANDBY		0x00
-#define OV6211_MODE_STREAMING		BIT(0)
+#define OV6211_REG_TIMING_DVPHO		0x3808
+#define OV6211_REG_TIMING_DVPVO		0x380a
+#define OV6211_REG_TIMING_HTS		0x380c
+#define OV6211_REG_TIMING_VTS		0x380e
 
-#define OV6211_REG_SOFTWARE_RST		CCI_REG8(0x0103)
-#define OV6211_SOFTWARE_RST		BIT(0)
+#define VIDIOC_SENSOR_PRV_G_REGISTER _IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct sensor_register)
 
-/* Exposure controls from sensor */
-#define OV6211_REG_EXPOSURE		CCI_REG24(0x3500)
-#define OV6211_EXPOSURE_MIN		1
-#define OV6211_EXPOSURE_MAX_MARGIN	4
-#define OV6211_EXPOSURE_STEP		1
-#define OV6211_EXPOSURE_DEFAULT		210
-
-/* Analogue gain controls from sensor */
-#define OV6211_REG_ANALOGUE_GAIN	CCI_REG16(0x350a)
-#define OV6211_ANALOGUE_GAIN_MIN	1
-#define OV6211_ANALOGUE_GAIN_MAX	0x3ff
-#define OV6211_ANALOGUE_GAIN_STEP	1
-#define OV6211_ANALOGUE_GAIN_DEFAULT	160
-
-/* Test pattern */
-#define OV6211_REG_PRE_ISP		CCI_REG8(0x5e00)
-#define OV6211_TEST_PATTERN_ENABLE	BIT(7)
-
-#define to_ov6211(_sd)			container_of(_sd, struct ov6211, sd)
-
-static const s64 ov6211_link_freq_menu[] = {
-	OV6211_LINK_FREQ_480MHZ,
+struct sensor_register {
+	u16 reg_addr;
+	u32 reg_value;
+	u8 len;
 };
 
-struct ov6211_reg_list {
-	const struct cci_reg_sequence *regs;
-	unsigned int num_regs;
+static unsigned int virtual_channel;
+
+/* regulator supplies */
+static const char * const ov6211_supply_name[] = {
+	"DOVDD", /* Digital I/O (1.8V) supply */
+	"AVDD",  /* Analog (2.8V) supply */
+	"DVDD",  /* Digital Core (1.5V) supply */
 };
 
-struct ov6211_mode {
-	u32 width;	/* Frame width in pixels */
-	u32 height;	/* Frame height in pixels */
-	u32 hts;	/* Horizontal timing size */
-	u32 vts;	/* Default vertical timing size */
-	u32 bpp;	/* Bits per pixel */
+#define OV6211_NUM_SUPPLIES ARRAY_SIZE(ov6211_supply_name)
 
-	const struct ov6211_reg_list reg_list;	/* Sensor register setting */
+struct reg_value {
+	u16 reg_addr;
+	u8 val;
+	u8 mask;
+	u32 delay_ms;
 };
 
-static const char * const ov6211_test_pattern_menu[] = {
-	"Disabled",
-	"Vertical Colour Bars",
+struct ov6211_mode_info {
+	u32 hact;
+	u32 htot;
+	u32 vact;
+	u32 vtot;
+	const struct reg_value *reg_data;
+	u32 reg_data_size;
 };
 
-static const char * const ov6211_supply_names[] = {
-	"avdd",		/* Analog power */
-	"dovdd",	/* Digital I/O power */
-	"dvdd",		/* Digital core power */
-};
-
-#define OV6211_NUM_SUPPLIES	ARRAY_SIZE(ov6211_supply_names)
-
-struct ov6211 {
-	struct device *dev;
-	struct regmap *regmap;
-	struct clk *xvclk;
-	struct gpio_desc *reset_gpio;
-	struct regulator_bulk_data supplies[OV6211_NUM_SUPPLIES];
-
+struct ov6211_dev {
+	struct i2c_client *i2c_client;
 	struct v4l2_subdev sd;
 	struct media_pad pad;
+	struct v4l2_fwnode_endpoint ep; /* the parsed DT endpoint info */
+	struct clk *xclk; /* system clock to OV6211 */
+
+	struct regulator_bulk_data supplies[OV6211_NUM_SUPPLIES];
+	struct gpio_desc *reset_gpio;
+
+	/* lock to protect all members below */
+	struct mutex lock;
+
+	int power_count;
 
 	struct v4l2_ctrl_handler ctrl_handler;
+	struct mutex mutex;
 
-	/* Saved register values */
-	u64 pre_isp;
+	struct v4l2_mbus_framefmt fmt;
+
+	bool streaming;
 };
 
-static const struct cci_reg_sequence ov6211_400x400_120fps_mode[] = {
-	{ CCI_REG8(0x3005), 0x00 },
-	{ CCI_REG8(0x3013), 0x12 },
-	{ CCI_REG8(0x3014), 0x04 },
-	{ CCI_REG8(0x3016), 0x10 },
-	{ CCI_REG8(0x3017), 0x00 },
-	{ CCI_REG8(0x3018), 0x00 },
-	{ CCI_REG8(0x301a), 0x00 },
-	{ CCI_REG8(0x301b), 0x00 },
-	{ CCI_REG8(0x301c), 0x00 },
-	{ CCI_REG8(0x3037), 0xf0 },
-	{ CCI_REG8(0x3080), 0x01 },
-	{ CCI_REG8(0x3081), 0x00 },
-	{ CCI_REG8(0x3082), 0x01 },
-	{ CCI_REG8(0x3098), 0x04 },
-	{ CCI_REG8(0x3099), 0x28 },
-	{ CCI_REG8(0x309a), 0x06 },
-	{ CCI_REG8(0x309b), 0x04 },
-	{ CCI_REG8(0x309c), 0x00 },
-	{ CCI_REG8(0x309d), 0x00 },
-	{ CCI_REG8(0x309e), 0x01 },
-	{ CCI_REG8(0x309f), 0x00 },
-	{ CCI_REG8(0x30b0), 0x08 },
-	{ CCI_REG8(0x30b1), 0x02 },
-	{ CCI_REG8(0x30b2), 0x00 },
-	{ CCI_REG8(0x30b3), 0x28 },
-	{ CCI_REG8(0x30b4), 0x02 },
-	{ CCI_REG8(0x30b5), 0x00 },
-	{ CCI_REG8(0x3106), 0xd9 },
-	{ CCI_REG8(0x3503), 0x07 },
-	{ CCI_REG8(0x3509), 0x10 },
-	{ CCI_REG8(0x3600), 0xfc },
-	{ CCI_REG8(0x3620), 0xb7 },
-	{ CCI_REG8(0x3621), 0x05 },
-	{ CCI_REG8(0x3626), 0x31 },
-	{ CCI_REG8(0x3627), 0x40 },
-	{ CCI_REG8(0x3632), 0xa3 },
-	{ CCI_REG8(0x3633), 0x34 },
-	{ CCI_REG8(0x3634), 0x40 },
-	{ CCI_REG8(0x3636), 0x00 },
-	{ CCI_REG8(0x3660), 0x80 },
-	{ CCI_REG8(0x3662), 0x03 },
-	{ CCI_REG8(0x3664), 0xf0 },
-	{ CCI_REG8(0x366a), 0x10 },
-	{ CCI_REG8(0x366b), 0x06 },
-	{ CCI_REG8(0x3680), 0xf4 },
-	{ CCI_REG8(0x3681), 0x50 },
-	{ CCI_REG8(0x3682), 0x00 },
-	{ CCI_REG8(0x3708), 0x20 },
-	{ CCI_REG8(0x3709), 0x40 },
-	{ CCI_REG8(0x370d), 0x03 },
-	{ CCI_REG8(0x373b), 0x02 },
-	{ CCI_REG8(0x373c), 0x08 },
-	{ CCI_REG8(0x3742), 0x00 },
-	{ CCI_REG8(0x3744), 0x16 },
-	{ CCI_REG8(0x3745), 0x08 },
-	{ CCI_REG8(0x3781), 0xfc },
-	{ CCI_REG8(0x3788), 0x00 },
-	{ CCI_REG8(0x3800), 0x00 },
-	{ CCI_REG8(0x3801), 0x04 },
-	{ CCI_REG8(0x3802), 0x00 },
-	{ CCI_REG8(0x3803), 0x04 },
-	{ CCI_REG8(0x3804), 0x01 },
-	{ CCI_REG8(0x3805), 0x9b },
-	{ CCI_REG8(0x3806), 0x01 },
-	{ CCI_REG8(0x3807), 0x9b },
-	{ CCI_REG8(0x3808), 0x01 },	/* output width */
-	{ CCI_REG8(0x3809), 0x90 },
-	{ CCI_REG8(0x380a), 0x01 },	/* output height */
-	{ CCI_REG8(0x380b), 0x90 },
-	{ CCI_REG8(0x380c), 0x05 },	/* horizontal timing size */
-	{ CCI_REG8(0x380d), 0xf2 },
-	{ CCI_REG8(0x380e), 0x01 },	/* vertical timing size */
-	{ CCI_REG8(0x380f), 0xb6 },
-	{ CCI_REG8(0x3810), 0x00 },
-	{ CCI_REG8(0x3811), 0x04 },
-	{ CCI_REG8(0x3812), 0x00 },
-	{ CCI_REG8(0x3813), 0x04 },
-	{ CCI_REG8(0x3814), 0x11 },
-	{ CCI_REG8(0x3815), 0x11 },
-	{ CCI_REG8(0x3820), 0x00 },
-	{ CCI_REG8(0x3821), 0x00 },
-	{ CCI_REG8(0x382b), 0xfa },
-	{ CCI_REG8(0x382f), 0x04 },
-	{ CCI_REG8(0x3832), 0x00 },
-	{ CCI_REG8(0x3833), 0x05 },
-	{ CCI_REG8(0x3834), 0x00 },
-	{ CCI_REG8(0x3835), 0x05 },
-	{ CCI_REG8(0x3882), 0x04 },
-	{ CCI_REG8(0x3883), 0x00 },
-	{ CCI_REG8(0x38a4), 0x10 },
-	{ CCI_REG8(0x38a5), 0x00 },
-	{ CCI_REG8(0x38b1), 0x03 },
-	{ CCI_REG8(0x3b80), 0x00 },
-	{ CCI_REG8(0x3b81), 0xff },
-	{ CCI_REG8(0x3b82), 0x10 },
-	{ CCI_REG8(0x3b83), 0x00 },
-	{ CCI_REG8(0x3b84), 0x08 },
-	{ CCI_REG8(0x3b85), 0x00 },
-	{ CCI_REG8(0x3b86), 0x01 },
-	{ CCI_REG8(0x3b87), 0x00 },
-	{ CCI_REG8(0x3b88), 0x00 },
-	{ CCI_REG8(0x3b89), 0x00 },
-	{ CCI_REG8(0x3b8a), 0x00 },
-	{ CCI_REG8(0x3b8b), 0x05 },
-	{ CCI_REG8(0x3b8c), 0x00 },
-	{ CCI_REG8(0x3b8d), 0x00 },
-	{ CCI_REG8(0x3b8e), 0x01 },
-	{ CCI_REG8(0x3b8f), 0xb2 },
-	{ CCI_REG8(0x3b94), 0x05 },
-	{ CCI_REG8(0x3b95), 0xf2 },
-	{ CCI_REG8(0x3b96), 0xc0 },
-	{ CCI_REG8(0x4004), 0x04 },
-	{ CCI_REG8(0x404e), 0x01 },
-	{ CCI_REG8(0x4801), 0x0f },
-	{ CCI_REG8(0x4806), 0x0f },
-	{ CCI_REG8(0x4837), 0x43 },
-	{ CCI_REG8(0x5a08), 0x00 },
-	{ CCI_REG8(0x5a01), 0x00 },
-	{ CCI_REG8(0x5a03), 0x00 },
-	{ CCI_REG8(0x5a04), 0x10 },
-	{ CCI_REG8(0x5a05), 0xa0 },
-	{ CCI_REG8(0x5a06), 0x0c },
-	{ CCI_REG8(0x5a07), 0x78 },
-};
-
-static const struct ov6211_mode supported_modes[] = {
-	{
-		.width = 400,
-		.height = 400,
-		.hts = 1522,
-		.vts = 438,
-		.bpp = 8,
-		.reg_list = {
-			.regs = ov6211_400x400_120fps_mode,
-			.num_regs = ARRAY_SIZE(ov6211_400x400_120fps_mode),
-		},
-	},
-};
-
-static int ov6211_set_test_pattern(struct ov6211 *ov6211, u32 pattern)
+static inline struct ov6211_dev *to_ov6211_dev(struct v4l2_subdev *sd)
 {
-	u64 val = ov6211->pre_isp;
-
-	if (pattern)
-		val |= OV6211_TEST_PATTERN_ENABLE;
-	else
-		val &= ~OV6211_TEST_PATTERN_ENABLE;
-
-	return cci_write(ov6211->regmap, OV6211_REG_PRE_ISP, val, NULL);
+	return container_of(sd, struct ov6211_dev, sd);
 }
+
+static const struct reg_value ov6211_setting[] = {
+
+{0x0103, 0x01, 0, 0}, {0x0100, 0x00, 0, 0}, {0x3005, 0x08, 0, 0},
+{0x3013, 0x12, 0, 0}, {0x3014, 0x04, 0, 0}, {0x3016, 0x10, 0, 0},
+{0x3017, 0x00, 0, 0}, {0x3018, 0x00, 0, 0}, {0x301a, 0x00, 0, 0},
+{0x301b, 0x00, 0, 0}, {0x301c, 0x00, 0, 0}, {0x3037, 0xf0, 0, 0},
+{0x3080, 0x01, 0, 0}, {0x3081, 0x00, 0, 0}, {0x3082, 0x01, 0, 0},
+{0x3098, 0x04, 0, 0}, {0x3099, 0x28, 0, 0}, {0x309a, 0x06, 0, 0},
+{0x309b, 0x04, 0, 0}, {0x309c, 0x00, 0, 0}, {0x309d, 0x00, 0, 0},
+{0x309e, 0x01, 0, 0}, {0x309f, 0x00, 0, 0}, {0x30b0, 0x08, 0, 0},
+{0x30b1, 0x02, 0, 0}, {0x30b2, 0x00, 0, 0}, {0x30b3, 0x28, 0, 0},
+{0x30b4, 0x02, 0, 0}, {0x30b5, 0x00, 0, 0}, {0x3106, 0xd9, 0, 0},
+{0x3500, 0x00, 0, 0}, {0x3501, 0x0d, 0, 0}, {0x3502, 0x20, 0, 0},
+{0x3503, 0x07, 0, 0}, {0x3509, 0x10, 0, 0}, {0x350b, 0xa0, 0, 0},
+{0x3600, 0xfc, 0, 0}, {0x3620, 0xb7, 0, 0}, {0x3621, 0x05, 0, 0},
+{0x3626, 0x31, 0, 0}, {0x3627, 0x40, 0, 0}, {0x3632, 0xa3, 0, 0},
+{0x3633, 0x34, 0, 0}, {0x3634, 0x40, 0, 0}, {0x3636, 0x00, 0, 0},
+{0x3660, 0x80, 0, 0}, {0x3662, 0x03, 0, 0}, {0x3664, 0xf0, 0, 0},
+{0x366a, 0x10, 0, 0}, {0x366b, 0x06, 0, 0}, {0x3680, 0xf4, 0, 0},
+{0x3681, 0x50, 0, 0}, {0x3682, 0x00, 0, 0}, {0x3708, 0x20, 0, 0},
+{0x3709, 0x40, 0, 0}, {0x370d, 0x03, 0, 0}, {0x373b, 0x02, 0, 0},
+{0x373c, 0x08, 0, 0}, {0x3742, 0x00, 0, 0}, {0x3744, 0x16, 0, 0},
+{0x3745, 0x08, 0, 0}, {0x3781, 0xfc, 0, 0}, {0x3788, 0x00, 0, 0},
+{0x3800, 0x00, 0, 0}, {0x3801, 0x04, 0, 0}, {0x3802, 0x00, 0, 0},
+{0x3803, 0x04, 0, 0}, {0x3804, 0x01, 0, 0}, {0x3805, 0x9b, 0, 0},
+{0x3806, 0x01, 0, 0}, {0x3807, 0x9b, 0, 0}, {0x3808, 0x01, 0, 0},
+{0x3809, 0x90, 0, 0}, {0x380a, 0x01, 0, 0}, {0x380b, 0x90, 0, 0},
+{0x380c, 0x05, 0, 0}, {0x380d, 0xf2, 0, 0}, {0x380e, 0x01, 0, 0},
+{0x380f, 0xb6, 0, 0}, {0x3810, 0x00, 0, 0}, {0x3811, 0x04, 0, 0},
+{0x3812, 0x00, 0, 0}, {0x3813, 0x04, 0, 0}, {0x3814, 0x11, 0, 0},
+{0x3815, 0x11, 0, 0}, {0x3820, 0x00, 0, 0}, {0x3821, 0x00, 0, 0},
+{0x382b, 0xfa, 0, 0}, {0x382f, 0x04, 0, 0}, {0x3832, 0x00, 0, 0},
+{0x3833, 0x05, 0, 0}, {0x3834, 0x00, 0, 0}, {0x3835, 0x05, 0, 0},
+{0x3882, 0x04, 0, 0}, {0x3883, 0x00, 0, 0}, {0x38a4, 0x10, 0, 0},
+{0x38a5, 0x00, 0, 0}, {0x38b1, 0x03, 0, 0}, {0x3b80, 0x00, 0, 0},
+{0x3b81, 0xff, 0, 0}, {0x3b82, 0x10, 0, 0}, {0x3b83, 0x00, 0, 0},
+{0x3b84, 0x08, 0, 0}, {0x3b85, 0x00, 0, 0}, {0x3b86, 0x01, 0, 0},
+{0x3b87, 0x00, 0, 0}, {0x3b88, 0x00, 0, 0}, {0x3b89, 0x00, 0, 0},
+{0x3b8a, 0x00, 0, 0}, {0x3b8b, 0x05, 0, 0}, {0x3b8c, 0x00, 0, 0},
+{0x3b8d, 0x00, 0, 0}, {0x3b8e, 0x01, 0, 0}, {0x3b8f, 0xb2, 0, 0},
+{0x3b94, 0x05, 0, 0}, {0x3b95, 0xf2, 0, 0}, {0x3b96, 0xc0, 0, 0},
+{0x4004, 0x04, 0, 0}, {0x404e, 0x01, 0, 0}, {0x4801, 0x0f, 0, 0},
+{0x4806, 0x0f, 0, 0}, {0x4837, 0x43, 0, 0}, {0x5a08, 0x00, 0, 0},
+{0x5a01, 0x00, 0, 0}, {0x5a03, 0x00, 0, 0}, {0x5a04, 0x10, 0, 0},
+{0x5a05, 0xa0, 0, 0}, {0x5a06, 0x0c, 0, 0}, {0x5a07, 0x78, 0, 0},
+
+};
+
+static const struct ov6211_mode_info ov6211_mode_data = {
+	1280, 1456 / 2, 800, 914, ov6211_setting, ARRAY_SIZE(ov6211_setting)
+	// 1280, 1456, 800, 3676, ov6211_setting, ARRAY_SIZE(ov6211_setting)
+};
+
+static const s64 link_freq_menu_items[] = {
+	OV6211_LINK_FREQUENCY
+};
+
+static int ov6211_write_reg(struct ov6211_dev *sensor, u16 reg, u8 val)
+{
+	struct i2c_client *client = sensor->i2c_client;
+	struct i2c_msg msg;
+	u8 buf[3];
+	int ret;
+
+	buf[0] = reg >> 8;
+	buf[1] = reg & 0xff;
+	buf[2] = val;
+
+	msg.addr = client->addr;
+	msg.flags = client->flags;
+	msg.buf = buf;
+	msg.len = sizeof(buf);
+
+	ret = i2c_transfer(client->adapter, &msg, 1);
+	if (ret < 0) {
+		dev_err(&client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
+			__func__, reg, val, ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int ov6211_read_reg(struct ov6211_dev *sensor, u16 reg, u8 *val)
+{
+	struct i2c_client *client = sensor->i2c_client;
+	struct i2c_msg msg[2];
+	u8 buf[2];
+	int ret;
+
+	buf[0] = reg >> 8;
+	buf[1] = reg & 0xff;
+
+	msg[0].addr = client->addr;
+	msg[0].flags = client->flags;
+	msg[0].buf = buf;
+	msg[0].len = sizeof(buf);
+
+	msg[1].addr = client->addr;
+	msg[1].flags = client->flags | I2C_M_RD;
+	msg[1].buf = buf;
+	msg[1].len = 1;
+
+	ret = i2c_transfer(client->adapter, msg, 2);
+	if (ret < 0) {
+		dev_err(&client->dev, "%s: error: reg=%x\n",
+			__func__, reg);
+		return ret;
+	}
+
+	*val = buf[0];
+	return 0;
+}
+
+static int ov6211_read_reg_len(struct ov6211_dev *sensor, u16 reg, u16 len, u32 *val)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(&sensor->sd);
+	struct i2c_msg msgs[2];
+	u8 addr_buf[2];
+	u8 data_buf[4] = {0};
+	int ret;
+
+	put_unaligned_be16(reg, addr_buf);
+	msgs[0].addr = client->addr;
+	msgs[0].flags = 0;
+	msgs[0].len = sizeof(addr_buf);
+	msgs[0].buf = addr_buf;
+	msgs[1].addr = client->addr;
+	msgs[1].flags = I2C_M_RD;
+	msgs[1].len = len;
+	msgs[1].buf = &data_buf[4 - len];
+
+	ret = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+	if (ret != ARRAY_SIZE(msgs))
+		return -EIO;
+
+	*val = get_unaligned_be32(data_buf);
+
+	return 0;
+}
+
+static int ov6211_write_reg16(struct ov6211_dev *sensor, u16 reg, u16 val)
+{
+	int ret;
+
+	ret = ov6211_write_reg(sensor, reg, val >> 8);
+	if (ret)
+		return ret;
+
+	return ov6211_write_reg(sensor, reg + 1, val & 0xff);
+}
+
+/* download ov6211 settings to sensor through i2c */
+static int ov6211_set_timings(struct ov6211_dev *sensor,
+			      const struct ov6211_mode_info *mode)
+{
+	int ret;
+
+	ret = ov6211_write_reg16(sensor, OV6211_REG_TIMING_DVPHO, mode->hact);
+	if (ret < 0)
+		return ret;
+
+	ret = ov6211_write_reg16(sensor, OV6211_REG_TIMING_DVPVO, mode->vact);
+	if (ret < 0)
+		return ret;
+
+	ret = ov6211_write_reg16(sensor, OV6211_REG_TIMING_HTS, mode->htot);
+	if (ret < 0)
+		return ret;
+
+	return ov6211_write_reg16(sensor, OV6211_REG_TIMING_VTS, mode->vtot);
+}
+
+static int ov6211_load_regs(struct ov6211_dev *sensor,
+			    const struct ov6211_mode_info *mode)
+{
+	const struct reg_value *regs = mode->reg_data;
+	unsigned int i;
+	u32 delay_ms;
+	u16 reg_addr;
+	u8 mask, val;
+	int ret = 0;
+
+	struct i2c_client *client = sensor->i2c_client;
+
+	u16 chip_id;
+	ret = ov6211_read_reg_len(sensor, OV6211_REG_CHIP_ID, 2, (u32 *)&chip_id);
+	if (ret) {
+		dev_err(&client->dev, "%s: failed to read chip identifier\n",
+			__func__);
+		return ret;
+	}
+
+	if (chip_id != 0x6710) {
+		dev_err(&client->dev, "%s: wrong chip identifier won't stream!, expected 0x6710, got 0x%x\n",
+			__func__, chip_id);
+		ret = -ENXIO;
+		return ret;
+	}
+
+
+	for (i = 0; i < mode->reg_data_size; ++i, ++regs) {
+		delay_ms = regs->delay_ms;
+		reg_addr = regs->reg_addr;
+		val = regs->val;
+		mask = regs->mask;
+
+		ret = ov6211_write_reg(sensor, reg_addr, val);
+		if (ret)
+			break;
+
+		if (delay_ms)
+			usleep_range(1000 * delay_ms, 1000 * delay_ms + 100);
+	}
+
+	dev_err(&client->dev, "%s: REGISTER MAP SENT\n",
+			__func__);
+	return 0;
+	//return ov6211_set_timings(sensor, mode);
+}
+
+/* restore the last set video mode after chip power-on */
+static int ov6211_restore_mode(struct ov6211_dev *sensor)
+{
+	int ret;
+	u8 val;
+
+	struct i2c_client *client = sensor->i2c_client;
+
+	/* first load the initial register values */
+	ret = ov6211_load_regs(sensor, &ov6211_mode_data);
+	if (ret < 0)
+		return ret;
+
+	//ret = ov6211_read_reg(sensor, 0x3662, &val);
+	// if (ret < 0 || val != 0b111) {
+	// 	struct i2c_client *client = sensor->i2c_client;
+	// 	dev_err(&client->dev, "verify failed val=%.2x ret=%d\n", val, ret);
+	// 	return ret;
+	// }
+
+	dev_err(&client->dev, "%s:ov6211_restore_mode complete\n",
+			__func__);
+	return 0;//ov6211_set_timings(sensor, &ov6211_mode_data);
+}
+
+static void ov6211_reset(struct ov6211_dev *sensor)
+{
+	if (!sensor->reset_gpio)
+		return;
+
+	usleep_range(20000, 25000);
+
+	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
+	usleep_range(20000, 25000);
+
+	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
+	usleep_range(20000, 25000);
+}
+
+uint8_t ov6211_power_on;
+
+static int ov6211_set_power_on(struct ov6211_dev *sensor)
+{
+	struct i2c_client *client = sensor->i2c_client;
+	int ret;
+
+	clk_set_rate(sensor->xclk, 24000000);
+
+	ret = clk_prepare_enable(sensor->xclk);
+	if (ret) {
+		dev_err(&client->dev, "%s: failed to enable clock\n",
+			__func__);
+		return ret;
+	}
+
+	ret = regulator_bulk_enable(OV6211_NUM_SUPPLIES,
+				    sensor->supplies);
+	if (ret) {
+		dev_err(&client->dev, "%s: failed to enable regulators\n",
+			__func__);
+		goto xclk_off;
+	}
+
+	ov6211_reset(sensor);
+
+	usleep_range(5000,5500);
+
+    ov6211_power_on = 1;
+
+	return 0;
+
+power_off:
+	regulator_bulk_disable(OV6211_NUM_SUPPLIES, sensor->supplies);
+xclk_off:
+	clk_disable_unprepare(sensor->xclk);
+	return ret;
+}
+
+static void ov6211_set_power_off(struct ov6211_dev *sensor)
+{
+	int i;
+	int ret;
+    // reset pin is setup as active low
+	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
+	usleep_range(20000, 25000);
+    // individually shut down regulators instead of bulk, because
+    // bulk will fail out if one of the regulators has already been shut off
+	for (i = OV6211_NUM_SUPPLIES - 1; i >= 0; --i) {
+		regulator_disable(sensor->supplies[i].consumer);
+	}
+	clk_disable_unprepare(sensor->xclk);
+    ov6211_power_on = 0;
+}
+
+static int ov6211_set_power(struct ov6211_dev *sensor, bool on)
+{
+	int ret = 0;
+
+	if (on) {
+		ret = ov6211_set_power_on(sensor);
+		if (ret)
+			return ret;
+
+		ret = ov6211_restore_mode(sensor);
+		if (ret)
+			goto power_off;
+
+	} else {
+		ov6211_set_power_off(sensor);
+	}
+
+	return 0;
+
+power_off:
+	//ov6211_set_power_off(sensor);
+	return ret;
+}
+
+static ssize_t 
+enable_show(struct device *dev, struct device_attribute *attr,
+    char *buf)
+{
+	buf[0] = ov6211_power_on + '0';
+	buf[1] = '\n';
+	return 2;
+}
+
+static ssize_t
+enable_store(struct device *dev, struct device_attribute *attr,
+	  const char *buf, size_t count)
+{
+    int ret;
+	int enable;
+    struct ov6211_dev *sensor = dev_get_drvdata(dev);
+	ret = sscanf(buf, "%d", &enable);
+
+    if ( ret != 1){
+        pr_debug("Invalid number of params for enable\n");
+        return -1;
+    }
+
+    ov6211_set_power(sensor, !!enable);
+
+	return count;
+}
+static DEVICE_ATTR_RW(enable);
+
+static struct attribute *ov6211_attrs[] = {
+    &dev_attr_enable.attr,
+	NULL,
+};
+
+static const struct attribute_group ov6211_attr_group = {
+	.name = "ov6211",
+    .attrs = ov6211_attrs,
+};
 
 static int ov6211_set_ctrl(struct v4l2_ctrl *ctrl)
 {
-	struct ov6211 *ov6211 = container_of(ctrl->handler, struct ov6211,
-					     ctrl_handler);
-	int ret;
+	struct ov6211_dev *sensor =
+			container_of(ctrl->handler, struct ov6211_dev, ctrl_handler);
+	struct i2c_client *client = v4l2_get_subdevdata(&sensor->sd);
+	int ret = 0;
 
-	/* V4L2 controls are applied, when sensor is powered up for streaming */
-	if (!pm_runtime_get_if_active(ov6211->dev))
-		return 0;
+	/* V4L2 controls values will be applied only when power is already up */
+	//if (!pm_runtime_get_if_in_use(&client->dev))
+	//	return 0;
 
 	switch (ctrl->id) {
 	case V4L2_CID_ANALOGUE_GAIN:
-		ret = cci_write(ov6211->regmap, OV6211_REG_ANALOGUE_GAIN,
-				ctrl->val, NULL);
+		/* note:
+		 * gain_prec16_en = 1,
+		 * dac_finegain_highbit = 1,
+		 * gain shift = 3 (multiply by 8?)
+		 *
+		 * value in 6.4 fractional format
+		 */
+		ret = ov6211_write_reg(sensor, 0x350A, (ctrl->val >> 8) & 0x03);
+		
+		ret = ov6211_write_reg(sensor, 0x350B, (ctrl->val) & 0xff);
 		break;
+
 	case V4L2_CID_EXPOSURE:
-		ret = cci_write(ov6211->regmap, OV6211_REG_EXPOSURE,
-				ctrl->val << 4, NULL);
+		/* note : value in row periods, max is (vts - 4) */
+		ret = ov6211_write_reg(sensor, 0x3500, (ctrl->val >> 12) &0x0f);
+		ret = ov6211_write_reg(sensor, 0x3501, ctrl->val >> 4);
+		ret = ov6211_write_reg(sensor, 0x3502, ctrl->val << 4);
 		break;
-	case V4L2_CID_TEST_PATTERN:
-		ret = ov6211_set_test_pattern(ov6211, ctrl->val);
+	case V4L2_CID_BRIGHTNESS:
+		ret = ov6211_write_reg(sensor, ctrl->val & 0xffff, ctrl->val >> 16 & 0xff);
 		break;
 	default:
 		ret = -EINVAL;
 		break;
 	}
 
-	pm_runtime_put(ov6211->dev);
+	//pm_runtime_put(&client->dev);
 
 	return ret;
 }
@@ -283,71 +526,40 @@ static const struct v4l2_ctrl_ops ov6211_ctrl_ops = {
 	.s_ctrl = ov6211_set_ctrl,
 };
 
-static int ov6211_init_controls(struct ov6211 *ov6211)
+static int ov6211_init_controls(struct ov6211_dev *sensor)
 {
-	struct v4l2_ctrl_handler *ctrl_hdlr = &ov6211->ctrl_handler;
-	const struct ov6211_mode *mode = &supported_modes[0];
-	struct v4l2_fwnode_device_properties props;
-	s64 exposure_max, pixel_rate, h_blank;
-	struct v4l2_ctrl *ctrl;
+	struct v4l2_ctrl_handler *ctrl_hdlr;
 	int ret;
 
-	v4l2_ctrl_handler_init(ctrl_hdlr, 9);
+	ctrl_hdlr = &sensor->ctrl_handler;
 
-	ctrl = v4l2_ctrl_new_int_menu(ctrl_hdlr, &ov6211_ctrl_ops,
-				      V4L2_CID_LINK_FREQ,
-				      ARRAY_SIZE(ov6211_link_freq_menu) - 1,
-				      0, ov6211_link_freq_menu);
-	if (ctrl)
-		ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
+	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 2);
+	if (ret)
+		return ret;
 
-	pixel_rate = ov6211_link_freq_menu[0] / mode->bpp;
-	v4l2_ctrl_new_std(ctrl_hdlr, &ov6211_ctrl_ops, V4L2_CID_PIXEL_RATE,
-			  0, pixel_rate, 1, pixel_rate);
-
-	h_blank = mode->hts - mode->width;
-	ctrl = v4l2_ctrl_new_std(ctrl_hdlr, &ov6211_ctrl_ops, V4L2_CID_HBLANK,
-				 h_blank, h_blank, 1, h_blank);
-	if (ctrl)
-		ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
-
-	ctrl = v4l2_ctrl_new_std(ctrl_hdlr, &ov6211_ctrl_ops, V4L2_CID_VBLANK,
-				 mode->vts - mode->height,
-				 mode->vts - mode->height, 1,
-				 mode->vts - mode->height);
-	if (ctrl)
-		ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
+	ctrl_hdlr->lock = &sensor->mutex;
 
 	v4l2_ctrl_new_std(ctrl_hdlr, &ov6211_ctrl_ops, V4L2_CID_ANALOGUE_GAIN,
-			  OV6211_ANALOGUE_GAIN_MIN, OV6211_ANALOGUE_GAIN_MAX,
-			  OV6211_ANALOGUE_GAIN_STEP,
-			  OV6211_ANALOGUE_GAIN_DEFAULT);
+			0, 0x3ff, 1, 0xa0);
+	v4l2_ctrl_new_std(ctrl_hdlr, &ov6211_ctrl_ops, V4L2_CID_EXPOSURE,
+			1, 6944, 1, 250);
 
-	exposure_max = (mode->vts - OV6211_EXPOSURE_MAX_MARGIN);
-	v4l2_ctrl_new_std(ctrl_hdlr, &ov6211_ctrl_ops,
-			  V4L2_CID_EXPOSURE,
-			  OV6211_EXPOSURE_MIN, exposure_max,
-			  OV6211_EXPOSURE_STEP,
-			  OV6211_EXPOSURE_DEFAULT);
+	/* hack control for custom i2c writes */
+	v4l2_ctrl_new_std(ctrl_hdlr, &ov6211_ctrl_ops, V4L2_CID_BRIGHTNESS, 0, 0xffffff, 1, 0);
 
-	v4l2_ctrl_new_std_menu_items(ctrl_hdlr, &ov6211_ctrl_ops,
-				     V4L2_CID_TEST_PATTERN,
-				     ARRAY_SIZE(ov6211_test_pattern_menu) - 1,
-				     0, 0, ov6211_test_pattern_menu);
+	int size = ARRAY_SIZE(link_freq_menu_items);
+
+	struct v4l2_ctrl *link_freq = v4l2_ctrl_new_int_menu(ctrl_hdlr, &ov6211_ctrl_ops,
+						   V4L2_CID_LINK_FREQ,
+						   size - 1, 0,
+						   link_freq_menu_items);
+	if (link_freq)
+		link_freq->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 
 	if (ctrl_hdlr->error)
 		return ctrl_hdlr->error;
 
-	ret = v4l2_fwnode_device_parse(ov6211->dev, &props);
-	if (ret)
-		goto error_free_hdlr;
-
-	ret = v4l2_ctrl_new_fwnode_properties(ctrl_hdlr, &ov6211_ctrl_ops,
-					      &props);
-	if (ret)
-		goto error_free_hdlr;
-
-	ov6211->sd.ctrl_handler = ctrl_hdlr;
+	sensor->sd.ctrl_handler = ctrl_hdlr;
 
 	return 0;
 
@@ -357,437 +569,297 @@ error_free_hdlr:
 	return ret;
 }
 
-static void ov6211_update_pad_format(const struct ov6211_mode *mode,
-				     struct v4l2_mbus_framefmt *fmt)
+/* --------------- Subdev Operations --------------- */
+
+static int ov6211_s_power(struct v4l2_subdev *sd, int on)
 {
-	fmt->code = MEDIA_BUS_FMT_Y8_1X8;
-	fmt->width = mode->width;
-	fmt->height = mode->height;
-	fmt->field = V4L2_FIELD_NONE;
-	fmt->colorspace = V4L2_COLORSPACE_RAW;
-	fmt->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
-	fmt->quantization = V4L2_QUANTIZATION_FULL_RANGE;
-	fmt->xfer_func = V4L2_XFER_FUNC_NONE;
-}
+	struct ov6211_dev *sensor = to_ov6211_dev(sd);
+	int ret = 0;
 
-static int ov6211_enable_streams(struct v4l2_subdev *sd,
-				 struct v4l2_subdev_state *state, u32 pad,
-				 u64 streams_mask)
-{
-	const struct ov6211_reg_list *reg_list = &supported_modes[0].reg_list;
-	struct ov6211 *ov6211 = to_ov6211(sd);
-	int ret;
+	mutex_lock(&sensor->lock);
 
-	ret = pm_runtime_resume_and_get(ov6211->dev);
-	if (ret)
-		return ret;
-
-	/* Skip a step of explicit entering into the standby mode */
-	ret = cci_write(ov6211->regmap, OV6211_REG_SOFTWARE_RST,
-			OV6211_SOFTWARE_RST, NULL);
-	if (ret) {
-		dev_err(ov6211->dev, "failed to software reset: %d\n", ret);
-		goto error;
+	/*
+	 * If the power count is modified from 0 to != 0 or from != 0 to 0,
+	 * update the power state.
+	 */
+	if (sensor->power_count == !on) {
+		ret = ov6211_set_power(sensor, !!on);
+		if (ret)
+			goto out;
 	}
 
-	ret = cci_multi_reg_write(ov6211->regmap, reg_list->regs,
-				  reg_list->num_regs, NULL);
-	if (ret) {
-		dev_err(ov6211->dev, "failed to set mode: %d\n", ret);
-		goto error;
-	}
-
-	ret = __v4l2_ctrl_handler_setup(ov6211->sd.ctrl_handler);
-	if (ret)
-		goto error;
-
-	ret = cci_write(ov6211->regmap, OV6211_REG_MODE_SELECT,
-			OV6211_MODE_STREAMING, NULL);
-	if (ret) {
-		dev_err(ov6211->dev, "failed to start streaming: %d\n", ret);
-		goto error;
-	}
-
-	return 0;
-
-error:
-	pm_runtime_put_autosuspend(ov6211->dev);
+	/* Update the power count. */
+	sensor->power_count += on ? 2 : -1; // XXX 2 avoids ever powering down
+	WARN_ON(sensor->power_count < 0);
+out:
+	mutex_unlock(&sensor->lock);
 
 	return ret;
 }
 
-static int ov6211_disable_streams(struct v4l2_subdev *sd,
-				  struct v4l2_subdev_state *state, u32 pad,
-				  u64 streams_mask)
+static int ov6211_s_stream(struct v4l2_subdev *sd, int enable)
 {
-	struct ov6211 *ov6211 = to_ov6211(sd);
-	int ret;
+	struct ov6211_dev *sensor = to_ov6211_dev(sd);
+	struct i2c_client *client = sensor->i2c_client;
 
-	ret = cci_write(ov6211->regmap, OV6211_REG_MODE_SELECT,
-			OV6211_MODE_STANDBY, NULL);
-	if (ret)
-		dev_err(ov6211->dev, "failed to stop streaming: %d\n", ret);
+	dev_err(&client->dev, "%s: s_stream called with enable:%d\n",
+			__func__,enable);
 
-	pm_runtime_put_autosuspend(ov6211->dev);
+	ov6211_write_reg(sensor, 0x100, !!enable);
+
+	return 0;
+}
+
+static long ov6211_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
+				 void *arg)
+{
+	struct ov6211_dev *sensor = to_ov6211_dev(sd);
+	struct i2c_client *client = sensor->i2c_client;
+	int ret = 0;
+	u32 *a = arg;
+
+	switch (cmd) {
+	case VIDIOC_SENSOR_PRV_G_REGISTER: {
+		struct sensor_register *reg = arg;
+		u32 regval = 0;
+		ret = ov6211_read_reg_len(sensor, reg->reg_addr, reg->len, &regval);
+		if (ret) {
+			dev_err(&sensor->i2c_client->dev, "Failed to read register 0x%04x: %d\n", reg->reg_addr, ret);
+		}
+		reg->reg_value = regval;
+		break;
+	}
+	default:
+		ret = -EINVAL;
+	}
 
 	return ret;
 }
 
-static int ov6211_set_pad_format(struct v4l2_subdev *sd,
-				 struct v4l2_subdev_state *state,
-				 struct v4l2_subdev_format *fmt)
-{
-	struct v4l2_mbus_framefmt *format;
-	const struct ov6211_mode *mode;
-
-	format = v4l2_subdev_state_get_format(state, 0);
-
-	mode = v4l2_find_nearest_size(supported_modes,
-				      ARRAY_SIZE(supported_modes),
-				      width, height,
-				      fmt->format.width,
-				      fmt->format.height);
-
-	ov6211_update_pad_format(mode, &fmt->format);
-	*format = fmt->format;
-
-	return 0;
-}
-
-static int ov6211_enum_mbus_code(struct v4l2_subdev *sd,
-				 struct v4l2_subdev_state *sd_state,
-				 struct v4l2_subdev_mbus_code_enum *code)
-{
-	if (code->index > 0)
-		return -EINVAL;
-
-	code->code = MEDIA_BUS_FMT_Y8_1X8;
-
-	return 0;
-}
-
-static int ov6211_enum_frame_size(struct v4l2_subdev *sd,
-				  struct v4l2_subdev_state *sd_state,
-				  struct v4l2_subdev_frame_size_enum *fse)
-{
-	if (fse->index >= ARRAY_SIZE(supported_modes))
-		return -EINVAL;
-
-	if (fse->code != MEDIA_BUS_FMT_Y8_1X8)
-		return -EINVAL;
-
-	fse->min_width = supported_modes[fse->index].width;
-	fse->max_width = fse->min_width;
-	fse->min_height = supported_modes[fse->index].height;
-	fse->max_height = fse->min_height;
-
-	return 0;
-}
-
-static int ov6211_init_state(struct v4l2_subdev *sd,
-			     struct v4l2_subdev_state *state)
-{
-	struct v4l2_subdev_format fmt = {
-		.which = V4L2_SUBDEV_FORMAT_TRY,
-		.pad = 0,
-		.format = {
-			.code = MEDIA_BUS_FMT_Y8_1X8,
-			.width = supported_modes[0].width,
-			.height = supported_modes[0].height,
-		},
-	};
-
-	ov6211_set_pad_format(sd, state, &fmt);
-
-	return 0;
-}
-
-static const struct v4l2_subdev_video_ops ov6211_video_ops = {
-	.s_stream = v4l2_subdev_s_stream_helper,
+static const struct v4l2_subdev_core_ops ov6211_core_ops = {
+	.s_power = ov6211_s_power,
+	.ioctl = ov6211_private_ioctl,
 };
 
+static const struct v4l2_subdev_video_ops ov6211_video_ops = {
+	.s_stream = ov6211_s_stream,
+};
+
+static int ov6211_enum_mbus_code(struct v4l2_subdev *sd,
+				 struct v4l2_subdev_state *state,
+				 struct v4l2_subdev_mbus_code_enum *code)
+{
+	code->code = MEDIA_BUS_FMT_Y8_1X8;
+	return 0;
+}
+
+static int ov6211_get_fmt(struct v4l2_subdev *sd,
+			  struct v4l2_subdev_state *state,
+			  struct v4l2_subdev_format *format)
+{
+	struct ov6211_dev *sensor = to_ov6211_dev(sd);
+
+	if (format->pad != 0)
+		return -EINVAL;
+
+	mutex_lock(&sensor->lock);
+
+	format->format = sensor->fmt;
+
+	mutex_unlock(&sensor->lock);
+
+	return 0;
+}
+
 static const struct v4l2_subdev_pad_ops ov6211_pad_ops = {
-	.set_fmt = ov6211_set_pad_format,
-	.get_fmt = v4l2_subdev_get_fmt,
 	.enum_mbus_code = ov6211_enum_mbus_code,
-	.enum_frame_size = ov6211_enum_frame_size,
-	.enable_streams = ov6211_enable_streams,
-	.disable_streams = ov6211_disable_streams,
+	.get_fmt = ov6211_get_fmt,
 };
 
 static const struct v4l2_subdev_ops ov6211_subdev_ops = {
+	.core = &ov6211_core_ops,
 	.video = &ov6211_video_ops,
 	.pad = &ov6211_pad_ops,
 };
 
-static const struct v4l2_subdev_internal_ops ov6211_internal_ops = {
-	.init_state = ov6211_init_state,
-};
-
-static const struct media_entity_operations ov6211_subdev_entity_ops = {
-	.link_validate = v4l2_subdev_link_validate,
-};
-
-static int ov6211_identify_sensor(struct ov6211 *ov6211)
+static int ov6211_get_regulators(struct ov6211_dev *sensor)
 {
-	u64 val;
-	int ret;
+	int i;
 
-	ret = cci_read(ov6211->regmap, OV6211_REG_CHIP_ID, &val, NULL);
+	for (i = 0; i < OV6211_NUM_SUPPLIES; i++)
+		sensor->supplies[i].supply = ov6211_supply_name[i];
+
+	return devm_regulator_bulk_get(&sensor->i2c_client->dev,
+				       OV6211_NUM_SUPPLIES,
+				       sensor->supplies);
+}
+
+static int ov6211_check_chip_id(struct ov6211_dev *sensor)
+{
+	struct i2c_client *client = sensor->i2c_client;
+	int ret = 0;
+	u16 chip_id;
+
+	ret = ov6211_set_power_on(sensor);
+	if (ret)
+		return ret;
+
+	ret = ov6211_read_reg_len(sensor, OV6211_REG_CHIP_ID, 2, (u32 *)&chip_id);
 	if (ret) {
-		dev_err(ov6211->dev, "failed to read chip id: %d\n", ret);
-		return ret;
+		dev_err(&client->dev, "%s: failed to read chip identifier\n",
+			__func__);
+		goto power_off;
 	}
 
-	if (val != OV6211_CHIP_ID) {
-		dev_err(ov6211->dev, "chip id mismatch: %x!=%llx\n",
-			OV6211_CHIP_ID, val);
-		return -ENODEV;
+	if (chip_id != 0x6710) {
+		dev_err(&client->dev, "%s: FORCE ON wrong chip identifier, expected 0x6710, got 0x%x\n",
+			__func__, chip_id);
+		ret = 0;//-ENXIO;
+	}
+	else {
+		dev_err(&client->dev, "%s: AAA Got correct chip identifier, expected 06710, got 0x%x\n",
+			__func__, chip_id);
 	}
 
-	ret = cci_read(ov6211->regmap, OV6211_REG_PRE_ISP,
-		       &ov6211->pre_isp, NULL);
-	if (ret)
-		dev_err(ov6211->dev, "failed to read pre_isp: %d\n", ret);
-
+power_off:
+	ov6211_set_power_off(sensor);
 	return ret;
-}
-
-static int ov6211_check_hwcfg(struct ov6211 *ov6211)
-{
-	struct fwnode_handle *fwnode = dev_fwnode(ov6211->dev), *ep;
-	struct v4l2_fwnode_endpoint bus_cfg = {
-		.bus_type = V4L2_MBUS_CSI2_DPHY,
-	};
-	unsigned long freq_bitmap;
-	int ret;
-
-	if (!fwnode)
-		return -ENODEV;
-
-	ep = fwnode_graph_get_next_endpoint(fwnode, NULL);
-	if (!ep)
-		return -EINVAL;
-
-	ret = v4l2_fwnode_endpoint_alloc_parse(ep, &bus_cfg);
-	fwnode_handle_put(ep);
-	if (ret)
-		return ret;
-
-	ret = v4l2_link_freq_to_bitmap(ov6211->dev, bus_cfg.link_frequencies,
-				       bus_cfg.nr_of_link_frequencies,
-				       ov6211_link_freq_menu,
-				       ARRAY_SIZE(ov6211_link_freq_menu),
-				       &freq_bitmap);
-
-	v4l2_fwnode_endpoint_free(&bus_cfg);
-
-	return ret;
-}
-
-static int ov6211_power_on(struct device *dev)
-{
-	struct v4l2_subdev *sd = dev_get_drvdata(dev);
-	struct ov6211 *ov6211 = to_ov6211(sd);
-	int ret;
-
-	ret = regulator_bulk_enable(OV6211_NUM_SUPPLIES, ov6211->supplies);
-	if (ret)
-		return ret;
-
-	gpiod_set_value_cansleep(ov6211->reset_gpio, 0);
-	usleep_range(10 * USEC_PER_MSEC, 15 * USEC_PER_MSEC);
-
-	ret = clk_prepare_enable(ov6211->xvclk);
-	if (ret)
-		goto reset_gpio;
-
-	return 0;
-
-reset_gpio:
-	gpiod_set_value_cansleep(ov6211->reset_gpio, 1);
-
-	regulator_bulk_disable(OV6211_NUM_SUPPLIES, ov6211->supplies);
-
-	return ret;
-}
-
-static int ov6211_power_off(struct device *dev)
-{
-	struct v4l2_subdev *sd = dev_get_drvdata(dev);
-	struct ov6211 *ov6211 = to_ov6211(sd);
-
-	clk_disable_unprepare(ov6211->xvclk);
-
-	gpiod_set_value_cansleep(ov6211->reset_gpio, 1);
-
-	regulator_bulk_disable(OV6211_NUM_SUPPLIES, ov6211->supplies);
-
-	return 0;
 }
 
 static int ov6211_probe(struct i2c_client *client)
 {
-	struct ov6211 *ov6211;
-	unsigned long freq;
-	unsigned int i;
+	struct device *dev = &client->dev;
+	struct fwnode_handle *endpoint;
+	struct ov6211_dev *sensor;
+	struct v4l2_mbus_framefmt *fmt;
+	u32 rotation;
 	int ret;
 
-	ov6211 = devm_kzalloc(&client->dev, sizeof(*ov6211), GFP_KERNEL);
-	if (!ov6211)
+	sensor = devm_kzalloc(dev, sizeof(*sensor), GFP_KERNEL);
+	if (!sensor)
 		return -ENOMEM;
 
-	ov6211->dev = &client->dev;
+	sensor->i2c_client = client;
 
-	v4l2_i2c_subdev_init(&ov6211->sd, client, &ov6211_subdev_ops);
+	fmt = &sensor->fmt;
+	fmt->code = MEDIA_BUS_FMT_Y8_1X8;
+	fmt->colorspace = V4L2_COLORSPACE_SRGB;
+	fmt->ycbcr_enc = V4L2_MAP_YCBCR_ENC_DEFAULT(fmt->colorspace);
+	fmt->quantization = V4L2_QUANTIZATION_FULL_RANGE;
+	fmt->xfer_func = V4L2_MAP_XFER_FUNC_DEFAULT(fmt->colorspace);
+	fmt->width = 400;
+	fmt->height = 400;
+	fmt->field = V4L2_FIELD_NONE;
 
-	ov6211->regmap = devm_cci_regmap_init_i2c(client, 16);
-	if (IS_ERR(ov6211->regmap))
-		return dev_err_probe(ov6211->dev, PTR_ERR(ov6211->regmap),
-				     "failed to init CCI\n");
+	endpoint = fwnode_graph_get_next_endpoint(dev_fwnode(&client->dev),
+						  NULL);
+	if (!endpoint) {
+		dev_err(dev, "endpoint node not found\n");
+		return -EINVAL;
+	}
 
-	ov6211->xvclk = devm_v4l2_sensor_clk_get(ov6211->dev, NULL);
-	if (IS_ERR(ov6211->xvclk))
-		return dev_err_probe(ov6211->dev, PTR_ERR(ov6211->xvclk),
-				     "failed to get XVCLK clock\n");
+	ret = v4l2_fwnode_endpoint_parse(endpoint, &sensor->ep);
+	fwnode_handle_put(endpoint);
+	if (ret) {
+		dev_err(dev, "Could not parse endpoint\n");
+		return ret;
+	}
 
-	freq = clk_get_rate(ov6211->xvclk);
-	if (freq && freq != OV6211_MCLK_FREQ_24MHZ)
-		return dev_err_probe(ov6211->dev, -EINVAL,
-				     "XVCLK clock frequency %lu is not supported\n",
-				     freq);
+	/* get system clock (xclk) */
+	sensor->xclk = devm_clk_get(dev, "xclk");
+	if (IS_ERR(sensor->xclk)) {
+		dev_err(dev, "failed to get xclk\n");
+		return PTR_ERR(sensor->xclk);
+	}
 
-	ret = ov6211_check_hwcfg(ov6211);
-	if (ret)
-		return dev_err_probe(ov6211->dev, ret,
-				     "failed to check HW configuration\n");
-
-	ov6211->reset_gpio = devm_gpiod_get_optional(ov6211->dev, "reset",
+	/* request optional reset pin */
+	sensor->reset_gpio = devm_gpiod_get_optional(dev, "reset",
 						     GPIOD_OUT_HIGH);
-	if (IS_ERR(ov6211->reset_gpio))
-		return dev_err_probe(ov6211->dev, PTR_ERR(ov6211->reset_gpio),
-				     "cannot get reset GPIO\n");
+	if (IS_ERR(sensor->reset_gpio))
+		return PTR_ERR(sensor->reset_gpio);
 
-	for (i = 0; i < OV6211_NUM_SUPPLIES; i++)
-		ov6211->supplies[i].supply = ov6211_supply_names[i];
+	v4l2_i2c_subdev_init(&sensor->sd, client, &ov6211_subdev_ops);
 
-	ret = devm_regulator_bulk_get(ov6211->dev, OV6211_NUM_SUPPLIES,
-				      ov6211->supplies);
-	if (ret)
-		return dev_err_probe(ov6211->dev, ret,
-				     "failed to get supply regulators\n");
-
-	/* The sensor must be powered on to read the CHIP_ID register */
-	ret = ov6211_power_on(ov6211->dev);
+	sensor->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE |
+			    V4L2_SUBDEV_FL_HAS_EVENTS;
+	sensor->pad.flags = MEDIA_PAD_FL_SOURCE;
+	sensor->sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
+	ret = media_entity_pads_init(&sensor->sd.entity, 1, &sensor->pad);
 	if (ret)
 		return ret;
 
-	ret = ov6211_identify_sensor(ov6211);
+	ret = ov6211_get_regulators(sensor);
+	if (ret)
+		return ret;
+
+	mutex_init(&sensor->lock);
+
+	ret = ov6211_check_chip_id(sensor);
+	if (ret) 
+	{
+		dev_err(&client->dev, "Chip probe failed with err: %d but we will continue anyway to ensure v4l2 is setup.", ret);
+	}
+	mutex_init(&sensor->mutex);
+	ret = ov6211_init_controls(sensor);
 	if (ret) {
-		dev_err_probe(ov6211->dev, ret, "failed to find sensor\n");
-		goto power_off;
+		dev_err(&client->dev, "failed to init controls: %d", ret);
+		goto entity_cleanup;
 	}
 
-	ret = ov6211_init_controls(ov6211);
-	if (ret) {
-		dev_err_probe(ov6211->dev, ret, "failed to init controls\n");
-		goto power_off;
-	}
+	ret = v4l2_async_register_subdev_sensor(&sensor->sd);
+	if (ret)
+		goto free_ctrls;
 
-	ov6211->sd.state_lock = ov6211->ctrl_handler.lock;
-	ov6211->sd.internal_ops = &ov6211_internal_ops;
-	ov6211->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-	ov6211->sd.entity.ops = &ov6211_subdev_entity_ops;
-	ov6211->sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
-	ov6211->pad.flags = MEDIA_PAD_FL_SOURCE;
+    dev_set_drvdata(dev, sensor);
 
-	ret = media_entity_pads_init(&ov6211->sd.entity, 1, &ov6211->pad);
-	if (ret) {
-		dev_err_probe(ov6211->dev, ret,
-			      "failed to init media entity pads\n");
-		goto v4l2_ctrl_handler_free;
-	}
-
-	ret = v4l2_subdev_init_finalize(&ov6211->sd);
-	if (ret < 0) {
-		dev_err_probe(ov6211->dev, ret,
-			      "failed to init media entity pads\n");
-		goto media_entity_cleanup;
-	}
-
-	pm_runtime_set_active(ov6211->dev);
-	pm_runtime_enable(ov6211->dev);
-
-	ret = v4l2_async_register_subdev_sensor(&ov6211->sd);
-	if (ret < 0) {
-		dev_err_probe(ov6211->dev, ret,
-			      "failed to register V4L2 subdev\n");
-		goto subdev_cleanup;
-	}
-
-	/* Enable runtime PM and turn off the device */
-	pm_runtime_idle(ov6211->dev);
-	pm_runtime_set_autosuspend_delay(ov6211->dev, 1000);
-	pm_runtime_use_autosuspend(ov6211->dev);
+    ret = sysfs_create_group(&dev->kobj, &ov6211_attr_group);
+    if (ret < 0) {
+        dev_err(dev, "failed to create ov6211 sysfs files\n");
+        return ret;
+    }
 
 	return 0;
 
-subdev_cleanup:
-	v4l2_subdev_cleanup(&ov6211->sd);
-	pm_runtime_disable(ov6211->dev);
-	pm_runtime_set_suspended(ov6211->dev);
-
-media_entity_cleanup:
-	media_entity_cleanup(&ov6211->sd.entity);
-
-v4l2_ctrl_handler_free:
-	v4l2_ctrl_handler_free(ov6211->sd.ctrl_handler);
-
-power_off:
-	ov6211_power_off(ov6211->dev);
-
+free_ctrls:
+entity_cleanup:
+	mutex_destroy(&sensor->lock);
+	media_entity_cleanup(&sensor->sd.entity);
 	return ret;
 }
 
 static void ov6211_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct ov6211 *ov6211 = to_ov6211(sd);
+	struct ov6211_dev *sensor = to_ov6211_dev(sd);
 
-	v4l2_async_unregister_subdev(sd);
-	v4l2_subdev_cleanup(sd);
-	media_entity_cleanup(&sd->entity);
-	v4l2_ctrl_handler_free(sd->ctrl_handler);
-	pm_runtime_disable(ov6211->dev);
-
-	if (!pm_runtime_status_suspended(ov6211->dev)) {
-		ov6211_power_off(ov6211->dev);
-		pm_runtime_set_suspended(ov6211->dev);
-	}
+	v4l2_async_unregister_subdev(&sensor->sd);
+	mutex_destroy(&sensor->lock);
+	media_entity_cleanup(&sensor->sd.entity);
 }
 
-static const struct dev_pm_ops ov6211_pm_ops = {
-	SET_RUNTIME_PM_OPS(ov6211_power_off, ov6211_power_on, NULL)
+static const struct i2c_device_id ov6211_id[] = {
+	{"ov6211", 0},
+	{},
 };
+MODULE_DEVICE_TABLE(i2c, ov6211_id);
 
-static const struct of_device_id ov6211_of_match[] = {
-	{ .compatible = "ovti,ov6211" },
+static const struct of_device_id ov6211_dt_ids[] = {
+	{ .compatible = "ovti,ov6211x" },
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(of, ov6211_of_match);
+MODULE_DEVICE_TABLE(of, ov6211_dt_ids);
 
 static struct i2c_driver ov6211_i2c_driver = {
 	.driver = {
-		.name = "ov6211",
-		.pm = &ov6211_pm_ops,
-		.of_match_table = ov6211_of_match,
+		.name  = "ov6211",
+		.of_match_table	= ov6211_dt_ids,
 	},
+	.id_table = ov6211_id,
 	.probe = ov6211_probe,
-	.remove = ov6211_remove,
+	.remove   = ov6211_remove,
 };
 
 module_i2c_driver(ov6211_i2c_driver);
 
-MODULE_AUTHOR("Vladimir Zapolskiy <vladimir.zapolskiy@linaro.org>");
-MODULE_DESCRIPTION("OmniVision OV6211 sensor driver");
+MODULE_DESCRIPTION("OV6211 MIPI Camera Subdev Driver");
 MODULE_LICENSE("GPL");
