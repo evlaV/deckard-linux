@@ -411,7 +411,9 @@ static int submit_get_pages(struct msm_gem_submit *submit)
 		if (!obj)
 			continue;
 
+		msm_gem_lock(obj);
 		pages = msm_gem_get_pages_locked(obj, MSM_MADV_WILLNEED);
+		msm_gem_unlock(obj);
 		if (IS_ERR(pages))
 			return PTR_ERR(pages);
 	}
