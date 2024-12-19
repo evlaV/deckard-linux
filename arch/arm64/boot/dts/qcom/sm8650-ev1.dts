@@ -948,6 +948,13 @@
 	status = "okay";
 };
 
+// ADSP controls eye tracking cameras
+&adsp {
+	// AON CAM ADSP TEST: gpio102/104 to mclk function
+	pinctrl-names = "default";
+	pinctrl-0 = <&cam2_default &cam4_default>;
+};
+
 &cci0_i2c1 {
 #if 0
 	sensor@60 {
