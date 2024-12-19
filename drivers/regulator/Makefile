@@ -7,7 +7,7 @@
 obj-$(CONFIG_REGULATOR) += core.o dummy.o fixed-helper.o helpers.o devres.o irq_helpers.o
 obj-$(CONFIG_REGULATOR_NETLINK_EVENTS) += event.o
 obj-$(CONFIG_OF) += of_regulator.o
-obj-$(CONFIG_REGULATOR_FIXED_VOLTAGE) += fixed.o valve-5v-exp-regulator.o
+obj-$(CONFIG_REGULATOR_FIXED_VOLTAGE) += fixed.o valve-5v-exp-regulator.o valve-rgb-3v0-regulator.o
 obj-$(CONFIG_REGULATOR_VIRTUAL_CONSUMER) += virtual.o
 obj-$(CONFIG_REGULATOR_USERSPACE_CONSUMER) += userspace-consumer.o
 
@@ -184,6 +184,7 @@ obj-$(CONFIG_REGULATOR_SY8106A) += sy8106a-regulator.o
 obj-$(CONFIG_REGULATOR_SY8824X) += sy8824x.o
 obj-$(CONFIG_REGULATOR_SY8827N) += sy8827n.o
 obj-$(CONFIG_REGULATOR_TI_ABB) += ti-abb-regulator.o
+obj-$(CONFIG_REGULATOR_TPS61377) += tps61377-regulator.o
 obj-$(CONFIG_REGULATOR_TPS6105X) += tps6105x-regulator.o
 obj-$(CONFIG_REGULATOR_TPS62360) += tps62360-regulator.o
 obj-$(CONFIG_REGULATOR_TPS6286X) += tps6286x-regulator.o
