@@ -91,6 +91,7 @@ obj-$(CONFIG_LEDS_TPS6105X)		+= leds-tps6105x.o
 obj-$(CONFIG_LEDS_TURRIS_OMNIA)		+= leds-turris-omnia.o
 obj-$(CONFIG_LEDS_WM831X_STATUS)	+= leds-wm831x-status.o
 obj-$(CONFIG_LEDS_WM8350)		+= leds-wm8350.o
+obj-$(CONFIG_LEDS_MP3317)		+= leds-mp3317.o
 obj-$(CONFIG_LEDS_WRAP)			+= leds-wrap.o
 
 # Kinetic ExpressWire Protocol
