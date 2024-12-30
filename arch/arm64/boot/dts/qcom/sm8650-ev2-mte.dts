@@ -1057,6 +1057,8 @@
 
 	vdda-csi01-0p9-supply = <&vreg_l2i_0p88>;
 	vdda-csi01-1p2-supply = <&vreg_l3i_1p2>;
+	vdda-csi24-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi24-1p2-supply = <&vreg_l3i_1p2>;
 
 	ports {
 		port@0 {
@@ -1111,7 +1113,7 @@
 	status = "okay";
 };
 
-//#define USERSPACE_EYETRACKING
+#define USERSPACE_EYETRACKING
 
 #ifdef USERSPACE_EYETRACKING
 &camss {
@@ -1120,8 +1122,7 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			csiphy2_ep: endpoint@0 {
-				reg = <0>;
+			csiphy2_ep: endpoint {
 				clock-lanes = <4>;
 				data-lanes = <0>;
 				remote-endpoint = <&cam_et_l>;
@@ -1129,11 +1130,7 @@
 		};
 
 		port@4 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			csiphy4_ep: endpoint@0 {
-				reg = <0>;
+			csiphy4_ep: endpoint {
 				clock-lanes = <4>;
 				data-lanes = <0>;
 				remote-endpoint = <&cam_et_r>;
@@ -1144,22 +1141,22 @@
 
 &cci0_i2c1 {
 	sensor@60 {
-		compatible = "ovti,ov6211x";
+		compatible = "ovti,ov6710";
 		reg = <0x60>;
 		clocks = <&camcc CAM_CC_MCLK4_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&tlmm 195 GPIO_ACTIVE_LOW>;
 		pinctrl-0 = <&cam4_default>;
 		pinctrl-names = "default";
-		AVDD-supply = <&vreg_l6n_2p8>;
-		DOVDD-supply = <&eyetck_dovdd_1v8>;
-		DVDD-supply = <&vreg_l1n_1p1>;
+		avdd-supply = <&vreg_l6n_2p8>;
+		dovdd-supply = <&eyetck_dovdd_1v8>;
+		dvdd-supply = <&vreg_l1n_1p1>;
 		id = "eyetracking_left";
 
 		port {
 			cam_et_l: endpoint {
-				clock-lanes = <4>;
-				data-lanes = <0>;
+				data-lanes = <1>;
+				link-frequencies = /bits/ 64 <240000000>;
 				remote-endpoint = <&csiphy2_ep>;
 			};
 		};
@@ -1168,22 +1165,22 @@
 
 &cci1_i2c0 {
 	sensor@60 {
-		compatible = "ovti,ov6211x";
+		compatible = "ovti,ov6710";
 		reg = <0x60>;
 		clocks = <&camcc CAM_CC_MCLK2_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&tlmm 3 GPIO_ACTIVE_LOW>;
 		pinctrl-0 = <&cam2_default>;
 		pinctrl-names = "default";
-		AVDD-supply = <&vreg_l6m_2p8>;
-		DOVDD-supply = <&eyetck_dovdd_1v8>;
-		DVDD-supply = <&vreg_l1m_1p1>;
+		avdd-supply = <&vreg_l6m_2p8>;
+		dovdd-supply = <&eyetck_dovdd_1v8>;
+		dvdd-supply = <&vreg_l1m_1p1>;
 		id = "eyetracking_right";
 
 		port {
 			cam_et_r: endpoint {
-				clock-lanes = <4>;
-				data-lanes = <0>;
+				data-lanes = <1>;
+				link-frequencies = /bits/ 64 <240000000>;
 				remote-endpoint = <&csiphy4_ep>;
 			};
 		};
@@ -1680,7 +1677,7 @@
 		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
 		// bp pin removed in ev1
 
-		status = "okay";
+		status = "disabled";
 	};
 
 	/* 3D Hall Sensor I2C */
