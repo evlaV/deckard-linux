@@ -379,6 +379,7 @@ enum wq_flags {
 	WQ_HIGHPRI		= 1 << 4, /* high priority */
 	WQ_CPU_INTENSIVE	= 1 << 5, /* cpu intensive workqueue */
 	WQ_SYSFS		= 1 << 6, /* visible in sysfs, see workqueue_sysfs_register() */
+	WQ_SUPERHIGHPRI	= 1 << 7, /* super high priority */
 
 	/*
 	 * Per-cpu workqueues are generally preferred because they tend to
@@ -464,6 +465,7 @@ enum wq_consts {
  */
 extern struct workqueue_struct *system_wq;
 extern struct workqueue_struct *system_highpri_wq;
+extern struct workqueue_struct *system_superhighpri_wq;
 extern struct workqueue_struct *system_long_wq;
 extern struct workqueue_struct *system_unbound_wq;
 extern struct workqueue_struct *system_freezable_wq;
@@ -781,6 +783,8 @@ extern void __warn_flushing_systemwide_wq(void)
 	     _wq == system_wq) ||					\
 	    (__builtin_constant_p(_wq == system_highpri_wq) &&		\
 	     _wq == system_highpri_wq) ||				\
+		(__builtin_constant_p(_wq == system_superhighpri_wq) &&		\
+	     _wq == system_superhighpri_wq) ||				\
 	    (__builtin_constant_p(_wq == system_long_wq) &&		\
 	     _wq == system_long_wq) ||					\
 	    (__builtin_constant_p(_wq == system_unbound_wq) &&		\
