@@ -1489,7 +1489,7 @@
 		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
 		// bp pin removed in ev1
 
-		status = "okay";
+		status = "disabled";
 	};
 
 	/* 3D Hall Sensor I2C */

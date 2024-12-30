@@ -297,11 +297,11 @@ static int ov6710_write_reg_list(struct ov6710 *ov6710,
 
 	for (i = 0; i < r_list->num_of_regs; i++) {
 		ret = ov6710_write_reg(ov6710, r_list->regs[i].address, 1,
-				       r_list->regs[i].val);
+					   r_list->regs[i].val);
 		if (ret) {
 			dev_err_ratelimited(&client->dev,
-					    "failed to write reg 0x%4.4x. error = %d\n",
-					    r_list->regs[i].address, ret);
+						"failed to write reg 0x%4.4x. error = %d\n",
+						r_list->regs[i].address, ret);
 			return ret;
 		}
 	}
@@ -312,7 +312,7 @@ static int ov6710_write_reg_list(struct ov6710 *ov6710,
 static int ov6710_set_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct ov6710 *ov6710 = container_of(ctrl->handler, struct ov6710,
-					     ctrl_handler);
+						 ctrl_handler);
 	struct i2c_client *client = v4l2_get_subdevdata(&ov6710->sd);
 	int ret;
 
@@ -323,11 +323,11 @@ static int ov6710_set_ctrl(struct v4l2_ctrl *ctrl)
 	switch (ctrl->id) {
 	case V4L2_CID_ANALOGUE_GAIN:
 		ret = ov6710_write_reg(ov6710, OV6710_REG_ANALOGUE_GAIN,
-				       OV6710_REG_VALUE_16BIT, ctrl->val);
+					   OV6710_REG_VALUE_16BIT, ctrl->val);
 		break;
 	case V4L2_CID_EXPOSURE:
 		ret = ov6710_write_reg(ov6710, OV6710_REG_EXPOSURE,
-				       OV6710_REG_VALUE_24BIT, ctrl->val << 4);
+					   OV6710_REG_VALUE_24BIT, ctrl->val << 4);
 		break;
 	default:
 		ret = -EINVAL;
@@ -382,7 +382,7 @@ static int ov6710_init_controls(struct ov6710 *ov6710)
 }
 
 static void ov6710_update_pad_format(const struct ov6710_mode *mode,
-				     struct v4l2_mbus_framefmt *fmt)
+					 struct v4l2_mbus_framefmt *fmt)
 {
 	fmt->width = mode->width;
 	fmt->height = mode->height;
@@ -408,8 +408,8 @@ static int ov6710_start_streaming(struct ov6710 *ov6710)
 		return ret;
 
 	ret = ov6710_write_reg(ov6710, OV6710_REG_MODE_SELECT,
-			       OV6710_REG_VALUE_08BIT,
-			       OV6710_MODE_STREAMING);
+				   OV6710_REG_VALUE_08BIT,
+				   OV6710_MODE_STREAMING);
 	if (ret) {
 		dev_err(&client->dev, "failed to start streaming\n");
 		return ret;
@@ -423,7 +423,7 @@ static void ov6710_stop_streaming(struct ov6710 *ov6710)
 	struct i2c_client *client = v4l2_get_subdevdata(&ov6710->sd);
 
 	if (ov6710_write_reg(ov6710, OV6710_REG_MODE_SELECT,
-			     OV6710_REG_VALUE_08BIT, OV6710_MODE_STANDBY))
+				 OV6710_REG_VALUE_08BIT, OV6710_MODE_STANDBY))
 		dev_err(&client->dev, "failed to stop streaming\n");
 }
 
@@ -458,15 +458,15 @@ static int ov6710_set_stream(struct v4l2_subdev *sd, int enable)
 }
 
 static int ov6710_set_format(struct v4l2_subdev *sd,
-			     struct v4l2_subdev_state *sd_state,
-			     struct v4l2_subdev_format *fmt)
+				 struct v4l2_subdev_state *sd_state,
+				 struct v4l2_subdev_format *fmt)
 {
 	struct ov6710 *ov6710 = to_ov6710(sd);
 	const struct ov6710_mode *mode;
 
 	mode = v4l2_find_nearest_size(supported_modes,
-				      ARRAY_SIZE(supported_modes), width, height,
-				      fmt->format.width, fmt->format.height);
+					  ARRAY_SIZE(supported_modes), width, height,
+					  fmt->format.width, fmt->format.height);
 
 	mutex_lock(&ov6710->mutex);
 
@@ -482,8 +482,8 @@ static int ov6710_set_format(struct v4l2_subdev *sd,
 }
 
 static int ov6710_get_format(struct v4l2_subdev *sd,
-			     struct v4l2_subdev_state *sd_state,
-			     struct v4l2_subdev_format *fmt)
+				 struct v4l2_subdev_state *sd_state,
+				 struct v4l2_subdev_format *fmt)
 {
 	struct ov6710 *ov6710 = to_ov6710(sd);
 
@@ -574,7 +574,7 @@ static int ov6710_identify_module(struct ov6710 *ov6710)
 	u32 val;
 
 	ret = ov6710_read_reg(ov6710, OV6710_REG_CHIP_ID,
-			      OV6710_REG_VALUE_16BIT, &val);
+				  OV6710_REG_VALUE_16BIT, &val);
 	if (ret)
 		return ret;
 
@@ -582,6 +582,9 @@ static int ov6710_identify_module(struct ov6710 *ov6710)
 		dev_err(&client->dev, "chip id mismatch: %x!=%x\n",
 			OV6710_CHIP_ID, val);
 		return -ENXIO;
+	} else {
+		dev_err(&client->dev, "chip id match: %x=%x\n",
+		OV6710_CHIP_ID, val);
 	}
 
 	return 0;
@@ -713,6 +716,49 @@ static void ov6710_remove(struct i2c_client *client)
 	mutex_destroy(&ov6710->mutex);
 }
 
+static ssize_t enable_show(struct device *dev, struct device_attribute *attr,
+	char *buf)
+{
+	struct v4l2_subdev *sd = dev_get_drvdata(dev);
+	struct ov6710 *ov6710 = to_ov6710(sd);
+	buf[0] = regulator_is_enabled(ov6710->dvdd) ? '1' : '0';
+	buf[1] = '\n';
+	return 2;
+}
+
+static ssize_t enable_store(struct device *dev, struct device_attribute *attr,
+	  const char *buf, size_t count)
+{
+	int ret;
+	int enable;
+
+	ret = sscanf(buf, "%d", &enable);
+
+	if ( ret != 1){
+		pr_debug("Invalid number of params for enable\n");
+		return -1;
+	}
+
+	if ( enable ) {
+		ov6710_power_on(dev);
+	} else {
+		ov6710_power_off(dev);
+	}
+
+	return count;
+}
+static DEVICE_ATTR_RW(enable);
+
+static struct attribute *ov6710_attrs[] = {
+	&dev_attr_enable.attr,
+	NULL,
+};
+
+static const struct attribute_group ov6710_attr_group = {
+	.name = "ov6710",
+	.attrs = ov6710_attrs,
+};
+
 static int ov6710_probe(struct i2c_client *client)
 {
 	struct ov6710 *ov6710;
@@ -739,7 +785,7 @@ static int ov6710_probe(struct i2c_client *client)
 	}
 
 	ov6710->reset_gpio = devm_gpiod_get_optional(&client->dev, "reset",
-						     GPIOD_OUT_HIGH);
+							 GPIOD_OUT_HIGH);
 	if (IS_ERR(ov6710->reset_gpio)) {
 		dev_err(&client->dev, "cannot get reset GPIO\n");
 		return PTR_ERR(ov6710->reset_gpio);
@@ -750,7 +796,7 @@ static int ov6710_probe(struct i2c_client *client)
 		ret = PTR_ERR(ov6710->avdd);
 		if (ret != -ENODEV) {
 			dev_err_probe(&client->dev, ret,
-				      "Failed to get 'avdd' regulator\n");
+					  "Failed to get 'avdd' regulator\n");
 			return ret;
 		}
 
@@ -762,7 +808,7 @@ static int ov6710_probe(struct i2c_client *client)
 		ret = PTR_ERR(ov6710->dovdd);
 		if (ret != -ENODEV) {
 			dev_err_probe(&client->dev, ret,
-				      "Failed to get 'dovdd' regulator\n");
+					  "Failed to get 'dovdd' regulator\n");
 			return ret;
 		}
 
@@ -774,7 +820,7 @@ static int ov6710_probe(struct i2c_client *client)
 		ret = PTR_ERR(ov6710->dvdd);
 		if (ret != -ENODEV) {
 			dev_err_probe(&client->dev, ret,
-				      "Failed to get 'dvdd' regulator\n");
+					  "Failed to get 'dvdd' regulator\n");
 			return ret;
 		}
 
@@ -822,6 +868,14 @@ static int ov6710_probe(struct i2c_client *client)
 	pm_runtime_set_active(&client->dev);
 	pm_runtime_enable(&client->dev);
 	pm_runtime_idle(&client->dev);
+
+	dev_set_drvdata(&client->dev, ov6710);
+
+	ret = sysfs_create_group(&client->dev.kobj, &ov6710_attr_group);
+	if (ret < 0) {
+		dev_err(&client->dev, "failed to create ov6710 sysfs files\n");
+		return ret;
+	}
 
 	return 0;
 
