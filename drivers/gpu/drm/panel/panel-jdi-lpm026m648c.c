@@ -476,6 +476,10 @@ static int lpm026m648c_prepare(struct drm_panel *panel)
 		goto power_off;
 	}
 
+	//we need to delay to wait for hiccup mode to exit on EV1 hardware --
+	//at a minimum it is about 70ms we need to wait here...
+	usleep_range(400000, 450000);
+
 	// turn on backlight drivers
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
 	if (ret < 0)
