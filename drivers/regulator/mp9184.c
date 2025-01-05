@@ -36,8 +36,7 @@ static int reg_enable(struct regulator_dev *rdev)
 	dev_err(mp9184->dev, "preboost startup done\n");
 	//we need to delay to wait for hiccup mode to exit --
 	//at a minimum it is about 70ms we need to wait here...
-	// we we do via the enable time function
-	//usleep_range(400000, 450000);
+	usleep_range(400000, 450000);
 
 	mp9184->is_enabled = true;
 
