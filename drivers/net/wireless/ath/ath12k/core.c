@@ -32,6 +32,10 @@ bool ath12k_ftm_mode;
 module_param_named(ftm_mode, ath12k_ftm_mode, bool, 0444);
 MODULE_PARM_DESC(ftm_mode, "Boots up in factory test mode");
 
+static char default_bdf[50] = "board.bin";
+module_param_string(default_bdf, default_bdf, sizeof(default_bdf), 0644);
+MODULE_PARM_DESC(default_bdf, "Name of BDF file to load if board_id is not set");
+
 /* protected with ath12k_hw_group_mutex */
 static struct list_head ath12k_hw_group_list = LIST_HEAD_INIT(ath12k_hw_group_list);
 
@@ -554,7 +558,8 @@ int ath12k_core_fetch_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd)
 		goto success;
 
 	bd_api = 1;
-	ret = ath12k_core_fetch_board_data_api_1(ab, bd, ATH12K_DEFAULT_BOARD_FILE);
+	ath12k_info(ab, "Default bdf name: %s\n", default_bdf);
+	ret = ath12k_core_fetch_board_data_api_1(ab, bd, default_bdf);
 	if (ret) {
 		ath12k_core_create_firmware_path(ab, filename,
 						 filepath, sizeof(filepath));
