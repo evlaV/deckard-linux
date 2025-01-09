@@ -374,20 +374,13 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 		submit->bos[i].iova = vma->va.addr;
 	}
 
-	/*
-	 * A second loop while holding the LRU lock (a) avoids acquiring/dropping
-	 * the LRU lock for each individual bo, while (b) avoiding holding the
-	 * LRU lock while calling msm_gem_pin_vma_locked() (which could trigger
-	 * get_pages() which could trigger reclaim.. and if we held the LRU lock
-	 * could trigger deadlock with the shrinker).
-	 */
-	mutex_lock(&priv->lru.lock);
 	for (i = 0; i < submit->nr_bos; i++) {
 		msm_gem_lock(submit->bos[i].obj);
+		mutex_lock(&priv->lru.lock);
 		msm_gem_pin_obj_locked(submit->bos[i].obj);
+		mutex_unlock(&priv->lru.lock);
 		msm_gem_unlock(submit->bos[i].obj);
 	}
-	mutex_unlock(&priv->lru.lock);
 
 	submit->bos_pinned = true;
 
