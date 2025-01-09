@@ -22,6 +22,10 @@ unsigned int ath12k_debug_mask;
 module_param_named(debug_mask, ath12k_debug_mask, uint, 0644);
 MODULE_PARM_DESC(debug_mask, "Debugging mask");
 
+static char default_bdf[50] = "board.bin";
+module_param_string(default_bdf, default_bdf, sizeof(default_bdf), 0644);
+MODULE_PARM_DESC(default_bdf, "Name of BDF file to load if board_id is not set");
+
 static int ath12k_core_rfkill_config(struct ath12k_base *ab)
 {
 	struct ath12k *ar;
@@ -498,7 +502,8 @@ int ath12k_core_fetch_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd)
 		goto success;
 
 	bd_api = 1;
-	ret = ath12k_core_fetch_board_data_api_1(ab, bd, ATH12K_DEFAULT_BOARD_FILE);
+	ath12k_info(ab, "Default bdf name: %s\n", default_bdf);
+	ret = ath12k_core_fetch_board_data_api_1(ab, bd, default_bdf);
 	if (ret) {
 		ath12k_core_create_firmware_path(ab, filename,
 						 filepath, sizeof(filepath));
