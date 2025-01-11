@@ -672,6 +672,13 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 
 	/* copy_*_user while holding a ww ticket upsets lockdep */
 	ret = submit_lock_objects(submit);
+
+	if (!(args->flags & MSM_SUBMIT_NO_IMPLICIT)) {
+		ret = submit_fence_sync(submit);
+		if (ret)
+			goto out;
+	}
+
 	if (ret)
 		goto out;
 
