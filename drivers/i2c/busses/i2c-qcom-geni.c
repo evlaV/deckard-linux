@@ -1027,6 +1027,11 @@ static int __maybe_unused geni_i2c_suspend_noirq(struct device *dev)
 {
 	struct geni_i2c_dev *gi2c = dev_get_drvdata(dev);
 
+	if (!strcmp(dev_name(dev), "a94000.i2c")) {
+		dev_warn(dev, "skipping noirq suspend");
+		return 0;
+	}
+
 	i2c_mark_adapter_suspended(&gi2c->adap);
 
 	if (!gi2c->suspended) {
@@ -1041,6 +1046,11 @@ static int __maybe_unused geni_i2c_suspend_noirq(struct device *dev)
 static int __maybe_unused geni_i2c_resume_noirq(struct device *dev)
 {
 	struct geni_i2c_dev *gi2c = dev_get_drvdata(dev);
+
+	if (!strcmp(dev_name(dev), "a94000.i2c")) {
+		dev_warn(dev, "skipping noirq resume");
+		return 0;
+	}
 
 	i2c_mark_adapter_resumed(&gi2c->adap);
 	return 0;
