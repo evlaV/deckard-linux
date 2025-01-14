@@ -1515,7 +1515,7 @@
 &i2c5 {
 	status = "okay";
 	// left backlight
-	mpq3367@38 {
+	mpq3367_left@38 {
 		compatible = "mps,mpq3367";
 		reg = <0x38>;
 		status = "okay";
