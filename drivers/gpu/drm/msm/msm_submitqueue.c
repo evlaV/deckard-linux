@@ -279,6 +279,30 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_file_private *ctx,
 	return 0;
 }
 
+/*
+ * Create the default submit-queue (id==0), used for backwards compatibility
+ * for userspace that pre-dates the introduction of submitqueues.
+ */
+int msm_submitqueue_init(struct drm_device *drm, struct msm_file_private *ctx)
+{
+       struct msm_drm_private *priv = drm->dev_private;
+       int default_prio, max_priority;
+
+       if (!priv->gpu)
+               return -ENODEV;
+
+       max_priority = (priv->gpu->nr_rings * NR_SCHED_PRIORITIES) - 1;
+
+       /*
+        * Pick a medium priority level as default.  Lower numeric value is
+        * higher priority, so round-up to pick a priority that is not higher
+        * than the middle priority level.
+        */
+       default_prio = DIV_ROUND_UP(max_priority, 2);
+
+       return msm_submitqueue_create(drm, ctx, default_prio, 0, NULL);
+}
+
 static int msm_submitqueue_query_faults(struct msm_gpu_submitqueue *queue,
 		struct drm_msm_submitqueue_query *args)
 {
