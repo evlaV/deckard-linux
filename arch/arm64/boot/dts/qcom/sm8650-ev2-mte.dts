@@ -214,6 +214,31 @@
 		// XXX: needs VREG_L05B_3P1, VREG_BOB2
 	};
 
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		pinctrl-0 = <&volume_up_n>, <&select_n>;
+		pinctrl-names = "default";
+
+		key-volume-up {
+			label = "Volume Up";
+			linux,code = <KEY_VOLUMEUP>;
+			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
+			debounce-interval = <15>;
+			linux,can-disable;
+			wakeup-source;
+		};
+
+		key-select {
+			label = "Select";
+			linux,code = <KEY_SELECT>;
+			gpios = <&pm8550b_gpios 5 GPIO_ACTIVE_LOW>;
+			debounce-interval = <15>;
+			linux,can-disable;
+			wakeup-source;
+		};
+	};
+
 	vph_pwr: vph-pwr-regulator {
 		compatible = "regulator-fixed";
 
@@ -401,30 +426,7 @@
 		};
 	};
 
-	gpio-keys {
-		compatible = "gpio-keys";
 
-		pinctrl-0 = <&volume_up_n>, <&select_n>;
-		pinctrl-names = "default";
-
-		key-volume-up {
-			label = "Volume Up";
-			linux,code = <KEY_VOLUMEUP>;
-			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
-			debounce-interval = <15>;
-			linux,can-disable;
-			wakeup-source;
-		};
-
-		key-select {
-			label = "Select";
-			linux,code = <KEY_SELECT>;
-			gpios = <&pm8550b_gpios 5 GPIO_ACTIVE_LOW>;
-			debounce-interval = <15>;
-			linux,can-disable;
-			wakeup-source;
-		};
-	};
 
 	BACKLIGHT_PREBOOST: backlight_preboost {
 		compatible = "ti,tps61377";
@@ -1715,7 +1717,7 @@
 		en-gpios = <&tlmm 58 GPIO_ACTIVE_HIGH>;
 
 		status = "okay";
-	}; 
+	};
 };
 
 &i2c5 {
@@ -1920,7 +1922,9 @@
 
 			status = "ok";
 	};
+};
 
+&i2c5 {
     max34417_1: max34417@12 {
         compatible = "maxim,max34417";
         reg = <0x12>;
@@ -1951,21 +1955,21 @@
         // Note: both 1.8 and 3.0V rails are always on for other sensors
     };
 
-	// TODO enable verr ( varies based on common mode range )
-	max34417_3: max34417@10 {
-		compatible = "maxim,max34417";
-		reg = <0x10>;
-		maxim,sense-resistor = <1>;
-		vdd-supply = <&vreg_l2b_3p0>;
-		vio-supply = <&vreg_l15b_1p8>;
-		status = "okay";
+    // TODO enable verr ( varies based on common mode range )
+    max34417_3: max34417@10 {
+        compatible = "maxim,max34417";
+        reg = <0x10>;
+        maxim,sense-resistor = <1>;
+        vdd-supply = <&vreg_l2b_3p0>;
+        vio-supply = <&vreg_l15b_1p8>;
+        status = "okay";
 
-		// CH 1 : BOB
-		// CH 2 : S6C ~1.9V Subregulation
-		// CH 3 : S1C ~1.3V Subregulation
-		// CH 4 : S3C ~1V Subregulation
-		// Note: both 1.8 and 3.0V rails are always on for other sensors
-	};
+        // CH 1 : BOB
+        // CH 2 : S6C ~1.9V Subregulation
+        // CH 3 : S1C ~1.3V Subregulation
+        // CH 4 : S3C ~1V Subregulation
+        // Note: both 1.8 and 3.0V rails are always on for other sensors
+    }; 
 };
 
 // Custom Connector I2C ( Paddle Card )
