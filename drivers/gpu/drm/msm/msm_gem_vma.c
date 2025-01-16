@@ -202,7 +202,9 @@ struct op_priv {
 static struct drm_gpuva *
 vma_from_op(struct drm_gpuvm *vm, struct drm_gpuva_op_map *op)
 {
-	return msm_gem_vma_new(vm, op->gem.obj, op->gem.offset, op->va.addr,
+	struct msm_gem_object *msm_obj = to_msm_bo(op->gem.obj);
+
+	return msm_gem_vma_new(vm, op->gem.obj, (msm_obj->flags >> 20) & 0x3f, op->gem.offset, op->va.addr,
 			       op->va.addr + op->va.range);
 }
 
