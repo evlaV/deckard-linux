@@ -32,8 +32,8 @@ bool ath12k_ftm_mode;
 module_param_named(ftm_mode, ath12k_ftm_mode, bool, 0444);
 MODULE_PARM_DESC(ftm_mode, "Boots up in factory test mode");
 
-static char default_bdf[50] = "board.bin";
-module_param_string(default_bdf, default_bdf, sizeof(default_bdf), 0644);
+static char param_default_bdf[50] = "";
+module_param_string(default_bdf, param_default_bdf, sizeof(param_default_bdf), 0644);
 MODULE_PARM_DESC(default_bdf, "Name of BDF file to load if board_id is not set");
 
 /* protected with ath12k_hw_group_mutex */
@@ -526,6 +526,18 @@ int ath12k_core_fetch_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd)
 	char *filename, filepath[100];
 	int bd_api;
 	int ret;
+	const char *dts_default_bdf = NULL;
+	struct device_node *node;
+	char *selected_board_file = ATH12K_DEFAULT_BOARD_FILE;
+
+	node = ab->dev->of_node;
+	if (node)
+		of_property_read_string(node, "qcom,default-bdf",
+				&dts_default_bdf);
+	else
+		ath12k_err(ab, "couldn't locate ath12k node in device tree");
+
+
 
 	filename = ATH12K_BOARD_API2_FILE;
 
@@ -534,6 +546,7 @@ int ath12k_core_fetch_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd)
 		ath12k_err(ab, "failed to create board name: %d", ret);
 		return ret;
 	}
+	ath12k_info(ab, "api2 boardname %s",boardname);
 
 	bd_api = 2;
 	ret = ath12k_core_fetch_board_data_api_n(ab, bd, boardname,
@@ -549,6 +562,7 @@ int ath12k_core_fetch_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd)
 		ath12k_err(ab, "failed to create fallback board name: %d", ret);
 		return ret;
 	}
+	ath12k_info(ab, "api2 fallback boardname %s",fallback_boardname);
 
 	ret = ath12k_core_fetch_board_data_api_n(ab, bd, fallback_boardname,
 						 ATH12K_BD_IE_BOARD,
@@ -558,8 +572,20 @@ int ath12k_core_fetch_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd)
 		goto success;
 
 	bd_api = 1;
-	ath12k_info(ab, "Default bdf name: %s\n", default_bdf);
-	ret = ath12k_core_fetch_board_data_api_1(ab, bd, default_bdf);
+	if (*param_default_bdf) {
+		ath12k_info(ab, "Default bdf name from parameter: %s", param_default_bdf);
+		selected_board_file = param_default_bdf;
+	}
+
+	if (dts_default_bdf && *dts_default_bdf) {
+		ath12k_info(ab, "Default bdf name from DTS: %s", dts_default_bdf);
+		selected_board_file = (char *) dts_default_bdf;
+	}
+
+	ath12k_info(ab, "Chose default board file of: %s", selected_board_file);
+	
+		
+	ret = ath12k_core_fetch_board_data_api_1(ab, bd, selected_board_file);
 	if (ret) {
 		ath12k_core_create_firmware_path(ab, filename,
 						 filepath, sizeof(filepath));
