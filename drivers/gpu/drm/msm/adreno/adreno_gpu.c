@@ -246,16 +246,67 @@ u64 adreno_private_address_space_size(struct msm_gpu *gpu)
 	return SZ_4G;
 }
 
+
+void adreno_gpu_enable_iommu_stall(struct adreno_gpu *adreno_gpu)
+{
+	struct msm_gpu *gpu = &adreno_gpu->base;
+	unsigned long flags;
+
+	/*
+	 * Wait until the cooldown period has passed and we would actually
+	 * collect a crashdump to re-enable stall-on-fault.
+	 */
+	spin_lock_irqsave(&adreno_gpu->fault_stall_lock, flags);
+	if (!adreno_gpu->stall_enabled &&
+			READ_ONCE(adreno_gpu->enable_stall_on_submit) &&
+			!READ_ONCE(gpu->crashstate)) {
+		adreno_gpu->stall_enabled = true;
+
+		gpu->aspace->mmu->funcs->set_stall(gpu->aspace->mmu, true);
+	}
+	spin_unlock_irqrestore(&adreno_gpu->fault_stall_lock, flags);
+}
+
+static void fault_stall_handler(struct timer_list *t)
+{
+	struct adreno_gpu *gpu = from_timer(gpu, t, fault_stall_timer);
+
+	WRITE_ONCE(gpu->enable_stall_on_submit, true);
+}
+
+
 #define ARM_SMMU_FSR_TF                 BIT(1)
 #define ARM_SMMU_FSR_PF			BIT(3)
 #define ARM_SMMU_FSR_EF			BIT(4)
+#define ARM_SMMU_FSR_SS			BIT(30)
+
 
 int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 			 struct adreno_smmu_fault_info *info, const char *block,
 			 u32 scratch[4])
 {
-	const char *type = "UNKNOWN";
-	bool do_devcoredump = info && !READ_ONCE(gpu->crashstate);
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+ 	const char *type = "UNKNOWN";
+	bool do_devcoredump = info && (info->fsr & ARM_SMMU_FSR_SS) &&
+		!READ_ONCE(gpu->crashstate);
+	unsigned long irq_flags;
+
+	/*
+	 * In case there is a subsequent storm of pagefaults, disable
+	 * stall-on-fault for at least half a second.
+	 */
+	spin_lock_irqsave(&adreno_gpu->fault_stall_lock, irq_flags);
+	if (adreno_gpu->stall_enabled) {
+		adreno_gpu->stall_enabled = false;
+		adreno_gpu->enable_stall_on_submit = false;
+
+		gpu->aspace->mmu->funcs->set_stall(gpu->aspace->mmu, false);
+
+	}
+	spin_unlock_irqrestore(&adreno_gpu->fault_stall_lock, irq_flags);
+
+	mod_timer(&adreno_gpu->fault_stall_timer,
+			round_jiffies_up(jiffies + msecs_to_jiffies(500)));
 
 	/*
 	 * If we aren't going to be resuming later from fault_worker, then do
@@ -1127,6 +1178,11 @@ int adreno_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 	pm_runtime_set_autosuspend_delay(dev,
 		adreno_gpu->info->inactive_period);
 	pm_runtime_use_autosuspend(dev);
+
+	spin_lock_init(&adreno_gpu->fault_stall_lock);
+	timer_setup(&adreno_gpu->fault_stall_timer, fault_stall_handler, 0);
+	adreno_gpu->enable_stall_on_submit = true;
+	adreno_gpu->stall_enabled = true;
 
 	return msm_gpu_init(drm, pdev, &adreno_gpu->base, &funcs->base,
 			gpu_name, &adreno_gpu_config);

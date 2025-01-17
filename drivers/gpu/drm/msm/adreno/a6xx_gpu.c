@@ -203,6 +203,8 @@ static void a6xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	struct msm_ringbuffer *ring = submit->ring;
 	unsigned int i, ibs = 0;
 
+	adreno_gpu_enable_iommu_stall(adreno_gpu);
+
 	a6xx_set_pagetable(a6xx_gpu, ring, submit->queue->ctx);
 
 	get_stats_counter(ring, REG_A6XX_RBBM_PERFCTR_CP(0),
@@ -326,6 +328,8 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	struct msm_ringbuffer *ring = submit->ring;
 	u64 timestamp_iova;
 	unsigned int i, ibs = 0;
+
+	adreno_gpu_enable_iommu_stall(adreno_gpu);
 
 	/*
 	 * Toggle concurrent binning for pagetable switch and set the thread to
