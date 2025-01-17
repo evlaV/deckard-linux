@@ -416,6 +416,7 @@ static struct drm_gpuva *get_vma_locked(struct drm_gem_object *obj,
 					struct drm_gpuvm *vm, u64 range_start,
 					u64 range_end)
 {
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct drm_gpuva *vma;
 
 	msm_gem_assert_locked(obj);
