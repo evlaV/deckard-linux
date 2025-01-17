@@ -205,6 +205,25 @@ struct adreno_gpu {
 	/* firmware: */
 	const struct firmware *fw[ADRENO_FW_MAX];
 
+
+	spinlock_t fault_stall_lock;
+
+	struct timer_list fault_stall_timer;
+
+	/**
+	 * enable_stall_on_submit:
+	 *
+	 * Whether to re-enable stall-on-fault on the next submit.
+	 */
+	bool enable_stall_on_submit;
+
+	/**
+	 * stall_enabled:
+	 *
+	 * Whether stall-on-fault is currently enabled.
+	 */
+	bool stall_enabled;
+
 	struct {
 		/**
 		 * @rgb565_predicator: Unknown, introduced with A650 family,
@@ -616,6 +635,8 @@ adreno_iommu_create_address_space(struct msm_gpu *gpu,
 int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 			 struct adreno_smmu_fault_info *info, const char *block,
 			 u32 scratch[4]);
+
+void adreno_gpu_enable_iommu_stall(struct adreno_gpu *gpu);
 
 int adreno_read_speedbin(struct device *dev, u32 *speedbin);
 
