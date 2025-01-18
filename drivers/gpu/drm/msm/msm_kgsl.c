@@ -263,11 +263,12 @@ long kgsl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct drm_file *file_priv = file->private_data;
 	struct drm_device *dev = file_priv->minor->dev;
-	struct msm_file_private *ctx = file_priv->driver_priv;
+	struct msm_context *ctx = file_priv->driver_priv;
 	struct msm_drm_private *priv = dev->dev_private;
 	struct msm_gpu *gpu = priv->gpu;
 	struct msm_gpu_submitqueue *queue;
 	struct drm_gem_object *obj;
+	struct drm_gpuvm *vm = msm_context_vm(dev, ctx);
 	unsigned long flags;
 	int ret;
 
@@ -503,7 +504,7 @@ case IOCTL_KGSL_GPUOBJ_ALLOC: {
 	size = (alloc.size + (PAGE_SIZE - 1)) & ~(PAGE_SIZE - 1); /* 4k aligned size */
 
 	if (flags.vbo)
-		obj = msm_gem_vbo_new(dev, size, msm_flags, ctx->aspace);
+		obj = msm_gem_vbo_new(dev, size, msm_flags, vm);
 	else
 		obj = msm_gem_new(dev, size, msm_flags);
 	if (IS_ERR(obj))
@@ -555,7 +556,7 @@ case IOCTL_KGSL_GPUOBJ_INFO: {
 	if (!obj)
 		return -EINVAL;
 
-	msm_gem_get_and_pin_iova(obj, ctx->aspace, &info.gpuaddr);
+	msm_gem_get_and_pin_iova(obj, vm, &info.gpuaddr);
 	info.flags = 0; // XXX
 	info.size = obj->size;
 	info.va_len = obj->size;

@@ -1280,7 +1280,15 @@ int drm_sched_init(struct drm_gpu_scheduler *sched,
 								       &drm_sched_lockdep_map);
 #else
 		// this will create: /sys/bus/workqueue/devices/ring0,ring1
-		sched->submit_wq = alloc_ordered_workqueue(name, WQ_SYSFS | __WQ_FORCE_ALLOW_SYSFS);
+		//printk(KERN_INFO "alloc_ordered_workqueue name = %s", name);
+		if(strcmp(name,"msm-vm-bind") == 0) //hack
+		{
+			sched->submit_wq = alloc_ordered_workqueue(name, 0);
+		}
+		else
+		{
+			sched->submit_wq = alloc_ordered_workqueue(name, WQ_SYSFS | __WQ_FORCE_ALLOW_SYSFS);
+		}
 #endif
 		if (!sched->submit_wq)
 			return -ENOMEM;

@@ -135,7 +135,7 @@ struct msm_kms {
 	bool irq_requested;
 
 	/* mapper-id used to request GEM buffer mapped for scanout: */
-	struct msm_gem_address_space *aspace;
+	struct drm_gpuvm *vm;
 
 	/* disp snapshot support */
 	struct kthread_worker *dump_worker;
