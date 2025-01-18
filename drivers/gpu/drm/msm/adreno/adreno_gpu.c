@@ -191,21 +191,21 @@ int adreno_zap_shader_load(struct msm_gpu *gpu, u32 pasid)
 	return zap_shader_load_mdt(gpu, adreno_gpu->info->zapfw, pasid);
 }
 
-struct msm_gem_address_space *
-adreno_create_address_space(struct msm_gpu *gpu,
-			    struct platform_device *pdev)
+struct drm_gpuvm *
+adreno_create_vm(struct msm_gpu *gpu,
+		 struct platform_device *pdev)
 {
-	return adreno_iommu_create_address_space(gpu, pdev, 0);
+	return adreno_iommu_create_vm(gpu, pdev, 0);
 }
 
-struct msm_gem_address_space *
-adreno_iommu_create_address_space(struct msm_gpu *gpu,
-				  struct platform_device *pdev,
-				  unsigned long quirks)
+struct drm_gpuvm *
+adreno_iommu_create_vm(struct msm_gpu *gpu,
+		       struct platform_device *pdev,
+		       unsigned long quirks)
 {
 	struct iommu_domain_geometry *geometry;
 	struct msm_mmu *mmu;
-	struct msm_gem_address_space *aspace;
+	struct drm_gpuvm *vm;
 	u64 start, size;
 
 	mmu = msm_iommu_gpu_new(&pdev->dev, gpu, quirks);
@@ -224,16 +224,16 @@ adreno_iommu_create_address_space(struct msm_gpu *gpu,
 	start = max_t(u64, SZ_16M, geometry->aperture_start);
 	size = geometry->aperture_end - start + 1;
 
-	aspace = msm_gem_address_space_create(mmu, "gpu",
-		start & GENMASK_ULL(48, 0), size);
+	vm = msm_gem_vm_create(gpu->dev, mmu, "gpu", start & GENMASK_ULL(48, 0),
+			       size, true);
 
-	if (IS_ERR(aspace) && !IS_ERR(mmu))
+	if (IS_ERR(vm) && !IS_ERR(mmu))
 		mmu->funcs->destroy(mmu);
 
-	return aspace;
+	return vm;
 }
 
-u64 adreno_private_address_space_size(struct msm_gpu *gpu)
+u64 adreno_private_vm_size(struct msm_gpu *gpu)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 
@@ -250,6 +250,7 @@ u64 adreno_private_address_space_size(struct msm_gpu *gpu)
 void adreno_gpu_enable_iommu_stall(struct adreno_gpu *adreno_gpu)
 {
 	struct msm_gpu *gpu = &adreno_gpu->base;
+	struct msm_gem_vm *vm = to_msm_vm(gpu->vm);
 	unsigned long flags;
 
 	/*
@@ -262,7 +263,7 @@ void adreno_gpu_enable_iommu_stall(struct adreno_gpu *adreno_gpu)
 			!READ_ONCE(gpu->crashstate)) {
 		adreno_gpu->stall_enabled = true;
 
-		gpu->aspace->mmu->funcs->set_stall(gpu->aspace->mmu, true);
+		vm->mmu->funcs->set_stall(vm->mmu, true);
 	}
 	spin_unlock_irqrestore(&adreno_gpu->fault_stall_lock, flags);
 }
@@ -286,6 +287,7 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 			 u32 scratch[4])
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct msm_gem_vm *vm = container_of(gpu->vm, struct msm_gem_vm, base);
  	const char *type = "UNKNOWN";
 	bool do_devcoredump = info && (info->fsr & ARM_SMMU_FSR_SS) &&
 		!READ_ONCE(gpu->crashstate);
@@ -300,7 +302,7 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 		adreno_gpu->stall_enabled = false;
 		adreno_gpu->enable_stall_on_submit = false;
 
-		gpu->aspace->mmu->funcs->set_stall(gpu->aspace->mmu, false);
+		vm->mmu->funcs->set_stall(vm->mmu, false);
 
 	}
 	spin_unlock_irqrestore(&adreno_gpu->fault_stall_lock, irq_flags);
@@ -313,7 +315,9 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 	 * it now.
 	 */
 	if (!do_devcoredump) {
-		gpu->aspace->mmu->funcs->resume_translation(gpu->aspace->mmu);
+		struct msm_mmu *mmu = vm->mmu;
+
+		mmu->funcs->resume_translation(mmu);
 	}
 
 	/*
@@ -357,14 +361,24 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 	return 0;
 }
 
-int adreno_get_param(struct msm_gpu *gpu, struct msm_file_private *ctx,
+static bool
+adreno_smmu_has_prr(struct msm_gpu *gpu)
+{
+	struct adreno_smmu_priv *adreno_smmu = dev_get_drvdata(&gpu->pdev->dev);
+	return adreno_smmu && adreno_smmu->set_prr_addr;
+}
+
+int adreno_get_param(struct msm_gpu *gpu, struct msm_context *ctx,
 		     uint32_t param, uint64_t *value, uint32_t *len)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct drm_device *drm = gpu->dev;
+	/* Note ctx can be NULL when called from rd_open(): */
+	struct drm_gpuvm *vm = ctx ? msm_context_vm(drm, ctx) : NULL;
 
 	/* No pointer params yet */
 	if (*len != 0)
-		return -EINVAL;
+		return UERR(EINVAL, drm, "invalid len");
 
 	switch (param) {
 	case MSM_PARAM_GPU_ID:
@@ -406,8 +420,8 @@ int adreno_get_param(struct msm_gpu *gpu, struct msm_file_private *ctx,
 		*value = 0;
 		return 0;
 	case MSM_PARAM_FAULTS:
-		if (ctx->aspace)
-			*value = gpu->global_faults + ctx->aspace->faults;
+		if (vm)
+			*value = gpu->global_faults + to_msm_vm(vm)->faults;
 		else
 			*value = gpu->global_faults;
 		return 0;
@@ -415,14 +429,14 @@ int adreno_get_param(struct msm_gpu *gpu, struct msm_file_private *ctx,
 		*value = gpu->suspend_count;
 		return 0;
 	case MSM_PARAM_VA_START:
-		if (ctx->aspace == gpu->aspace)
-			return -EINVAL;
-		*value = ctx->aspace->va_start;
+		if (vm == gpu->vm)
+			return UERR(EINVAL, drm, "requires per-process pgtables");
+		*value = vm->mm_start;
 		return 0;
 	case MSM_PARAM_VA_SIZE:
-		if (ctx->aspace == gpu->aspace)
-			return -EINVAL;
-		*value = ctx->aspace->va_size;
+		if (vm == gpu->vm)
+			return UERR(EINVAL, drm, "requires per-process pgtables");
+		*value = vm->mm_range;
 		return 0;
 	case MSM_PARAM_HIGHEST_BANK_BIT:
 		*value = adreno_gpu->ubwc_config.highest_bank_bit;
@@ -436,15 +450,22 @@ int adreno_get_param(struct msm_gpu *gpu, struct msm_file_private *ctx,
 	case MSM_PARAM_MACROTILE_MODE:
 		*value = adreno_gpu->ubwc_config.macrotile_mode;
 		return 0;
+	case MSM_PARAM_UCHE_TRAP_BASE:
+		*value = adreno_gpu->uche_trap_base;
+		return 0;
+	case MSM_PARAM_HAS_PRR:
+		*value = adreno_smmu_has_prr(gpu);
+		return 0;
 	default:
-		DBG("%s: invalid param: %u", gpu->name, param);
-		return -EINVAL;
+		return UERR(EINVAL, drm, "%s: invalid param: %u", gpu->name, param);
 	}
 }
 
-int adreno_set_param(struct msm_gpu *gpu, struct msm_file_private *ctx,
+int adreno_set_param(struct msm_gpu *gpu, struct msm_context *ctx,
 		     uint32_t param, uint64_t value, uint32_t len)
 {
+	struct drm_device *drm = gpu->dev;
+
 	switch (param) {
 	case MSM_PARAM_COMM:
 	case MSM_PARAM_CMDLINE:
@@ -452,11 +473,11 @@ int adreno_set_param(struct msm_gpu *gpu, struct msm_file_private *ctx,
 		 * that should be a reasonable upper bound
 		 */
 		if (len > PAGE_SIZE)
-			return -EINVAL;
+			return UERR(EINVAL, drm, "invalid len");
 		break;
 	default:
 		if (len != 0)
-			return -EINVAL;
+			return UERR(EINVAL, drm, "invalid len");
 	}
 
 	switch (param) {
@@ -485,11 +506,25 @@ int adreno_set_param(struct msm_gpu *gpu, struct msm_file_private *ctx,
 	}
 	case MSM_PARAM_SYSPROF:
 		if (!capable(CAP_SYS_ADMIN))
-			return -EPERM;
-		return msm_file_private_set_sysprof(ctx, gpu, value);
+			return UERR(EPERM, drm, "invalid permissions");
+		return msm_context_set_sysprof(ctx, gpu, value);
+	case MSM_PARAM_EN_VM_BIND:
+		/* We can only support VM_BIND with per-process pgtables: */
+		if (ctx->vm == gpu->vm)
+			return UERR(EINVAL, drm, "requires per-process pgtables");
+
+		/*
+		 * We can only swtich to VM_BIND mode if the VM has not yet
+		 * been created:
+		 */
+		if (ctx->vm)
+			return UERR(EBUSY, drm, "VM already created");
+
+		ctx->userspace_managed_vm = value;
+
+		return 0;
 	default:
-		DBG("%s: invalid param: %u", gpu->name, param);
-		return -EINVAL;
+		return UERR(EINVAL, drm, "%s: invalid param: %u", gpu->name, param);
 	}
 }
 
@@ -609,7 +644,7 @@ struct drm_gem_object *adreno_fw_create_bo(struct msm_gpu *gpu,
 	void *ptr;
 
 	ptr = msm_gem_kernel_new(gpu->dev, fw->size - 4,
-		MSM_BO_WC | MSM_BO_GPU_READONLY, gpu->aspace, &bo, iova);
+		MSM_BO_WC | MSM_BO_GPU_READONLY, gpu->vm, &bo, iova);
 
 	if (IS_ERR(ptr))
 		return ERR_CAST(ptr);

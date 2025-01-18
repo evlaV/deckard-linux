@@ -28,6 +28,7 @@
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/display/drm_dsc.h>
 #include <drm/msm_drm.h>
@@ -44,8 +45,6 @@ struct msm_rd_state;
 struct msm_perf_state;
 struct msm_gem_submit;
 struct msm_fence_context;
-struct msm_gem_address_space;
-struct msm_gem_vma;
 struct msm_disp_state;
 
 #define MAX_CRTCS      8
@@ -128,6 +127,10 @@ struct msm_drm_private {
 	 */
 	atomic64_t total_mem;
 
+	/** @vms: List of all VMs, protected by @vm_lock */
+	struct list_head vms;
+	struct mutex vm_lock;
+
 	/**
 	 * List of all GEM objects (mainly for debugfs, protected by obj_lock
 	 * (acquire before per GEM object lock)
@@ -197,17 +200,6 @@ struct msm_drm_private {
 
 	struct msm_drm_thread event_thread[MAX_CRTCS];
 
-	/* VRAM carveout, used when no IOMMU: */
-	struct {
-		unsigned long size;
-		dma_addr_t paddr;
-		/* NOTE: mm managed at the page level, size is in # of pages
-		 * and position mm_node->start is in # of pages:
-		 */
-		struct drm_mm mm;
-		spinlock_t lock; /* Protects drm_mm node allocation/removal */
-	} vram;
-
 	struct notifier_block vmap_notifier;
 	struct shrinker *shrinker;
 
@@ -255,7 +247,7 @@ void msm_crtc_disable_vblank(struct drm_crtc *crtc);
 int msm_register_mmu(struct drm_device *dev, struct msm_mmu *mmu);
 void msm_unregister_mmu(struct drm_device *dev, struct msm_mmu *mmu);
 
-struct msm_gem_address_space *msm_kms_init_aspace(struct drm_device *dev);
+struct drm_gpuvm *msm_kms_init_vm(struct drm_device *dev);
 bool msm_use_mmu(struct drm_device *dev);
 
 int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
@@ -273,16 +265,18 @@ int msm_gem_prime_vmap(struct drm_gem_object *obj, struct iosys_map *map);
 void msm_gem_prime_vunmap(struct drm_gem_object *obj, struct iosys_map *map);
 struct drm_gem_object *msm_gem_prime_import_sg_table(struct drm_device *dev,
 		struct dma_buf_attachment *attach, struct sg_table *sg);
+struct dma_buf *msm_gem_prime_export(struct drm_gem_object *obj, int flags);
 int msm_gem_prime_pin(struct drm_gem_object *obj);
 void msm_gem_prime_unpin(struct drm_gem_object *obj);
 
-int msm_framebuffer_prepare(struct drm_framebuffer *fb,
-		struct msm_gem_address_space *aspace, bool needs_dirtyfb);
-void msm_framebuffer_cleanup(struct drm_framebuffer *fb,
-		struct msm_gem_address_space *aspace, bool needed_dirtyfb);
-uint32_t msm_framebuffer_iova(struct drm_framebuffer *fb,
-		struct msm_gem_address_space *aspace, int plane);
-struct drm_gem_object *msm_framebuffer_bo(struct drm_framebuffer *fb, int plane);
+int msm_framebuffer_prepare(struct drm_framebuffer *fb, struct drm_gpuvm *vm,
+			    bool needs_dirtyfb);
+void msm_framebuffer_cleanup(struct drm_framebuffer *fb, struct drm_gpuvm *vm,
+			     bool needed_dirtyfb);
+uint32_t msm_framebuffer_iova(struct drm_framebuffer *fb, struct drm_gpuvm *vm,
+			      int plane);
+struct drm_gem_object *msm_framebuffer_bo(struct drm_framebuffer *fb,
+					  int plane);
 const struct msm_format *msm_framebuffer_format(struct drm_framebuffer *fb);
 struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
 		struct drm_file *file, const struct drm_mode_fb_cmd2 *mode_cmd);
@@ -518,6 +512,12 @@ void msm_hrtimer_work_init(struct msm_hrtimer_work *work,
 			   kthread_work_func_t fn,
 			   clockid_t clock_id,
 			   enum hrtimer_mode mode);
+
+/* Helper for returning a UABI error with optional logging which can make
+ * it easier for userspace to understand what it is doing wrong.
+ */
+#define UERR(err, drm, fmt, ...) \
+	({ DRM_DEV_DEBUG_DRIVER((drm)->dev, fmt, ##__VA_ARGS__); -(err); })
 
 #define DBG(fmt, ...) DRM_DEBUG_DRIVER(fmt"\n", ##__VA_ARGS__)
 #define VERB(fmt, ...) if (0) DRM_DEBUG_DRIVER(fmt"\n", ##__VA_ARGS__)

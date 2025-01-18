@@ -109,9 +109,11 @@ static void get_stats_counter(struct msm_ringbuffer *ring, u32 counter,
 }
 
 static void a6xx_set_pagetable(struct a6xx_gpu *a6xx_gpu,
-		struct msm_ringbuffer *ring, struct msm_file_private *ctx)
+		struct msm_ringbuffer *ring, struct msm_gem_submit *submit)
 {
 	bool sysprof = refcount_read(&a6xx_gpu->base.base.sysprof_active) > 1;
+	struct msm_context *ctx = submit->queue->ctx;
+	struct drm_gpuvm *vm = msm_context_vm(submit->dev, ctx);
 	struct adreno_gpu *adreno_gpu = &a6xx_gpu->base;
 	phys_addr_t ttbr;
 	u32 asid;
@@ -120,8 +122,17 @@ static void a6xx_set_pagetable(struct a6xx_gpu *a6xx_gpu,
 	if (ctx->seqno == ring->cur_ctx_seqno)
 		return;
 
-	if (msm_iommu_pagetable_params(ctx->aspace->mmu, &ttbr, &asid))
+	if (msm_iommu_pagetable_params(to_msm_vm(vm)->mmu, &ttbr, &asid))
 		return;
+
+	if (adreno_gpu->info->family >= ADRENO_7XX_GEN1) {
+		/* Wait for previous submit to complete before continuing: */
+		OUT_PKT7(ring, CP_WAIT_TIMESTAMP, 4);
+		OUT_RING(ring, 0);
+		OUT_RING(ring, lower_32_bits(rbmemptr(ring, fence)));
+		OUT_RING(ring, upper_32_bits(rbmemptr(ring, fence)));
+		OUT_RING(ring, submit->seqno - 1);
+	}
 
 	if (!sysprof) {
 		if (!adreno_is_a7xx(adreno_gpu)) {
@@ -205,7 +216,7 @@ static void a6xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 
 	adreno_gpu_enable_iommu_stall(adreno_gpu);
 
-	a6xx_set_pagetable(a6xx_gpu, ring, submit->queue->ctx);
+	a6xx_set_pagetable(a6xx_gpu, ring, submit);
 
 	get_stats_counter(ring, REG_A6XX_RBBM_PERFCTR_CP(0),
 		rbmemptr_stats(ring, index, cpcycles_start));
@@ -338,7 +349,7 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
 	OUT_RING(ring, CP_THREAD_CONTROL_0_SYNC_THREADS | CP_SET_THREAD_BR);
 
-	a6xx_set_pagetable(a6xx_gpu, ring, submit->queue->ctx);
+	a6xx_set_pagetable(a6xx_gpu, ring, submit);
 
 	/*
 	 * If preemption is enabled, then set the pseudo register for the save
@@ -968,7 +979,7 @@ static int a6xx_ucode_load(struct msm_gpu *gpu)
 
 		msm_gem_object_set_name(a6xx_gpu->sqe_bo, "sqefw");
 		if (!a6xx_ucode_check_version(a6xx_gpu, a6xx_gpu->sqe_bo)) {
-			msm_gem_unpin_iova(a6xx_gpu->sqe_bo, gpu->aspace);
+			msm_gem_unpin_iova(a6xx_gpu->sqe_bo, gpu->vm);
 			drm_gem_object_put(a6xx_gpu->sqe_bo);
 
 			a6xx_gpu->sqe_bo = NULL;
@@ -985,7 +996,7 @@ static int a6xx_ucode_load(struct msm_gpu *gpu)
 		a6xx_gpu->shadow = msm_gem_kernel_new(gpu->dev,
 						      sizeof(u32) * gpu->nr_rings,
 						      MSM_BO_WC | MSM_BO_MAP_PRIV,
-						      gpu->aspace, &a6xx_gpu->shadow_bo,
+						      gpu->vm, &a6xx_gpu->shadow_bo,
 						      &a6xx_gpu->shadow_iova);
 
 		if (IS_ERR(a6xx_gpu->shadow))
@@ -998,7 +1009,7 @@ static int a6xx_ucode_load(struct msm_gpu *gpu)
 		a6xx_gpu->memstore = msm_gem_kernel_new(gpu->dev,
 						      KGSL_MEMSTORE_SIZE,
 						      MSM_BO_WC | MSM_BO_MAP_PRIV,
-						      gpu->aspace, &a6xx_gpu->memstore_bo,
+						      gpu->vm, &a6xx_gpu->memstore_bo,
 						      &a6xx_gpu->memstore_iova);
 
 		if (IS_ERR(a6xx_gpu->shadow))
@@ -1009,7 +1020,7 @@ static int a6xx_ucode_load(struct msm_gpu *gpu)
 
 	a6xx_gpu->pwrup_reglist_ptr = msm_gem_kernel_new(gpu->dev, PAGE_SIZE,
 							 MSM_BO_WC  | MSM_BO_MAP_PRIV,
-							 gpu->aspace, &a6xx_gpu->pwrup_reglist_bo,
+							 gpu->vm, &a6xx_gpu->pwrup_reglist_bo,
 							 &a6xx_gpu->pwrup_reglist_iova);
 
 	if (IS_ERR(a6xx_gpu->pwrup_reglist_ptr))
@@ -1159,12 +1170,12 @@ static int hw_init(struct msm_gpu *gpu)
 
 	/* Disable L2 bypass in the UCHE */
 	if (adreno_is_a7xx(adreno_gpu)) {
-		gpu_write64(gpu, REG_A6XX_UCHE_TRAP_BASE, 0x0001fffffffff000llu);
-		gpu_write64(gpu, REG_A6XX_UCHE_WRITE_THRU_BASE, 0x0001fffffffff000llu);
+		gpu_write64(gpu, REG_A6XX_UCHE_TRAP_BASE, adreno_gpu->uche_trap_base);
+		gpu_write64(gpu, REG_A6XX_UCHE_WRITE_THRU_BASE, adreno_gpu->uche_trap_base);
 	} else {
-		gpu_write64(gpu, REG_A6XX_UCHE_WRITE_RANGE_MAX, 0x0001ffffffffffc0llu);
-		gpu_write64(gpu, REG_A6XX_UCHE_TRAP_BASE, 0x0001fffffffff000llu);
-		gpu_write64(gpu, REG_A6XX_UCHE_WRITE_THRU_BASE, 0x0001fffffffff000llu);
+		gpu_write64(gpu, REG_A6XX_UCHE_WRITE_RANGE_MAX, adreno_gpu->uche_trap_base + 0xfc0);
+		gpu_write64(gpu, REG_A6XX_UCHE_TRAP_BASE, adreno_gpu->uche_trap_base);
+		gpu_write64(gpu, REG_A6XX_UCHE_WRITE_THRU_BASE, adreno_gpu->uche_trap_base);
 	}
 
 	if (!(adreno_is_a650_family(adreno_gpu) ||
@@ -2234,12 +2245,12 @@ static void a6xx_destroy(struct msm_gpu *gpu)
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 
 	if (a6xx_gpu->sqe_bo) {
-		msm_gem_unpin_iova(a6xx_gpu->sqe_bo, gpu->aspace);
+		msm_gem_unpin_iova(a6xx_gpu->sqe_bo, gpu->vm);
 		drm_gem_object_put(a6xx_gpu->sqe_bo);
 	}
 
 	if (a6xx_gpu->shadow_bo) {
-		msm_gem_unpin_iova(a6xx_gpu->shadow_bo, gpu->aspace);
+		msm_gem_unpin_iova(a6xx_gpu->shadow_bo, gpu->vm);
 		drm_gem_object_put(a6xx_gpu->shadow_bo);
 	}
 
@@ -2279,8 +2290,8 @@ static void a6xx_gpu_set_freq(struct msm_gpu *gpu, struct dev_pm_opp *opp,
 	mutex_unlock(&a6xx_gpu->gmu.lock);
 }
 
-static struct msm_gem_address_space *
-a6xx_create_address_space(struct msm_gpu *gpu, struct platform_device *pdev)
+static struct drm_gpuvm *
+a6xx_create_vm(struct msm_gpu *gpu, struct platform_device *pdev)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
@@ -2294,22 +2305,21 @@ a6xx_create_address_space(struct msm_gpu *gpu, struct platform_device *pdev)
 	    !device_iommu_capable(&pdev->dev, IOMMU_CAP_CACHE_COHERENCY))
 		quirks |= IO_PGTABLE_QUIRK_ARM_OUTER_WBWA;
 
-	return adreno_iommu_create_address_space(gpu, pdev, quirks);
+	return adreno_iommu_create_vm(gpu, pdev, quirks);
 }
 
-static struct msm_gem_address_space *
-a6xx_create_private_address_space(struct msm_gpu *gpu)
+static struct drm_gpuvm *
+a6xx_create_private_vm(struct msm_gpu *gpu, bool kernel_managed)
 {
 	struct msm_mmu *mmu;
 
-	mmu = msm_iommu_pagetable_create(gpu->aspace->mmu);
+	mmu = msm_iommu_pagetable_create(to_msm_vm(gpu->vm)->mmu);
 
 	if (IS_ERR(mmu))
 		return ERR_CAST(mmu);
 
-	return msm_gem_address_space_create(mmu,
-		"gpu", 0x100000000ULL,
-		adreno_private_address_space_size(gpu));
+	return msm_gem_vm_create(gpu->dev, mmu, NULL, 0x100000000ULL,
+				 adreno_private_vm_size(gpu), kernel_managed);
 }
 
 static uint32_t a6xx_get_rptr(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
@@ -2426,8 +2436,8 @@ static const struct adreno_gpu_funcs funcs = {
 		.gpu_state_get = a6xx_gpu_state_get,
 		.gpu_state_put = a6xx_gpu_state_put,
 #endif
-		.create_address_space = a6xx_create_address_space,
-		.create_private_address_space = a6xx_create_private_address_space,
+		.create_vm = a6xx_create_vm,
+		.create_private_vm = a6xx_create_private_vm,
 		.get_rptr = a6xx_get_rptr,
 		.progress = a6xx_progress,
 	},
@@ -2455,8 +2465,8 @@ static const struct adreno_gpu_funcs funcs_gmuwrapper = {
 		.gpu_state_get = a6xx_gpu_state_get,
 		.gpu_state_put = a6xx_gpu_state_put,
 #endif
-		.create_address_space = a6xx_create_address_space,
-		.create_private_address_space = a6xx_create_private_address_space,
+		.create_vm = a6xx_create_vm,
+		.create_private_vm = a6xx_create_private_vm,
 		.get_rptr = a6xx_get_rptr,
 		.progress = a6xx_progress,
 	},
@@ -2486,8 +2496,8 @@ static const struct adreno_gpu_funcs funcs_a7xx = {
 		.gpu_state_get = a6xx_gpu_state_get,
 		.gpu_state_put = a6xx_gpu_state_put,
 #endif
-		.create_address_space = a6xx_create_address_space,
-		.create_private_address_space = a6xx_create_private_address_space,
+		.create_vm = a6xx_create_vm,
+		.create_private_vm = a6xx_create_private_vm,
 		.get_rptr = a6xx_get_rptr,
 		.progress = a6xx_progress,
 	},
@@ -2581,9 +2591,12 @@ struct msm_gpu *a6xx_gpu_init(struct drm_device *dev)
 		}
 	}
 
-	if (gpu->aspace)
-		msm_mmu_set_fault_handler(gpu->aspace->mmu, gpu,
-				a6xx_fault_handler);
+	adreno_gpu->uche_trap_base = 0x1fffffffff000ull;
+
+	if (gpu->vm) {
+		msm_mmu_set_fault_handler(to_msm_vm(gpu->vm)->mmu, gpu,
+					  a6xx_fault_handler);
+	}
 
 	a6xx_calc_ubwc_config(adreno_gpu);
 	/* Set up the preemption specific bits and pieces for each ringbuffer */
