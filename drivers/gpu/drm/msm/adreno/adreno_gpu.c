@@ -246,8 +246,7 @@ u64 adreno_private_vm_size(struct msm_gpu *gpu)
 	return SZ_4G;
 }
 
-
-void adreno_gpu_enable_iommu_stall(struct adreno_gpu *adreno_gpu)
+void adreno_check_and_reenable_stall(struct adreno_gpu *adreno_gpu)
 {
 	struct msm_gpu *gpu = &adreno_gpu->base;
 	struct msm_gem_vm *vm = to_msm_vm(gpu->vm);
@@ -259,7 +258,7 @@ void adreno_gpu_enable_iommu_stall(struct adreno_gpu *adreno_gpu)
 	 */
 	spin_lock_irqsave(&adreno_gpu->fault_stall_lock, flags);
 	if (!adreno_gpu->stall_enabled &&
-			READ_ONCE(adreno_gpu->enable_stall_on_submit) &&
+			ktime_after(ktime_get(), adreno_gpu->stall_reenable_time) &&
 			!READ_ONCE(gpu->crashstate)) {
 		adreno_gpu->stall_enabled = true;
 
@@ -268,19 +267,10 @@ void adreno_gpu_enable_iommu_stall(struct adreno_gpu *adreno_gpu)
 	spin_unlock_irqrestore(&adreno_gpu->fault_stall_lock, flags);
 }
 
-static void fault_stall_handler(struct timer_list *t)
-{
-	struct adreno_gpu *gpu = from_timer(gpu, t, fault_stall_timer);
-
-	WRITE_ONCE(gpu->enable_stall_on_submit, true);
-}
-
-
 #define ARM_SMMU_FSR_TF                 BIT(1)
 #define ARM_SMMU_FSR_PF			BIT(3)
 #define ARM_SMMU_FSR_EF			BIT(4)
 #define ARM_SMMU_FSR_SS			BIT(30)
-
 
 int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 			 struct adreno_smmu_fault_info *info, const char *block,
@@ -300,15 +290,11 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 	spin_lock_irqsave(&adreno_gpu->fault_stall_lock, irq_flags);
 	if (adreno_gpu->stall_enabled) {
 		adreno_gpu->stall_enabled = false;
-		adreno_gpu->enable_stall_on_submit = false;
-
 		vm->mmu->funcs->set_stall(vm->mmu, false);
 
 	}
+	adreno_gpu->stall_reenable_time = ktime_add_ms(ktime_get(), 500);
 	spin_unlock_irqrestore(&adreno_gpu->fault_stall_lock, irq_flags);
-
-	mod_timer(&adreno_gpu->fault_stall_timer,
-			round_jiffies_up(jiffies + msecs_to_jiffies(500)));
 
 	/*
 	 * If we aren't going to be resuming later from fault_worker, then do
@@ -1215,8 +1201,6 @@ int adreno_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 	pm_runtime_use_autosuspend(dev);
 
 	spin_lock_init(&adreno_gpu->fault_stall_lock);
-	timer_setup(&adreno_gpu->fault_stall_timer, fault_stall_handler, 0);
-	adreno_gpu->enable_stall_on_submit = true;
 	adreno_gpu->stall_enabled = true;
 
 	return msm_gpu_init(drm, pdev, &adreno_gpu->base, &funcs->base,

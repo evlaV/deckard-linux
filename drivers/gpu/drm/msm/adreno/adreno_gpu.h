@@ -205,17 +205,19 @@ struct adreno_gpu {
 	/* firmware: */
 	const struct firmware *fw[ADRENO_FW_MAX];
 
-
+	/**
+	 * fault_stall_lock:
+	 *
+	 * Serialize changes to stall-on-fault state.
+	 */
 	spinlock_t fault_stall_lock;
 
-	struct timer_list fault_stall_timer;
-
 	/**
-	 * enable_stall_on_submit:
+	 * fault_stall_reenable_time:
 	 *
-	 * Whether to re-enable stall-on-fault on the next submit.
+	 * if stall_enabled is false, when to reenable stall-on-fault.
 	 */
-	bool enable_stall_on_submit;
+	ktime_t stall_reenable_time;
 
 	/**
 	 * stall_enabled:
@@ -638,7 +640,7 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 			 struct adreno_smmu_fault_info *info, const char *block,
 			 u32 scratch[4]);
 
-void adreno_gpu_enable_iommu_stall(struct adreno_gpu *gpu);
+void adreno_check_and_reenable_stall(struct adreno_gpu *gpu);
 
 int adreno_read_speedbin(struct device *dev, u32 *speedbin);
 
