@@ -1761,6 +1761,15 @@ static int disp_cc_sm8550_probe(struct platform_device *pdev)
 {
 	struct regmap *regmap;
 	int ret;
+	struct device *dev = &pdev->dev;
+	static int defer;
+	int defercount = 2;
+
+	if (++defer <= defercount)
+	{
+		dev_info(dev, "defer probe %d of %d\n", defer, defercount);
+		return -EPROBE_DEFER;
+	}
 
 	ret = devm_pm_runtime_enable(&pdev->dev);
 	if (ret)
