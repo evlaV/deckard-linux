@@ -948,12 +948,6 @@
 	status = "okay";
 };
 
-// ADSP controls eye tracking cameras
-&adsp {
-	// AON CAM ADSP TEST: gpio102/104 to mclk function
-	pinctrl-names = "default";
-	pinctrl-0 = <&cam2_default &cam4_default>;
-};
 
 &cci0_i2c1 {
 #if 0
@@ -1579,17 +1573,6 @@
 	pinctrl-names = "default";
 	vdd-micb-supply = <&vreg_l10b_1p8>;
 	qcom,dmic-sample-rate = <2400000>; /* or 3200000 */
-};
-
-&sound {
-    enable-i2s;
-    // enable-hdmi;
-    codecs =
-       <&left_spkr_i2s>, <&right_spkr_i2s>,
-       <&lpass_vamacro 0>;
-
-    pinctrl-0 = <&i2s2_active>;
-    pinctrl-names = "default";
 };
 
 &i2c_hub_8 {
