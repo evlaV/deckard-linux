@@ -1382,6 +1382,10 @@
 	status = "okay";
 };
 
+&pdc_reset {
+	status = "okay";
+};
+
 &remoteproc_adsp {
 	firmware-name = "qcom/sm8650/adsp.mbn",
 			"qcom/sm8650/adsp_dtb.mbn",

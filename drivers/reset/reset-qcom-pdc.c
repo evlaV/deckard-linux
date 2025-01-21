@@ -139,18 +139,28 @@ static int qcom_pdc_reset_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	void __iomem *base;
 
+	dev_err(dev, "gabe qcom_pdc_reset_probe");
 	desc = device_get_match_data(&pdev->dev);
 	if (!desc)
+	{
+		dev_err(dev, "gabe qcom_pdc_reset_probe x1");
 		return -EINVAL;
+	}
 
 	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
 	if (!data)
+	{
+		dev_err(dev, "gabe qcom_pdc_reset_probe x2");
 		return -ENOMEM;
+	}
 
 	data->desc = desc;
 	base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(base))
+	{
+		dev_err(dev, "gabe qcom_pdc_reset_probe x3");
 		return PTR_ERR(base);
+	}
 
 	data->regmap = devm_regmap_init_mmio(dev, base, &pdc_regmap_config);
 	if (IS_ERR(data->regmap)) {
@@ -163,6 +173,7 @@ static int qcom_pdc_reset_probe(struct platform_device *pdev)
 	data->rcdev.nr_resets = desc->num_resets;
 	data->rcdev.of_node = dev->of_node;
 
+	dev_err(dev,  "gabe qcom_pdc_reset_probe x5");
 	return devm_reset_controller_register(dev, &data->rcdev);
 }
 

@@ -5513,7 +5513,7 @@
 		};
 
 		pdc_reset: reset-controller@b5e0000 {
-			compatible = "qcom,sc7280-pdc-global";
+			compatible = "qcom,sm8650-pdc-global";
 			reg = <0 0x0b5e0000 0 0x20000>;
 			#reset-cells = <1>;
 		};
