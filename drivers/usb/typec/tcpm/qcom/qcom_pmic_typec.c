@@ -208,6 +208,14 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	u32 base[2];
 	int ret;
 	uint charger_flags;
+	static int defer;
+	int defercount = 3;
+
+	if (++defer <= defercount)
+	{
+		dev_info(dev, "tcpm defer probe %d of %d\n", defer, defercount);
+		return -EPROBE_DEFER;
+	}
 
 	res = of_device_get_match_data(dev);
 	if (!res)
