@@ -300,6 +300,8 @@ static int qcom_wdt_probe(struct platform_device *pdev)
 		return ret;
 
 	platform_set_drvdata(pdev, wdt);
+
+	dev_err(dev, "QCOM WDT probe OK\n");
 	return 0;
 }
 
