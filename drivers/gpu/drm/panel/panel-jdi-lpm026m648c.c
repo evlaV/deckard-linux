@@ -48,7 +48,6 @@
 #define GPO1_TES1	233
 #define GPO1_TEW1	17
 
-static int panel_init = 0;
 /*
  * Camera capture signal on panel tester is GPIO2 routed out TE pin
  * Need 100usec of offest on either side, so we use 50 lines at
@@ -382,8 +381,6 @@ static int lpm026m648c_disable(struct drm_panel *panel)
     int ret;
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 
-	if (panel_init)
-		return 0;
 	if (!ctx->enabled)
 		return 0;
 
@@ -407,9 +404,6 @@ static int lpm026m648c_unprepare(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 	int ret = 0;
-
-	if (panel_init)
-		return 0;
 
 	if (!ctx->prepared)
 		return 0;
@@ -471,8 +465,6 @@ static int lpm026m648c_prepare(struct drm_panel *panel)
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 	int ret;
 
-	if (panel_init)
-		return 0;
 	if (ctx->prepared)
 		return 0;
 
@@ -520,9 +512,6 @@ static int lpm026m648c_bl_update_status(struct backlight_device *bl)
 	struct lpm026m648c_ctx *lpm026m648c_ctx = mipi_dsi_get_drvdata(dsi);
 	int ret = 0;
 
-	if (panel_init)
-		return 0;
-
 	if (!lpm026m648c_ctx->prepared)
 		return 0;
 
@@ -543,10 +532,6 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 	int ret;
-
-	if (panel_init)
-		return 0;
-	panel_init = 1;
 
 	if (ctx->enabled)
 		return 0;
