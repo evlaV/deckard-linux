@@ -258,6 +258,7 @@ static void dpu_encoder_phys_vid_setup_timing_engine(
 	unsigned long lock_flags;
 	struct dpu_hw_intf_cfg intf_cfg = { 0 };
 
+	/* we can change cached_mode to hack VRR */
 	drm_mode_init(&mode, &phys_enc->cached_mode);
 
 	if (!phys_enc->hw_ctl->ops.setup_intf_cfg) {
@@ -321,6 +322,60 @@ static void dpu_encoder_phys_vid_setup_timing_engine(
 
 	if (phys_enc->hw_pp->merge_3d)
 		phys_enc->hw_pp->merge_3d->ops.setup_3d_mode(phys_enc->hw_pp->merge_3d, intf_cfg.mode_3d);
+
+	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+
+	programmable_fetch_config(phys_enc, &timing_params);
+}
+
+static void dpu_encoder_phys_vid_hack_timing(
+		struct dpu_encoder_phys *phys_enc,
+		struct drm_display_mode *hack_mode)
+{
+	;
+	struct drm_display_mode mode;
+	struct dpu_hw_intf_timing_params timing_params = { 0 };
+	const struct msm_format *fmt = NULL;
+	u32 fmt_fourcc;
+	unsigned long lock_flags;
+
+	/* we can change cached_mode to hack VRR */
+	drm_mode_init(&mode, hack_mode);
+
+	if (!phys_enc->hw_intf->ops.setup_timing_gen) {
+		DPU_ERROR("timing engine setup is not supported\n");
+		return;
+	}
+
+	DPU_DEBUG_VIDENC(phys_enc, "enabling mode:\n");
+	drm_mode_debug_printmodeline(&mode);
+
+	fmt_fourcc = dpu_encoder_get_drm_fmt(phys_enc);
+
+	if (phys_enc->split_role != ENC_ROLE_SOLO || fmt_fourcc == DRM_FORMAT_YUV420) {
+		mode.hdisplay >>= 1;
+		mode.htotal >>= 1;
+		mode.hsync_start >>= 1;
+		mode.hsync_end >>= 1;
+		mode.hskew >>= 1;
+
+		DPU_DEBUG_VIDENC(phys_enc,
+			"split_role %d, halve horizontal %d %d %d %d %d\n",
+			phys_enc->split_role,
+			mode.hdisplay, mode.htotal,
+			mode.hsync_start, mode.hsync_end,
+			mode.hskew);
+	}
+
+	drm_mode_to_intf_timing_params(phys_enc, &mode, &timing_params);
+
+	fmt = mdp_get_format(&phys_enc->dpu_kms->base, fmt_fourcc, 0);
+	DPU_DEBUG_VIDENC(phys_enc, "fmt_fourcc 0x%X\n", fmt_fourcc);
+
+	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
+	phys_enc->hw_intf->ops.setup_timing_gen(phys_enc->hw_intf,
+			&timing_params, fmt,
+			phys_enc->dpu_kms->catalog->mdss_ver);
 
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
@@ -734,6 +789,7 @@ static void dpu_encoder_phys_vid_init_ops(struct dpu_encoder_phys_ops *ops)
 	ops->is_master = dpu_encoder_phys_vid_is_master;
 	ops->atomic_mode_set = dpu_encoder_phys_vid_atomic_mode_set;
 	ops->enable = dpu_encoder_phys_vid_enable;
+	ops->hacktiming = dpu_encoder_phys_vid_hack_timing;
 	ops->disable = dpu_encoder_phys_vid_disable;
 	ops->control_vblank_irq = dpu_encoder_phys_vid_control_vblank_irq;
 	ops->wait_for_commit_done = dpu_encoder_phys_vid_wait_for_commit_done;
