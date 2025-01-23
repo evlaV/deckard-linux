@@ -1029,6 +1029,137 @@ static void dsi_timing_setup(struct msm_dsi_host *msm_host, bool is_bonded_dsi)
 	}
 }
 
+/* modified from dsi_timing_setup(), the only difference is how to get mode */
+void dsi_timing_hack(struct mipi_dsi_host *host, bool is_bonded_dsi,
+			struct drm_display_mode *mode)
+{
+	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
+	u32 hs_start = 0, vs_start = 0; /* take sync start as 0 */
+	u32 h_total = mode->htotal;
+	u32 v_total = mode->vtotal;
+	u32 hs_end = mode->hsync_end - mode->hsync_start;
+	u32 vs_end = mode->vsync_end - mode->vsync_start;
+	u32 ha_start = h_total - mode->hsync_start;
+	u32 ha_end = ha_start + mode->hdisplay;
+	u32 va_start = v_total - mode->vsync_start;
+	u32 va_end = va_start + mode->vdisplay;
+	u32 hdisplay = mode->hdisplay;
+	u32 wc;
+	//int ret;
+	bool wide_bus_enabled = msm_dsi_host_is_wide_bus_enabled(&msm_host->base);
+
+	DBG("");
+
+	/*
+	 * For bonded DSI mode, the current DRM mode has
+	 * the complete width of the panel. Since, the complete
+	 * panel is driven by two DSI controllers, the horizontal
+	 * timings have to be split between the two dsi controllers.
+	 * Adjust the DSI host timing values accordingly.
+	 */
+	if (is_bonded_dsi) {
+		h_total /= 2;
+		hs_end /= 2;
+		ha_start /= 2;
+		ha_end /= 2;
+		hdisplay /= 2;
+	}
+
+	if (msm_host->dsc) {
+		struct drm_dsc_config *dsc = msm_host->dsc;
+		u32 bytes_per_pclk;
+
+		/* update dsc params with timing params */
+		if (!dsc || !mode->hdisplay || !mode->vdisplay) {
+			pr_err("DSI: invalid input: pic_width: %d pic_height: %d\n",
+			       mode->hdisplay, mode->vdisplay);
+			return;
+		}
+
+		dsc->pic_width = hdisplay;
+		dsc->pic_height = mode->vdisplay;
+		DBG("Mode %dx%d\n", dsc->pic_width, dsc->pic_height);
+
+#if 0
+		/* we do the calculations for dsc parameters here so that
+		 * panel can use these parameters
+		 */
+		ret = dsi_populate_dsc_params(msm_host, dsc);
+		if (ret)
+			return;
+
+		if (msm_host->mode_flags & MIPI_DSI_MODE_VIDEO)
+			dsi_update_dsc_timing(msm_host, false, hdisplay);
+		else
+			dsi_update_dsc_timing(msm_host, true, hdisplay);
+#endif
+
+		/*
+		 * DPU sends 3 bytes per pclk cycle to DSI. If widebus is
+		 * enabled, bus width is extended to 6 bytes.
+		 *
+		 * Calculate the number of pclks needed to transmit one line of
+		 * the compressed data.
+
+		 * The back/font porch and pulse width are kept intact. For
+		 * VIDEO mode they represent timing parameters rather than
+		 * actual data transfer, see the documentation for
+		 * dsi_adjust_pclk_for_compression(). For CMD mode they are
+		 * unused anyway.
+		 */
+		h_total -= hdisplay;
+		if (wide_bus_enabled && !(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO))
+			bytes_per_pclk = 6;
+		else
+			bytes_per_pclk = 3;
+
+		hdisplay = DIV_ROUND_UP(msm_dsc_get_bytes_per_line(msm_host->dsc), bytes_per_pclk);
+
+		h_total += hdisplay;
+		ha_end = ha_start + hdisplay;
+	}
+
+	if (msm_host->mode_flags & MIPI_DSI_MODE_VIDEO) {
+		dsi_write(msm_host, REG_DSI_ACTIVE_H,
+			DSI_ACTIVE_H_START(ha_start) |
+			DSI_ACTIVE_H_END(ha_end));
+		dsi_write(msm_host, REG_DSI_ACTIVE_V,
+			DSI_ACTIVE_V_START(va_start) |
+			DSI_ACTIVE_V_END(va_end));
+		dsi_write(msm_host, REG_DSI_TOTAL,
+			DSI_TOTAL_H_TOTAL(h_total - 1) |
+			DSI_TOTAL_V_TOTAL(v_total - 1));
+
+		dsi_write(msm_host, REG_DSI_ACTIVE_HSYNC,
+			DSI_ACTIVE_HSYNC_START(hs_start) |
+			DSI_ACTIVE_HSYNC_END(hs_end));
+		dsi_write(msm_host, REG_DSI_ACTIVE_VSYNC_HPOS, 0);
+		dsi_write(msm_host, REG_DSI_ACTIVE_VSYNC_VPOS,
+			DSI_ACTIVE_VSYNC_VPOS_START(vs_start) |
+			DSI_ACTIVE_VSYNC_VPOS_END(vs_end));
+	} else {		/* command mode */
+		/* image data and 1 byte write_memory_start cmd */
+		if (!msm_host->dsc)
+			wc = hdisplay * mipi_dsi_pixel_format_to_bpp(msm_host->format) / 8 + 1;
+		else
+			/*
+			 * When DSC is enabled, WC = slice_chunk_size * slice_per_pkt + 1.
+			 */
+			wc = msm_host->dsc->slice_chunk_size * msm_host->dsc_slice_per_pkt + 1;
+
+		dsi_write(msm_host, REG_DSI_CMD_MDP_STREAM0_CTRL,
+			DSI_CMD_MDP_STREAM0_CTRL_WORD_COUNT(wc) |
+			DSI_CMD_MDP_STREAM0_CTRL_VIRTUAL_CHANNEL(
+					msm_host->channel) |
+			DSI_CMD_MDP_STREAM0_CTRL_DATA_TYPE(
+					MIPI_DSI_DCS_LONG_WRITE));
+
+		dsi_write(msm_host, REG_DSI_CMD_MDP_STREAM0_TOTAL,
+			DSI_CMD_MDP_STREAM0_TOTAL_H_TOTAL(hdisplay) |
+			DSI_CMD_MDP_STREAM0_TOTAL_V_TOTAL(mode->vdisplay));
+	}
+}
+
 static void dsi_sw_reset(struct msm_dsi_host *msm_host)
 {
 	u32 ctrl;
