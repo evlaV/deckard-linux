@@ -1291,11 +1291,14 @@ out:
 
 struct dpu_encoder_virt *glb_dpu_enc = NULL;
 struct drm_display_mode glb_mode[2];
+static void _dpu_encoder_kickoff_phys(struct dpu_encoder_virt *dpu_enc);
 
 /* modified from dpu_encoder_virt_atomic_enable */
 void dpu_encoder_virt_hack_timing(int mode_idx)
 {
 	struct dpu_encoder_virt *dpu_enc = glb_dpu_enc;
+	struct dpu_encoder_phys *phys;
+	int i;
 
 	if (!dpu_enc)
 		return;
@@ -1308,6 +1311,25 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 
 	if (dpu_enc->cur_master && dpu_enc->cur_master->ops.hacktiming)
 		dpu_enc->cur_master->ops.hacktiming(dpu_enc->cur_master, &glb_mode[mode_idx]);
+
+
+	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
+		phys = dpu_enc->phys_encs[i];
+		phys->enable_state = DPU_ENC_ENABLING;
+		phys->hw_ctl->ops.update_pending_flush_intf(phys->hw_ctl,
+			phys->hw_intf->idx);
+	}
+
+	/* All phys encs are ready to go, trigger the kickoff */
+	_dpu_encoder_kickoff_phys(dpu_enc);
+
+	/* allow phys encs to handle any post-kickoff business */
+	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
+		phys = dpu_enc->phys_encs[i];
+		phys->enable_state = DPU_ENC_ENABLING;
+		if (phys->ops.handle_post_kickoff)
+			phys->ops.handle_post_kickoff(phys);
+	}
 
 	mutex_unlock(&dpu_enc->enc_lock);
 }
