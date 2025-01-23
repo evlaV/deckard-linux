@@ -1333,10 +1333,15 @@ static void dpu_encoder_virt_atomic_enable(struct drm_encoder *drm_enc,
 	cur_mode = &dpu_enc->base.crtc->state->adjusted_mode;
 	glb_dpu_enc = dpu_enc;
 
-	if (cur_mode->vsync_start == 2565) /* 120Hz */
+	printk(" %dx%d\n", cur_mode->hdisplay, cur_mode->vdisplay);
+	if (cur_mode->vsync_start == 2564) { /* 120Hz */
 		memcpy(&glb_mode[0], cur_mode, sizeof(struct drm_display_mode));
-	if (cur_mode->vsync_start == 3857) /* 80Hz */
+		printk("******** 120Hz mode is saved\n");
+	}
+	if (cur_mode->vsync_start == 3857) { /* 80Hz */
 		memcpy(&glb_mode[1], cur_mode, sizeof(struct drm_display_mode));
+		printk("******** 80Hz mode is saved\n");
+	}
 
 	dpu_enc->wide_bus_en = dpu_encoder_is_widebus_enabled(drm_enc);
 
