@@ -223,6 +223,8 @@ static void dpu_hw_intf_setup_timing_engine(struct dpu_hw_intf *intf,
 
 	DPU_REG_WRITE(c, INTF_HSYNC_CTL, hsync_ctl);
 	DPU_REG_WRITE(c, INTF_VSYNC_PERIOD_F0, vsync_period * hsync_period);
+printk("====== reg_map %p reg 0x%x vsync_period 0x%x readbk 0x%x\n", c, INTF_VSYNC_PERIOD_F0, vsync_period,
+  DPU_REG_READ(c, INTF_VSYNC_PULSE_WIDTH_F0));
 	DPU_REG_WRITE(c, INTF_VSYNC_PULSE_WIDTH_F0,
 			p->vsync_pulse_width * hsync_period);
 	DPU_REG_WRITE(c, INTF_DISPLAY_HCTL, display_hctl);
@@ -251,6 +253,7 @@ static void dpu_hw_intf_setup_timing_engine(struct dpu_hw_intf *intf,
 		DPU_REG_WRITE(c, INTF_DISPLAY_DATA_HCTL, display_data_hctl);
 		DPU_REG_WRITE(c, INTF_ACTIVE_DATA_HCTL, active_data_hctl);
 	}
+printk("======= %s done =========\n", __func__);
 }
 
 static void dpu_hw_intf_enable_timing_engine(

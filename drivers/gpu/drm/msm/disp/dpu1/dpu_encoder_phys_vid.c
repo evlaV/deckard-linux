@@ -332,7 +332,6 @@ static void dpu_encoder_phys_vid_hack_timing(
 		struct dpu_encoder_phys *phys_enc,
 		struct drm_display_mode *hack_mode)
 {
-	;
 	struct drm_display_mode mode;
 	struct dpu_hw_intf_timing_params timing_params = { 0 };
 	const struct msm_format *fmt = NULL;

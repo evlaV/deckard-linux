@@ -995,6 +995,8 @@ static void dsi_timing_setup(struct msm_dsi_host *msm_host, bool is_bonded_dsi)
 		dsi_write(msm_host, REG_DSI_ACTIVE_V,
 			DSI_ACTIVE_V_START(va_start) |
 			DSI_ACTIVE_V_END(va_end));
+printk("=====hack writing msm_host %p REG_DSI_TOTAL:0x%x V TOTAL 0x%x\n", msm_host,
+	REG_DSI_TOTAL, DSI_TOTAL_V_TOTAL(v_total - 1));
 		dsi_write(msm_host, REG_DSI_TOTAL,
 			DSI_TOTAL_H_TOTAL(h_total - 1) |
 			DSI_TOTAL_V_TOTAL(v_total - 1));
@@ -1126,6 +1128,9 @@ void dsi_timing_hack(struct mipi_dsi_host *host, bool is_bonded_dsi,
 		dsi_write(msm_host, REG_DSI_ACTIVE_V,
 			DSI_ACTIVE_V_START(va_start) |
 			DSI_ACTIVE_V_END(va_end));
+
+printk("=====hack writing msm_host %p REG_DSI V TOTAL 0x%x\n", msm_host,
+	DSI_TOTAL_V_TOTAL(v_total - 1));
 		dsi_write(msm_host, REG_DSI_TOTAL,
 			DSI_TOTAL_H_TOTAL(h_total - 1) |
 			DSI_TOTAL_V_TOTAL(v_total - 1));
@@ -1158,6 +1163,7 @@ void dsi_timing_hack(struct mipi_dsi_host *host, bool is_bonded_dsi,
 			DSI_CMD_MDP_STREAM0_TOTAL_H_TOTAL(hdisplay) |
 			DSI_CMD_MDP_STREAM0_TOTAL_V_TOTAL(mode->vdisplay));
 	}
+	printk("======= %s done =========\n", __func__);
 }
 
 static void dsi_sw_reset(struct msm_dsi_host *msm_host)
