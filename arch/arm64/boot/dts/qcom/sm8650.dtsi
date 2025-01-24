@@ -3813,6 +3813,8 @@
 
 			iommus = <&apps_smmu 0x480 0>,
 				 <&apps_smmu 0x481 0>;
+
+			status = "disabled";
 		};
 
 		ufs_mem_phy: phy@1d80000 {
