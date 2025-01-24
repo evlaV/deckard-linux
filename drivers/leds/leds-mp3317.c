@@ -20,6 +20,7 @@
 #include <linux/led-class-multicolor.h>
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
+#include <linux/suspend.h>
 
 #define MP3317_MODE_CTL 0
 #define MP3317_EN_CTL 1
@@ -1928,6 +1929,31 @@ static enum led_brightness mp3317_led_get(struct led_classdev *cdev)
 	return val;
 }
 
+static int mp3317_leds_suspend(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct mp3317 *chip= i2c_get_clientdata(client);
+
+	gpiod_set_value_cansleep(chip->en_gpio, 0);
+
+	return 0;
+}
+
+/* On resume restore the default settings */
+static int mp3317_leds_resume(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct mp3317 *chip= i2c_get_clientdata(client);
+
+	gpiod_set_value_cansleep(chip->en_gpio, 1);
+	usleep_range(10000,20000);
+	// set default config led
+	deckard_config_mp3317(&chip->client->dev, &chip->led);
+
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(mp3317_leds_pm, mp3317_leds_suspend, mp3317_leds_resume);
 
 static int mp3317_leds_probe(struct i2c_client *client)
 {
@@ -1936,7 +1962,7 @@ static int mp3317_leds_probe(struct i2c_client *client)
 		int ret;
 		unsigned int rval;
 
-		chip = devm_kzalloc(&client->dev, sizeof(chip),
+		chip = devm_kzalloc(&client->dev, sizeof(*chip),
 				GFP_KERNEL);
 		if(!chip)
 				return -ENOMEM;
@@ -1975,6 +2001,7 @@ static int mp3317_leds_probe(struct i2c_client *client)
 		led->wled.brightness_set_blocking = led_brightness_set;
 		led->wled.brightness_get =mp3317_led_get;
 		led->wled.groups = mp3317_groups;
+		led->wled.flags |= LED_CORE_SUSPENDRESUME;
 
 		ret = devm_led_classdev_register_ext(&chip->client->dev, &led->wled, NULL);
 		if(ret){
@@ -1985,7 +2012,7 @@ static int mp3317_leds_probe(struct i2c_client *client)
 
 		// set default config led
 		deckard_config_mp3317(&chip->client->dev, led);
-		
+
 		return 0;
 }
 
@@ -1996,7 +2023,7 @@ void mp3317_leds_remove(struct i2c_client *client)
 
 static const struct i2c_device_id mp3317_id[] = {
 	{ "mp3317", 0 }, 
-		{} 
+	{} 
 };
 MODULE_DEVICE_TABLE(i2c, mp3317_id);
 
@@ -2008,11 +2035,12 @@ MODULE_DEVICE_TABLE(of, mp3317_of_match);
 
 static struct i2c_driver mp3317_driver = {
 	.probe = mp3317_leds_probe,
-		.remove = mp3317_leds_remove,
+	.remove = mp3317_leds_remove,
 	.driver = {
-			.name = "mp3317_led",
-			.of_match_table = mp3317_of_match,
-		   },
+		.name = "mp3317_led",
+		.of_match_table = mp3317_of_match,
+		.pm = pm_sleep_ptr(&mp3317_leds_pm),
+	},
 	.id_table = mp3317_id,
 };
 
