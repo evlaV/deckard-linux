@@ -7976,7 +7976,12 @@
 				 <&aoncc LPASS_AON_CC_Q6_AXIM_CLK>;
 			clock-names = "lpi_noc_hs", "q6_axim";
 
-			// missing: power domains, icc
+
+			interconnects = <&lpass_lpicx_noc MASTER_LPASS_PROC QCOM_ICC_TAG_ALWAYS
+					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
+			interconnect-names = "mem";
+
+			// missing: power domains
 			iommus =  <&apps_smmu 0x1000 0x0>, // ADSP
 				  <&apps_smmu 0x1060 0x0>, // LPMLA_0 config ?
 				  <&apps_smmu 0x1068 0x0>, // LPMLA_0 act/wgt/out ?
