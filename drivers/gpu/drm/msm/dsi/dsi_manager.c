@@ -198,6 +198,7 @@ static int dsi_mgr_bridge_get_id(struct drm_bridge *bridge)
 	return dsi_bridge->id;
 }
 
+#if 0
 extern struct drm_display_mode glb_mode[2];
 struct drm_bridge *glb_bridge = NULL;
 
@@ -222,6 +223,7 @@ void dsi_mgr_bridge_hacktiming(int mode_idx)
 		dsi_timing_hack(msm_dsi1->host, is_bonded_dsi, mode);
 	}
 }
+#endif
 
 static int dsi_mgr_bridge_power_on(struct drm_bridge *bridge)
 {
@@ -234,7 +236,7 @@ static int dsi_mgr_bridge_power_on(struct drm_bridge *bridge)
 	int ret;
 
 	DBG("id=%d", id);
-	glb_bridge = bridge;
+//	glb_bridge = bridge;
 
 	ret = dsi_mgr_phy_enable(id, phy_shared_timings);
 	if (ret)

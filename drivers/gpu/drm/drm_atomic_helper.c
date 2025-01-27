@@ -1398,6 +1398,58 @@ crtc_set_mode(struct drm_device *dev, struct drm_atomic_state *old_state)
 	}
 }
 
+/* modified from crtc_set_mode */
+int
+crtc_set_drrs(struct drm_device *dev, struct drm_display_mode *mode,
+		struct drm_atomic_state *old_state)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
+	struct drm_connector *connector;
+	struct drm_connector_state *old_connector_state;
+	int i;
+
+printk("=========crtc_set_drrs with %d connectors..\n", old_state->num_connector);
+	for_each_old_connector_in_state(old_state, connector, old_connector_state, i) {
+		const struct drm_encoder_helper_funcs *funcs;
+		struct drm_encoder *encoder;
+		//struct drm_display_mode *mode, *adjusted_mode;
+		//struct drm_bridge *bridge;
+
+		if (!old_connector_state->best_encoder)
+			continue;
+
+		encoder = old_connector_state->best_encoder;
+		funcs = encoder->helper_private;
+		crtc_state = old_connector_state->crtc->state;
+/*
+		mode = &crtc_state->mode;
+		adjusted_mode = &crtc_state->adjusted_mode;
+
+		if (!crtc_state->mode_changed)
+			continue;
+*/
+
+		drm_dbg_atomic(dev, "drrs set on [ENCODER:%d:%s]\n",
+			       encoder->base.id, encoder->name);
+printk("=========drrs set on [ENCODER:%d:%s]\n", encoder->base.id, encoder->name);
+
+		if (funcs && funcs->atomic_drrs_set) {
+			funcs->atomic_drrs_set(encoder, crtc_state, mode);
+#if 0
+		} else if (funcs && funcs->drrs_set) {
+			funcs->drrs_set(encoder, mode);
+#endif
+		}
+
+#if 0
+		bridge = drm_bridge_chain_get_first_bridge(encoder);
+		drm_bridge_chain_mode_set(bridge, mode, adjusted_mode);
+#endif
+	}
+	return 0;
+}
+
 /**
  * drm_atomic_helper_commit_modeset_disables - modeset commit to disable outputs
  * @dev: DRM device

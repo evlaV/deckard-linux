@@ -839,6 +839,21 @@ struct drm_encoder_helper_funcs {
 	int (*atomic_check)(struct drm_encoder *encoder,
 			    struct drm_crtc_state *crtc_state,
 			    struct drm_connector_state *conn_state);
+
+	/**
+	 * @atomic_drrs_set:
+	 *
+	 * This callback is used to hack timing to switch refresh rate with
+	 * only changing vertical front porch and back porch
+	 *
+	 * RETURNS:
+	 *
+	 * 0 on success, -EINVAL if the state or the transition can't be
+	 * supported.
+	 */
+	int (*atomic_drrs_set)(struct drm_encoder *encoder,
+				struct drm_crtc_state *crtc_state,
+				struct drm_display_mode *mode);
 };
 
 /**

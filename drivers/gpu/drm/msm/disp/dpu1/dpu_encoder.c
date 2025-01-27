@@ -1289,28 +1289,28 @@ out:
 	mutex_unlock(&dpu_enc->enc_lock);
 }
 
-struct dpu_encoder_virt *glb_dpu_enc = NULL;
-struct drm_display_mode glb_mode[2];
 static void _dpu_encoder_kickoff_phys(struct dpu_encoder_virt *dpu_enc);
 
 /* modified from dpu_encoder_virt_atomic_enable */
-void dpu_encoder_virt_hack_timing(int mode_idx)
+static int dpu_encoder_virt_drrs(struct drm_encoder *drm_enc,
+				struct drm_crtc_state *crtc_state,
+				struct drm_display_mode *mode)
 {
-	struct dpu_encoder_virt *dpu_enc = glb_dpu_enc;
+	struct dpu_encoder_virt *dpu_enc = to_dpu_encoder_virt(drm_enc);
 	struct dpu_encoder_phys *phys;
 	int i;
 
 	if (!dpu_enc)
-		return;
+		return -EINVAL;
 
 	mutex_lock(&dpu_enc->enc_lock);
 
 	/* always enable slave encoder before master */
 	if (dpu_enc->cur_slave && dpu_enc->cur_slave->ops.hacktiming)
-		dpu_enc->cur_slave->ops.hacktiming(dpu_enc->cur_slave, &glb_mode[mode_idx]);
+		dpu_enc->cur_slave->ops.hacktiming(dpu_enc->cur_slave, mode);
 
 	if (dpu_enc->cur_master && dpu_enc->cur_master->ops.hacktiming)
-		dpu_enc->cur_master->ops.hacktiming(dpu_enc->cur_master, &glb_mode[mode_idx]);
+		dpu_enc->cur_master->ops.hacktiming(dpu_enc->cur_master, mode);
 
 
 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
@@ -1332,6 +1332,7 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 	}
 
 	mutex_unlock(&dpu_enc->enc_lock);
+	return 0;
 }
 
 static void dpu_encoder_virt_atomic_enable(struct drm_encoder *drm_enc,
@@ -1353,14 +1354,6 @@ static void dpu_encoder_virt_atomic_enable(struct drm_encoder *drm_enc,
 	dpu_enc->connector = drm_atomic_get_new_connector_for_encoder(state, drm_enc);
 
 	cur_mode = &dpu_enc->base.crtc->state->adjusted_mode;
-	glb_dpu_enc = dpu_enc;
-
-	if (cur_mode->vsync_start == 2564) { /* 120Hz */
-		memcpy(&glb_mode[0], cur_mode, sizeof(struct drm_display_mode));
-	}
-	if (cur_mode->vsync_start == 3857) { /* 80Hz */
-		memcpy(&glb_mode[1], cur_mode, sizeof(struct drm_display_mode));
-	}
 
 	dpu_enc->wide_bus_en = dpu_encoder_is_widebus_enabled(drm_enc);
 
@@ -2541,6 +2534,7 @@ static const struct drm_encoder_helper_funcs dpu_encoder_helper_funcs = {
 	.atomic_disable = dpu_encoder_virt_atomic_disable,
 	.atomic_enable = dpu_encoder_virt_atomic_enable,
 	.atomic_check = dpu_encoder_virt_atomic_check,
+	.atomic_drrs_set = dpu_encoder_virt_drrs,
 };
 
 static const struct drm_encoder_funcs dpu_encoder_funcs = {

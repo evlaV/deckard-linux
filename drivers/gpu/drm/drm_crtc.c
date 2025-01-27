@@ -914,6 +914,7 @@ int drm_mode_setcrtc_drrs(struct drm_device *dev, void *data,
 	struct drm_mode_config *config = &dev->mode_config;
 	struct drm_mode_crtc *crtc_req = data;
 	struct drm_crtc *crtc;
+	struct drm_display_mode *old_mode;
 	struct drm_plane *plane;
 	struct drm_connector **connector_set = NULL, *connector;
 	struct drm_framebuffer *fb = NULL;
@@ -921,6 +922,7 @@ int drm_mode_setcrtc_drrs(struct drm_device *dev, void *data,
 	struct drm_mode_set set;
 	uint32_t __user *set_connectors_ptr;
 	struct drm_modeset_acquire_ctx ctx;
+	struct drm_atomic_state *state;
 	int ret, i, num_connectors = 0;
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
@@ -992,6 +994,7 @@ int drm_mode_setcrtc_drrs(struct drm_device *dev, void *data,
 		}
 
 
+		/* validate the new mode from this call */
 		ret = drm_mode_convert_umode(dev, mode, &crtc_req->mode);
 		if (ret) {
 			drm_dbg_kms(dev, "Invalid mode (%s, %pe): " DRM_MODE_FMT "\n",
@@ -1000,27 +1003,12 @@ int drm_mode_setcrtc_drrs(struct drm_device *dev, void *data,
 			goto out;
 		}
 
-		/*
-		 * Check whether the primary plane supports the fb pixel format.
-		 * Drivers not implementing the universal planes API use a
-		 * default formats list provided by the DRM core which doesn't
-		 * match real hardware capabilities. Skip the check in that
-		 * case.
-		 */
-		if (!plane->format_default) {
-			if (!drm_plane_has_format(plane, fb->format->format, fb->modifier)) {
-				drm_dbg_kms(dev, "Invalid pixel format %p4cc, modifier 0x%llx\n",
-					    &fb->format->format, fb->modifier);
-				ret = -EINVAL;
-				goto out;
-			}
-		}
-
-		ret = drm_crtc_check_viewport(crtc, crtc_req->x, crtc_req->y,
-					      mode, fb);
-		if (ret)
+		old_mode = &crtc->state->adjusted_mode;
+		if (old_mode->hdisplay != mode->hdisplay ||
+			old_mode->hsync_start != mode->hsync_start ||
+			old_mode->hsync_end != mode->hsync_end ||
+			old_mode->vdisplay != mode->vdisplay)
 			goto out;
-
 	}
 
 	if (crtc_req->count_connectors == 0 && mode) {
@@ -1084,11 +1072,24 @@ int drm_mode_setcrtc_drrs(struct drm_device *dev, void *data,
 	set.num_connectors = num_connectors;
 	set.fb = fb;
 
+#if 0
 	if (drm_drv_uses_atomic_modeset(dev))
 		ret = crtc->funcs->set_config(&set, &ctx);
 	else
 		ret = __drm_mode_set_config_internal(&set, &ctx);
+#endif
 
+	state = drm_atomic_state_alloc(crtc->dev);
+	if (!state)
+		return -ENOMEM;
+
+	state->acquire_ctx = &ctx;
+
+	/* call like crtc_set_mode */
+	ret = crtc_set_drrs(dev, mode, state);
+
+fail:
+	drm_atomic_state_put(state);
 out:
 	if (fb)
 		drm_framebuffer_put(fb);
