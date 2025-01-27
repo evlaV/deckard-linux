@@ -841,6 +841,14 @@ static int dsp_probe(struct platform_device *pdev)
 		clk_pll_configure_lucid_ole(dsp->base + 0x40000, 1843200000);
 	}
 
+	if (!strcmp(dev->of_node->name, "adsp"))
+	{
+		struct icc_path *dma_path = devm_of_icc_get(dev, "mem");
+		WARN_ON(IS_ERR(dma_path));
+
+		icc_set_bw(dma_path, 0, kBps_to_icc(1000*1000*50));
+	}
+
 	return 0;
 }
 
