@@ -3281,6 +3281,50 @@ out:
 	return ret;
 }
 
+int drm_mode_setconnector_drrs(struct drm_device *dev, void *data,
+			  struct drm_file *file_priv)
+{
+	struct drm_mode_get_connector *out_resp = data;
+	struct drm_connector *connector;
+	struct drm_encoder *encoder;
+	struct drm_display_mode mode;
+	int mode_count = 0;
+	int encoders_count = 0;
+	int ret = 0;
+	int copied = 0;
+	struct drm_mode_modeinfo u_mode;
+	struct drm_mode_modeinfo __user *mode_ptr;
+	uint32_t __user *encoder_ptr;
+	bool is_current_master;
+
+	if (!drm_core_check_feature(dev, DRIVER_MODESET))
+		return -EOPNOTSUPP;
+
+	connector = drm_connector_lookup(dev, file_priv, out_resp->connector_id);
+	if (!connector)
+		return -ENOENT;
+
+	mode_ptr = (struct drm_mode_modeinfo __user *)(unsigned long)out_resp->modes_ptr;
+	if (copy_from_user(&u_mode, mode_ptr, sizeof(u_mode)))
+		return -EFAULT;
+
+	drm_mode_convert_umode(dev, &mode, &u_mode);
+
+	mutex_lock(&dev->mode_config.mutex);
+	connector_set_drrs(dev, &mode, connector);
+	mutex_unlock(&dev->mode_config.mutex);
+
+/*
+	drm_modeset_lock(&dev->mode_config.connection_mutex, NULL);
+	drm_modeset_unlock(&dev->mode_config.connection_mutex);
+*/
+
+out:
+	drm_connector_put(connector);
+
+	return ret;
+}
+
 /**
  * drm_connector_find_by_fwnode - Find a connector based on the associated fwnode
  * @fwnode: fwnode for which to find the matching drm_connector

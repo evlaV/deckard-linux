@@ -951,7 +951,7 @@ int drm_mode_setcrtc_drrs(struct drm_device *dev, void *data,
 	DRM_MODESET_LOCK_ALL_BEGIN(dev, ctx,
 				   DRM_MODESET_ACQUIRE_INTERRUPTIBLE, ret);
 
-	if (crtc_req->mode_valid) {
+	if (true) {
 		/* If we have a mode we need a framebuffer. */
 		/* If we pass -1, set the mode with the currently bound fb */
 		if (crtc_req->fb_id == -1) {
@@ -1017,6 +1017,7 @@ int drm_mode_setcrtc_drrs(struct drm_device *dev, void *data,
 		goto out;
 	}
 
+printk("------------Count connectors is %d \n", crtc_req->count_connectors);
 	if (crtc_req->count_connectors > 0 && (!mode || !fb)) {
 		drm_dbg_kms(dev, "Count connectors is %d but no mode or fb set\n",
 			    crtc_req->count_connectors);
@@ -1077,19 +1078,19 @@ int drm_mode_setcrtc_drrs(struct drm_device *dev, void *data,
 		ret = crtc->funcs->set_config(&set, &ctx);
 	else
 		ret = __drm_mode_set_config_internal(&set, &ctx);
-#endif
 
 	state = drm_atomic_state_alloc(crtc->dev);
 	if (!state)
 		return -ENOMEM;
 
 	state->acquire_ctx = &ctx;
+#endif
 
 	/* call like crtc_set_mode */
-	ret = crtc_set_drrs(dev, mode, state);
+	ret = crtc_set_drrs(dev, mode, crtc->state);
 
 fail:
-	drm_atomic_state_put(state);
+	//drm_atomic_state_put(state);
 out:
 	if (fb)
 		drm_framebuffer_put(fb);

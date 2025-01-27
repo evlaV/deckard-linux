@@ -93,7 +93,6 @@ int drm_mode_setcrtc(struct drm_device *dev,
 int drm_mode_setcrtc_drrs(struct drm_device *dev,
 		     void *data, struct drm_file *file_priv);
 
-
 /* drm_mode_config.c */
 int drm_modeset_register_all(struct drm_device *dev);
 void drm_modeset_unregister_all(struct drm_device *dev);
@@ -204,6 +203,10 @@ int drm_connector_property_set_ioctl(struct drm_device *dev,
 				     void *data, struct drm_file *file_priv);
 int drm_mode_getconnector(struct drm_device *dev,
 			  void *data, struct drm_file *file_priv);
+int drm_mode_setconnector_drrs(struct drm_device *dev, void *data,
+			  struct drm_file *file_priv);
+int connector_set_drrs(struct drm_device *dev, struct drm_display_mode *mode,
+			struct drm_connector *connector);
 
 /* drm_framebuffer.c */
 struct drm_framebuffer *

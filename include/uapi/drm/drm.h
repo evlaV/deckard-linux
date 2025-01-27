@@ -1296,6 +1296,7 @@ extern "C" {
  * or any other aspect.
  */
 #define DRM_IOCTL_MODE_SETCRTC_DRRS     DRM_IOWR(0xD1, struct drm_mode_crtc)
+#define DRM_IOCTL_MODE_GETCONNECTOR_DRRS	DRM_IOWR(0xD2, struct drm_mode_get_connector)
 
 /*
  * Device specific ioctls should only be in their respective headers
