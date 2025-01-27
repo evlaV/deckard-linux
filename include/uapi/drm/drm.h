@@ -1289,13 +1289,12 @@ extern "C" {
 #define DRM_IOCTL_MODE_CLOSEFB		DRM_IOWR(0xD0, struct drm_mode_closefb)
 
 /**
- * DRM_IOCTL_MODESET_DRRS - Set a mode without change in resolution or clock.
+ * DRM_IOCTL_MODE_GETCONNECTOR_DRRS - Set a mode without change in resolution or clock.
  *
  * Similiar with DRM_IOCTL_MODE_SETCRTC, but make timing related change only
  * to achieve refresh rate switching without change in resolution and clock
  * or any other aspect.
  */
-#define DRM_IOCTL_MODE_SETCRTC_DRRS     DRM_IOWR(0xD1, struct drm_mode_crtc)
 #define DRM_IOCTL_MODE_GETCONNECTOR_DRRS	DRM_IOWR(0xD2, struct drm_mode_get_connector)
 
 /*

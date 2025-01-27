@@ -90,8 +90,6 @@ int drm_mode_getcrtc(struct drm_device *dev,
 		     void *data, struct drm_file *file_priv);
 int drm_mode_setcrtc(struct drm_device *dev,
 		     void *data, struct drm_file *file_priv);
-int drm_mode_setcrtc_drrs(struct drm_device *dev,
-		     void *data, struct drm_file *file_priv);
 
 /* drm_mode_config.c */
 int drm_modeset_register_all(struct drm_device *dev);

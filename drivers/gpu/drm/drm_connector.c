@@ -3286,16 +3286,10 @@ int drm_mode_setconnector_drrs(struct drm_device *dev, void *data,
 {
 	struct drm_mode_get_connector *out_resp = data;
 	struct drm_connector *connector;
-	struct drm_encoder *encoder;
 	struct drm_display_mode mode;
-	int mode_count = 0;
-	int encoders_count = 0;
 	int ret = 0;
-	int copied = 0;
 	struct drm_mode_modeinfo u_mode;
 	struct drm_mode_modeinfo __user *mode_ptr;
-	uint32_t __user *encoder_ptr;
-	bool is_current_master;
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EOPNOTSUPP;
