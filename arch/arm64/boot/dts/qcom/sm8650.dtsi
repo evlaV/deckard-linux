@@ -7676,13 +7676,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <108000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				aoss0-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -7694,13 +7694,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <108000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				cpuss0-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -7712,13 +7712,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <108000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				cpuss1-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -7730,13 +7730,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <108000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				cpuss2-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -7748,13 +7748,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <108000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				cpuss3-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8076,13 +8076,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <90000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				aoss1-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8251,13 +8251,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <95000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				nsphvx1-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8271,13 +8271,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <95000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				nsphvx1-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8291,13 +8291,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <90000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				nsphmx0-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8311,13 +8311,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <90000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				nsphmx1-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8331,13 +8331,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <90000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				nsphmx2-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8351,13 +8351,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <90000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				nsphmx3-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8371,13 +8371,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <90000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				video-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8391,13 +8391,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <90000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				ddr-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8415,7 +8415,7 @@
 				};
 
 				camera0-critical {
-					temperature = <110000>;
+					temperature = <115000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8433,7 +8433,7 @@
 				};
 
 				camera1-critical {
-					temperature = <110000>;
+					temperature = <115000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8445,13 +8445,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <95000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				aoss2-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8735,13 +8735,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <95000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				modem0-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8753,13 +8753,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <95000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				modem1-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8771,13 +8771,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <95000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				modem2-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8789,13 +8789,13 @@
 
 			trips {
 				trip-point0 {
-					temperature = <95000>;
-					hysteresis = <2000>;
+					temperature = <115000>;
+					hysteresis = <5000>;
 					type = "hot";
 				};
 
 				modem3-critical {
-					temperature = <110000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
