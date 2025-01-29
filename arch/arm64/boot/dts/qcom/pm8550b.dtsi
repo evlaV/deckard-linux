@@ -45,6 +45,7 @@
 			#thermal-sensor-cells = <0>;
 		};
 
+#if 0
 		pm8550b_vbus: usb-vbus-regulator@2700 {
 			compatible = "qcom,pm8550b-vbus-reg";
 			status = "disabled";
@@ -90,6 +91,7 @@
 					  "fr-swap";
 			vdd-vbus-supply = <&pm8550b_vbus>;
 		};
+#endif
 
 		pm8550b_gpios: gpio@8800 {
 			compatible = "qcom,pm8550b-gpio", "qcom,spmi-gpio";

@@ -129,6 +129,7 @@
 };
 #endif
 
+#if 0
 / {
 	sound {
 		compatible = "qcom,lpass-sndcard";
@@ -201,7 +202,16 @@
 	lpm-config = <LPASS_RX_CODEC_DMA_0 0x4000>,
 		     <LPASS_RX_CODEC_DMA_1 0x4000>;
 };
+#endif
 
-&wcd_usbss_sbu_mux {
-	remote-endpoint = <&typec_controller>;
+&remoteproc_adsp {
+	firmware-name = "qcom/sm8650/adsp.mbn",
+			"qcom/sm8650/adsp_dtb.mbn";
+	status = "okay";
+};
+
+&remoteproc_cdsp {
+	firmware-name = "qcom/sm8650/cdsp.mbn",
+			"qcom/sm8650/cdsp_dtb.mbn";
+	status = "okay";
 };

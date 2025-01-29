@@ -1,6 +1,7 @@
 #include "sm8650-mtp.dts"
 #include "sm8650-el2.dtsi"
 
+#if 0
 / {
 	sound {
 		compatible = "qcom,lpass-sndcard";
@@ -73,7 +74,4 @@
 	lpm-config = <LPASS_RX_CODEC_DMA_0 0x4000>,
 		     <LPASS_RX_CODEC_DMA_1 0x4000>;
 };
-
-&wcd_usbss_sbu_mux {
-	remote-endpoint = <&typec_controller>;
-};
+#endif

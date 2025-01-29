@@ -3856,20 +3856,19 @@ static struct clk_regmap *gcc_sm8650_clocks[] = {
 	[GCC_USB3_PRIM_PHY_PIPE_CLK_SRC] = &gcc_usb3_prim_phy_pipe_clk_src.clkr,
 	[GCC_VIDEO_AXI0_CLK] = &gcc_video_axi0_clk.clkr,
 	[GCC_VIDEO_AXI1_CLK] = &gcc_video_axi1_clk.clkr,
-	// extra
-#if 0
-	[GCC_LPASS_CFG_NOC_SWAY_CLK] = &gcc_lpass_cfg_noc_sway_clk.clkr,
-	[GCC_TURING_CFG_AHB_CLK] = &gcc_turing_cfg_ahb_clk.clkr,
-	[GCC_TURING_Q6_AXI_CLK] = &gcc_turing_q6_axi_clk.clkr,
-	[GCC_CAMERA_AHB_CLK] = &gcc_camera_ahb_clk.clkr,
-	[GCC_DISP_AHB_CLK] = &gcc_disp_ahb_clk.clkr,
-#endif
 	[GCC_GPLL0_AO] = &gcc_gpll0_ao.clkr,
 	[GCC_GPLL0_OUT_EVEN_AO] = &gcc_gpll0_out_even_ao.clkr,
 	[GCC_GPLL1_AO] = &gcc_gpll1_ao.clkr,
 	[GCC_GPLL3_AO] = &gcc_gpll3_ao.clkr,
 	[GCC_GPLL4_AO] = &gcc_gpll4_ao.clkr,
 	[GCC_GPLL6_AO] = &gcc_gpll6_ao.clkr,
+	
+	// extra
+	[GCC_LPASS_CFG_NOC_SWAY_CLK] = &gcc_lpass_cfg_noc_sway_clk.clkr,
+	[GCC_TURING_CFG_AHB_CLK] = &gcc_turing_cfg_ahb_clk.clkr,
+	[GCC_TURING_Q6_AXI_CLK] = &gcc_turing_q6_axi_clk.clkr,
+	[GCC_CAMERA_AHB_CLK] = &gcc_camera_ahb_clk.clkr,
+	[GCC_DISP_AHB_CLK] = &gcc_disp_ahb_clk.clkr,
 };
 
 static const struct qcom_reset_map gcc_sm8650_resets[] = {

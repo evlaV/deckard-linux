@@ -1,19 +1,13 @@
 
 /delete-node/ &reserved_memory;
 /delete-node/ &remoteproc_mpss;
-/delete-node/ &remoteproc_adsp;
-/delete-node/ &remoteproc_cdsp;
 /delete-node/ &ipa;
-/delete-node/ &aoss_qmp;
 /delete-node/ &timer;
 
 / {
 	/delete-node/ firmware;
-	/delete-node/ smp2p-adsp;
-	/delete-node/ smp2p-cdsp;
 	/delete-node/ smp2p-modem;
 	/delete-node/ sound;
-	/delete-node/ pmic-glink;
 
 	reserved-memory {
 		#address-cells = <2>;
@@ -54,6 +48,36 @@
 			reg = <0 0x9bb00000 0 0x800000>;
 			no-map;
 		};
+
+		global_sync_mem: global-sync@82600000 {
+			reg = <0 0x82600000 0 0x100000>;
+			no-map;
+		};
+
+		cdsp_mem: cdsp@9ca00000 {
+			reg = <0 0x9ca00000 0 0x1400000>;
+			no-map;
+		};
+
+		q6_cdsp_dtb_mem: q6-cdsp-dtb@9de00000 {
+			reg = <0 0x9de00000 0 0x80000>;
+			no-map;
+		};
+
+		q6_adsp_dtb_mem: q6-adsp-dtb@9de80000 {
+			reg = <0 0x9de80000 0 0x80000>;
+			no-map;
+		};
+
+		adspslpi_mem: adspslpi@9df00000 {
+			reg = <0 0x9df00000 0 0x4080000>;
+			no-map;
+		};
+
+		llcc_lpi_mem: llcc-lpi@ff800000 {
+			reg = <0 0xff800000 0 0x600000>;
+			no-map;
+		};
 	};
 };
 
@@ -69,6 +93,7 @@
 	status = "okay";
 };
 
+#if 0
 &lpass_audiocc {
 	status = "okay";
 };
@@ -122,6 +147,7 @@
 	clocks = <&lpass_audiocc LPASS_AUDIO_CC_WSA2_MCLK_CLK>, <&lpass_vamacro>;
 	clock-names = "mclk", "fsgen";
 };
+#endif
 
 &pmk8550_rtc {
 	allow-set-time;
@@ -131,6 +157,7 @@
 	/delete-property/ gpio-reserved-ranges;
 };
 
+#if 0
 #include <dt-bindings/usb/pd.h>
 
 &pm8550b_typec {
@@ -198,6 +225,7 @@
 &usb_dp_qmpphy_out {
 	remote-endpoint = <&pm8550b_typec_mux_out>;
 };
+#endif
 
 /* XXX: create complete dt-bindings include for these */
 #define LPASS_RX_CODEC_DMA_0 17

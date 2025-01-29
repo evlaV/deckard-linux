@@ -25,6 +25,7 @@
 #include <linux/soc/qcom/mdt_loader.h>
 #include <linux/soc/qcom/smem.h>
 #include <linux/soc/qcom/smem_state.h>
+#include <linux/iommu.h>
 
 #include "qcom_common.h"
 #include "qcom_pil_info.h"
@@ -115,9 +116,182 @@ struct qcom_adsp {
 	struct qcom_rproc_ssr ssr_subdev;
 	struct qcom_sysmon *sysmon;
 
-	struct qcom_scm_pas_metadata pas_metadata;
-	struct qcom_scm_pas_metadata dtb_pas_metadata;
+	//struct qcom_scm_pas_metadata pas_metadata;
+	//struct qcom_scm_pas_metadata dtb_pas_metadata;
+
+	void __iomem *base, *evb_sel, *turingcc;
+	struct iommu_domain *iommu;
 };
+
+
+#define write32(x, y) writel(y, x)
+
+#define PLL_MODE           0x00
+#if 0
+#define PLL_ACTIVE_FLAG    BIT(30)
+#define PLL_ACK_LATCH      BIT(29)
+#define PLL_UPDATE         BIT(22)
+#define PLL_VOTE_FSM_RESET BIT(21)
+#define PLL_VOTE_FSM_ENA   BIT(20)
+#define PLL_RESET_N        BIT(2)
+#endif
+
+#define PLL_OPMODE 0x04
+#define PLL_STATE 0x08
+#define PLL_STATUS 0x0c
+#define PLL_L_VAL 0x10
+#define PLL_ALPHA_VAL 0x14
+#define PLL_USER_CTL 0x18
+#define PLL_USER_CTL_U 0x1c
+#define PLL_CONFIG_CTL 0x20
+#define PLL_CONFIG_CTL_U 0x24
+#define PLL_CONFIG_CTL_U1 0x28
+#define PLL_TEST_CTL 0x2c
+#define PLL_TEST_CTL_U 0x30
+#define PLL_TEST_CTL_U1 0x34
+#define PLL_TEST_CTL_U2 0x38
+#define PLL_SSC 0x3c
+
+static inline void
+clk_pll_configure_lucid_ole(void __iomem *pll_reg, u32 freq)
+{
+   u16 l = freq / 19200000;
+   // u16 alpha = (freq % 19200000) * 32 / 9375;
+
+   printk("PLL_MODE: 0x%.8x L_VAL:%.8x\n", readl(pll_reg + PLL_MODE), readl(pll_reg + PLL_L_VAL));
+
+   write32(pll_reg + PLL_L_VAL, 0x4444 << 16 | l);
+   write32(pll_reg + PLL_USER_CTL, 0);
+   write32(pll_reg + PLL_ALPHA_VAL, 0);
+
+   write32(pll_reg + PLL_MODE, 0x4004);
+   while ((readl(pll_reg + PLL_MODE) & 0x2000) == 0);
+   write32(pll_reg + PLL_MODE, 0x0004);
+   while ((readl(pll_reg + PLL_MODE) & 0x2000) != 0);
+   usleep_range(1000,1000); // XXX: busywait(1)
+
+   // HAL_clk_LucidolePLLSetRegSettings
+   write32(pll_reg + PLL_CONFIG_CTL, 0x20485699);
+   write32(pll_reg + PLL_CONFIG_CTL_U, 0x00182261);
+   write32(pll_reg + PLL_CONFIG_CTL_U1, 0x82AA299C);
+   write32(pll_reg + PLL_TEST_CTL, 0);
+   write32(pll_reg + PLL_TEST_CTL_U, 0x00000003);
+   write32(pll_reg + PLL_TEST_CTL_U1, 0x00009000);
+   write32(pll_reg + PLL_TEST_CTL_U2, 0x00000034);
+   // write32(pll_reg + PLL_USER_CTL, 0);
+   write32(pll_reg + PLL_USER_CTL_U, 0x00000005);
+
+   // HAL_clk_LucidolePLLSetCalConfig
+   // set CAL_L to 0x44 (already set)
+
+   // HAL_clk_LucidolePLLEnable
+   write32(pll_reg + PLL_OPMODE, 1);
+   write32(pll_reg + PLL_MODE, 5);
+   write32(pll_reg + PLL_USER_CTL, 1);
+}
+
+// need to copy correct bring up / tear down sequences from hypervisor
+// for now I just copied what I had in my dsp driver
+// make a separate driver for this ?
+
+#define QDSP6SS_VERSION 0x00
+
+#define QDSP6SS_RST_EVB 0x10
+#define QDSP6SS_RET_CFG 0x1c
+
+#define QDSP6SS_BOOT_PARAMS 0x60
+
+#define QDSP6SS_CORE_CBCR 0x48040
+#define QDSP6SS_CORE_CMD_RCGR 0x48020
+#define QDSP6SS_CORE_CFG_RCGR 0x48024
+#define QDSP6SS_XO_CBCR 0x48120 // ACD_XO
+#define QDSP6SS_SLEEP_CBCR 0x48060 // XXX
+
+#define QDSP6SS_BOOT_CORE_START 0x400
+#define QDSP6SS_BOOT_CMD 0x404
+#define QDSP6SS_BOOT_STATUS 0x408
+
+#define QDSP6SS_RESET_CFG 0x2440
+#define QDSP6SS_RESET_CMD 0x2444
+#define QDSP6SS_RESET_STATUS 0x2448
+
+static int pas_auth_and_reset(struct qcom_adsp *dsp)
+{
+	int status;
+	u32 boot_addr = dsp->mem_phys; // assume boot address is always the start of the image
+	// (note: assuming images won't be relocated)
+
+	// dtb ptr
+	writel(dsp->dtb_mem_phys, dsp->base + QDSP6SS_BOOT_PARAMS);
+	writel(0, dsp->base + QDSP6SS_BOOT_PARAMS + 4);
+	// chip family << 16 | chip id (lanai)
+	writel(0x008A022D, dsp->base + QDSP6SS_BOOT_PARAMS + 8);
+	// chip version (2.0)
+	writel(0x00000200, dsp->base + QDSP6SS_BOOT_PARAMS + 12);
+	// platform info
+	// this is "dragonboard 1.0" ? doesn't seem important
+	writel(0x0A000100, dsp->base + QDSP6SS_BOOT_PARAMS + 16);
+	// dtb size
+	writel(dsp->dtb_mem_size, dsp->base + QDSP6SS_BOOT_PARAMS + 20);
+
+	if (dsp->pas_id == 1) {// adsp
+		// ??? SMC call
+		// enable GCC_CFG_NOC_LPASS (on at boot already)
+		// if (LPICX_NOC_LPASS_LPICX_SBCONTROL_SBM_FLAGOUTSTATUS0_LOW.PORT2)
+		//   XXX do something different (when would this condition be true?)
+
+		// enable LPASS_AON_CC_LPI_NOC_HS (already doing this)
+		// assume LPASS_AON_CC_LPI_NOC_HS as hw ctl bit == 0
+		// MISSING XXX: set enable bit on LPASS_AON_CC_Q6_AXIM (clock is on by default but the enable bit isn't set)
+		// MISSING XXX: set enable bit in LPASS_QDSP6SS_CORE (doesn't seem needed for sm8650)
+		// MISSING XXX: set LPASS_QDSP6SS_DBG_CFG to 0 (?)
+		// MISSING XXX: set LPASS_RSC_WAIT_EVENT_OVRD_MASK to 8
+		// MISSING XXX: set enable bit on LPASS_LPI_TCM_AXIS_HS
+		// MISSING XXX: set 0x4001 mask in LPASS_LPI_TCM_256KB_BLOCKn (n from 0 to 7)
+
+		writel(0, dsp->evb_sel);
+
+		// rest can be shared with CDSP. note fw uses 960000000 init clock instead of 979200000 for adsp
+	} else { // cdsp
+		// turn on GCC_TURING_CFG_AHB
+		// assume GCC_DDRSS_TURING_Q6_AXI as hw ctl bit == 1
+		// MISSING XXX: set hw ctl bit on TURING_Q6SS_Q6_AXIM, TURING_NSPNOC
+		// MISSING XXX: set enable bit on TURING_Q6SS_AHBS_AON (clock is on by default but the enable bit isn't set)
+		// MISSING XXX: set TURING_QDSP6SS_DBG_CFG to 0 (?)
+		// MISSING XXX: set enable bit in TURING_QDSP6SS_CORE (doesn't seem needed for sm8650)
+		// MISSING XXX: configure ACD (read fuse value and set registers)
+	}
+
+	// note: ADSP init in fw has a different order for these writes, but it shouldn't matter
+
+	writel(boot_addr >> 4, dsp->base + QDSP6SS_RST_EVB);
+	writel(1, dsp->base + QDSP6SS_BOOT_CMD);
+	usleep_range(1000, 2000);
+	status = readl(dsp->base + QDSP6SS_BOOT_STATUS);
+	if (!status)
+		dev_warn(dsp->dev, "failed to boot\n");
+
+	clk_pll_configure_lucid_ole(dsp->base + 0x40000, 979200000);
+
+	writel(0x201, dsp->base + QDSP6SS_CORE_CFG_RCGR);
+	writel(1, dsp->base + QDSP6SS_CORE_CMD_RCGR);
+	usleep_range(1000, 2000);
+	status = readl(dsp->base + QDSP6SS_CORE_CMD_RCGR);
+	if (status & 1)
+		dev_warn(dsp->dev, "failed to update rcg\n");
+
+	writel(0, dsp->base + QDSP6SS_RET_CFG);
+	writel(1, dsp->base + QDSP6SS_BOOT_CORE_START);
+
+	return 0;
+}
+
+static int pas_shutdown(struct qcom_adsp *dsp)
+{
+	// need to fill this out so stop works
+
+	return 0;
+}
 
 static void adsp_segment_dump(struct rproc *rproc, struct rproc_dump_segment *segment,
 		       void *dest, size_t offset, size_t size)
@@ -192,7 +366,7 @@ static int adsp_shutdown_poll_decrypt(struct qcom_adsp *adsp)
 
 	do {
 		msleep(ADSP_DECRYPT_SHUTDOWN_DELAY_MS);
-		ret = qcom_scm_pas_shutdown(adsp->pas_id);
+		ret = pas_shutdown(adsp);
 	} while (ret == -EINVAL && --retry_num);
 
 	return ret;
@@ -200,18 +374,6 @@ static int adsp_shutdown_poll_decrypt(struct qcom_adsp *adsp)
 
 static int adsp_unprepare(struct rproc *rproc)
 {
-	struct qcom_adsp *adsp = rproc->priv;
-
-	/*
-	 * adsp_load() did pass pas_metadata to the SCM driver for storing
-	 * metadata context. It might have been released already if
-	 * auth_and_reset() was successful, but in other cases clean it up
-	 * here.
-	 */
-	qcom_scm_pas_metadata_release(&adsp->pas_metadata);
-	if (adsp->dtb_pas_id)
-		qcom_scm_pas_metadata_release(&adsp->dtb_pas_metadata);
-
 	return 0;
 }
 
@@ -224,7 +386,7 @@ static int adsp_load(struct rproc *rproc, const struct firmware *fw)
 	adsp->firmware = fw;
 
 	if (adsp->lite_pas_id)
-		ret = qcom_scm_pas_shutdown(adsp->lite_pas_id);
+		ret = pas_shutdown(adsp);
 
 	if (adsp->dtb_pas_id) {
 		ret = request_firmware(&adsp->dtb_firmware, adsp->dtb_firmware_name, adsp->dev);
@@ -234,24 +396,15 @@ static int adsp_load(struct rproc *rproc, const struct firmware *fw)
 			return ret;
 		}
 
-		ret = qcom_mdt_pas_init(adsp->dev, adsp->dtb_firmware, adsp->dtb_firmware_name,
-					adsp->dtb_pas_id, adsp->dtb_mem_phys,
-					&adsp->dtb_pas_metadata);
-		if (ret)
-			goto release_dtb_firmware;
-
 		ret = qcom_mdt_load_no_init(adsp->dev, adsp->dtb_firmware, adsp->dtb_firmware_name,
 					    adsp->dtb_pas_id, adsp->dtb_mem_region,
 					    adsp->dtb_mem_phys, adsp->dtb_mem_size,
 					    &adsp->dtb_mem_reloc);
 		if (ret)
-			goto release_dtb_metadata;
+			goto release_dtb_firmware;
 	}
 
 	return 0;
-
-release_dtb_metadata:
-	qcom_scm_pas_metadata_release(&adsp->dtb_pas_metadata);
 
 release_dtb_firmware:
 	release_firmware(adsp->dtb_firmware);
@@ -292,55 +445,33 @@ static int adsp_start(struct rproc *rproc)
 			goto disable_cx_supply;
 	}
 
-	if (adsp->dtb_pas_id) {
-		ret = qcom_scm_pas_auth_and_reset(adsp->dtb_pas_id);
-		if (ret) {
-			dev_err(adsp->dev,
-				"failed to authenticate dtb image and release reset\n");
-			goto disable_px_supply;
-		}
-	}
-
-	ret = qcom_mdt_pas_init(adsp->dev, adsp->firmware, rproc->firmware, adsp->pas_id,
-				adsp->mem_phys, &adsp->pas_metadata);
-	if (ret)
-		goto disable_px_supply;
-
 	ret = qcom_mdt_load_no_init(adsp->dev, adsp->firmware, rproc->firmware, adsp->pas_id,
 				    adsp->mem_region, adsp->mem_phys, adsp->mem_size,
 				    &adsp->mem_reloc);
 	if (ret)
-		goto release_pas_metadata;
+		goto disable_px_supply;
 
 	qcom_pil_info_store(adsp->info_name, adsp->mem_phys, adsp->mem_size);
 
-	ret = qcom_scm_pas_auth_and_reset(adsp->pas_id);
+	ret = pas_auth_and_reset(adsp);
 	if (ret) {
 		dev_err(adsp->dev,
 			"failed to authenticate image and release reset\n");
-		goto release_pas_metadata;
+		goto disable_px_supply;
 	}
 
 	ret = qcom_q6v5_wait_for_start(&adsp->q6v5, msecs_to_jiffies(5000));
 	if (ret == -ETIMEDOUT) {
 		dev_err(adsp->dev, "start timed out\n");
-		qcom_scm_pas_shutdown(adsp->pas_id);
-		goto release_pas_metadata;
+		pas_shutdown(adsp);
+		goto disable_px_supply;
 	}
-
-	qcom_scm_pas_metadata_release(&adsp->pas_metadata);
-	if (adsp->dtb_pas_id)
-		qcom_scm_pas_metadata_release(&adsp->dtb_pas_metadata);
 
 	/* Remove pointer to the loaded firmware, only valid in adsp_load() & adsp_start() */
 	adsp->firmware = NULL;
 
 	return 0;
 
-release_pas_metadata:
-	qcom_scm_pas_metadata_release(&adsp->pas_metadata);
-	if (adsp->dtb_pas_id)
-		qcom_scm_pas_metadata_release(&adsp->dtb_pas_metadata);
 disable_px_supply:
 	if (adsp->px_supply)
 		regulator_disable(adsp->px_supply);
@@ -385,18 +516,12 @@ static int adsp_stop(struct rproc *rproc)
 	if (ret == -ETIMEDOUT)
 		dev_err(adsp->dev, "timed out on wait\n");
 
-	ret = qcom_scm_pas_shutdown(adsp->pas_id);
+	ret = pas_shutdown(adsp);
 	if (ret && adsp->decrypt_shutdown)
 		ret = adsp_shutdown_poll_decrypt(adsp);
 
 	if (ret)
 		dev_err(adsp->dev, "failed to shutdown: %d\n", ret);
-
-	if (adsp->dtb_pas_id) {
-		ret = qcom_scm_pas_shutdown(adsp->dtb_pas_id);
-		if (ret)
-			dev_err(adsp->dev, "failed to shutdown dtb: %d\n", ret);
-	}
 
 	handover = qcom_q6v5_unprepare(&adsp->q6v5);
 	if (handover)
@@ -607,55 +732,50 @@ static int adsp_alloc_memory_region(struct qcom_adsp *adsp)
 	return 0;
 }
 
+#if 0
+struct iommu_entry {
+	u32 base, size;
+} cdsp_iommu[] = {
+	{ 0x405000, 0x1000 }, // ipcc protocol 0 client 6
+	{ 0x10ca000, 0x1000 }, // rng ee10
+	{ 0x1fc8000, 0x1000 }, // tcsr
+	{ 0x1f43000, 0x1000 }, // tcsr mutex 3
+	{ 0x1fd4000, 0x1000 }, // tcsr wonce
+	{ 0xb2a0000, 0x10000 }, // pdc_compute
+	{ 0x100000, 0x100000 }, // gcc
+	{ 0x221c2000, 0x1000 }, // qfprom_corr
+};
+#endif
+
 static int adsp_assign_memory_region(struct qcom_adsp *adsp)
 {
-	struct qcom_scm_vmperm perm[MAX_ASSIGN_COUNT];
 	struct device_node *node;
-	unsigned int perm_size;
-	int offset;
-	int ret;
+	int i, ret;
 
-	if (!adsp->region_assign_idx)
-		return 0;
+#if 1
+	// just give it access to the whole hwio region for testing
+	// (excluding first page to catch null pointers)
+	iommu_map(adsp->iommu, 0x1000, 0x1000, 0x80000000u-0x1000, IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
+#else
+	for (i = 0; i < ARRAY_SIZE(cdsp_iommu); i++) {
+		const struct iommu_entry *mem = &cdsp_iommu[i];
+		ret = iommu_map(adsp->iommu, mem->base, mem->base, mem->size, IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
+		WARN_ON(ret);
+	}
+#endif
 
-	for (offset = 0; offset < adsp->region_assign_count; ++offset) {
+	for (i = 0; i < 10; i++) { // XXX: for each memory-region
 		struct reserved_mem *rmem = NULL;
 
-		node = of_parse_phandle(adsp->dev->of_node, "memory-region",
-					adsp->region_assign_idx + offset);
+		node = of_parse_phandle(adsp->dev->of_node, "memory-region", i);
 		if (node)
 			rmem = of_reserved_mem_lookup(node);
 		of_node_put(node);
-		if (!rmem) {
-			dev_err(adsp->dev, "unable to resolve shareable memory-region index %d\n",
-				offset);
-			return -EINVAL;
-		}
+		if (!rmem)
+			continue;
 
-		if (adsp->region_assign_shared)  {
-			perm[0].vmid = QCOM_SCM_VMID_HLOS;
-			perm[0].perm = QCOM_SCM_PERM_RW;
-			perm[1].vmid = adsp->region_assign_vmid;
-			perm[1].perm = QCOM_SCM_PERM_RW;
-			perm_size = 2;
-		} else {
-			perm[0].vmid = adsp->region_assign_vmid;
-			perm[0].perm = QCOM_SCM_PERM_RW;
-			perm_size = 1;
-		}
-
-		adsp->region_assign_phys[offset] = rmem->base;
-		adsp->region_assign_size[offset] = rmem->size;
-		adsp->region_assign_owners[offset] = BIT(QCOM_SCM_VMID_HLOS);
-
-		ret = qcom_scm_assign_mem(adsp->region_assign_phys[offset],
-					  adsp->region_assign_size[offset],
-					  &adsp->region_assign_owners[offset],
-					  perm, perm_size);
-		if (ret < 0) {
-			dev_err(adsp->dev, "assign memory %d failed\n", offset);
-			return ret;
-		}
+		ret = iommu_map(adsp->iommu, rmem->base, rmem->base, rmem->size, IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
+		WARN_ON(ret);
 	}
 
 	return 0;
@@ -663,23 +783,29 @@ static int adsp_assign_memory_region(struct qcom_adsp *adsp)
 
 static void adsp_unassign_memory_region(struct qcom_adsp *adsp)
 {
-	struct qcom_scm_vmperm perm;
-	int offset;
-	int ret;
+	struct device_node *node;
+	int i;
 
-	if (!adsp->region_assign_idx || adsp->region_assign_shared)
-		return;
+#if 1
+	iommu_unmap(adsp->iommu, 0x1000, 0x80000000u-0x1000);
+#else
+	for (i = 0; i < ARRAY_SIZE(cdsp_iommu); i++) {
+		const struct iommu_entry *mem = &cdsp_iommu[i];
+		iommu_unmap(adsp->iommu, mem->base, mem->size);
+	}
+#endif
 
-	for (offset = 0; offset < adsp->region_assign_count; ++offset) {
-		perm.vmid = QCOM_SCM_VMID_HLOS;
-		perm.perm = QCOM_SCM_PERM_RW;
+	for (i = 0; i < 10; i++) { // XXX: for each memory-region
+		struct reserved_mem *rmem = NULL;
 
-		ret = qcom_scm_assign_mem(adsp->region_assign_phys[offset],
-					  adsp->region_assign_size[offset],
-					  &adsp->region_assign_owners[offset],
-					  &perm, 1);
-		if (ret < 0)
-			dev_err(adsp->dev, "unassign memory %d failed\n", offset);
+		node = of_parse_phandle(adsp->dev->of_node, "memory-region", i);
+		if (node)
+			rmem = of_reserved_mem_lookup(node);
+		of_node_put(node);
+		if (!rmem)
+			continue;
+
+		iommu_unmap(adsp->iommu, rmem->base, rmem->size);
 	}
 }
 
@@ -695,9 +821,6 @@ static int adsp_probe(struct platform_device *pdev)
 	desc = of_device_get_match_data(&pdev->dev);
 	if (!desc)
 		return -EINVAL;
-
-	if (!qcom_scm_is_available())
-		return -EPROBE_DEFER;
 
 	fw_name = desc->firmware_name;
 	ret = of_property_read_string(pdev->dev.of_node, "firmware-name",
@@ -749,6 +872,23 @@ static int adsp_probe(struct platform_device *pdev)
 	if (ret)
 		goto free_rproc;
 
+	adsp->base = devm_platform_ioremap_resource(pdev, 0);
+	if (IS_ERR(adsp->base)) {
+		ret = PTR_ERR(adsp->base);
+		goto free_rproc;
+	}
+
+	if (platform_get_resource_byname(pdev, IORESOURCE_MEM, "evb_sel")) {
+		adsp->evb_sel = devm_platform_ioremap_resource_byname(pdev, "evb_sel");
+		if (IS_ERR(adsp->evb_sel))
+			return PTR_ERR(adsp->evb_sel);
+	}
+
+	dma_set_mask_and_coherent(adsp->dev, 0xffffffffful); /* 36-bit VA */
+	adsp->iommu = iommu_domain_alloc(&platform_bus_type);
+	ret = iommu_attach_device(adsp->iommu, adsp->dev);
+	WARN_ON(ret);
+
 	ret = adsp_alloc_memory_region(adsp);
 	if (ret)
 		goto free_rproc;
@@ -797,6 +937,8 @@ static int adsp_probe(struct platform_device *pdev)
 detach_proxy_pds:
 	adsp_pds_detach(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
 free_rproc:
+	if (adsp->iommu)
+
 	device_init_wakeup(adsp->dev, false);
 
 	return ret;
