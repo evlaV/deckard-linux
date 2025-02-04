@@ -85,6 +85,7 @@ struct slg4ax46073v {
 	struct delayed_work wdt_work;
 	const struct attribute_group *attr_groups;
     unsigned int version;
+    u32 pm_duty, pm_period, pm_enabled;
 };
 
 static bool slg4ax46073v_readable_reg(struct device *dev, unsigned int reg)
@@ -272,7 +273,7 @@ static int slg4ax46073v_reset_wdt( struct slg4ax46073v *slg4ax46073v )
     // set WDT PWM value to 50%
     slg4ax46073v_write_reg( slg4ax46073v, SLG4AX46073V_REG_WDT_FREQ, SLG4AX46073V_WDT_HALF);
     cancel_delayed_work(&slg4ax46073v->wdt_work);
-    schedule_delayed_work(&slg4ax46073v->wdt_work, SLG4AX56073V_WDT_RESET_RATE);
+    queue_delayed_work(system_freezable_wq, &slg4ax46073v->wdt_work, SLG4AX56073V_WDT_RESET_RATE);
     return ret;
 }
 
@@ -417,7 +418,7 @@ static void slg4ax46073v_delayed_work_handler(struct work_struct *work)
 static void slg4ax46073v_wdt_work_init(struct slg4ax46073v *slg4ax46073v)
 {
 	INIT_DELAYED_WORK(&slg4ax46073v->wdt_work, slg4ax46073v_delayed_work_handler);
-	schedule_delayed_work(&slg4ax46073v->wdt_work, SLG4AX56073V_WDT_RESET_RATE);
+	queue_delayed_work(system_freezable_wq, &slg4ax46073v->wdt_work, SLG4AX56073V_WDT_RESET_RATE);
 }
 
 // DEBUG Functions
@@ -797,6 +798,66 @@ static void slg4ax46073v_remove(struct i2c_client *client) {
 	slg4ax46073v_pet_wdt( slg4ax46073v );
 }
 
+static int slg4ax46073v_suspend(struct device *dev)
+{
+	struct slg4ax46073v *slg4ax46073v = dev_get_drvdata(dev);
+	u32 duty, period, enabled;
+	int ret;
+
+	ret = regmap_read(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT, &enabled);
+	if (!ret) {
+		ret = regmap_read(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_PERIOD, &period);
+		if (ret)
+			return ret;
+
+		ret = regmap_read(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC, &duty);
+		if (ret)
+			return ret;
+
+		regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT, SLG4AX46073V_VI_DISABLE_PWM_CLK0);
+
+		// turn off fan power supply
+		gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 0);
+		usleep_range(100000,150000);
+
+		// reset fan controller
+		regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_RESET, SLG4AX46073V_RESET);
+
+		// disarm wdt
+		slg4ax46073v_disarm_wdt(slg4ax46073v);
+
+		// Cancel the wdt so the work handler does not run in suspend
+		cancel_delayed_work(&slg4ax46073v->wdt_work);
+
+		slg4ax46073v->pm_enabled = 1;
+		slg4ax46073v->pm_duty = duty;
+		slg4ax46073v->pm_period = period;
+	} else
+		slg4ax46073v->pm_enabled = 0;
+
+	return 0;
+}
+
+static int slg4ax46073v_resume(struct device *dev)
+{
+	struct slg4ax46073v *slg4ax46073v = dev_get_drvdata(dev);
+
+	if (slg4ax46073v->pm_enabled) {
+		// turn fan power supply back on
+		gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 1);
+		usleep_range(100000,150000);
+
+		slg4ax46073v_reset(slg4ax46073v);
+
+		regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC,slg4ax46073v->pm_duty);
+		regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_PERIOD,slg4ax46073v->pm_period);
+	}
+
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(slg4ax46073v_pm, slg4ax46073v_suspend, slg4ax46073v_resume);
+
 static const struct i2c_device_id slg4ax46073v_i2c_ids[] = {
 	{ "slg4ax46073v", 0 },
 	{ }
@@ -813,6 +874,7 @@ static struct i2c_driver slg4ax46073v_basic_driver = {
 	.driver = {
 		.name	= "slg4ax46073v-fan",
 		.of_match_table = of_match_ptr(slg4ax46073v_of_ids),
+		.pm		= pm_sleep_ptr(&slg4ax46073v_pm),
 	},
 	.probe		= slg4ax46073v_probe,
 	.id_table	= slg4ax46073v_i2c_ids,
