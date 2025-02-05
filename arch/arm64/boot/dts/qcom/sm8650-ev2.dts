@@ -2026,7 +2026,7 @@
 	// Remove Hardware Chip Select
 	pinctrl-0 = <&qup_spi0_data_clk>;
 
-	cspi@0 {
+	fpga_cspi@0 {
 		status = "okay";
 		compatible = "linux,spidev";
 		spi-max-frequency = <11000000>;
