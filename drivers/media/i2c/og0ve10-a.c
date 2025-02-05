@@ -68,6 +68,10 @@ DEFINE_SPINLOCK(metadata_spinlock_og0VE10);
 
 #define VIDIOC_SENSOR_PRV_S_IN_SYNC _IO('V', BASE_VIDIOC_PRIVATE + 9)
 
+#define VIDIOC_SENSOR_PRV_S_VC_INT _IO('V', BASE_VIDIOC_PRIVATE + 10)
+
+#define VIDIOC_SENSOR_PRV_S_SYNCHRONIZED_RESET _IO('V', BASE_VIDIOC_PRIVATE + 11)
+
 struct sensor_register {
 	u16 reg_addr;
 	u32 reg_value;
@@ -213,10 +217,14 @@ struct og0ve10_dev {
 
 	bool otp_valid;
 	u8 otp_data[32];
+
+	bool is_vc_interleaved;
 };
 
 struct og0ve10_dev *sensors_og0VE10[4];
 int numSensors_og0VE10 = 0;
+int left_sensor_idx = -1;
+int right_sensor_idx = -1;
 int sync_sensor_index_og0VE10 = -1;
 
 extern struct workqueue_struct *sensor_workqueues[2];
@@ -649,9 +657,24 @@ static const struct v4l2_ctrl_ops og0ve10_ctrl_ops = {
 	.s_ctrl = og0ve10_set_ctrl,
 };
 
-static void *get_metadata(struct v4l2_subdev *sd)
+static void *get_metadata(struct v4l2_subdev *sd, u8 vc)
 {
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
+
+	// case for fpga interleaved og0ve10 cams, "upper_left" cam will have vc=0 and "upper_right" vc=1
+	if(sensor->is_vc_interleaved) {
+		if(vc == 0 && left_sensor_idx >= 0) {
+			sensor = sensors_og0VE10[left_sensor_idx];
+		}
+		else if(vc == 1 && right_sensor_idx >= 0) {
+			sensor = sensors_og0VE10[right_sensor_idx];
+		}
+		else {
+			return NULL;
+		}
+	}
+
+
 	unsigned long flags;
 	spin_lock_irqsave(&metadata_spinlock_og0VE10, flags);
 	memcpy(&sensor->outputSensorMetaData, &sensor->sensorMetaData,
@@ -662,11 +685,25 @@ static void *get_metadata(struct v4l2_subdev *sd)
 	return &sensor->outputSensorMetaData;
 }
 
-// The group parameter is unused here because virtual channel are not supported
+// The vc parameter is unused here because virtual channel are not supported
 static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp,
-			     u64 sof_isr_timestamp, u8 group)
+			     u64 sof_isr_timestamp, u8 vc)
 {
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
+
+	// case for fpga interleaved og0ve10 cams, "upper_left" cam will have vc=0 and "upper_right" vc=1
+	if(sensor->is_vc_interleaved) {
+		if(vc == 0 && left_sensor_idx >= 0) {
+			sensor = sensors_og0VE10[left_sensor_idx];
+		}
+		else if(vc == 1 && right_sensor_idx >= 0) {
+			sensor = sensors_og0VE10[right_sensor_idx];
+		}
+		else {
+			return;
+		}
+	}
+
 	sensor->last_sof_ts = sof_timestamp;
 	sensor->last_sof_isr_ts = sof_isr_timestamp;
 	if (sensor_workqueues[sensor->queue_index] != NULL) {
@@ -822,7 +859,13 @@ static int og0ve10_s_stream(struct v4l2_subdev *sd, int enable)
 
 	sensor->is_streaming = !!enable;
 
-	og0ve10_write_reg(sensor, 0x100, !!enable);
+	if(sensor->is_vc_interleaved) {
+		og0ve10_write_reg_dual(sensor, 0x100, !!enable);
+	}
+	else {
+		og0ve10_write_reg(sensor, 0x100, !!enable);
+	}
+
 	return 0;
 }
 
@@ -900,6 +943,28 @@ static long og0ve10_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 			}
 		} else {
 			last_time_in_sync_og0VE10 = 0;
+		}
+		break;
+	}
+	case VIDIOC_SENSOR_PRV_S_VC_INT:
+	{
+		sensor->is_vc_interleaved = (uintptr_t)arg;
+		break;
+	}
+	case VIDIOC_SENSOR_PRV_S_SYNCHRONIZED_RESET:
+	{
+		u32 val = (uintptr_t)arg;
+		// If a reset isn't requested, do nothing
+		if (val == 1) {
+			if(!sensor->dual_i2c_available) 
+			{
+				ret = -EINVAL;
+			}
+			else {
+				og0ve10_write_reg_dual(sensor, 0x100, 0);
+				usleep_range(1000 * 4, 1000 * 4 + 100); // brief sleep to ensure streaming fully stops
+				og0ve10_write_reg_dual(sensor, 0x100, 1);
+			}
 		}
 		break;
 	}
@@ -1098,7 +1163,7 @@ int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int group, boo
 		}
 		//printk("wrote 0x%x val:0x%x for camera %d",sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i], sensor->active_group_registers.group_register_sets[group].group_reg_values[i], sensor->sensor_index);
 	}
-	if (group == sensor->current_timing_adjustment.group_to_adjust) {
+	if (group == sensor->current_timing_adjustment.group_to_adjust && !sensor->is_vc_interleaved) {
 		if (sensor->timing_adjustment_state ==
 		    TIMING_ADJUSTMENT_REQUESTED) {
 			ret = og0ve10_write_reg16(
@@ -1136,6 +1201,44 @@ int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int group, boo
 				TIMING_ADJUSTMENT_NOT_IN_PROGRESS;
 		}
 	}
+	else if (group == sensor->current_timing_adjustment.group_to_adjust && sensor->is_vc_interleaved && sensor->dual_i2c_main) {
+		if (sensor->timing_adjustment_state ==
+		    TIMING_ADJUSTMENT_REQUESTED) {
+			ret = og0ve10_write_reg16_dual(
+				sensor, 0x380e,
+				sensor->current_timing_adjustment.new_rows);
+			if (ret != 0) {
+				return ret;
+			}
+			ret = og0ve10_write_reg16_dual(
+				sensor, 0x382c,
+				sensor->current_timing_adjustment
+					.new_global_row);
+			if (ret != 0) {
+				return ret;
+			}
+			sensor->timing_adjustment_state =
+				TIMING_READY_FOR_GROUP_RESTORE;
+		} else if (sensor->timing_adjustment_state ==
+			   TIMING_READY_FOR_GROUP_RESTORE) {
+			ret = og0ve10_write_reg16_dual(
+				sensor, 0x380e,
+				sensor->current_timing_adjustment
+					.rows_to_restore);
+			if (ret != 0) {
+				return ret;
+			}
+			ret = og0ve10_write_reg16_dual(
+				sensor, 0x382c,
+				sensor->current_timing_adjustment
+					.global_row_to_restore);
+			if (ret != 0) {
+				return ret;
+			}
+			sensor->timing_adjustment_state =
+				TIMING_ADJUSTMENT_NOT_IN_PROGRESS;
+		}
+	}
 	if (ret != 0) {
 		return ret;
 	}
@@ -1161,11 +1264,11 @@ void update_groups_og0VE10(struct og0ve10_dev *sensor)
 		sensor->lastGroup = 0;
 	}
 
-	if (last_time_in_sync_og0VE10 != 0) {
+	if (last_time_in_sync_og0VE10 != 0 || sensor->is_vc_interleaved) {
 		if (sensor->dual_i2c_main) {
 			og0VE10_write_registers_for_group(sensor, sensor->lastGroup, true);
 			last_dual_write_time_og0VE10 = ktime_get_raw_ns();
-		} else if (last_dual_write_time_og0VE10 < last_time_in_sync_og0VE10) {
+		} else if (last_dual_write_time_og0VE10 < last_time_in_sync_og0VE10 && !sensor->is_vc_interleaved) {
 			//printk("og0ve10 dual write safety write on non main sensor\n");
 			og0VE10_write_registers_for_group(sensor, sensor->lastGroup, false);
 		}
@@ -1383,9 +1486,11 @@ static int og0ve10_probe(struct i2c_client *client)
 	if (strcmp(id, "upper_left") == 0) {
 		sensor->is_left_sensor = true;
 		sensor->lastGroup = 0;
+		left_sensor_idx = numSensors_og0VE10;
 	} else {
 		sensor->is_left_sensor = false;
 		sensor->lastGroup = 0;
+		right_sensor_idx = numSensors_og0VE10;
 	}
 
 	INIT_WORK(&sensor->work, update_groups_og0VE10_work_fn);
@@ -1394,6 +1499,7 @@ static int og0ve10_probe(struct i2c_client *client)
 	numSensors_og0VE10++;
 	
 	sensor->group_mode = MODE_NOGROUPS;
+	sensor->is_vc_interleaved = false;
 
 	sensor->i2c_client = client;
 

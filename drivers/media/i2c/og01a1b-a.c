@@ -1420,7 +1420,7 @@ static const struct v4l2_ctrl_ops og01a1b_ctrl_read_ops_custom = {
 // 	.step = 1,
 // };
 
-static void* get_metadata(struct v4l2_subdev *sd) {
+static void* get_metadata(struct v4l2_subdev *sd, u8 vc) {
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 	unsigned long flags;
 	spin_lock_irqsave(&metadata_spinlock, flags);
