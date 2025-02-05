@@ -119,6 +119,16 @@ struct drm_panel_funcs {
 			 struct drm_connector *connector);
 
 	/**
+	 * @mode_set:
+	 *
+	 * Call back for panels that need special 
+	 * operations to perform mode_set
+	 */
+	int (*mode_set)(struct drm_panel *panel,
+			       const struct drm_display_mode *mode,
+			       const struct drm_display_mode *adjusted_mode);
+
+	/**
 	 * @get_orientation:
 	 *
 	 * Return the panel orientation set by device tree or EDID.
@@ -337,6 +347,9 @@ void drm_panel_enable(struct drm_panel *panel);
 void drm_panel_disable(struct drm_panel *panel);
 
 int drm_panel_get_modes(struct drm_panel *panel, struct drm_connector *connector);
+int drm_panel_mode_set(struct drm_panel *panel,
+			       const struct drm_display_mode *mode,
+			       const struct drm_display_mode *adjusted_mode);
 
 #if defined(CONFIG_OF) && defined(CONFIG_DRM_PANEL)
 struct drm_panel *of_drm_find_panel(const struct device_node *np);
