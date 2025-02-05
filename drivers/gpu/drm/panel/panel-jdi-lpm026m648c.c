@@ -601,6 +601,14 @@ static int lpm026m648c_get_modes(struct drm_panel *panel,
 	return i;
 }
 
+static int lpm026m648c_mode_set(struct drm_panel *panel,
+			       const struct drm_display_mode *mode,
+			       const struct drm_display_mode *adjusted_mode)
+{
+    printk("lpm026m648c_mode_set\n");
+    return 0;
+}
+
 static int panel_info_show(struct seq_file *s, void *data)
 {
 	struct drm_panel *panel = s->private;
@@ -803,6 +811,7 @@ static const struct drm_panel_funcs lpm026m648c_drm_funcs = {
 	.unprepare = lpm026m648c_unprepare,
 	.prepare = lpm026m648c_prepare,
 	.get_modes = lpm026m648c_get_modes,
+	.mode_set = lpm026m648c_mode_set,
 	.debugfs_init = lpm026m648c_debugfs_init,
 };
 
