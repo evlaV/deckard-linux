@@ -543,6 +543,8 @@ struct drm_display_mode *drm_mode_duplicate(struct drm_device *dev,
 bool drm_mode_match(const struct drm_display_mode *mode1,
 		    const struct drm_display_mode *mode2,
 		    unsigned int match_flags);
+bool drm_mode_drrs_match(const struct drm_display_mode *mode1,
+			 const struct drm_display_mode *mode2);
 bool drm_mode_equal(const struct drm_display_mode *mode1,
 		    const struct drm_display_mode *mode2);
 bool drm_mode_equal_no_clocks(const struct drm_display_mode *mode1,

@@ -814,6 +814,7 @@ static const struct drm_driver msm_driver = {
 				DRIVER_RENDER |
 				DRIVER_ATOMIC |
 				DRIVER_MODESET |
+				DRIVER_DRRS |
 				DRIVER_SYNCOBJ |
 				DRIVER_SYNCOBJ_TIMELINE,
 	.open               = msm_open,

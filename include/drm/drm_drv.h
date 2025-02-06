@@ -164,6 +164,12 @@ enum drm_driver_feature {
 	 * Legacy irq support. Only for legacy drivers. Do not use.
 	 */
 	DRIVER_HAVE_IRQ			= BIT(30),
+	/**
+	 * @DRIVER_HAVE_DRRS:
+	 *
+	 * Dynamic refresh rate switching support.
+	 */
+	DRIVER_DRRS			= BIT(31),
 };
 
 /**

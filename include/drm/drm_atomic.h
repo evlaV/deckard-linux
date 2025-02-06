@@ -399,6 +399,11 @@ struct drm_atomic_state {
 	bool async_update : 1;
 
 	/**
+	 * @drrs_update: hint for dynamic refresh rate switching update
+	 */
+	bool drrs_update : 1;
+
+	/**
 	 * @duplicated:
 	 *
 	 * Indicates whether or not this atomic state was duplicated using

@@ -722,6 +722,18 @@ drm_atomic_helper_check_modeset(struct drm_device *dev,
 		connectors_mask |= BIT(i);
 	}
 
+	if ((dev->driver_features & DRIVER_DRRS) &&
+	    new_crtc_state->connectors_changed == false &&
+	    new_crtc_state->active_changed == false &&
+	    drm_mode_drrs_match(&old_crtc_state->mode, &new_crtc_state->mode)) {
+		drm_dbg_atomic(dev, "[CRTC:%d:%s] dynamic refresh rate switching is required\n",
+			       crtc->base.id, crtc->name);
+		state->drrs_update = true;
+	} else {
+		drm_dbg_atomic(dev, "[CRTC:%d:%s] dynamic refresh rate switching not detected !!!!!!!!!!\n",
+			       crtc->base.id, crtc->name);
+	}
+
 	/*
 	 * After all the routing has been prepared we need to add in any
 	 * connector which is itself unchanged, but whose CRTC changes its
@@ -1173,7 +1185,8 @@ disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 		 * it away), so we won't call disable hooks twice.
 		 */
 		bridge = drm_bridge_chain_get_first_bridge(encoder);
-		drm_atomic_bridge_chain_disable(bridge, old_state);
+		if (!old_state->drrs_update)
+			drm_atomic_bridge_chain_disable(bridge, old_state);
 
 		/* Right function depends upon target state. */
 		if (funcs) {
@@ -1187,7 +1200,8 @@ disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 				funcs->dpms(encoder, DRM_MODE_DPMS_OFF);
 		}
 
-		drm_atomic_bridge_chain_post_disable(bridge, old_state);
+		if (!old_state->drrs_update)
+			drm_atomic_bridge_chain_post_disable(bridge, old_state);
 	}
 
 	for_each_oldnew_crtc_in_state(old_state, crtc, old_crtc_state, new_crtc_state, i) {
@@ -1544,7 +1558,8 @@ void drm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 		 * it away), so we won't call enable hooks twice.
 		 */
 		bridge = drm_bridge_chain_get_first_bridge(encoder);
-		drm_atomic_bridge_chain_pre_enable(bridge, old_state);
+		if (!old_state->drrs_update)
+			drm_atomic_bridge_chain_pre_enable(bridge, old_state);
 
 		if (funcs) {
 			if (funcs->atomic_enable)
@@ -1555,7 +1570,8 @@ void drm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 				funcs->commit(encoder);
 		}
 
-		drm_atomic_bridge_chain_enable(bridge, old_state);
+		if (!old_state->drrs_update)
+			drm_atomic_bridge_chain_enable(bridge, old_state);
 	}
 
 	drm_atomic_helper_commit_writebacks(dev, old_state);

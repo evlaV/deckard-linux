@@ -1482,6 +1482,17 @@ static bool drm_mode_match_timings(const struct drm_display_mode *mode1,
 		mode1->vscan == mode2->vscan;
 }
 
+static bool drm_mode_match_drrs_timings(const struct drm_display_mode *mode1,
+					const struct drm_display_mode *mode2)
+{
+	return mode1->hdisplay == mode2->hdisplay &&
+		mode1->hsync_start == mode2->hsync_start &&
+		mode1->hsync_end == mode2->hsync_end &&
+		mode1->htotal == mode2->htotal &&
+		mode1->hskew == mode2->hskew &&
+		mode1->vdisplay == mode2->vdisplay;
+}
+
 static bool drm_mode_match_clock(const struct drm_display_mode *mode1,
 				  const struct drm_display_mode *mode2)
 {
@@ -1559,6 +1570,33 @@ bool drm_mode_match(const struct drm_display_mode *mode1,
 	return true;
 }
 EXPORT_SYMBOL(drm_mode_match);
+
+/**
+ * drm_mode_drrs_match - test modes for vertical timing change only
+ * @mode1: first mode
+ * @mode2: second mode
+ * @match_flags: which parts need to match (DRM_MODE_MATCH_*)
+ *
+ * Check to see if @mode1 and @mode2 are equivalent.
+ *
+ * Returns:
+ * True if the modes are different only in refresh rate, false otherwise.
+ */
+bool drm_mode_drrs_match(const struct drm_display_mode *mode1,
+			 const struct drm_display_mode *mode2)
+{
+	if (!mode1 || !mode2)
+		return false;
+
+	if (!drm_mode_match_drrs_timings(mode1, mode2))
+		return false;
+
+	if (!drm_mode_match_flags(mode1, mode2))
+		return false;
+
+	return true;
+}
+EXPORT_SYMBOL(drm_mode_drrs_match);
 
 /**
  * drm_mode_equal - test modes for equality
