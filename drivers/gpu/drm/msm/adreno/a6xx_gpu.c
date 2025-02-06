@@ -1508,6 +1508,9 @@ static void a6xx_recover(struct msm_gpu *gpu)
 	if (active_submits)
 		pm_runtime_put(&gpu->pdev->dev);
 
+	for (int i = 0; i < 10; i++)
+		pm_runtime_put(&gpu->pdev->dev);
+
 	/* And the final one from recover worker */
 	pm_runtime_put_sync(&gpu->pdev->dev);
 
