@@ -343,6 +343,30 @@ struct drm_bridge_funcs {
 			       struct drm_bridge_state *old_bridge_state);
 
 	/**
+	 * @atomic_pre_drrs:
+	 *
+	 * This callback should prepare the bridge for refresh rate change.
+	 * The bridge can assume that the display pipe (i.e. clocks and timing
+	 * signals) feeding it is still running when this callback is called.
+	 *
+	 * The @atomic_pre_drrs callback is optional.
+	 */
+	void (*atomic_pre_drrs)(struct drm_bridge *bridge,
+				struct drm_bridge_state *old_bridge_state);
+
+	/**
+	 * @atomic_commit_drrs:
+	 *
+	 * This callback should commit the bridge for refresh rate change.
+	 * The bridge can assume that the display pipe (i.e. clocks and timing
+	 * signals) feeding it is still running when this callback is called.
+	 *
+	 * The @atomic_commit_drrs callback is optional.
+	 */
+	void (*atomic_commit_drrs)(struct drm_bridge *bridge,
+				struct drm_bridge_state *old_bridge_state);
+
+	/**
 	 * @atomic_post_disable:
 	 *
 	 * This callback should disable the bridge. It is called right after the
@@ -958,6 +982,10 @@ void drm_atomic_bridge_chain_pre_enable(struct drm_bridge *bridge,
 					struct drm_atomic_state *state);
 void drm_atomic_bridge_chain_enable(struct drm_bridge *bridge,
 				    struct drm_atomic_state *state);
+void drm_atomic_bridge_chain_pre_drrs(struct drm_bridge *bridge,
+				      struct drm_atomic_state *old_state);
+void drm_atomic_bridge_chain_commit_drrs(struct drm_bridge *bridge,
+					 struct drm_atomic_state *old_state);
 
 u32 *
 drm_atomic_helper_bridge_propagate_bus_fmt(struct drm_bridge *bridge,

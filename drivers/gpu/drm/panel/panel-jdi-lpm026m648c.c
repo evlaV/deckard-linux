@@ -384,6 +384,7 @@ static int lpm026m648c_disable(struct drm_panel *panel)
 	if (!ctx->enabled)
 		return 0;
 
+WARN(1, "======== panel disable ===========");
 	ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
 	if (ctx->is_dual_panel)
 		ctx->dsi[1]->mode_flags &= ~MIPI_DSI_MODE_LPM;
@@ -405,6 +406,7 @@ static int lpm026m648c_unprepare(struct drm_panel *panel)
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 	int ret = 0;
 
+WARN(1, "======== panel unprepare ===========");
 	if (!ctx->prepared)
 		return 0;
 
@@ -465,6 +467,7 @@ static int lpm026m648c_prepare(struct drm_panel *panel)
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 	int ret;
 
+WARN(1, "======== panel prepare ===========");
 	if (ctx->prepared)
 		return 0;
 
@@ -512,6 +515,7 @@ static int lpm026m648c_bl_update_status(struct backlight_device *bl)
 	struct lpm026m648c_ctx *lpm026m648c_ctx = mipi_dsi_get_drvdata(dsi);
 	int ret = 0;
 
+WARN(1, "======== backlight update ===========");
 	if (!lpm026m648c_ctx->prepared)
 		return 0;
 
@@ -533,6 +537,7 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 	int ret;
 
+WARN(1, "======== panel enable ===========");
 	if (ctx->enabled)
 		return 0;
 
@@ -563,6 +568,27 @@ power_off:
 	if (lpm026m648c_power_off(ctx))
 		DRM_DEV_ERROR(ctx->dev, "power_off failed\n");
 	return ret;
+}
+
+static int lpm026m648c_pre_drrs(struct drm_panel *panel,
+				struct drm_display_mode *mode)
+{
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+
+	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_OFF);
+	return 0;
+}
+
+static int lpm026m648c_commit_drrs(struct drm_panel *panel,
+				   struct drm_display_mode *mode)
+{
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+
+	/* TODO: adjust brightness per refresh rate */
+	set_brightness(ctx, ctx->backlight->props.brightness,
+		       ctx->backlight->props.pulse_offset_rows);
+	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_ON);
+	return 0;
 }
 
 static int lpm026m648c_get_modes(struct drm_panel *panel,
@@ -800,6 +826,8 @@ static void lpm026m648c_debugfs_init(struct drm_panel *panel, struct dentry *roo
 static const struct drm_panel_funcs lpm026m648c_drm_funcs = {
 	.disable = lpm026m648c_disable,
 	.enable = lpm026m648c_enable,
+	.pre_drrs = lpm026m648c_pre_drrs,
+	.commit_drrs = lpm026m648c_commit_drrs,
 	.unprepare = lpm026m648c_unprepare,
 	.prepare = lpm026m648c_prepare,
 	.get_modes = lpm026m648c_get_modes,

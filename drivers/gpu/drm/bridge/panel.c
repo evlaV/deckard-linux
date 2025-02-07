@@ -148,6 +148,40 @@ static void panel_bridge_atomic_enable(struct drm_bridge *bridge,
 	drm_panel_enable(panel_bridge->panel);
 }
 
+static void panel_bridge_atomic_pre_drrs(struct drm_bridge *bridge,
+				struct drm_bridge_state *old_bridge_state)
+{
+	struct panel_bridge *panel_bridge = drm_bridge_to_panel_bridge(bridge);
+	struct drm_atomic_state *atomic_state = old_bridge_state->base.state;
+	struct drm_encoder *encoder = bridge->encoder;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *old_crtc_state;
+
+	crtc = drm_atomic_get_new_crtc_for_encoder(atomic_state, encoder);
+	if (!crtc)
+		return;
+
+	old_crtc_state = drm_atomic_get_old_crtc_state(atomic_state, crtc);
+	drm_panel_pre_drrs(panel_bridge->panel, &old_crtc_state->adjusted_mode);
+}
+
+static void panel_bridge_atomic_commit_drrs(struct drm_bridge *bridge,
+				struct drm_bridge_state *old_bridge_state)
+{
+	struct panel_bridge *panel_bridge = drm_bridge_to_panel_bridge(bridge);
+	struct drm_atomic_state *atomic_state = old_bridge_state->base.state;
+	struct drm_encoder *encoder = bridge->encoder;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *old_crtc_state;
+
+	crtc = drm_atomic_get_new_crtc_for_encoder(atomic_state, encoder);
+	if (!crtc)
+		return;
+
+	old_crtc_state = drm_atomic_get_old_crtc_state(atomic_state, crtc);
+	drm_panel_commit_drrs(panel_bridge->panel, &old_crtc_state->adjusted_mode);
+}
+
 static void panel_bridge_atomic_disable(struct drm_bridge *bridge,
 				struct drm_bridge_state *old_bridge_state)
 {
@@ -212,6 +246,8 @@ static const struct drm_bridge_funcs panel_bridge_bridge_funcs = {
 	.detach = panel_bridge_detach,
 	.atomic_pre_enable = panel_bridge_atomic_pre_enable,
 	.atomic_enable = panel_bridge_atomic_enable,
+	.atomic_pre_drrs = panel_bridge_atomic_pre_drrs,
+	.atomic_commit_drrs = panel_bridge_atomic_commit_drrs,
 	.atomic_disable = panel_bridge_atomic_disable,
 	.atomic_post_disable = panel_bridge_atomic_post_disable,
 	.get_modes = panel_bridge_get_modes,

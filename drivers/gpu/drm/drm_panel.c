@@ -238,6 +238,68 @@ int drm_panel_enable(struct drm_panel *panel)
 EXPORT_SYMBOL(drm_panel_enable);
 
 /**
+ * drm_panel_pre_drrs - prepare dynamic refresh rate for a panel
+ * @panel: DRM panel
+ *
+ * Calling this function will cause the panel display drivers to be prepared
+ * for dynamic refresh rate.
+ *
+ * Return: 0 on success or a negative error code on failure.
+ */
+int drm_panel_pre_drrs(struct drm_panel *panel, struct drm_display_mode *mode)
+{
+	int ret;
+
+	if (!panel)
+		return -EINVAL;
+
+	if (!panel->enabled) {
+		dev_warn(panel->dev, "Skipping DRRS disabled panel\n");
+		return 0;
+	}
+
+	if (panel->funcs && panel->funcs->pre_drrs) {
+		ret = panel->funcs->pre_drrs(panel, mode);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_panel_pre_drrs);
+
+/**
+ * drm_panel_commit_drrs - commit dynamic refresh rate for a panel
+ * @panel: DRM panel
+ *
+ * Calling this function will cause the panel display drivers to commit
+ * dynamic refresh rate.
+ *
+ * Return: 0 on success or a negative error code on failure.
+ */
+int drm_panel_commit_drrs(struct drm_panel *panel, struct drm_display_mode *mode)
+{
+	int ret;
+
+	if (!panel)
+		return -EINVAL;
+
+	if (!panel->enabled) {
+		dev_warn(panel->dev, "Skipping refresh rate change disabled\n");
+		return 0;
+	}
+
+	if (panel->funcs && panel->funcs->commit_drrs) {
+		ret = panel->funcs->commit_drrs(panel, mode);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_panel_commit_drrs);
+
+/**
  * drm_panel_disable - disable a panel
  * @panel: DRM panel
  *

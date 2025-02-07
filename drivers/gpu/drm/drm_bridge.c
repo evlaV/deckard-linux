@@ -846,6 +846,78 @@ void drm_atomic_bridge_chain_enable(struct drm_bridge *bridge,
 }
 EXPORT_SYMBOL(drm_atomic_bridge_chain_enable);
 
+/**
+ * drm_atomic_bridge_chain_pre_drrs - prepare refresh rate switching for bridges
+				      in the encoder chain
+ * @bridge: bridge control structure
+ * @old_state: old atomic state
+ *
+ * Calls &drm_bridge_funcs.pre_drrs op for all the bridges in the encoder chain,
+ * starting from the first bridge to the last.
+ *
+ * Note: the bridge passed should be the one closest to the encoder
+ */
+void drm_atomic_bridge_chain_pre_drrs(struct drm_bridge *bridge,
+				      struct drm_atomic_state *old_state)
+{
+	struct drm_encoder *encoder;
+
+	if (!bridge)
+		return;
+
+	encoder = bridge->encoder;
+	list_for_each_entry_from(bridge, &encoder->bridge_chain, chain_node) {
+		if (bridge->funcs->atomic_pre_drrs) {
+			struct drm_bridge_state *old_bridge_state;
+
+			old_bridge_state =
+				drm_atomic_get_old_bridge_state(old_state,
+								bridge);
+			if (WARN_ON(!old_bridge_state))
+				return;
+
+			bridge->funcs->atomic_pre_drrs(bridge, old_bridge_state);
+		}
+	}
+}
+EXPORT_SYMBOL(drm_atomic_bridge_chain_pre_drrs);
+
+/**
+ * drm_atomic_bridge_chain_commit_drrs - commit refresh rate switching for
+ *					 bridges in the encoder chain
+ * @bridge: bridge control structure
+ * @old_state: old atomic state
+ *
+ * Calls &drm_bridge_funcs.commit_drrs op for all the bridges in the encoder chain,
+ * starting from the first bridge to the last.
+ *
+ * Note: the bridge passed should be the one closest to the encoder
+ */
+void drm_atomic_bridge_chain_commit_drrs(struct drm_bridge *bridge,
+				      struct drm_atomic_state *old_state)
+{
+	struct drm_encoder *encoder;
+
+	if (!bridge)
+		return;
+
+	encoder = bridge->encoder;
+	list_for_each_entry_from(bridge, &encoder->bridge_chain, chain_node) {
+		if (bridge->funcs->atomic_commit_drrs) {
+			struct drm_bridge_state *old_bridge_state;
+
+			old_bridge_state =
+				drm_atomic_get_old_bridge_state(old_state,
+								bridge);
+			if (WARN_ON(!old_bridge_state))
+				return;
+
+			bridge->funcs->atomic_commit_drrs(bridge, old_bridge_state);
+		}
+	}
+}
+EXPORT_SYMBOL(drm_atomic_bridge_chain_commit_drrs);
+
 static int drm_atomic_bridge_check(struct drm_bridge *bridge,
 				   struct drm_crtc_state *crtc_state,
 				   struct drm_connector_state *conn_state)

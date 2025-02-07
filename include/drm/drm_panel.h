@@ -90,6 +90,24 @@ struct drm_panel_funcs {
 	int (*enable)(struct drm_panel *panel);
 
 	/**
+	 * @pre_drrs:
+	 *
+	 * prepare dynamic refresh rate switching for panel
+	 *
+	 * This function is optional.
+	 */
+	int (*pre_drrs)(struct drm_panel *panel, struct drm_display_mode *mode);
+
+	/**
+	 * @commit_drrs:
+	 *
+	 * commit dynamic refresh rate switching for panel
+	 *
+	 * This function is optional.
+	 */
+	int (*commit_drrs)(struct drm_panel *panel, struct drm_display_mode *mode);
+
+	/**
 	 * @disable:
 	 *
 	 * Disable panel (turn off back light, etc.).
@@ -281,6 +299,10 @@ int drm_panel_unprepare(struct drm_panel *panel);
 
 int drm_panel_enable(struct drm_panel *panel);
 int drm_panel_disable(struct drm_panel *panel);
+
+int drm_panel_pre_drrs(struct drm_panel *panel, struct drm_display_mode *mode);
+int drm_panel_commit_drrs(struct drm_panel *panel,
+			  struct drm_display_mode *mode);
 
 int drm_panel_get_modes(struct drm_panel *panel, struct drm_connector *connector);
 

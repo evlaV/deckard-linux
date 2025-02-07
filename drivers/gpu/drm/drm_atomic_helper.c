@@ -1185,7 +1185,9 @@ disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 		 * it away), so we won't call disable hooks twice.
 		 */
 		bridge = drm_bridge_chain_get_first_bridge(encoder);
-		if (!old_state->drrs_update)
+		if (old_state->drrs_update)
+			drm_atomic_bridge_chain_pre_drrs(bridge, old_state);
+		else
 			drm_atomic_bridge_chain_disable(bridge, old_state);
 
 		/* Right function depends upon target state. */
@@ -1570,7 +1572,9 @@ void drm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 				funcs->commit(encoder);
 		}
 
-		if (!old_state->drrs_update)
+		if (old_state->drrs_update)
+			drm_atomic_bridge_chain_commit_drrs(bridge, old_state);
+		else
 			drm_atomic_bridge_chain_enable(bridge, old_state);
 	}
 
