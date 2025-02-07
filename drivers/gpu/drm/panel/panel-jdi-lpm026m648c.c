@@ -43,7 +43,7 @@
 #define BRIGHTNESS_MAX_120 380
 
 #define VFP		700
-#define VID_VS_DELAY	400
+#define VID_VS_DELAY	1112
 #define VBP		800
 #define GPO1_TES1	233
 #define GPO1_TEW1	17
@@ -236,7 +236,7 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x04);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DSI_CTL,
-				  0x20, 0x6b, 0x80, 0x06, 0x33, 0x8a, 0x00,
+				  0x20, 0x6b, 0x80, 0x06, 0x33, 0x9a, 0x00,
 				  0x1a, 0x7a);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 				  0x00);
@@ -249,7 +249,7 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3, 0x70, 0x08, 0xd0,
 				  0x02, 0x21, 0x6f, 0x08, 0x5a, 0x00, 0x00,
 				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, 0x42, 0x86,
+	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, 0x3a, 0x86,
 				  LE16(VBP), 0x08, 0x70, BE16(VFP));
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
