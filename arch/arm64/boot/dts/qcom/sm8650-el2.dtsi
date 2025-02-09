@@ -181,10 +181,10 @@
 				"mi2s-ter-ibit",
 				"mi2s-sen-ibit";
 
-			interrupts = <GIC_SPI 179 IRQ_TYPE_LEVEL_HIGH>,
-				     <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>,
-				     <GIC_SPI 268 IRQ_TYPE_LEVEL_HIGH>,
-				     <GIC_SPI 160 IRQ_TYPE_LEVEL_HIGH>;
+			interrupts = <GIC_SPI 179 IRQ_TYPE_LEVEL_HIGH 0>,
+				     <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH 0>,
+				     <GIC_SPI 268 IRQ_TYPE_LEVEL_HIGH 0>,
+				     <GIC_SPI 160 IRQ_TYPE_LEVEL_HIGH 0>;
 			interrupt-names = "wsa-lpaif",
 					  "va-lpaif",
 					  "hdmi-lpaif",
