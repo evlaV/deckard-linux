@@ -752,7 +752,7 @@ static int icp_probe(struct platform_device *pdev)
 		goto clk_setup_error;
 
 	// IOMMU
-	icp->iommu = iommu_domain_alloc(&platform_bus_type);
+	icp->iommu = iommu_paging_domain_alloc(dev);
 	ret = iommu_attach_device(icp->iommu, dev);
 	if (ret < 0)
 		goto iommu_error;
@@ -820,7 +820,7 @@ MODULE_DEVICE_TABLE(of, icp_match_table);
 
 static struct platform_driver icp_driver = {
 	.probe = icp_probe,
-	.remove_new = icp_remove,
+	.remove = icp_remove,
 	.driver = {
 		.name = "icp-sm8650",
 		.of_match_table = icp_match_table,
@@ -830,4 +830,4 @@ module_platform_driver(icp_driver);
 
  
 MODULE_LICENSE("GPL v2");
-MODULE_IMPORT_NS(DMA_BUF);
+MODULE_IMPORT_NS("DMA_BUF");
