@@ -93,24 +93,24 @@
 			// The driver is dependent on this order for user space to work correctly. 
 			// Please consult with TGoyen before changing
 			pm8550b_vbat_sns_qbg {
-				reg = <PM8550B_ADC5_GEN3_VBAT_SNS_QBG>;
+				reg = <PM8550B_ADC5_GEN3_VBAT_SNS_QBG(7)>;
 				label = "pm8550b_vbat_sns_qbg_hs";
 				qcom,pre-scaling = <1 6>;
 			};
 
 			pm8550b_ichg_fb_hs: pm8550b_ichg_fb_hs {
-				reg = <PM8550B_ADC5_GEN3_ICHG_FB>;
+				reg = <PM8550B_ADC5_GEN3_ICHG_FB(7)>;
 				label = "pm8550b_ichg_fb_hs";
 			};
 
 			pm8550b_usb_sns_v_div_16 {
-				reg = <PM8550B_ADC5_GEN3_USB_SNS_V_16>;
+				reg = <PM8550B_ADC5_GEN3_USB_SNS_V_16(7)>;
 				label = "pm8550b_usb_sns_v_div_16_hs";
 				qcom,pre-scaling = <1 16>;
 			};
 
 			pm8550b_iin_fb {
-				reg = <PM8550B_ADC5_GEN3_IIN_FB>;
+				reg = <PM8550B_ADC5_GEN3_IIN_FB(7)>;
 				label = "pm8550b_iin_fb_hs";
 			};
 		};
