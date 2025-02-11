@@ -632,6 +632,10 @@ static int qcom_vadc_scale_hw_calib_current_raw(
 				const struct u32_fract *prescale,
 				const struct adc5_data *data,
 				u16 adc_code, int *result_ua);
+static int qcom_vadc5_scale_hw_calib_current(
+				const struct u32_fract *prescale,
+				const struct adc5_data *data,
+				u16 adc_code, int *result_ua);
 static int qcom_vadc_scale_hw_calib_therm(
 				const struct u32_fract *prescale,
 				const struct adc5_data *data,
@@ -1017,45 +1021,6 @@ static int qcom_vadc_scale_hw_calib_volt(
 {
 	*result_uv = qcom_vadc_scale_code_voltage_factor(adc_code,
 				prescale, data, 1);
-
-	return 0;
-}
-
-static int qcom_vadc_scale_hw_calib_current_raw(
-				const struct u32_fract *prescale,
-				const struct adc5_data *data,
-				u16 adc_code, int *result_ua)
-{
-	s64 temp;
-
-	if (!prescale->numerator)
-		return -EINVAL;
-
-	temp = div_s64((s64)(s16)adc_code * prescale->denominator,
-			prescale->numerator);
-	*result_ua = (int) temp;
-	pr_debug("raw adc_code: %#x result_ua: %d\n", adc_code, *result_ua);
-
-	return 0;
-}
-
-static int qcom_vadc_scale_hw_calib_current(
-				const struct u32_fract *prescale,
-				const struct adc5_data *data,
-				u16 adc_code, int *result_ua)
-{
-	u32 adc_vdd_ref_mv = 1875;
-	s64 voltage;
-
-	if (!prescale->numerator)
-		return -EINVAL;
-
-	/* (ADC code * vref_vadc (1.875V)) / full_scale_code */
-	voltage = (s64)(s16) adc_code * adc_vdd_ref_mv * 1000;
-	voltage = div_s64(voltage, data->full_scale_code_volt);
-	voltage = div_s64(voltage * prescale->denominator, prescale->numerator);
-	*result_ua = (int) voltage;
-	pr_debug("adc_code: %#x result_ua: %d\n", adc_code, *result_ua);
 
 	return 0;
 }
