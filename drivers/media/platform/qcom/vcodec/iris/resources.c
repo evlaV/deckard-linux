@@ -118,54 +118,32 @@ static int init_power_domains(struct iris_core *core)
 	return ret;
 }
 
-int enable_power_domains(struct iris_core *core, const char *name)
+int enable_power_domains(struct iris_core *core, enum platform_pm_domain_type id)
 {
-	struct power_domain_info *pdinfo = NULL;
 	int ret;
-	u32 i;
 
 	ret = opp_set_rate(core, ULONG_MAX);
 	if (ret)
 		return ret;
 
-	core->pd_count = core->platform_data->pd_tbl_size;
-	for (i = 0; i < (core->pd_count - 1); i++) {
-		pdinfo = &core->power_domain_tbl[i];
-		if (strcmp(pdinfo->name, name))
-			continue;
-		ret = pm_runtime_get_sync(pdinfo->genpd_dev);
-		if (ret < 0)
-			return ret;
-	}
-
-	ret = opp_set_rate(core, ULONG_MAX);
-	if (ret)
+	ret = pm_runtime_get_sync(core->pmdomain_tbl->pd_devs[id]);
+	if (ret < 0)
 		return ret;
 
-	return ret;
+	return 0;
 }
 
-int disable_power_domains(struct iris_core *core, const char *name)
+int disable_power_domains(struct iris_core *core, enum platform_pm_domain_type id)
 {
-	struct power_domain_info *pdinfo = NULL;
 	int ret;
-	u32 i;
 
 	ret = opp_set_rate(core, 0);
 	if (ret)
 		return ret;
 
-	core->pd_count = core->platform_data->pd_tbl_size;
-	for (i = 0; i < (core->pd_count - 1); i++) {
-		pdinfo = &core->power_domain_tbl[i];
-		if (strcmp(pdinfo->name, name))
-			continue;
-		ret = pm_runtime_put_sync(pdinfo->genpd_dev);
-		if (ret)
-			return ret;
-	}
+	pm_runtime_put_sync(core->pmdomain_tbl->pd_devs[id]);
 
-	return ret;
+	return 0;
 }
 
 static int init_clocks(struct iris_core *core)
