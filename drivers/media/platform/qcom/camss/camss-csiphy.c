@@ -156,6 +156,13 @@ static int csiphy_set_clock_rates(struct csiphy_device *csiphy)
 			u64 min_rate = link_freq / 4;
 			long round_rate;
 
+			// Adjust clock rate for SM8650
+			if (csiphy->camss->res->version == CAMSS_8650) {
+				// bits_per_lane valid for CPHY only, DPHY would have 8 bits per lane
+				const u64 bits_per_lane = 32;
+				min_rate = (link_freq * bpp) / (num_lanes * bits_per_lane);
+			}
+
 			camss_add_clock_margin(&min_rate);
 
 			for (j = 0; j < clock->nfreqs; j++)

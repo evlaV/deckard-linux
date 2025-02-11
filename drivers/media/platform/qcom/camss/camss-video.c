@@ -11,6 +11,7 @@
 #include <media/media-entity.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-event.h>
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-mc.h>
 #include <media/videobuf2-dma-sg.h>
@@ -837,6 +838,18 @@ static int video_set_extra_output_plane_config(struct camss_video *video, struct
 	return 0;
 }
 
+static int video_subscribe_event(struct v4l2_fh *fh, const struct v4l2_event_subscription *sub)
+{
+	if (sub->type != V4L2_EVENT_CAMSS_HW_ERROR)
+		return -EINVAL;
+
+	// No id expected for V4L2_EVENT_CAMSS_HW_ERROR so we should receive 0
+	if (sub->id != 0)
+		return -EINVAL;
+
+	return v4l2_event_subscribe(fh, sub, 0, NULL);
+}
+
 static long video_ioctl(struct file *file, void *fh, bool valid_prio, unsigned int cmd, void *arg)
 {
 	struct camss_video *video = video_drvdata(file);
@@ -910,6 +923,7 @@ static const struct v4l2_ioctl_ops msm_vid_ioctl_ops = {
 	.vidioc_enum_input		= video_enum_input,
 	.vidioc_g_input			= video_g_input,
 	.vidioc_s_input			= video_s_input,
+	.vidioc_subscribe_event = video_subscribe_event,
 	.vidioc_default			= video_ioctl,
 };
 
