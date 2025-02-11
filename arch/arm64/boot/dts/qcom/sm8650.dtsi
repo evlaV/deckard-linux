@@ -7295,15 +7295,15 @@
 
 			ppi-partitions {
 				ppi_cluster0: interrupt-partition-0 {
-					affinity = <&CPU0 &CPU1>;
+					affinity = <&cpu0 &cpu1>;
 				};
 
 				ppi_cluster1: interrupt-partition-1 {
-					affinity = <&CPU2 &CPU3 &CPU4 &CPU5 &CPU6>;
+					affinity = <&cpu2 &cpu3 &cpu4 &cpu5 &cpu6>;
 				};
 
 				ppi_cluster2: interrupt-partition-2 {
-					affinity = <&CPU7>;
+					affinity = <&cpu7>;
 				};
 			};
 
