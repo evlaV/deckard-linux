@@ -461,6 +461,11 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	val = readl(csid->base + CSID_CSI2_RX_IRQ_STATUS);
 	writel(val, csid->base + CSID_CSI2_RX_IRQ_CLEAR);
 
+	// Log warning if we receive unexpected bits in the csi2 rx status register
+	if(val & 0x19fe000)
+		dev_warn_ratelimited(csid->camss->dev, "Unexpected CSID CSI2 RX status 0x%x (csid=%d)\n", val, csid->id);
+
+
 #if CSID_RX_DEBUG
 	// increment the rx debug irq counters when enabled and we received a csi2 rx irq
 	if(csid->rx_dbg_en && top_val & 0x4) {
@@ -485,6 +490,23 @@ static irqreturn_t csid_isr(int irq, void *dev)
 			else {
 				path_status = readl(csid->base + CSID_CSI2_RDIN_IRQ_STATUS(i));
 				writel(path_status, csid->base + CSID_CSI2_RDIN_IRQ_CLEAR(i));
+			}
+
+			// Log warning if we receive unexpected bits in the status register (mostly error bits)
+			if(path_status & 0x1f0c6005)
+				dev_warn_ratelimited(csid->camss->dev, "Unexpected CSID path status 0x%x (csid=%d path=%d)\n", path_status, csid->id, i);
+
+			// Report hardware error through the video device if we detect a known non-recoverable error
+			if(path_status & 0x4) // ERROR_FIFO_OVERFLOW
+			{
+				dev_warn(csid->camss->dev, "Reporting CSID path error after reading status=0x%x (csid=%d path=%d)\n", path_status, csid->id, i);
+				u32 port_id;
+				struct camss_hw_error_info error_info;
+
+				port_id = (i == VFE_LINE_PIX) ? 0 : i;
+				memset(&error_info, 0 ,sizeof(struct camss_hw_error_info));
+				error_info.type = 0x0; // right now we only detect FIFO_OVERFLOW but we might want to provide which error type we had to userspace
+				camss_report_hw_error(csid->camss, csid->id, port_id, &error_info);
 			}
 
 			if(path_status & 0x0010) { // Test if PATH_INFO_SOF is set
@@ -707,9 +729,8 @@ static int csid_reset(struct csid_device *csid)
 	writel_relaxed(csid->rx_dbg_en ? 0x9ffffff : 0x0, csid->base + CSID_CSI2_RX_IRQ_MASK);
 #endif
 
-	/* PATH_INFO_SOF | CAMIF_SOF */
-
-	val = 0x1010;
+	/* PATH_INFO_SOF | CAMIF_SOF | ERROR_FIFO_OVERFLOW */
+	val = 0x1014;
 	//val = 0x10881004;
 	writel_relaxed(val, csid->base + CSID_CSI2_RDIN_IRQ_MASK(0));
 	writel_relaxed(val, csid->base + 0xb0); // IPP SOF
