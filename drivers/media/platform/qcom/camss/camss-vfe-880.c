@@ -678,6 +678,25 @@ static long vfe_set_statistics_config_880(struct vfe_device *vfe, u32 stats_cfg)
 	return 0;
 }
 
+static void vfe_report_hw_error_880(struct vfe_device *vfe, int wm, struct camss_hw_error_info *error_info)
+{
+	struct camss_video *video;
+	struct vfe_output *output;
+
+	if (vfe->wm_output_map[wm] == VFE_LINE_NONE) {
+		// Output is not active, ignore
+		return;
+	}
+
+	video = &vfe->line[vfe->wm_output_map[wm]].video_out;
+	output = &vfe->line[vfe->wm_output_map[wm]].output;
+
+	struct v4l2_event error_event = {0};
+	error_event.type = V4L2_EVENT_CAMSS_HW_ERROR;
+	memcpy(error_event.u.data, error_info, sizeof(struct camss_hw_error_info));
+	v4l2_event_queue(&video->vdev, &error_event);
+}
+
 static const struct camss_video_ops vfe_video_ops_880 = {
 	.queue_buffer = vfe_queue_buffer_v2,
 	.flush_buffers = vfe_flush_buffers,
@@ -705,4 +724,5 @@ const struct vfe_hw_ops vfe_ops_880 = {
 	.reg_update = vfe_reg_update,
 	.reg_update_clear = vfe_reg_update_clear,
 	.set_statistics_config = vfe_set_statistics_config_880,
+	.vfe_report_hw_error = vfe_report_hw_error_880,
 };

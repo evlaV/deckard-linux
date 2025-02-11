@@ -26,6 +26,14 @@
 #define VIDIOC_PRIV_S_MULTI_VCDT_CFG _IO('V', BASE_VIDIOC_PRIVATE + 4) // takes the second vc enabled as parameter
 // TODO: add layout config ioctl (to set plane stride and offsets)
 
+// Private events
+#define V4L2_EVENT_CAMSS_HW_ERROR   (V4L2_EVENT_PRIVATE_START + 1)
+
+struct camss_hw_error_info {
+	u32 type;
+	u8 reserved[60]; // V4L events can store up to 64 bytes of data
+};
+
 enum camss_extra_output_type
 {
 	CAMSS_EXTRA_OUTPUT_TYPE_META,
