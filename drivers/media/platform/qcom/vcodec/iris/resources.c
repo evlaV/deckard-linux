@@ -19,50 +19,6 @@
 
 #define BW_THRESHOLD 50000
 
-static void iris_pd_release(void *res)
-{
-	struct device *pd = (struct device *)res;
-
-	dev_pm_domain_detach(pd, true);
-}
-
-static int iris_pd_get(struct iris_core *core, struct power_domain_info *pdinfo)
-{
-	int ret;
-
-	pdinfo->genpd_dev = dev_pm_domain_attach_by_name(core->dev, pdinfo->name);
-	if (IS_ERR_OR_NULL(pdinfo->genpd_dev))
-		ret = PTR_ERR(pdinfo->genpd_dev) ? : -ENODATA;
-
-	ret = devm_add_action_or_reset(core->dev, iris_pd_release, (void *)pdinfo->genpd_dev);
-	if (ret)
-		return ret;
-
-	return ret;
-}
-
-static void iris_opp_dl_release(void *res)
-{
-	struct device_link *link = (struct device_link *)res;
-
-	device_link_del(link);
-}
-
-static int iris_opp_dl_get(struct device *dev, struct device *supplier)
-{
-	u32 flag = DL_FLAG_RPM_ACTIVE | DL_FLAG_PM_RUNTIME | DL_FLAG_STATELESS;
-	struct device_link *link = NULL;
-	int ret;
-
-	link = device_link_add(dev, supplier, flag);
-	if (!link)
-		return -EINVAL;
-
-	ret = devm_add_action_or_reset(dev, iris_opp_dl_release, (void *)link);
-
-	return ret;
-}
-
 int opp_set_rate(struct iris_core *core, u64 freq)
 {
 	unsigned long opp_freq = 0;
@@ -124,48 +80,30 @@ static int init_bus(struct iris_core *core)
 
 static int init_power_domains(struct iris_core *core)
 {
-	struct power_domain_info *pdinfo = NULL;
-	const char * const *opp_pd_tbl;
-	const char * const *pd_tbl;
-	struct device **opp_vdevs = NULL;
-	u32 opp_pd_cnt, i;
+
+	const struct platform_clk_data *clk_tbl;
+	u32 clk_cnt;
 	int ret;
 
-	pd_tbl = core->platform_data->pd_tbl;
+	struct dev_pm_domain_attach_data iris_pd_data = {
+		.pd_names = core->platform_data->pd_tbl,
+		.num_pd_names = core->platform_data->pd_tbl_size,
+		.pd_flags = PD_FLAG_NO_DEV_LINK,
+	};
 
-	core->pd_count = core->platform_data->pd_tbl_size;
-	core->power_domain_tbl = devm_kzalloc(core->dev,
-					      sizeof(struct power_domain_info) * core->pd_count,
-					      GFP_KERNEL);
-	if (!core->power_domain_tbl)
-		return -ENOMEM;
+	struct dev_pm_domain_attach_data iris_opp_pd_data = {
+		.pd_names = core->platform_data->opp_pd_tbl,
+		.num_pd_names = core->platform_data->opp_pd_tbl_size,
+		.pd_flags = PD_FLAG_DEV_LINK_ON,
+	};
 
-	for (i = 0; i < (core->pd_count - 1); i++) {
-		pdinfo = &core->power_domain_tbl[i];
-		pdinfo->name = pd_tbl[i];
-		ret = iris_pd_get(core, pdinfo);
-		if (ret) {
-			dev_err(core->dev,
-				"%s: failed to get pd: %s\n", __func__, pdinfo->name);
-			return ret;
-		}
-	}
-
-	opp_pd_tbl = core->platform_data->opp_pd_tbl;
-	opp_pd_cnt = core->platform_data->opp_pd_tbl_size;
-
-	ret = devm_pm_opp_attach_genpd(core->dev, opp_pd_tbl, &opp_vdevs);
-	if (ret)
+	ret = devm_pm_domain_attach_list(core->dev, &iris_pd_data, &core->pmdomain_tbl);
+	if (ret < 0)
 		return ret;
 
-	for (i = 0; i < (opp_pd_cnt - 1) ; i++) {
-		ret = iris_opp_dl_get(core->dev, opp_vdevs[i]);
-		if (ret) {
-			dev_err(core->dev, "%s: failed to create dl: %s\n",
-				__func__, dev_name(opp_vdevs[i]));
-			return ret;
-		}
-	}
+	ret = devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data, &core->opp_pmdomain_tbl);
+	if (ret < 0)
+		return ret;
 
 	ret = devm_pm_opp_set_clkname(core->dev, "vcodec0_core");
 	if (ret)

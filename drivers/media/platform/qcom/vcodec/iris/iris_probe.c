@@ -347,7 +347,7 @@ MODULE_DEVICE_TABLE(of, iris_dt_match);
 
 static struct platform_driver qcom_iris_driver = {
 	.probe = iris_probe,
-	.remove_new = iris_remove,
+	.remove = iris_remove,
 	.driver = {
 		.name = "qcom-iris",
 		.of_match_table = iris_dt_match,
@@ -356,6 +356,6 @@ static struct platform_driver qcom_iris_driver = {
 };
 
 module_platform_driver(qcom_iris_driver);
-MODULE_IMPORT_NS(DMA_BUF);
+MODULE_IMPORT_NS("DMA_BUF");
 MODULE_DESCRIPTION("Qualcomm Iris video driver");
 MODULE_LICENSE("GPL");
