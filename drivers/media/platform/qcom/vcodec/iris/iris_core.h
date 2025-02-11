@@ -75,7 +75,8 @@ struct iris_core {
 	const struct v4l2_ioctl_ops		*v4l2_ioctl_ops_enc;
 	struct bus_info				*bus_tbl;
 	u32					bus_count;
-	struct power_domain_info		*power_domain_tbl;
+	struct dev_pm_domain_list		*pmdomain_tbl;
+	struct dev_pm_domain_list		*opp_pmdomain_tbl;
 	u32					pd_count;
 	struct clock_info			*clock_tbl;
 	u32					clk_count;
