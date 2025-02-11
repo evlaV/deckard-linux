@@ -189,7 +189,7 @@ static struct platform_driver southgate_driver = {
 		.of_match_table = of_match_ptr(southgate_match),
 	},
 	.probe = southgate_probe,
-	.remove_new = southgate_remove,
+	.remove = southgate_remove,
 };
 module_platform_driver(southgate_driver);
 
