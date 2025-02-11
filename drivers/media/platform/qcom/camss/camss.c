@@ -3380,7 +3380,7 @@ static const struct camss_subdev_resources csiphy_res_8650[] = {
 	{
 		.regulators = { "vdda-csi01-0p9", "vdda-csi01-1p2", },
 		.clock = { "csiphy0", "csiphy0_timer" },
-		.clock_rate = {	{ 400000000 },
+		.clock_rate = {	{ 400000000, 480000000 },
 				{ 400000000 } },
 		.reg = { "csiphy0" },
 		.interrupt = { "csiphy0" },
@@ -3394,7 +3394,7 @@ static const struct camss_subdev_resources csiphy_res_8650[] = {
 	{
 		.regulators = { "vdda-csi01-0p9", "vdda-csi01-1p2", },
 		.clock = { "csiphy1", "csiphy1_timer" },
-		.clock_rate = { { 400000000 },
+		.clock_rate = { { 400000000, 480000000 },
 				{ 400000000 } },
 		.reg = { "csiphy1" },
 		.interrupt = { "csiphy1" },
@@ -3408,7 +3408,7 @@ static const struct camss_subdev_resources csiphy_res_8650[] = {
 	{
 		.regulators = { "vdda-csi24-0p9", "vdda-csi24-1p2", },
 		.clock = { "csiphy2", "csiphy2_timer" },
-		.clock_rate = { { 400000000 },
+		.clock_rate = { { 400000000, 480000000 },
 				{ 400000000 } },
 		.reg = { "csiphy2" },
 		.interrupt = { "csiphy2" },
@@ -3422,7 +3422,7 @@ static const struct camss_subdev_resources csiphy_res_8650[] = {
 	{
 		.regulators = { "vdda-csi35-0p9", "vdda-csi35-1p2", },
 		.clock = { "csiphy3", "csiphy3_timer" },
-		.clock_rate = { { 400000000 },
+		.clock_rate = { { 400000000, 480000000 },
 				{ 400000000 } },
 		.reg = { "csiphy3" },
 		.interrupt = { "csiphy3" },
@@ -3436,7 +3436,7 @@ static const struct camss_subdev_resources csiphy_res_8650[] = {
 	{
 		.regulators = { "vdda-csi24-0p9", "vdda-csi24-1p2", },
 		.clock = { "csiphy4", "csiphy4_timer" },
-		.clock_rate = { { 400000000 },
+		.clock_rate = { { 400000000, 480000000 },
 				{ 400000000 },
 				{ 400000000 } },
 		.reg = { "csiphy4" },
@@ -3451,7 +3451,7 @@ static const struct camss_subdev_resources csiphy_res_8650[] = {
 	{
 		.regulators = { "vdda-csi35-0p9", "vdda-csi35-1p2", },
 		.clock = { "csiphy5", "csiphy5_timer" },
-		.clock_rate = { { 400000000 },
+		.clock_rate = { { 400000000, 480000000 },
 				{ 400000000 } },
 		.reg = { "csiphy5" },
 		.interrupt = { "csiphy5" },
@@ -4268,6 +4268,18 @@ void camss_buf_done(struct camss *camss, int hw_id, int port_id, struct camss_bu
 
 		vfe->res->hw_ops->vfe_buf_done(vfe, port_id, buf_done_info);
 	}
+}
+
+void camss_report_hw_error(struct camss *camss, int hw_id, int port_id, struct camss_hw_error_info *error_info)
+{
+       struct vfe_device *vfe;
+
+       if (hw_id < camss->res->vfe_num) {
+               vfe = &(camss->vfe[hw_id]);
+
+               if(vfe->res->hw_ops->vfe_report_hw_error)
+                       vfe->res->hw_ops->vfe_report_hw_error(vfe, port_id, error_info);
+       }
 }
 
 /*

@@ -555,9 +555,17 @@ static int csid_set_clock_rates(struct csid_device *csid)
 		if (!strcmp(clock->name, "csi0") ||
 		    !strcmp(clock->name, "csi1") ||
 		    !strcmp(clock->name, "csi2") ||
-		    !strcmp(clock->name, "csi3")) {
+		    !strcmp(clock->name, "csi3") ||
+		   (!strcmp(clock->name, "csiphy_rx") && csid->camss->res->version == CAMSS_8650)) {
 			u64 min_rate = link_freq / 4;
 			long rate;
+
+			// Adjust clock rate for SM8650
+			if(csid->camss->res->version == CAMSS_8650) {
+				// bits_per_lane valid for CPHY only, DPHY would have 8 bits per lane
+				const u64 bits_per_lane = 32;
+				min_rate = (link_freq * fmt->bpp) / (csid->phy.lane_cnt * bits_per_lane);
+			}
 
 			camss_add_clock_margin(&min_rate);
 
