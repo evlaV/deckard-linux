@@ -30,7 +30,7 @@
 #include <linux/iio/triggered_buffer.h>
 #include <linux/iio/adc/qcom-vadc-common.h>
 
-#include <dt-bindings/iio/qcom,spmi-vadc.h>
+#include <dt-bindings/iio/adc/qcom,spmi-vadc.h>
 
 #define ADC5_GEN3_HS 0x45
 #define ADC5_GEN3_HS_BUSY BIT(7)
