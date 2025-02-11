@@ -798,7 +798,7 @@ static int dsp_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dsp);
 
-	dsp->iommu = iommu_domain_alloc(&platform_bus_type);
+	dsp->iommu = iommu_paging_domain_alloc(dev);
 	ret = iommu_attach_device(dsp->iommu, dev);
 	WARN_ON(ret);
 
