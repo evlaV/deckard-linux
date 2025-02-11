@@ -14,6 +14,7 @@
 #include <linux/spinlock_types.h>
 #include <media/media-entity.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-event.h>
 #include <media/v4l2-subdev.h>
 
 #include "camss-video.h"
@@ -123,6 +124,7 @@ struct vfe_hw_ops {
 	void (*vfe_wm_update)(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
 			      struct vfe_line *line);
 	long (*set_statistics_config)(struct vfe_device *vfe, u32 stats_cfg);
+	void (*vfe_report_hw_error)(struct vfe_device *vfe, int port_id, struct camss_hw_error_info *error_info);
 };
 
 struct vfe_isr_ops {
