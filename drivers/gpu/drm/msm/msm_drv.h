@@ -93,6 +93,10 @@ struct msm_drm_thread {
 	struct kthread_worker *worker;
 };
 
+struct msm_load_state {
+	uint64_t last_gpu, last_cpu;
+};
+
 struct msm_drm_private {
 
 	struct drm_device *dev;
@@ -119,6 +123,8 @@ struct msm_drm_private {
 	/* gpu is only set on open(), but we need this info earlier */
 	bool is_a2xx;
 	bool has_cached_coherent;
+
+	struct msm_load_state load_state;
 
 	struct msm_rd_state *rd;       /* debugfs to dump all submits */
 	struct msm_rd_state *hangrd;   /* debugfs to dump hanging submits */
