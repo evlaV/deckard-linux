@@ -174,6 +174,9 @@ struct msm_gpu {
 	struct platform_device *pdev;
 	const struct msm_gpu_funcs *funcs;
 
+	/* total gpu busy time */
+	uint64_t elapsed_ns;
+
 	struct adreno_smmu_priv adreno_smmu;
 
 	struct msm_ringbuffer *rb[MSM_GPU_MAX_RINGS];
