@@ -258,6 +258,7 @@ struct iommu_domain {
 			struct list_head next;
 		};
 	};
+	char dev_name[32];
 };
 
 static inline bool iommu_is_dma_domain(struct iommu_domain *domain)
