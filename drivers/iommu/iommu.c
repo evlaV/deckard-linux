@@ -2172,6 +2172,7 @@ static int __iommu_attach_device(struct iommu_domain *domain,
 	if (ret)
 		return ret;
 	dev->iommu->attach_deferred = 0;
+	strscpy(domain->dev_name, dev_name(dev), sizeof(domain->dev_name));
 	trace_attach_device_to_domain(dev);
 	return 0;
 }
@@ -2696,7 +2697,7 @@ int iommu_map_nosync(struct iommu_domain *domain, unsigned long iova,
 		ret = __iommu_map_domain_pgtbl(domain, iova, paddr, size, prot,
 					       gfp, &mapped);
 
-	trace_map(iova, paddr, mapped);
+	trace_map(iova, paddr, mapped, domain->dev_name);
 	iommu_debug_map(domain, paddr, mapped);
 	if (ret) {
 		iommu_unmap(domain, iova, mapped);
@@ -2795,7 +2796,7 @@ static size_t __iommu_unmap(struct iommu_domain *domain, unsigned long iova,
 	else
 		unmapped = __iommu_unmap_domain_pgtbl(domain, iova, size,
 						      iotlb_gather);
-	trace_unmap(iova, size, unmapped);
+	trace_unmap(iova, size, unmapped, domain->dev_name);
 	iommu_debug_unmap_end(domain, iova, size, unmapped);
 	return unmapped;
 }
