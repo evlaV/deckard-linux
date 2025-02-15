@@ -2151,6 +2151,7 @@ static int __iommu_attach_device(struct iommu_domain *domain,
 	if (ret)
 		return ret;
 	dev->iommu->attach_deferred = 0;
+	strscpy(domain->dev_name, dev_name(dev), sizeof(domain->dev_name));
 	trace_attach_device_to_domain(dev);
 	return 0;
 }
@@ -2637,7 +2638,7 @@ int iommu_map_nosync(struct iommu_domain *domain, unsigned long iova,
 	if (ret) {
 		iommu_unmap(domain, orig_iova, orig_size - size);
 	} else {
-		trace_map(orig_iova, orig_paddr, orig_size);
+		trace_map(orig_iova, orig_paddr, orig_size, domain->dev_name);
 		iommu_debug_map(domain, orig_paddr, orig_size);
 	}
 
@@ -2728,8 +2729,12 @@ static size_t __iommu_unmap(struct iommu_domain *domain,
 		unmapped += unmapped_page;
 	}
 
+<<<<<<< HEAD
 	trace_unmap(orig_iova, size, unmapped);
 	iommu_debug_unmap_end(domain, orig_iova, size, unmapped);
+=======
+	trace_unmap(orig_iova, size, unmapped, domain->dev_name);
+>>>>>>> 338f1fda8728 (TEMP DEBUG FOR ATH12K crash:  allow iommu filtering by device)
 	return unmapped;
 }
 
