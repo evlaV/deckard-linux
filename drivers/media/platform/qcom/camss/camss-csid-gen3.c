@@ -561,8 +561,8 @@ static irqreturn_t csid_isr(int irq, void *dev)
 
 					csid->path_cur_sof_isp_timestamp_converted[i] = sof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor[current_active_estimator];
 					if(csid->do_post_sof_work != NULL) {
-						u8 group = (sof_timestamp_lower & 1) ? 1 : 0;
-						csid->do_post_sof_work(csid->capture_subdev, csid->path_cur_sof_isp_timestamp_converted[i], ts_monotonic_raw, group);
+						u8 vc = get_virtual_channel(csid, i, sof_timestamp_lower);
+						csid->do_post_sof_work(csid->capture_subdev, csid->path_cur_sof_isp_timestamp_converted[i], ts_monotonic_raw, vc);
 					}
 
 					csid->path_last_sof_kernel_ts[i] = ts_monotonic_raw;
@@ -678,7 +678,8 @@ static irqreturn_t csid_isr(int irq, void *dev)
 				// Provide sensor metadata if available
 				if(csid->get_metadata != NULL)
 				{
-					buf_done_info.sensor_metadata_buffer_addr = csid->get_metadata(csid->capture_subdev );
+					u8 vc = get_virtual_channel(csid, i, eof_timestamp_lower);
+					buf_done_info.sensor_metadata_buffer_addr = csid->get_metadata(csid->capture_subdev, vc);
 					buf_done_info.sensor_metadata_buffer_size = csid->metadata_size;
 				}
 
