@@ -212,8 +212,8 @@ struct csid_device {
 
 	struct v4l2_subdev *capture_subdev;
 	size_t metadata_size;
-	void* (*get_metadata) (struct v4l2_subdev*);
-	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp, u8 group);
+	void* (*get_metadata) (struct v4l2_subdev*, u8 vc);
+	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp, u8 vc);
 
 	// keep track of sof per-path/stream otherwise non-synced stream going through the same csid won't have the right sof metadata
 	u64 path_cur_sof_isp_timestamp_converted[MSM_CSID_MAX_SRC_STREAMS];
