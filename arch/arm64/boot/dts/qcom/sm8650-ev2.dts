@@ -1058,8 +1058,8 @@
 &camss {
 	status = "okay";
 
-	vdda-csi01-0p9-supply = <&vreg_l2i_0p88>;
-	vdda-csi01-1p2-supply = <&vreg_l3i_1p2>;
+	vdda-csi-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi-1p2-supply = <&vreg_l3i_1p2>;
 
 	ports {
 		port@0 {
