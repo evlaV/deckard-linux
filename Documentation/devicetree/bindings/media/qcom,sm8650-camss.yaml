@@ -570,29 +570,13 @@ properties:
               - endpoint@0
               - endpoint@1
 
-  vdda-csi01-0p9-supply:
+  vdda-csi-0p9-supply:
     description:
-      Phandle to a 0.9V regulator supply to CSIPHY0 and CSIPHY1 blocks.
+      Phandle to a 0.9V regulator supply to CSIPHY block.
 
-  vdda-csi24-0p9-supply:
+  vdda-csi-1p2-supply:
     description:
-      Phandle to a 0.9V regulator supply to CSIPHY2 and CSIPHY4 blocks.
-
-  vdda-csi35-0p9-supply:
-    description:
-      Phandle to a 0.9V regulator supply to CSIPHY3 and CSIPHY5 blocks.
-
-  vdda-csi01-1p2-supply:
-    description:
-      Phandle to a 1.2V regulator supply to CSIPHY0 and CSIPHY1 refclk PLL.
-
-  vdda-csi24-1p2-supply:
-    description:
-      Phandle to a 1.2V regulator supply to CSIPHY2 and CSIPHY4 refclk PLL.
-
-  vdda-csi35-1p2-supply:
-    description:
-      Phandle to a 1.2V regulator supply to CSIPHY3 and CSIPHY5 refclk PLL.
+      Phandle to a 1.2V regulator supply to CSIPHY refclk PLL.
 
 required:
   - compatible
@@ -783,8 +767,8 @@ examples:
                             <&camcc CAM_CC_TITAN_TOP_GDSC>;
             power-domain-names = "ife0", "ife1", "ife2", "top";
 
-            vdda-csi01-0p9-supply = <&vreg_0p9>;
-            vdda-csi01-1p2-supply = <&vreg_1p2>;
+            vdda-csi-0p9-supply = <&vreg_0p9>;
+            vdda-csi-1p2-supply = <&vreg_1p2>;
 
             ports {
                 #address-cells = <1>;
