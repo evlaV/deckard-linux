@@ -217,6 +217,23 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_file_private *ctx,
 	if (ret)
 		return ret;
 
+	int new_id = -1;
+	spin_lock(&gpu->id_lock);
+	for (i = 0; i < ARRAY_SIZE(gpu->id_map); i++) {
+		if (gpu->id_map[i] == ~0ull)
+			continue;
+
+		new_id = __builtin_clzll(~gpu->id_map[i]);
+		gpu->id_map[i] |= 1ull << (~new_id & 63);
+		new_id += i*64;
+		break;
+	}
+
+	spin_unlock(&gpu->id_lock);
+
+	if (new_id == -1)
+		return -ENOMEM;
+
 	queue = kzalloc(sizeof(*queue), GFP_KERNEL);
 
 	if (!queue)
@@ -254,20 +271,8 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_file_private *ctx,
 	INIT_LIST_HEAD(&queue->fences);
 	init_waitqueue_head(&queue->waitqueue);
 
-	queue->id = -1;
+	queue->id = new_id;
 	queue->gpu = gpu;
-	spin_lock(&gpu->id_lock);
-	for (i = 0; i < ARRAY_SIZE(gpu->id_map); i++) {
-		if (gpu->id_map[i] == ~0ull)
-			continue;
-
-		queue->id = __builtin_clzll(~gpu->id_map[i]);
-		gpu->id_map[i] |= 1ull << (~queue->id & 63);
-		queue->id += i*64;
-		break;
-	}
-	spin_unlock(&gpu->id_lock);
-	WARN_ON (queue->id == -1); // XXX
 
 	a7xx_reset_memstore(gpu, queue->id);
 
