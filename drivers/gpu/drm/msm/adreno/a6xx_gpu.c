@@ -527,7 +527,7 @@ void a7xx_reset_memstore(struct msm_gpu *gpu, uint32_t ctx_id)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
-	uint32_t *eoptimestamp = a6xx_gpu->memstore + KGSL_MEMSTORE_OFFSET(ctx_id, eoptimestamp);
+	uint32_t *eoptimestamp = (void*)a6xx_gpu->memstore + KGSL_MEMSTORE_OFFSET(ctx_id, eoptimestamp);
 	*eoptimestamp = 0;
 }
 
