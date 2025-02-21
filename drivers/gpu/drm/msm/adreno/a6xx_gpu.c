@@ -1479,9 +1479,6 @@ static void a6xx_recover(struct msm_gpu *gpu)
 	if (active_submits)
 		pm_runtime_put(&gpu->pdev->dev);
 
-	for (int i = 0; i < 10; i++)
-		pm_runtime_put(&gpu->pdev->dev);
-
 	if (gpu->perfcntr_active)
 		pm_runtime_put(&gpu->pdev->dev);
 
