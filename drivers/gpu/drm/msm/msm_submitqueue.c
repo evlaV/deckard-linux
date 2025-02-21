@@ -299,8 +299,13 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_context *ctx,
 		queue->id += i*64;
 		break;
 	}
+
 	spin_unlock(&gpu->id_lock);
-	WARN_ON (queue->id == -1); // XXX
+
+	if (queue->id == -1) {
+		kfree(queue);
+		return -ENOMEM;
+	}
 
 	a7xx_reset_memstore(gpu, queue->id);
 
