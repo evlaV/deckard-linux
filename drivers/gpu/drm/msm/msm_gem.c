@@ -614,6 +614,9 @@ int msm_gem_get_and_pin_iova_range(struct drm_gem_object *obj,
 int msm_gem_get_and_pin_iova(struct drm_gem_object *obj,
 		struct msm_gem_address_space *aspace, uint64_t *iova)
 {
+	if (msm_gem_is_vbo(obj))
+		return msm_gem_vbo_get_iova(obj, aspace, iova);
+
 	return msm_gem_get_and_pin_iova_range(obj, aspace, iova, 0, U64_MAX);
 }
 
