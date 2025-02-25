@@ -667,14 +667,9 @@
 	vdda-supply = <&vreg_l3i_1p2>;
 	status = "okay";
 
-	qcom,dual-dsi-mode;
-	qcom,master-dsi;
-
-
 	panel: panel@0 {
 		reg = <0>;
 		compatible = "pocf,jdi-lpm026m648c";
-		dual-panel;
 
 		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
 			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
@@ -692,13 +687,6 @@
 					remote-endpoint = <&mdss_dsi0_out>;
 				};
 			};
-
-			port@1 {
-				reg = <1>;
-				panel1_in: endpoint {
-					remote-endpoint = <&mdss_dsi1_out>;
-				};
-			};
 		};
 	};
 };
@@ -712,27 +700,6 @@
 	vdds-supply = <&vreg_l1i_0p88>;
 	phy-type = <PHY_TYPE_CPHY>;
 	status = "okay";
-};
-
-&mdss_dsi1 {
-	vdda-supply = <&vreg_l3i_1p2>;
-	status = "okay";
-
-	qcom,dual-dsi-mode;
-
-	assigned-clocks = <&dispcc DISP_CC_MDSS_BYTE1_CLK_SRC>, <&dispcc DISP_CC_MDSS_PCLK1_CLK_SRC>;
-	assigned-clock-parents = <&mdss_dsi0_phy 0>, <&mdss_dsi0_phy 1>;
-};
-
-&mdss_dsi1_out {
-	remote-endpoint = <&panel1_in>;
-	data-lanes = <0 1 2>;
-};
-
-&mdss_dsi1_phy {
-	vdds-supply = <&vreg_l1i_0p88>;
-	status = "okay";
-	phy-type = <PHY_TYPE_CPHY>;
 };
 
 &pcie0 {
