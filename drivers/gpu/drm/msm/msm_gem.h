@@ -39,7 +39,7 @@ struct msm_gem_address_space {
 	struct pid *pid;
 
 	/* @faults: the number of GPU hangs associated with this address space */
-	int faults;
+	int faults, kgsl_last_queried_faults;
 
 	/** @va_start: lowest possible address to allocate */
 	uint64_t va_start;
