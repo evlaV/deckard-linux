@@ -535,6 +535,7 @@ struct msm_gpu_submitqueue {
 	struct spinlock fence_lock;
 	struct list_head fences;
 	wait_queue_head_t waitqueue;
+	u32 kgsl_flags;
 	struct msm_gpu *gpu; // XXX
 };
 
