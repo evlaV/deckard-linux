@@ -97,6 +97,12 @@ int main()
  */
 
 
+// Workaround for https://github.com/torvalds/linux/commit/2c92ca849fcc6ee7d0c358e9959abc9f58661aea
+// which makes our lives much harder when trying to replicate this in userspace.
+#ifndef __assign_str_workaround
+#define __assign_str_workaround(name, source) __assign_str(name)
+#endif
+
 // Begin gpuvis_print tracepoint implementation
 #if !defined(_UAPI_TRACE_GPUVIS_H) || defined(TRACE_HEADER_MULTI_READ)
 
@@ -117,7 +123,7 @@ TRACE_EVENT(gpuvis_print_begin_dtime,
 	TP_fast_assign(
         __entry->func = begin_ctx->func;
         __entry->file_line = begin_ctx->file_line;
-        __assign_str(payload);
+        __assign_str_workaround(payload, begin_ctx->payload);
         __entry->id = begin_ctx->id;
         __entry->dtime = begin_ctx->time - end_ctx->time;
 	),
@@ -146,7 +152,7 @@ TRACE_EVENT(gpuvis_print,
         __entry->func = ctx->func;
         __entry->ctx_op = ctx_op,
         __entry->file_line = ctx->file_line;
-        __assign_str(payload);
+        __assign_str_workaround(payload, ctx->payload);
         __entry->id = ctx->id;
 	),
 
