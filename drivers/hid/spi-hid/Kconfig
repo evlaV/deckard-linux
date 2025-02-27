@@ -12,7 +12,6 @@ config SPI_HID
 	tristate "HID over SPI transport layer"
 	default n
 	depends on SPI && INPUT && OF
-	select HID
 	help
 	  Say Y here if you use a keyboard, a touchpad, a touchscreen, or any
 	  other HID based devices which is connected to your computer via SPI.
