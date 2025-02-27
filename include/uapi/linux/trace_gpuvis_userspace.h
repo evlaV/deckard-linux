@@ -150,7 +150,7 @@ void trace_marker_printf(const char * format, ...) {
 #define TP_fast_assign(args...) args
 #define __field(type, item) type item;
 #define __string(name, source) const char * name;
-#define __assign_str(name, source) __entry->name = source
+#define __assign_str_workaround(name, source) __entry->name = source
 #define __get_str(name) __entry->name
 #define tracepoint_string(arg)  arg
 #define TP_printk(fmt, args...) fmt "\n", args
