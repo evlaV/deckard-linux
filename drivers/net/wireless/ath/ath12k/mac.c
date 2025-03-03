@@ -667,6 +667,9 @@ enum wmi_vdev_type ath12k_mac_get_ar_vdev_type(struct ath12k *ar)
 {
 	struct ath12k_link_vif *arvif;
 
+	if (!ar)
+		return WMI_VDEV_TYPE_UNSPEC;
+
 	list_for_each_entry(arvif, &ar->arvifs, list) {
 		return arvif->ahvif->vdev_type;
 	}
