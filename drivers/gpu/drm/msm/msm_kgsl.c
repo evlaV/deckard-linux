@@ -1044,6 +1044,6 @@ case IOCTL_KGSL_TIMELINE_QUERY: {
 
 default:
 	DRM_DEV_ERROR(dev->dev, "TODO: ioctl %.8x\n", cmd);
-	return 0;
+	return -EINVAL;
 	}
 }
