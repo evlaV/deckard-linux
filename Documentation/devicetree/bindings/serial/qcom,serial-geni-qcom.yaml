@@ -12,6 +12,7 @@ maintainers:
 
 allOf:
   - $ref: /schemas/serial/serial.yaml#
+  - $ref: /schemas/soc/qcom/qcom,se-common-props.yaml#
 
 properties:
   compatible:
@@ -52,6 +53,8 @@ properties:
 
   power-domains:
     maxItems: 1
+
+  qcom,gsi-dma-allowed: true
 
   reg:
     maxItems: 1
