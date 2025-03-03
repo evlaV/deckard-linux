@@ -60,6 +60,8 @@ properties:
   power-domains:
     maxItems: 1
 
+  qcom,gsi-dma-allowed: true
+
   reg:
     maxItems: 1
 
