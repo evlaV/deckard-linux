@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
+// Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
 
 /* Disable MMIO tracing to prevent excessive logging of unwanted MMIO traces */
 #define __DISABLE_TRACE_MMIO__
@@ -15,6 +16,7 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/soc/qcom/geni-se.h>
+#include <linux/soc/qcom/qup-fw-load.h>
 
 /**
  * DOC: Overview
@@ -109,6 +111,9 @@ struct geni_se_desc {
 
 static const char * const icc_path_names[] = {"qup-core", "qup-config",
 						"qup-memory"};
+
+static const char * const protocol_name[] = { "None", "SPI", "UART",
+					      "I2C", "I3C", "SPI SLAVE"};
 
 #define QUP_HW_VER_REG			0x4
 
@@ -890,6 +895,424 @@ int geni_icc_disable(struct geni_se *se)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(geni_icc_disable);
+
+/**
+ * elf_phdr_valid() - Validate an ELF header.
+ * @phdr: Pointer to the ELF header.
+ *
+ * Validate the ELF header by comparing the fields stored in p_flags and the payload type.
+ *
+ * Return: true if the validation is successful, false otherwise.
+ */
+static bool elf_phdr_valid(const struct elf32_phdr *phdr)
+{
+	if (phdr->p_type != PT_LOAD || !phdr->p_memsz)
+		return false;
+
+	if (MI_PBT_PAGE_MODE_VALUE(phdr->p_flags) == MI_PBT_NON_PAGED_SEGMENT &&
+	    MI_PBT_SEGMENT_TYPE_VALUE(phdr->p_flags) != MI_PBT_HASH_SEGMENT &&
+	    MI_PBT_ACCESS_TYPE_VALUE(phdr->p_flags) != MI_PBT_NOTUSED_SEGMENT &&
+	    MI_PBT_ACCESS_TYPE_VALUE(phdr->p_flags) != MI_PBT_SHARED_SEGMENT)
+		return true;
+
+	return false;
+}
+
+/**
+ * valid_seg_size() - Validate the segment size.
+ * @pelfseg: Pointer to the ELF header.
+ * @p_filesz: Pointer to the file size.
+ *
+ * Validate the ELF segment size by comparing the file size.
+ *
+ * Return: true if the segment is valid, false if the segment is invalid.
+ */
+static bool valid_seg_size(struct elf_se_hdr *pelfseg, Elf32_Word p_filesz)
+{
+	if (p_filesz >= pelfseg->fw_offset + pelfseg->fw_size_in_items * sizeof(u32) &&
+	    p_filesz >= pelfseg->cfg_idx_offset + pelfseg->cfg_size_in_items * sizeof(u8) &&
+	    p_filesz >= pelfseg->cfg_val_offset + pelfseg->cfg_size_in_items * sizeof(u32))
+		return true;
+	return false;
+}
+
+/**
+ * read_elf() - Read an ELF file.
+ * @rsc: Pointer to the SE resources structure.
+ * @fw: Pointer to the firmware buffer.
+ * @pelfseg: Pointer to the SE-specific ELF header.
+ * @phdr: Pointer to one of the valid headers from the list in the firmware buffer.
+ *
+ * Read the ELF file and output a pointer to the header data, which
+ * contains the firmware data and any other details.
+ *
+ * Return: 0 if successful, otherwise return an error value.
+ */
+static int read_elf(struct qup_se_rsc *rsc, const struct firmware *fw,
+		    struct elf_se_hdr **pelfseg, struct elf32_phdr **phdr)
+{
+	const struct elf32_hdr *ehdr = (const struct elf32_hdr *)fw->data;
+	struct elf32_phdr *phdrs = (struct elf32_phdr *)(ehdr + 1);
+	const u8 *addr;
+	int i;
+
+	ehdr = (struct elf32_hdr *)fw->data;
+
+	if (ehdr->e_phnum < 2)
+		return -EINVAL;
+
+	for (i = 0; i < ehdr->e_phnum; i++) {
+		*phdr = &phdrs[i];
+		if (!elf_phdr_valid(*phdr))
+			continue;
+
+		if ((*phdr)->p_filesz >= sizeof(struct elf_se_hdr)) {
+			addr =  fw->data + (*phdr)->p_offset;
+			*pelfseg = (struct elf_se_hdr *)addr;
+
+			if ((*pelfseg)->magic == MAGIC_NUM_SE &&
+			    (*pelfseg)->version == 1 &&
+			    valid_seg_size(*pelfseg, (*phdr)->p_filesz) &&
+			    (*pelfseg)->serial_protocol == rsc->protocol &&
+			    (*pelfseg)->serial_protocol != GENI_SE_NONE)
+				return 0;
+		}
+	}
+	return -EINVAL;
+}
+
+/**
+ * geni_config_common_control() - Configure common CGC and disable high priority interrupt.
+ * @rsc: Pointer to a structure representing SE-related resources.
+ *
+ * Configure the common CGC and disable high priority interrupts until the current low priority
+ * interrupts are handled.
+ *
+ * Return: None.
+ */
+static void geni_config_common_control(struct qup_se_rsc *rsc)
+{
+	/*
+	 * Disable high priority interrupt until current
+	 * low priority interrupts are handled.
+	 */
+	setbits32(rsc->se->wrapper->base + QUPV3_COMMON_CFG,
+		  FAST_SWITCH_TO_HIGH_DISABLE_BMASK);
+
+	/*
+	 * Set AHB_M_CLK_CGC_ON to indicate hardware controls
+	 * se-wrapper cgc clock.
+	 */
+	setbits32(rsc->se->wrapper->base + QUPV3_SE_AHB_M_CFG,
+		  AHB_M_CLK_CGC_ON_BMASK);
+
+	/* Let hardware to control common cgc. */
+	setbits32(rsc->se->wrapper->base + QUPV3_COMMON_CGC_CTRL,
+		  COMMON_CSR_SLV_CLK_CGC_ON_BMASK);
+}
+
+/**
+ * geni_configure_xfer_mode() - Set the transfer mode.
+ * @rsc: Pointer to a structure representing SE-related resources.
+ *
+ * Set the transfer mode to either FIFO or DMA according to the mode specified by the protocol
+ * driver.
+ *
+ * Return: 0 if successful, otherwise return an error value.
+ */
+static int geni_configure_xfer_mode(struct qup_se_rsc *rsc)
+{
+	/* Configure SE FIFO, DMA or GSI mode. */
+	switch (rsc->mode) {
+	case GENI_GPI_DMA:
+		setbits32(rsc->se->base + QUPV3_SE_GENI_DMA_MODE_EN,
+			  GENI_DMA_MODE_EN_GENI_DMA_MODE_EN_BMSK);
+		writel_relaxed(0x0, rsc->se->base + SE_IRQ_EN);
+		writel_relaxed(SE_GSI_EVENT_EN_BMSK, rsc->se->base + SE_GSI_EVENT_EN);
+		break;
+
+	case GENI_SE_FIFO:
+		clrbits32(rsc->se->base + QUPV3_SE_GENI_DMA_MODE_EN,
+			  GENI_DMA_MODE_EN_GENI_DMA_MODE_EN_BMSK);
+		writel_relaxed(SE_IRQ_EN_RMSK, rsc->se->base + SE_IRQ_EN);
+		writel_relaxed(0x0, rsc->se->base + SE_GSI_EVENT_EN);
+		break;
+
+	case GENI_SE_DMA:
+		setbits32(rsc->se->base + QUPV3_SE_GENI_DMA_MODE_EN,
+			  GENI_DMA_MODE_EN_GENI_DMA_MODE_EN_BMSK);
+		writel_relaxed(SE_IRQ_EN_RMSK, rsc->se->base + SE_IRQ_EN);
+		writel_relaxed(0x0, rsc->se->base + SE_GSI_EVENT_EN);
+		break;
+
+	default:
+		dev_err(rsc->se->dev, "invalid se mode: %d\n", rsc->mode);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+/**
+ * geni_enable_interrupts() Enable interrupts.
+ * @rsc: Pointer to a structure representing SE-related resources.
+ *
+ * Enable the required interrupts during the firmware load process.
+ *
+ * Return: None.
+ */
+static void geni_enable_interrupts(struct qup_se_rsc *rsc)
+{
+	u32 reg_value;
+
+	/* Enable required interrupts. */
+	writel_relaxed(M_COMMON_GENI_M_IRQ_EN, rsc->se->base + GENI_M_IRQ_ENABLE);
+
+	reg_value = S_CMD_OVERRUN_EN | S_ILLEGAL_CMD_EN |
+				S_CMD_CANCEL_EN | S_CMD_ABORT_EN |
+				S_GP_IRQ_0_EN | S_GP_IRQ_1_EN |
+				S_GP_IRQ_2_EN | S_GP_IRQ_3_EN |
+				S_RX_FIFO_WR_ERR_EN | S_RX_FIFO_RD_ERR_EN;
+	writel_relaxed(reg_value, rsc->se->base + GENI_S_IRQ_ENABLE);
+
+	/* DMA mode configuration. */
+	reg_value = DMA_TX_IRQ_EN_SET_RESET_DONE_EN_SET_BMSK |
+		    DMA_TX_IRQ_EN_SET_SBE_EN_SET_BMSK |
+		    DMA_TX_IRQ_EN_SET_DMA_DONE_EN_SET_BMSK;
+	writel_relaxed(reg_value, rsc->se->base + DMA_TX_IRQ_EN_SET);
+	reg_value = DMA_RX_IRQ_EN_SET_FLUSH_DONE_EN_SET_BMSK |
+		    DMA_RX_IRQ_EN_SET_RESET_DONE_EN_SET_BMSK |
+		    DMA_RX_IRQ_EN_SET_SBE_EN_SET_BMSK |
+		    DMA_RX_IRQ_EN_SET_DMA_DONE_EN_SET_BMSK;
+	writel_relaxed(reg_value, rsc->se->base + DMA_RX_IRQ_EN_SET);
+}
+
+/**
+ * geni_flash_fw_revision() - Flash the firmware revision.
+ * @rsc: Pointer to a structure representing SE-related resources.
+ * @hdr: Pointer to the ELF header of the Serial Engine.
+ *
+ * Flash the firmware revision and protocol into the respective register.
+ *
+ * Return: None.
+ */
+static void geni_flash_fw_revision(struct qup_se_rsc *rsc, struct elf_se_hdr *hdr)
+{
+	u32 reg_value;
+
+	/* Flash firmware revision register. */
+	reg_value = (hdr->serial_protocol << FW_REV_PROTOCOL_SHFT) |
+		    (hdr->fw_version & 0xFF << FW_REV_VERSION_SHFT);
+	writel_relaxed(reg_value, rsc->se->base + SE_GENI_FW_REVISION);
+
+	reg_value = (hdr->serial_protocol << FW_REV_PROTOCOL_SHFT) |
+		    (hdr->fw_version & 0xFF << FW_REV_VERSION_SHFT);
+
+	writel_relaxed(reg_value, rsc->se->base + SE_S_FW_REVISION);
+}
+
+/**
+ * geni_load_se_fw() - Load Serial Engine specific firmware.
+ * @rsc: Pointer to a structure representing SE-related resources.
+ * @fw: Pointer to the firmware structure.
+ *
+ * Load the protocol firmware into the IRAM of the Serial Engine.
+ *
+ * Return: 0 if successful, otherwise return an error value.
+ */
+static int geni_load_se_fw(struct qup_se_rsc *rsc, const struct firmware *fw)
+{
+	const u32 *fw_val_arr, *cfg_val_arr;
+	const u8 *cfg_idx_arr;
+	u32 i, reg_value, mask, ramn_cnt;
+	int ret;
+	struct elf_se_hdr *hdr;
+	struct elf32_phdr *phdr;
+
+	ret = geni_icc_set_bw(rsc->se);
+	if (ret) {
+		dev_err(rsc->se->dev, "%s: Failed to set ICC BW %d\n", __func__, ret);
+		return ret;
+	}
+
+	ret = geni_icc_enable(rsc->se);
+	if (ret) {
+		dev_err(rsc->se->dev, "%s: Failed to enable ICC %d\n", __func__, ret);
+		return ret;
+	}
+
+	ret = geni_se_resources_on(rsc->se);
+	if (ret) {
+		dev_err(rsc->se->dev, "%s: Failed to enable common clocks %d\n", __func__, ret);
+		goto err;
+	}
+
+	ret = read_elf(rsc, fw, &hdr, &phdr);
+	if (ret) {
+		dev_err(rsc->se->dev, "%s: ELF parsing failed ret: %d\n", __func__, ret);
+		goto err;
+	}
+
+	fw_val_arr = (const u32 *)((u8 *)hdr + hdr->fw_offset);
+	cfg_idx_arr = (const u8 *)hdr + hdr->cfg_idx_offset;
+	cfg_val_arr = (const u32 *)((u8 *)hdr + hdr->cfg_val_offset);
+
+	geni_config_common_control(rsc);
+
+	/* Allows to drive corresponding data according to hardware value. */
+	writel_relaxed(0x0, rsc->se->base + GENI_OUTPUT_CTRL);
+
+	/* Set SCLK and HCLK to program RAM */
+	setbits32(rsc->se->base + GENI_CGC_CTRL, GENI_CGC_CTRL_PROG_RAM_SCLK_OFF_BMSK |
+			GENI_CGC_CTRL_PROG_RAM_HCLK_OFF_BMSK);
+	writel_relaxed(0x0, rsc->se->base + SE_GENI_CLK_CTRL);
+	clrbits32(rsc->se->base + GENI_CGC_CTRL, GENI_CGC_CTRL_PROG_RAM_SCLK_OFF_BMSK |
+			GENI_CGC_CTRL_PROG_RAM_HCLK_OFF_BMSK);
+
+	/* Enable required clocks for DMA CSR, TX and RX. */
+	reg_value = DMA_GENERAL_CFG_AHB_SEC_SLV_CLK_CGC_ON_BMSK |
+		DMA_GENERAL_CFG_DMA_AHB_SLV_CLK_CGC_ON_BMSK |
+		DMA_GENERAL_CFG_DMA_TX_CLK_CGC_ON_BMSK |
+		DMA_GENERAL_CFG_DMA_RX_CLK_CGC_ON_BMSK;
+
+	setbits32(rsc->se->base + DMA_GENERAL_CFG, reg_value);
+
+	/* Let hardware control CGC by default. */
+	writel_relaxed(DEFAULT_CGC_EN, rsc->se->base + GENI_CGC_CTRL);
+
+	/* Set version of the configuration register part of firmware. */
+	writel_relaxed(hdr->cfg_version, rsc->se->base + GENI_INIT_CFG_REVISION);
+	writel_relaxed(hdr->cfg_version, rsc->se->base + GENI_S_INIT_CFG_REVISION);
+
+	/* Configure GENI primitive table. */
+	for (i = 0; i < hdr->cfg_size_in_items; i++)
+		writel_relaxed(cfg_val_arr[i],
+			       rsc->se->base + GENI_CFG_REG0 + (cfg_idx_arr[i] * sizeof(u32)));
+
+	/* Configure condition for assertion of RX_RFR_WATERMARK condition. */
+	reg_value = readl_relaxed(rsc->se->base + QUPV3_SE_HW_PARAM_1);
+	mask = (reg_value >> RX_FIFO_WIDTH_BIT) & RX_FIFO_WIDTH_MASK;
+	writel_relaxed(mask - 2, rsc->se->base + GENI_RX_RFR_WATERMARK_REG);
+
+	/* Let hardware control CGC */
+	setbits32(rsc->se->base + GENI_OUTPUT_CTRL, DEFAULT_IO_OUTPUT_CTRL_MSK);
+
+	ret = geni_configure_xfer_mode(rsc);
+	if (ret)
+		goto err_resource;
+
+	geni_enable_interrupts(rsc);
+
+	geni_flash_fw_revision(rsc, hdr);
+
+	ramn_cnt = hdr->fw_size_in_items;
+	if (hdr->fw_size_in_items % 2 != 0)
+		ramn_cnt++;
+
+	if (ramn_cnt >= MAX_GENI_CFG_RAMn_CNT)
+		goto err_resource;
+
+	/* Program RAM address space. */
+	memcpy((void *)(rsc->se->base + SE_GENI_CFG_RAMN), fw_val_arr, ramn_cnt * sizeof(u32));
+
+	/* Put default values on GENI's output pads. */
+	writel_relaxed(0x1, rsc->se->base + GENI_FORCE_DEFAULT_REG);
+
+	/* High to low SCLK and HCLK to finish RAM. */
+	setbits32(rsc->se->base + GENI_CGC_CTRL, GENI_CGC_CTRL_PROG_RAM_SCLK_OFF_BMSK |
+			GENI_CGC_CTRL_PROG_RAM_HCLK_OFF_BMSK);
+	setbits32(rsc->se->base + SE_GENI_CLK_CTRL, GENI_CLK_CTRL_SER_CLK_SEL_BMSK);
+	clrbits32(rsc->se->base + GENI_CGC_CTRL, GENI_CGC_CTRL_PROG_RAM_SCLK_OFF_BMSK |
+			GENI_CGC_CTRL_PROG_RAM_HCLK_OFF_BMSK);
+
+	/* Serial engine DMA interface is enabled. */
+	setbits32(rsc->se->base + SE_DMA_IF_EN, DMA_IF_EN_DMA_IF_EN_BMSK);
+
+	/* Enable or disable FIFO interface of the serial engine. */
+	if (rsc->mode == GENI_SE_FIFO)
+		clrbits32(rsc->se->base + SE_FIFO_IF_DISABLE, FIFO_IF_DISABLE);
+	else
+		setbits32(rsc->se->base + SE_FIFO_IF_DISABLE, FIFO_IF_DISABLE);
+
+err_resource:
+	geni_se_resources_off(rsc->se);
+err:
+	geni_icc_disable(rsc->se);
+	return ret;
+}
+
+/**
+ * qup_fw_load() - Initiate firmware load.
+ * @rsc: Pointer to a structure representing SE-related resources.
+ *
+ * Load the firmware into a specific SE. Read the associated ELF file,
+ * copy the data into a buffer in kernel space using the request_firmware API, write the
+ * data into the SE's IRAM register, and then free the buffers. Handle firmware loading
+ * and parsing for a specific protocol.
+ *
+ * Return: 0 if successful, otherwise return an error value.
+ */
+static int qup_fw_load(struct qup_se_rsc *rsc, const char *fw_name)
+{
+	int ret;
+	const struct firmware *fw;
+	struct device *dev = rsc->se->dev;
+
+	ret = request_firmware(&fw, fw_name, dev);
+	if (ret) {
+		dev_err(dev, "request_firmware failed for %d: %d\n", rsc->protocol, ret);
+		return ret;
+	}
+
+	ret = geni_load_se_fw(rsc, fw);
+
+	release_firmware(fw);
+
+	return ret;
+}
+
+/**
+ * geni_load_se_firmware() - Initiate firmware loading.
+ * @se: Serial engine details.
+ * @protocol: Protocol (SPI, I2C, or UART) for which the firmware is to be loaded.
+ *
+ * If the device tree properties are configured to load QUP firmware and the firmware
+ * is not already loaded, start the firmware loading process. If the device tree properties
+ * are not defined, skip loading the firmware, assuming it is already loaded by TZ.
+ *
+ * Return: 0 if successful, otherwise return an error value.
+ */
+int geni_load_se_firmware(struct geni_se *se,
+			  enum geni_se_protocol_type protocol)
+{
+	struct qup_se_rsc rsc;
+	const char *fw_name;
+	int ret;
+
+	ret = device_property_read_string(se->wrapper->dev, "firmware-name", &fw_name);
+	if (ret)
+		return  -EINVAL;
+
+	rsc.se = se;
+	rsc.protocol = protocol;
+	/* Set default xfer mode to FIFO */
+	rsc.mode = GENI_SE_FIFO;
+
+	if (of_property_read_bool(se->dev->of_node, "qcom,gsi-dma-allowed"))
+		rsc.mode = GENI_GPI_DMA;
+
+	/* GSI mode is not supported by the UART driver; therefore, setting FIFO mode */
+	if (protocol == GENI_SE_UART)
+		rsc.mode = GENI_SE_FIFO;
+
+	ret = qup_fw_load(&rsc, fw_name);
+	if (ret)
+		return ret;
+
+	dev_dbg(se->dev, "Firmware load for %s protocol is successful for xfer mode %d\n",
+		protocol_name[rsc.protocol], rsc.mode);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(geni_load_se_firmware);
 
 static int geni_se_probe(struct platform_device *pdev)
 {
