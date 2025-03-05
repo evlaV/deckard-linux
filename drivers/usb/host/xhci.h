@@ -1743,6 +1743,8 @@ static inline bool xhci_has_one_roothub(struct xhci_hcd *xhci)
 	dev_err(xhci_to_hcd(xhci)->self.controller , fmt , ## args)
 #define xhci_warn(xhci, fmt, args...) \
 	dev_warn(xhci_to_hcd(xhci)->self.controller , fmt , ## args)
+#define xhci_warn_ratelimited(xhci, fmt, args...) \
+	dev_warn_ratelimited(xhci_to_hcd(xhci)->self.controller , fmt , ## args)
 #define xhci_info(xhci, fmt, args...) \
 	dev_info(xhci_to_hcd(xhci)->self.controller , fmt , ## args)
 
