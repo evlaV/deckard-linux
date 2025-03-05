@@ -149,8 +149,8 @@ MODULE_DEVICE_TABLE(of, valve_fpga_of_match);
 
 static struct platform_driver valve_fpga_driver = {
 	.probe = valve_fpga_probe,
-    .suspend = valve_fpga_suspend,
-    .resume = valve_fpga_resume,
+    //.suspend = valve_fpga_suspend,
+    //.resume = valve_fpga_resume,
 	.driver = {
 		.name	= "valve_fpga_pwr",
 		.of_match_table = of_match_ptr(valve_fpga_of_match),
