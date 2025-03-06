@@ -124,7 +124,9 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 	#define H_SYNC             90
 	#define V_LINES            2160
 	#define V_FRONT_PORCH_120  290
-	
+	#define V_FRONT_PORCH_90   290
+	#define V_FRONT_PORCH_80   290
+
 	// DSI DCS command related
 
 	#define PANEL_VFP_120 700
@@ -136,12 +138,12 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 	#define PANEL_VBP_80  800
 
 	// TODO adjust DPU overclocked settings for 90 Hz mode
-	#define PANEL_VID_VS_DELAY_120   1112
-	#define PANEL_VID_VS_DELAY_90    1112
-	#define PANEL_VID_VS_DELAY_80    1112
-	#define PIXEL_CLOCK_KHZ_120    641433
-	#define PIXEL_CLOCK_KHZ_90     641433
-	#define PIXEL_CLOCK_KHZ_80     641433
+	#define PANEL_VID_VS_DELAY_120   1536
+	#define PANEL_VID_VS_DELAY_90    1536
+	#define PANEL_VID_VS_DELAY_80    1536
+	#define PIXEL_CLOCK_KHZ_120    684458
+	#define PIXEL_CLOCK_KHZ_90     511801
+	#define PIXEL_CLOCK_KHZ_80     454480
 
 	//previously we used these with the lower DPU freq -- no longer needed -- keep for reference
 	/*
@@ -211,6 +213,30 @@ static const struct drm_display_mode modes[3] = {
 		.vsync_start = V_LINES + V_FRONT_PORCH_120,
 		.vsync_end = V_LINES + V_FRONT_PORCH_120 + V_SYNC,
 		.vtotal = V_LINES + V_FRONT_PORCH_120 + V_SYNC + V_BACK_PORCH,
+	},
+	{
+		.name = "4320x2160_90",
+		.clock = PIXEL_CLOCK_KHZ_90 * NUM_PANELS,
+		.hdisplay = H_PIXELS * NUM_PANELS,
+		.hsync_start = (H_PIXELS + H_FRONT_PORCH) * NUM_PANELS,
+		.hsync_end = (H_PIXELS + H_FRONT_PORCH + H_SYNC) * NUM_PANELS,
+		.htotal = (H_PIXELS + H_FRONT_PORCH + H_SYNC + H_BACK_PORCH) * NUM_PANELS,
+		.vdisplay = V_LINES,
+		.vsync_start = V_LINES + V_FRONT_PORCH_90,
+		.vsync_end = V_LINES + V_FRONT_PORCH_90 + V_SYNC,
+		.vtotal = V_LINES + V_FRONT_PORCH_90 + V_SYNC + V_BACK_PORCH,
+	},
+	{
+		.name = "4320x2160_80",
+		.clock = PIXEL_CLOCK_KHZ_80 * NUM_PANELS,
+		.hdisplay = H_PIXELS * NUM_PANELS,
+		.hsync_start = (H_PIXELS + H_FRONT_PORCH) * NUM_PANELS,
+		.hsync_end = (H_PIXELS + H_FRONT_PORCH + H_SYNC) * NUM_PANELS,
+		.htotal = (H_PIXELS + H_FRONT_PORCH + H_SYNC + H_BACK_PORCH) * NUM_PANELS,
+		.vdisplay = V_LINES,
+		.vsync_start = V_LINES + V_FRONT_PORCH_80,
+		.vsync_end = V_LINES + V_FRONT_PORCH_80 + V_SYNC,
+		.vtotal = V_LINES + V_FRONT_PORCH_80 + V_SYNC + V_BACK_PORCH,
 	}
 };
 
@@ -337,8 +363,8 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	// DSI-2 Control Setting)
 	DSI_CMD(0xb6, 0x20, 0x6b, 0x00, 0x06, 0x33, 0x98, 0x00, 0x1a, 0x7a), //note the 0x7a last byte is needed to avoid corruption
 	// Generic pin output setting: GPO1_TES1=233, GPO1_TEW1=17
-	// GPO2 is routed out TE, and is set to trigger 50 lines before, and last 50 lines longer, to trigger camera capture on the panel tester
-	DSI_CMD(0xb9, 0x0f, 0xef, 0x01, 0xcb, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00),
+	// GPIO2 is routed out TE, and is set to trigger 50 lines before, and last 50 lines longer, to trigger camera capture on the panel tester
+	DSI_CMD(0xb9, BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00, 0x00, 0x00, BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET), BE16(GPO1_TEW1+CAMERA_TRIGGER_OFFSET*2));
 	// Display Timing
 	DSI_CMD(0xc0, 0x3B, 0x86, 0x19, 0x00, 0x08, 0x70, 0x00, 0x08, 0x00, 0x00, 0x08, 0x3B, 0x00, 0x00, 0x19, 0x01, 0x22),
     // Source Setting
