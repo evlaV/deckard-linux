@@ -83,9 +83,18 @@ static const char * const pm8550b_vreg_l[] = {
 };
 
 static const u32 pm8550b_init_tbl[NUM_TUNE_FIELDS] = {
-	[TUNE_IUSB2] = 0x8,
-	[TUNE_SQUELCH_U] = 0x3,
-	[TUNE_USB2_PREEM] = 0x5,
+	[TUNE_EUSB_HS_COMP_CUR] = 0x00, // unknown
+	[TUNE_EUSB_EQU] = 0x01, // android setting
+	[TUNE_EUSB_SLEW] = 0x00, // android setting
+	[TUNE_USB2_HS_COMP_CUR] = 0x02, // android setting
+	[TUNE_USB2_PREEM] = 0x7,
+	[TUNE_USB2_EQU] = 0x00,
+	[TUNE_USB2_SLEW] = 0x03, // default
+	[TUNE_SQUELCH_U] = 0x02,
+	[TUNE_HSDISC] = 0x06,
+	[TUNE_RES_FSDIF] = 0x01,
+	[TUNE_IUSB2] = 0x0d,
+	[TUNE_USB2_CROSSOVER] = 0x00, // default
 };
 
 static const u32 smb2360_init_tbl[NUM_TUNE_FIELDS] = {
@@ -147,15 +156,16 @@ static int eusb2_repeater_init(struct phy *phy)
 
 	regmap_write(regmap, base + EUSB2_EN_CTL1, EUSB2_RPTR_EN);
 
-	regmap_write(regmap, base + EUSB2_TUNE_EUSB_HS_COMP_CUR, init_tbl[TUNE_EUSB_HS_COMP_CUR]);
-	regmap_write(regmap, base + EUSB2_TUNE_EUSB_EQU, init_tbl[TUNE_EUSB_EQU]);
-	regmap_write(regmap, base + EUSB2_TUNE_EUSB_SLEW, init_tbl[TUNE_EUSB_SLEW]);
-	regmap_write(regmap, base + EUSB2_TUNE_USB2_HS_COMP_CUR, init_tbl[TUNE_USB2_HS_COMP_CUR]);
+	// only set registers that we have data for
+	//regmap_write(regmap, base + EUSB2_TUNE_EUSB_HS_COMP_CUR, init_tbl[TUNE_EUSB_HS_COMP_CUR]);
+	//regmap_write(regmap, base + EUSB2_TUNE_EUSB_EQU, init_tbl[TUNE_EUSB_EQU]);
+	//regmap_write(regmap, base + EUSB2_TUNE_EUSB_SLEW, init_tbl[TUNE_EUSB_SLEW]);
+	//regmap_write(regmap, base + EUSB2_TUNE_USB2_HS_COMP_CUR, init_tbl[TUNE_USB2_HS_COMP_CUR]);
 	regmap_write(regmap, base + EUSB2_TUNE_USB2_EQU, init_tbl[TUNE_USB2_EQU]);
-	regmap_write(regmap, base + EUSB2_TUNE_USB2_SLEW, init_tbl[TUNE_USB2_SLEW]);
+	//regmap_write(regmap, base + EUSB2_TUNE_USB2_SLEW, init_tbl[TUNE_USB2_SLEW]);
 	regmap_write(regmap, base + EUSB2_TUNE_SQUELCH_U, init_tbl[TUNE_SQUELCH_U]);
 	regmap_write(regmap, base + EUSB2_TUNE_RES_FSDIF, init_tbl[TUNE_RES_FSDIF]);
-	regmap_write(regmap, base + EUSB2_TUNE_USB2_CROSSOVER, init_tbl[TUNE_USB2_CROSSOVER]);
+	//regmap_write(regmap, base + EUSB2_TUNE_USB2_CROSSOVER, init_tbl[TUNE_USB2_CROSSOVER]);
 
 	regmap_write(regmap, base + EUSB2_TUNE_USB2_PREEM, tune_usb2_preem);
 	regmap_write(regmap, base + EUSB2_TUNE_HSDISC, tune_hsdisc);
