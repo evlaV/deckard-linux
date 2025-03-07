@@ -64,9 +64,22 @@ static const char * const pm8550b_vreg_l[] = {
 };
 
 static const struct eusb2_repeater_init_tbl_reg pm8550b_init_tbl[] = {
-	{ EUSB2_TUNE_IUSB2, 0x8 },
-	{ EUSB2_TUNE_SQUELCH_U, 0x3 },
-	{ EUSB2_TUNE_USB2_PREEM, 0x5 },
+	{ EUSB2_TUNE_EUSB_EQU, 0x01 }, // android setting
+	{ EUSB2_TUNE_SQUELCH_U, 0x02 },
+	{ EUSB2_TUNE_RES_FSDIF, 0x01 },
+	{ EUSB2_TUNE_USB2_PREEM, 0x7 },
+	{ EUSB2_TUNE_HSDISC, 0x06 },
+	{ EUSB2_TUNE_IUSB2, 0x0d },
+#if 0
+	[TUNE_EUSB_HS_COMP_CUR] = 0x00, // unknown
+	[TUNE_EUSB_EQU] = 0x01, // android setting
+	[TUNE_EUSB_SLEW] = 0x00, // android setting
+	[TUNE_USB2_HS_COMP_CUR] = 0x02, // android setting
+	[TUNE_USB2_EQU] = 0x00,
+	[TUNE_USB2_SLEW] = 0x03, // default
+	[TUNE_SQUELCH_U] = 0x02,
+	[TUNE_USB2_CROSSOVER] = 0x00, // default
+#endif
 };
 
 static const struct eusb2_repeater_init_tbl_reg smb2360_init_tbl[] = {
