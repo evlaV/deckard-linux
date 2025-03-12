@@ -207,7 +207,6 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	struct regmap *regmap;
 	u32 base[2];
 	int ret;
-	uint charger_flags;
 	static int defer;
 	int defercount = 3;
 
@@ -302,11 +301,7 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	if (ret)
 		goto fwnode_remove;
 
-	if ( of_property_read_bool( np, "disable-cell-balancing" ) ) {
-		charger_flags |= DISABLE_CELL_BALANCING;
-	}
-
-	qcom_pmic_charger_init(dev, regmap, charger_flags);
+	qcom_pmic_charger_init(regmap);
 
 	return 0;
 
