@@ -137,6 +137,8 @@ struct mp3317 {
 
 static ssize_t reg_dump_show(struct device *dev, struct device_attribute *attr, char *buf);
 
+static struct device_attribute dev_attr_led_state;
+
 /* Configure and enable the MP3317 with the desired Deckard settings */
 static int deckard_config_mp3317(struct mp3317 *led)
 {
@@ -1051,9 +1053,14 @@ static ssize_t led_state_show(struct device *dev,
 	int ret;
 	uint rval;
 
+	if (!gpiod_get_value(led->en_gpio))
+	{
+		return sysfs_emit(buf, "Disable\n");
+	}
+
 	ret = regmap_read(led->regmap, MP3317_EN_CTL, &rval);
 	if(ret)
-			return ret;
+		return ret;
 	rval &= EN_MASK;
 
 	if(rval){
@@ -1085,9 +1092,13 @@ static ssize_t led_state_store(struct device *dev,
 		usleep_range(10000,20000);
 		deckard_config_mp3317(led);
 
+		sysfs_notify(&dev->kobj, NULL, dev_attr_led_state.attr.name);
+
 	} else if (!val && gpiod_get_value(led->en_gpio)) {
 		ret = regmap_update_bits(led->regmap, MP3317_EN_CTL, EN_MASK, 0);
 		gpiod_set_value(led->en_gpio, 0);
+
+		sysfs_notify(&dev->kobj, NULL, dev_attr_led_state.attr.name);
 	}
 
 	if(ret)
@@ -1836,7 +1847,10 @@ static int mp3317_leds_probe(struct i2c_client *client)
 
 static void mp3317_leds_remove(struct i2c_client *client)
 {
-	return;
+	struct mp3317 *led = i2c_get_clientdata(client);
+
+	// Turn off
+	gpiod_set_value(led->en_gpio, 0);
 }
 
 static const struct i2c_device_id mp3317_id[] = {
