@@ -1123,10 +1123,6 @@
 
 	vdd-pdphy-supply = <&vreg_l5b_3p1>;
 
-	io-channels = <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_SNS_CHGR(7)>,
-				  <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_2S_MID_CHGR(7)>;
-	io-channel-names = "vbat", "vmid";
-
 	connector {
 		power-role = "dual";
 		data-role = "dual";
@@ -1183,6 +1179,12 @@
 		};
 	};
 
+};
+
+&pm8550b_charger {
+	status = "okay";
+	qph1-charge-current-max = <1200000>;
+	qph2-charge-current-max = <2700000>;
 };
 
 &pm8550ve_gpios {
