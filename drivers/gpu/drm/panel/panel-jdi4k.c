@@ -353,7 +353,7 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	u8 pps_cmd[1 + sizeof(struct drm_dsc_picture_parameter_set)];
 	unsigned RTN = 66, NL = 2160;
 	unsigned VFP, VBP, VID_VS_DELAY;	// Display Timing
-	unsigned GPO1_TES1 = 4068, GPO1_TEW1 = 459;
+	unsigned GPO1_TES1 = 233, GPO1_TEW1 = 17;
     _get_per_mode_settings(ctx->current_mode, &VFP, &VID_VS_DELAY, &VBP);
 
 	pps_cmd[0] = 0xe6;
@@ -365,6 +365,8 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	// Generic pin output setting: GPO1_TES1=233, GPO1_TEW1=17
 	// GPIO2 is routed out TE, and is set to trigger 50 lines before, and last 50 lines longer, to trigger camera capture on the panel tester
 	DSI_CMD(0xb9, BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00, 0x00, 0x00, BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET), BE16(GPO1_TEW1+CAMERA_TRIGGER_OFFSET*2));
+	//TE and TE2 settings  TODO: do we still need this?
+	DSI_CMD(0xbe, 0x00, 0x6A, 0x02 ), //TE=GPIO2 0x6A, TE2=internal vsync 0x02
 	// Display Timing
 	DSI_CMD(0xc0, 0x3B, 0x86, 0x19, 0x00, 0x08, 0x70, 0x00, 0x08, 0x00, 0x00, 0x08, 0x3B, 0x00, 0x00, 0x19, 0x01, 0x22),
     // Source Setting
@@ -387,10 +389,8 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	// NVM Load
 	DSI_CMD(0xd6, 0x00),
     DSI_CMD(0xb0, 0x03), // mfg register lock
-	//TE and TE2 settings  TODO: do we still need this?
-	//DSI_CMD(0xbe, 0x00, 0x6A, 0x02 ), //TE=GPIO2 0x6A, TE2=internal vsync 0x02
 	DSI_CMD(MIPI_DCS_SET_TEAR_ON, 0x00), // turn on TE
-	DSI_CMD(MIPI_DCS_SET_ADDRESS_MODE, 0x40), // Set scan out order / inversion setting
+	DSI_CMD(MIPI_DCS_SET_ADDRESS_MODE, 0x40), // Set scan out order / inversion setting 
     // not in sharp init sequence doc, but stashing here in case we do need these
     //DSI_CMD(MIPI_DCS_GET_COMPRESSION_MODE, 0x01), // compression enabled
     //DSI_CMD(MIPI_DCS_SET_PIXEL_FORMAT, 0x77), // 24 bits / pixel ( default )
