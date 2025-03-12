@@ -1366,10 +1366,7 @@ static struct msm_display_topology dpu_crtc_get_topology(
 		num_rt_intf--;
 
 	if (topology.num_dsc) {
-		if (dpu_kms->catalog->dsc_count >= num_rt_intf * 2)
-			topology.num_dsc = num_rt_intf * 2;
-		else
-			topology.num_dsc = num_rt_intf;
+		topology.num_dsc = num_rt_intf * 2;
 		topology.num_lm = topology.num_dsc;
 	} else if (num_rt_intf == 2) {
 		topology.num_lm = 2;
