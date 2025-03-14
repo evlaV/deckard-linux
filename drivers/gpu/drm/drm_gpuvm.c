@@ -2245,6 +2245,56 @@ __drm_gpuvm_sm_map(struct drm_gpuvm *gpuvm,
 }
 
 static int
+__drm_gpuvm_sm_unmap_va(struct drm_gpuva *va, const struct drm_gpuvm_ops *ops,
+			void *priv, u64 req_addr, u64 req_range)
+{
+	struct drm_gpuva_op_map prev = {}, next = {};
+	bool prev_split = false, next_split = false;
+	struct drm_gem_object *obj = va->gem.obj;
+	u64 req_end = req_addr + req_range;
+	u64 offset = va->gem.offset;
+	u64 addr = va->va.addr;
+	u64 range = va->va.range;
+	u64 end = addr + range;
+	int ret;
+
+	if (addr < req_addr) {
+		prev.va.addr = addr;
+		prev.va.range = req_addr - addr;
+		prev.gem.obj = obj;
+		prev.gem.offset = offset;
+
+		prev_split = true;
+	}
+
+	if (end > req_end) {
+		next.va.addr = req_end;
+		next.va.range = end - req_end;
+		next.gem.obj = obj;
+		next.gem.offset = offset + (req_end - addr);
+
+		next_split = true;
+	}
+
+	if (prev_split || next_split) {
+		struct drm_gpuva_op_unmap unmap = { .va = va };
+
+		ret = op_remap_cb(ops, priv,
+				  prev_split ? &prev : NULL,
+				  next_split ? &next : NULL,
+				  &unmap);
+		if (ret)
+			return ret;
+	} else {
+		ret = op_unmap_cb(ops, priv, va, false);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int
 __drm_gpuvm_sm_unmap(struct drm_gpuvm *gpuvm,
 		     const struct drm_gpuvm_ops *ops, void *priv,
 		     u64 req_addr, u64 req_range)
@@ -2257,46 +2307,9 @@ __drm_gpuvm_sm_unmap(struct drm_gpuvm *gpuvm,
 		return -EINVAL;
 
 	drm_gpuvm_for_each_va_range_safe(va, next, gpuvm, req_addr, req_end) {
-		struct drm_gpuva_op_map prev = {}, next = {};
-		bool prev_split = false, next_split = false;
-		struct drm_gem_object *obj = va->gem.obj;
-		u64 offset = va->gem.offset;
-		u64 addr = va->va.addr;
-		u64 range = va->va.range;
-		u64 end = addr + range;
-
-		if (addr < req_addr) {
-			prev.va.addr = addr;
-			prev.va.range = req_addr - addr;
-			prev.gem.obj = obj;
-			prev.gem.offset = offset;
-
-			prev_split = true;
-		}
-
-		if (end > req_end) {
-			next.va.addr = req_end;
-			next.va.range = end - req_end;
-			next.gem.obj = obj;
-			next.gem.offset = offset + (req_end - addr);
-
-			next_split = true;
-		}
-
-		if (prev_split || next_split) {
-			struct drm_gpuva_op_unmap unmap = { .va = va };
-
-			ret = op_remap_cb(ops, priv,
-					  prev_split ? &prev : NULL,
-					  next_split ? &next : NULL,
-					  &unmap);
-			if (ret)
-				return ret;
-		} else {
-			ret = op_unmap_cb(ops, priv, va, false);
-			if (ret)
-				return ret;
-		}
+		ret = __drm_gpuvm_sm_unmap_va(va, ops, priv, req_addr, req_range);
+		if (ret)
+			return ret;
 	}
 
 	return 0;
@@ -2393,6 +2406,36 @@ drm_gpuvm_sm_unmap(struct drm_gpuvm *gpuvm, void *priv,
 				    req_addr, req_range);
 }
 EXPORT_SYMBOL_GPL(drm_gpuvm_sm_unmap);
+
+/**
+ * drm_gpuvm_sm_unmap_va() - like drm_gpuvm_sm_unmap() but operating on a single VA
+ * @va: the &drm_gpuva to unmap from
+ * @priv: pointer to a driver private data structure
+ * @req_addr: the start address of the range to unmap
+ * @req_range: the range of the mappings to unmap
+ *
+ * This function iterates the range of a single VA. It utilizes the
+ * &drm_gpuvm_ops to call back into the driver providing the operations to
+ * unmap and, if required, split the existent mapping.
+ *
+ * There can be at most one unmap or remap operation, depending on whether the
+ * requested unmap range fully covers or partially covers the specified VA.
+ *
+ * Returns: 0 on success or a negative error code
+ */
+int
+drm_gpuvm_sm_unmap_va(struct drm_gpuva *va, void *priv,
+		      u64 req_addr, u64 req_range)
+{
+	const struct drm_gpuvm_ops *ops = va->vm->ops;
+
+	if (unlikely(!(ops && ops->sm_step_remap &&
+			ops->sm_step_unmap)))
+		return -EINVAL;
+
+	return __drm_gpuvm_sm_unmap_va(va, ops, priv, req_addr, req_range);
+}
+EXPORT_SYMBOL_GPL(drm_gpuvm_sm_unmap_va);
 
 static struct drm_gpuva_op *
 gpuva_op_alloc(struct drm_gpuvm *gpuvm)

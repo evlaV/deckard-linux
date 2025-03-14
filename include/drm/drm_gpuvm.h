@@ -1213,6 +1213,8 @@ int drm_gpuvm_sm_map(struct drm_gpuvm *gpuvm, void *priv,
 
 int drm_gpuvm_sm_unmap(struct drm_gpuvm *gpuvm, void *priv,
 		       u64 addr, u64 range);
+int drm_gpuvm_sm_unmap_va(struct drm_gpuva *va, void *priv,
+			  u64 req_addr, u64 req_range);
 
 void drm_gpuva_map(struct drm_gpuvm *gpuvm,
 		   struct drm_gpuva *va,
