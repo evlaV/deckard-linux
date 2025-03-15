@@ -324,6 +324,8 @@ static int ath12k_tm_cmd_wmi(struct ath12k *ar, struct nlattr *tb[])
 	int ret = 0, tag;
 	void *buf;
 	u32 cmd_id, buf_len;
+	size_t adjusted_len;
+	struct ath12k_wmi_ftm_cmd *ftm_cmd;
 
 	if (!tb[ATH_TM_ATTR_DATA])
 		return -EINVAL;
@@ -353,12 +355,19 @@ static int ath12k_tm_cmd_wmi(struct ath12k *ar, struct nlattr *tb[])
 
 	ath12k_dbg_dump(ar->ab, ATH12K_DBG_TESTMODE, NULL, "", buf, buf_len);
 
-	skb = ath12k_wmi_alloc_skb(wmi->wmi_ab, buf_len);
+	adjusted_len  = buf_len + 4; // just add sizeof(tlv_header)
+	skb = ath12k_wmi_alloc_skb(wmi->wmi_ab, adjusted_len);
 
 	if (!skb)
 		return -ENOMEM;
 
-	memcpy(skb->data, buf, buf_len);
+	ftm_cmd = (struct ath12k_wmi_ftm_cmd *)skb->data;
+	// incoming buf (and buf_len) already has ath12k_wmi_ftm_seg_hdr_params 
+	ftm_cmd->tlv_header = ath12k_wmi_tlv_hdr(WMI_TAG_ARRAY_BYTE, buf_len);
+
+
+	memcpy(&ftm_cmd->seg_hdr, buf, buf_len);
+
 
 	ret = ath12k_wmi_cmd_send(wmi, skb, cmd_id);
 	if (ret) {
