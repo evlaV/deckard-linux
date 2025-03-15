@@ -17,6 +17,8 @@
 #define ATH12K_FTM_SEGHDR_CURRENT_SEQ		GENMASK(3, 0)
 #define ATH12K_FTM_SEGHDR_TOTAL_SEGMENTS	GENMASK(7, 4)
 
+static int ath12k_tm_cmd_testmode_start(struct ath12k *ar, struct nlattr *tb[]);
+
 static const struct nla_policy ath12k_tm_policy[ATH_TM_ATTR_MAX + 1] = {
 	[ATH_TM_ATTR_CMD]		= { .type = NLA_U32 },
 	[ATH_TM_ATTR_DATA]		= { .type = NLA_BINARY,
@@ -217,6 +219,11 @@ static int ath12k_tm_cmd_process_ftm(struct ath12k *ar, struct nlattr *tb[])
 	u32 cmd_id, buf_len;
 	u16 chunk_len, total_bytes, num_segments;
 	u8 segnumber = 0, *bufpos;
+
+	if (ar->ah->state != ATH12K_HW_STATE_TM) {
+		ath12k_warn(ar->ab, "got tm cmd but not in test mode, forcing on\n");
+		ath12k_tm_cmd_testmode_start(ar, NULL);
+	}
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_TESTMODE, "ah->state  %d\n", ar->ah->state);
 	if (ar->ah->state != ATH12K_HW_STATE_TM)
