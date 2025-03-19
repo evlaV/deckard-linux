@@ -697,12 +697,10 @@ void msm_submitqueue_close(struct msm_context *ctx);
 
 void msm_submitqueue_destroy(struct kref *kref);
 
-int msm_context_set_sysprof(struct msm_context *ctx, struct msm_gpu *gpu, int sysprof);
-void __msm_context_destroy(struct kref *kref);
-
 void msm_submitqueue_retire_timestamp(struct msm_gpu_submitqueue *queue, u32 timestamp);
 
-void __msm_file_private_destroy(struct kref *kref);
+int msm_context_set_sysprof(struct msm_context *ctx, struct msm_gpu *gpu, int sysprof);
+void __msm_context_destroy(struct kref *kref);
 
 static inline void msm_context_put(struct msm_context *ctx)
 {
