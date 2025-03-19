@@ -111,7 +111,6 @@ void msm_submitqueue_retire_timestamp(struct msm_gpu_submitqueue *queue, u32 tim
 	wake_up_interruptible(&queue->waitqueue);
 }
 
-
 struct msm_gpu_submitqueue *msm_submitqueue_get(struct msm_context *ctx,
 		u32 id)
 {
