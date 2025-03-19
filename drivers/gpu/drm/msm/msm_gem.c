@@ -586,7 +586,7 @@ int msm_gem_get_iova(struct drm_gem_object *obj, struct drm_gpuvm *vm,
 	int ret = 0;
 
 	if (msm_gem_is_vbo(obj))
-		return msm_gem_vbo_get_iova(obj, aspace, iova);
+		return msm_gem_vbo_get_iova(obj, vm, iova);
 
 	msm_gem_lock_vm_and_obj(&exec, obj, vm);
 	vma = get_vma_locked(obj, vm, 0, U64_MAX);
