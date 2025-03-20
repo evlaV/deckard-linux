@@ -492,23 +492,23 @@ CONFIG_AS_HAS_LDAPR=y
 #
 # CONFIG_ARM64_AMU_EXTN is not set
 CONFIG_AS_HAS_ARMV8_4=y
-# CONFIG_ARM64_TLB_RANGE is not set
+CONFIG_ARM64_TLB_RANGE=y
 # end of ARMv8.4 architectural features
 
 #
 # ARMv8.5 architectural features
 #
 CONFIG_AS_HAS_ARMV8_5=y
-# CONFIG_ARM64_BTI is not set
+CONFIG_ARM64_BTI=y
 CONFIG_CC_HAS_BRANCH_PROT_PAC_RET_BTI=y
-# CONFIG_ARM64_E0PD is not set
+CONFIG_ARM64_E0PD=y
 CONFIG_ARM64_AS_HAS_MTE=y
 # end of ARMv8.5 architectural features
 
 #
 # ARMv8.7 architectural features
 #
-# CONFIG_ARM64_EPAN is not set
+CONFIG_ARM64_EPAN=y
 # end of ARMv8.7 architectural features
 
 #
@@ -4194,7 +4194,6 @@ CONFIG_DRM_DISPLAY_DP_HELPER=y
 CONFIG_DRM_DISPLAY_HDMI_HELPER=y
 CONFIG_DRM_DISPLAY_HDMI_STATE_HELPER=y
 CONFIG_DRM_EXEC=y
-CONFIG_DRM_GPUVM=y
 CONFIG_DRM_SCHED=y
 
 #
