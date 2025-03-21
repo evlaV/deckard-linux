@@ -240,7 +240,8 @@ static int _dpu_rm_reserve_cwb_mux_and_pingpongs(struct dpu_rm *rm,
 						 uint32_t crtc_id,
 						 struct msm_display_topology *topology)
 {
-	int num_cwb_mux = topology->num_lm, cwb_mux_count = 0;
+	int cwb_mux_count = 0;
+	int num_cwb_mux = min(2, topology->num_lm);
 	int cwb_pp_start_idx = PINGPONG_CWB_0 - PINGPONG_0;
 	int cwb_pp_idx[MAX_BLOCKS];
 	int cwb_mux_idx[MAX_BLOCKS];
