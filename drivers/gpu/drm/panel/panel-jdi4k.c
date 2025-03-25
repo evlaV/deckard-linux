@@ -361,7 +361,7 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 
 	DSI_CMD(0xb0, 0x00), // mfg register unlock
 	// DSI-2 Control Setting)
-	DSI_CMD(0xb6, 0x20, 0x6b, 0x00, 0x06, 0x33, 0x98, 0x00, 0x1a, 0x7a), //note the 0x7a last byte is needed to avoid corruption
+	DSI_CMD(0xb6, 0x20, 0x6b, 0x80, 0x06, 0x33, 0x98, 0x00, 0x1a, 0x7a), //note the 0x7a last byte is needed to avoid corruption
 	// Generic pin output setting: GPO1_TES1=233, GPO1_TEW1=17
 	// GPIO2 is routed out TE, and is set to trigger 50 lines before, and last 50 lines longer, to trigger camera capture on the panel tester
 	DSI_CMD(0xb9, BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00, 0x00, 0x00, BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET), BE16(GPO1_TEW1+CAMERA_TRIGGER_OFFSET*2));
