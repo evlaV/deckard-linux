@@ -437,6 +437,24 @@ static void csid_subdev_reg_update(struct csid_device *csid, int port_id, bool c
 	}
 }
 
+u32 get_virtual_channel(struct csid_device *csid, u32 path, u32 csid_ts_lower)
+{
+	if(path == VFE_LINE_PIX || csid->multi_vcdt_en) {
+		// If using the ISP path or MULTI_VCDT is configured we can know if the secondary VC was received 
+		// in the SOF/EOF timestamp (secondary vc is not necessarily VC=1 but that's always the case for PIX path)
+		if(csid_ts_lower & 1) {
+			return (path == VFE_LINE_PIX) ? 1 : csid->multi_vcdt_vc;
+		}
+		else {
+			return 0;
+		}
+	}
+	else {
+		// VC identification comes from which is path is used (RDI0 only accepts VC0, RDI1 only accets VC1, etc)
+		return path;
+	}
+}
+
 /*
  * csid_isr - CSID module interrupt service routine
  * @irq: Interrupt line

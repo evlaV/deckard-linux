@@ -810,7 +810,7 @@ static struct csid_device* video_get_csid_device(struct camss_video *video)
 	return csid;
 }
 
-static int video_set_extra_output_plane_config(struct camss_video *video, struct camss_extra_output_plane_cfg *config)
+static int video_set_extra_output_plane_config(struct camss_video *video, void* arg, bool is_legacy)
 {
 	// cannot configure output if queue is already active and has buffers
 	if (vb2_is_busy(&video->vb2_q)) {
@@ -825,7 +825,44 @@ static int video_set_extra_output_plane_config(struct camss_video *video, struct
 	}
 
 	video->has_extra_output_plane_cfg = true;
-	video->extra_output_plane_cfg = *config;
+	// If using the legacy ioctl and structure build the new structure from the old version, otherwise just copy the input
+	if(is_legacy) {
+		struct camss_extra_output_plane_cfg_legacy *legacy_config = arg;
+		memset(&video->extra_output_plane_cfg, 0, sizeof(struct camss_extra_output_plane_cfg));
+		video->extra_output_plane_cfg.plane_size = legacy_config->plane_size;
+		video->extra_output_plane_cfg.frameheader_en = legacy_config->frameheader_en;
+		video->extra_output_plane_cfg.frameheader_offset = legacy_config->frameheader_offset;
+		for(int i=0; i<CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY; i++) {
+			video->extra_output_plane_cfg.extra_output_en[i] = legacy_config->extra_output_en[i];
+			video->extra_output_plane_cfg.extra_output_offset[i] = legacy_config->extra_output_offset[i];
+			video->extra_output_plane_cfg.extra_output_frameheader_en[i] = legacy_config->extra_output_frameheader_en[i];
+			video->extra_output_plane_cfg.extra_output_frameheader_offset[i] = legacy_config->extra_output_frameheader_offset[i];
+		}
+	}
+	else
+	{
+		struct camss_extra_output_plane_cfg *config = arg;
+		video->extra_output_plane_cfg = *config;
+	}
+
+	// Check the new config for unsupported types being used, ignore the configuration
+	bool valid_config = true;
+	for(int i=CAMSS_EXTRA_OUTPUT_TYPE_END; i<CAMSS_EXTRA_OUTPUT_TYPE_MAX; i++) {
+		if((video->extra_output_plane_cfg.extra_output_en[i] != 0) ||
+		   (video->extra_output_plane_cfg.extra_output_offset[i] != 0) ||
+		   (video->extra_output_plane_cfg.extra_output_frameheader_en[i] != 0) ||
+		   (video->extra_output_plane_cfg.extra_output_frameheader_offset[i] != 0))
+		{
+			dev_warn(video->camss->dev, "camss-video: found non-empty extra output config for unsupported type %d \n", i);
+			valid_config = false;
+		}
+	}
+	if(!valid_config) {
+		dev_warn(video->camss->dev, "camss-video: invalid configuration provided, configuration will be ignored \n");
+		video->has_extra_output_plane_cfg = false;
+		memset(&video->extra_output_plane_cfg, 0, sizeof(struct camss_extra_output_plane_cfg));
+		return -EINVAL;
+	}
 
 	// update the plane count to have the additional plane and update its size requirement
 	video->active_fmt.fmt.pix_mp.num_planes = 2; // always put the extra output in plane 1 (never used in camss formats)
@@ -889,8 +926,11 @@ static long video_ioctl(struct file *file, void *fh, bool valid_prio, unsigned i
 				return -EINVAL;
 			}
 			break;
+		case VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY:
+			ret = video_set_extra_output_plane_config(video, arg, true);
+			break;
 		case VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG:
-			ret = video_set_extra_output_plane_config(video, arg);
+			ret = video_set_extra_output_plane_config(video, arg, false);
 			break;
 		case VIDIOC_PRIV_S_MULTI_VCDT_CFG:
 			// request the csid multi-vcdt feature to be enabled with the vc passed as parameter
