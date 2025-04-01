@@ -1545,7 +1545,7 @@
 				reg = <0>;
 
 				pm8550b_role_switch_out: endpoint {
-					remote-endpoint = <&usb_1_dwc3_hs>;
+					remote-endpoint = <&eud_con>;
 				};
 			};
 
@@ -2403,6 +2403,22 @@
 	usb-role-switch;
 };
 
+&usb_1_dwc3_hs {
+	remote-endpoint = <&eud_ep>;
+};
+
+&eud {
+	status = "okay";
+	usb-role-switch;
+};
+
+&eud_con {
+	remote-endpoint = <&pm8550b_role_switch_out>;
+};
+
+&eud_ep {
+	remote-endpoint = <&usb_1_dwc3_hs>;
+};
 
 &usb_1_hsphy {
 	vdd-supply = <&vreg_l1i_0p88>;
