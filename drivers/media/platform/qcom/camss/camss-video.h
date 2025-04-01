@@ -22,6 +22,8 @@
 // Private ioctls to access CSID/VFE registers
 #define VIDIOC_PRIV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
 #define VIDIOC_PRIV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
+// Keep this old ioctl to keep compatibility with older camss_extra_output_plane_cfg format which did not reserve space for additional outputs...
+#define VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY _IOWR('V', BASE_VIDIOC_PRIVATE + 3, struct camss_extra_output_plane_cfg_legacy)
 #define VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG _IOWR('V', BASE_VIDIOC_PRIVATE + 3, struct camss_extra_output_plane_cfg)
 #define VIDIOC_PRIV_S_MULTI_VCDT_CFG _IO('V', BASE_VIDIOC_PRIVATE + 4) // takes the second vc enabled as parameter
 // TODO: add layout config ioctl (to set plane stride and offsets)
@@ -34,6 +36,7 @@ struct camss_hw_error_info {
 	u8 reserved[60]; // V4L events can store up to 64 bytes of data
 };
 
+// Do not change the order of that struct to avoid breaking compatibility
 enum camss_extra_output_type
 {
 	CAMSS_EXTRA_OUTPUT_TYPE_META,
@@ -41,8 +44,15 @@ enum camss_extra_output_type
 	CAMSS_EXTRA_OUTPUT_TYPE_STATS_BHIST,
 	CAMSS_EXTRA_OUTPUT_TYPE_DS4,
 	CAMSS_EXTRA_OUTPUT_TYPE_DS16,
-	CAMSS_EXTRA_OUTPUT_TYPE_MAX
+	CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BE,
+	CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BHIST,
+	CAMSS_EXTRA_OUTPUT_TYPE_STATS_AWB_BG,
+	CAMSS_EXTRA_OUTPUT_TYPE_STATS_TINTLESS_BG,
+
+	CAMSS_EXTRA_OUTPUT_TYPE_END,
+	CAMSS_EXTRA_OUTPUT_TYPE_MAX = 32 // Reserve some additional types for future additions
 };
+static_assert(CAMSS_EXTRA_OUTPUT_TYPE_MAX>=CAMSS_EXTRA_OUTPUT_TYPE_END);
 
 struct camss_extra_output_plane_cfg
 {
@@ -55,6 +65,17 @@ struct camss_extra_output_plane_cfg
 	u32 extra_output_offset[CAMSS_EXTRA_OUTPUT_TYPE_MAX];
 	u32 extra_output_frameheader_en[CAMSS_EXTRA_OUTPUT_TYPE_MAX];
 	u32 extra_output_frameheader_offset[CAMSS_EXTRA_OUTPUT_TYPE_MAX];
+};
+
+// Legacy structure compatible with VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY
+#define CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY 5
+struct camss_extra_output_plane_cfg_legacy
+{
+	u32 plane_size, frameheader_en, frameheader_offset;
+	u32 extra_output_en[CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY];
+	u32 extra_output_offset[CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY];
+	u32 extra_output_frameheader_en[CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY];
+	u32 extra_output_frameheader_offset[CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY];
 };
 
 // Minimal metadata structure for CAMSS_EXTRA_OUTPUT_TYPE_META that only includes SOF/EOF info and sensor specific metadata
