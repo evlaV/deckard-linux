@@ -96,11 +96,23 @@ static u32 vfe_get_extra_output_type_wm(struct vfe_device *vfe, enum camss_extra
 		case CAMSS_EXTRA_OUTPUT_TYPE_DS16:
 			wm = 3;
 			break;
-		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_IHIST:
-			wm = 19;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BE:
+			wm = 11;
+			break;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BHIST:
+			wm = 12;
+			break;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_TINTLESS_BG:
+			wm = 13;
+			break;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_AWB_BG:
+			wm = 14;
 			break;
 		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_BHIST:
 			wm = 17;
+			break;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_IHIST:
+			wm = 19;
 			break;
 		default:
 			wm = 0;
@@ -118,17 +130,53 @@ static u32 vfe_get_extra_output_type_comp_group(struct vfe_device *vfe, enum cam
 		case CAMSS_EXTRA_OUTPUT_TYPE_DS16:
 			comp_group = 0;
 			break;
-		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_IHIST:
-			comp_group = 10;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BE:
+			comp_group = 4;
+			break;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BHIST:
+			comp_group = 4;
+			break;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_TINTLESS_BG:
+			comp_group = 5;
+			break;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_AWB_BG:
+			comp_group = 6;
 			break;
 		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_BHIST:
 			comp_group = 8;
+			break;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_IHIST:
+			comp_group = 10;
 			break;
 		default:
 			comp_group = 0;
 			break;
 	}
 	return comp_group;
+}
+
+static u32 vfe_get_extra_output_type_packer_format(struct vfe_device *vfe, enum camss_extra_output_type type)
+{
+	u32 format = 0;
+	switch(type)
+	{
+		case CAMSS_EXTRA_OUTPUT_TYPE_DS4:
+		case CAMSS_EXTRA_OUTPUT_TYPE_DS16:
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_BHIST:
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BE:
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BHIST:
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_AWB_BG:
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_TINTLESS_BG:
+			format = 0xa; // PACKER_FMT_PLAIN_64
+			break;
+		case CAMSS_EXTRA_OUTPUT_TYPE_STATS_IHIST:
+			format = 0x8; // PACKER_FMT_PLAIN_16_16BPP
+			break;
+		default:
+			format = 0;
+			break;
+	}
+	return format;
 }
 
 static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
@@ -157,27 +205,24 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 				writel(WM_CFG_EN | WM_HEADER_EN, vfe->base + VFE_BUS_WM_CFG(0));
 			}
 
-			for(int type=0; type<CAMSS_EXTRA_OUTPUT_TYPE_MAX; type++)
+			for(int type=0; type<CAMSS_EXTRA_OUTPUT_TYPE_END; type++)
 			{
 				u32 wm = 0;
 				u32 comp_group = 0;
+				u32 packer_format = 0;
 				u32 mode = 0;
 				if(!ext_cfg->extra_output_en[type] || (type == CAMSS_EXTRA_OUTPUT_TYPE_META))
 					continue;
 
 				wm = vfe_get_extra_output_type_wm(vfe, type);
 				comp_group = vfe_get_extra_output_type_comp_group(vfe, type);
-				
-				if(type == CAMSS_EXTRA_OUTPUT_TYPE_STATS_IHIST) {
+				packer_format = vfe_get_extra_output_type_packer_format(vfe, type);
+
+				if((type == CAMSS_EXTRA_OUTPUT_TYPE_STATS_IHIST) || (type == CAMSS_EXTRA_OUTPUT_TYPE_STATS_BHIST) || 
+				   (type == CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BE) || (type == CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BHIST) || 
+				   (type == CAMSS_EXTRA_OUTPUT_TYPE_STATS_AWB_BG) || (type == CAMSS_EXTRA_OUTPUT_TYPE_STATS_TINTLESS_BG)) {
 					writel(0, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
 					writel(1, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm));
-					writel(0x8, vfe->base + VFE_BUS_WM_PACKER_CFG(wm)); // PACKER_FMT_PLAIN_16_16BPP
-					mode = 1;
-				}
-				if(type == CAMSS_EXTRA_OUTPUT_TYPE_STATS_BHIST) {
-					writel(0, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
-					writel(1, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm));
-					writel(0xa, vfe->base + VFE_BUS_WM_PACKER_CFG(wm)); // PACKER_FMT_PLAIN_64
 					mode = 1;
 				}
 				if(type == CAMSS_EXTRA_OUTPUT_TYPE_DS4) {
@@ -185,15 +230,14 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 					u32 ds4_height = pix->height / 8;
 					writel(ds4_height << 16 | ds4_width, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
 					writel(ds4_width * 8, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm)); // 8 bytes per PD10 pixel
-					writel(0xa, vfe->base + VFE_BUS_WM_PACKER_CFG(wm)); // PACKER_FMT_PLAIN_64
 				}
 				if(type == CAMSS_EXTRA_OUTPUT_TYPE_DS16) {
 					u32 ds16_width = pix->width / 32;
 					u32 ds16_height = pix->height / 32;
 					writel(ds16_height << 16 | ds16_width, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
 					writel(ds16_width * 8, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm)); // 8 bytes per PD10 pixel
-					writel(0xa, vfe->base + VFE_BUS_WM_PACKER_CFG(wm)); // PACKER_FMT_PLAIN_64
 				}
+				writel(packer_format, vfe->base + VFE_BUS_WM_PACKER_CFG(wm));
 				writel(0x0, vfe->base + VFE_BUS_WM_IMAGE_CFG_1(wm)); // X_INIT = 0
 				writel(BIT(0) | (ext_cfg->extra_output_frameheader_en[type] ? BIT(2) : 0x0) | (mode << 16), vfe->base + VFE_BUS_WM_CFG(wm)); // EN | FRAMEHEADER_EN
 				line->required_comp_done_mask |= BIT(comp_group);
@@ -312,7 +356,7 @@ static void vfe_update_buffer_status(struct vfe_device *vfe, struct vfe_line *li
 			u32 extra_output_addr_idx = line->video_out.extra_output_addr_idx;
 
 			// Check in the buffer done status if the any of enabled output have arrived. If so update the comp_mask_done mask
-			for(int type=0; type<CAMSS_EXTRA_OUTPUT_TYPE_MAX; type++)
+			for(int type=0; type<CAMSS_EXTRA_OUTPUT_TYPE_END; type++)
 			{
 				u32 wm = 0;
 				u32 comp_group = 0;
@@ -546,7 +590,7 @@ static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *bu
 			}
 
 			// extra output buffers
-			for(int type=0; type<CAMSS_EXTRA_OUTPUT_TYPE_MAX; type++)
+			for(int type=0; type<CAMSS_EXTRA_OUTPUT_TYPE_END; type++)
 			{
 				u32 wm = 0;
 				u32 plane_offset = line->video_out.extra_output_plane_cfg.extra_output_offset[type];
