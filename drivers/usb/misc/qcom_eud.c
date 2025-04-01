@@ -13,10 +13,21 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/phy/phy.h>
+#include <linux/tty.h>
+#include <linux/tty_flip.h>
+#include <linux/serial_core.h>
+#include <linux/serial.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/sysfs.h>
 #include <linux/usb/role.h>
+
+#define EUD_REG_COM_TX_ID	0x0000
+#define EUD_REG_COM_TX_LEN	0x0004
+#define EUD_REG_COM_TX_DAT	0x0008
+#define EUD_REG_COM_RX_ID	0x000C
+#define EUD_REG_COM_RX_LEN	0x0010
+#define EUD_REG_COM_RX_DAT	0x0014
 
 #define EUD_REG_INT1_EN_MASK	0x0024
 #define EUD_REG_INT_STATUS_1	0x0044
@@ -28,14 +39,28 @@
 
 #define EUD_ENABLE		BIT(0)
 #define EUD_INT_PET_EUD		BIT(0)
+
+#define EUD_INT_RX		BIT(0)
+#define EUD_INT_TX		BIT(1)
 #define EUD_INT_VBUS		BIT(2)
 #define EUD_INT_SAFE_MODE	BIT(4)
-#define EUD_INT_ALL		(EUD_INT_VBUS | EUD_INT_SAFE_MODE)
+#define EUD_INT_ALL		(EUD_INT_RX | EUD_INT_TX | EUD_INT_VBUS | \
+				 EUD_INT_SAFE_MODE)
+
+#define EUD_NR			1
+#define EUD_CONSOLE		NULL
+#define UART_ID			0x90
+#define MAX_FIFO_SIZE		14
+
+#define PORT_EUD_UART		300
+
+static struct uart_port eud_port;
 
 struct eud_chip {
 	struct device			*dev;
 	struct usb_role_switch		*role_sw;
 	struct phy			*usb2_phy;
+	struct uart_port		*port;
 
 	/* mode lock */
 	struct mutex			mutex;
@@ -110,9 +135,11 @@ static int enable_eud(struct eud_chip *priv)
 		return ret;
 
 	writel(EUD_ENABLE, priv->base + EUD_REG_CSR_EUD_EN);
-	writel(EUD_INT_VBUS | EUD_INT_SAFE_MODE,
-			priv->base + EUD_REG_INT1_EN_MASK);
-	writel(1, priv->mode_mgr + EUD_REG_EUD_EN2);
+	writel(EUD_INT_VBUS | EUD_INT_SAFE_MODE, priv->base + EUD_REG_INT1_EN_MASK);
+
+	writel((__force u32)~EUD_INT_TX, priv->base + EUD_REG_INT_STATUS_1);
+	writel((__force u32)EUD_INT_RX, priv->base + EUD_REG_INT_STATUS_1);
+	//writel(1, priv->mode_mgr + EUD_REG_EUD_EN2);
 
 	return ret;
 }
@@ -203,6 +230,262 @@ static void pet_eud(struct eud_chip *chip)
 	writel(EUD_INT_PET_EUD, chip->base + EUD_REG_SW_ATTACH_DET);
 }
 
+static unsigned int eud_tx_empty(struct uart_port *port)
+{
+	u32 reg;
+
+	/* read status register and cross check for Tx interrupt */
+	reg = readl_relaxed(port->membase + EUD_REG_INT_STATUS_1);
+	if (reg & EUD_INT_TX)
+		return TIOCSER_TEMT;
+	else
+		return 0;
+}
+
+static void eud_set_mctrl(struct uart_port *port, unsigned int mctrl)
+{
+	/* Nothing to set */
+}
+
+static unsigned int eud_get_mctrl(struct uart_port *port)
+{
+	return 0;
+}
+
+static void eud_set_termios(struct uart_port *port, struct ktermios *new,
+				const struct ktermios *old)
+{
+	/* Nothing to do here, but to satisfy the serial core */
+}
+
+static void eud_stop_tx(struct uart_port *port)
+{
+	/* Disable Tx interrupt */
+	writel_relaxed((__force u32)~EUD_INT_TX, port->membase + EUD_REG_INT_STATUS_1);
+	/* Ensure Register Writes Complete */
+	wmb();
+}
+
+static void eud_start_tx(struct uart_port *port)
+{
+	/* Enable Tx interrupt */
+	writel_relaxed(EUD_INT_TX, port->membase + EUD_REG_INT_STATUS_1);
+	/* Ensure Register Writes Complete */
+	wmb();
+}
+
+static void eud_stop_rx(struct uart_port *port)
+{
+	/* Disable Rx interrupt */
+	writel_relaxed((__force u32)~EUD_INT_RX, port->membase + EUD_REG_INT_STATUS_1);
+	/* Ensure Register Writes Complete */
+	wmb();
+}
+
+static int eud_startup(struct uart_port *port)
+{
+	/* Enable Rx interrupt */
+	writel_relaxed(EUD_INT_RX, port->membase + EUD_REG_INT_STATUS_1);
+	/* Ensure Register Writes Complete */
+	wmb();
+
+	return 0;
+}
+
+static void eud_shutdown(struct uart_port *port)
+{
+	/* Disable both Tx & Rx interrupts */
+	writel_relaxed((__force u32)(~EUD_INT_TX | ~EUD_INT_RX),
+			port->membase + EUD_REG_INT_STATUS_1);
+	/* Ensure Register Writes Complete */
+	wmb();
+}
+
+static const char *eud_type(struct uart_port *port)
+{
+	return (port->type == PORT_EUD_UART) ? "EUD UART" : NULL;
+}
+
+static int eud_request_port(struct uart_port *port)
+{
+	/* Nothing to request */
+	return 0;
+}
+
+static void eud_release_port(struct uart_port *port)
+{
+	/* Nothing to release */
+}
+
+static void eud_config_port(struct uart_port *port, int flags)
+{
+	/* set port type, clear Tx and Rx interrupts */
+	port->type = PORT_EUD_UART;
+	writel_relaxed((__force u32)(~EUD_INT_TX | ~EUD_INT_RX),
+			port->membase + EUD_REG_INT_STATUS_1);
+	/* Ensure Register Writes Complete */
+	wmb();
+}
+
+static int eud_verify_port(struct uart_port *port,
+				       struct serial_struct *ser)
+{
+	if (ser->type != PORT_UNKNOWN && ser->type != PORT_EUD_UART)
+		return -EINVAL;
+	return 0;
+}
+
+static void eud_uart_rx(struct eud_chip *chip)
+{
+	struct uart_port *port = chip->port;
+	unsigned char ch, flag;
+	unsigned int len;
+	u32 reg;
+	int i;
+
+	reg = readl_relaxed(chip->base + EUD_REG_COM_RX_ID);
+	if (reg != UART_ID) {
+		dev_dbg(chip->dev, "Rx interrupt isn't for us\n");
+		return;
+	}
+	/* Read Rx Len & Data registers */
+	spin_lock(&port->lock);
+	len = readl_relaxed(chip->base + EUD_REG_COM_RX_LEN);
+	for (i = 0; i < len; i++) {
+		ch = readl_relaxed(chip->base + EUD_REG_COM_RX_DAT);
+		flag = TTY_NORMAL;
+		port->icount.rx++;
+
+		if (uart_handle_sysrq_char(port, ch))
+			continue;
+		uart_insert_char(port, 0, 0, ch, flag);
+	}
+
+	spin_unlock(&port->lock);
+	tty_flip_buffer_push(&port->state->port);
+}
+
+static void eud_uart_tx(struct eud_chip *chip)
+{
+	struct uart_port *port = chip->port;
+	struct tty_port *tport = &port->state->port;
+	unsigned int len;
+	u32 reg;
+
+	writel_relaxed(UART_ID, chip->base + EUD_REG_COM_TX_ID);
+	reg = readl_relaxed(chip->base + EUD_REG_COM_TX_ID);
+	if (reg != UART_ID) {
+		dev_dbg(chip->dev, "Tx interrupt isn't for us\n");
+		return;
+	}
+	/* Write to Tx Len & Data registers */
+	spin_lock(&port->lock);
+	len = kfifo_len(&tport->xmit_fifo);
+	if (len > 0) {
+		if (len > port->fifosize)
+			len = port->fifosize;
+		while (len--) {
+			u8 c;
+
+			if (!kfifo_get(&tport->xmit_fifo, &c))
+				break;
+			writel_relaxed(c, port->membase + EUD_REG_COM_TX_DAT);
+			port->icount.tx++;
+		}
+	}
+	spin_unlock(&port->lock);
+}
+
+static int eud_serial_console_setup(struct console *co, char *options)
+{
+	struct uart_port *port;
+	int baud = 115200;
+	int bits = 8;
+	int parity = 'n';
+	int flow = 'n';
+
+	if (co->index < 0 || co->index > EUD_NR)
+		return -EINVAL;
+
+	port = &eud_port;
+	if (!port->membase)
+		return -ENODEV;
+
+	if (options)
+		uart_parse_options(options, &baud, &parity, &bits, &flow);
+
+
+	return uart_set_options(port, co, baud, parity, bits, flow);
+}
+
+static void eud_serial_write_char(struct uart_port *port, unsigned char c)
+{
+	return;
+
+	while (readl_relaxed(port->membase + EUD_REG_INT_STATUS_1) & EUD_INT_TX)
+		cpu_relax();
+
+	writel_relaxed(c, port->membase + EUD_REG_COM_TX_DAT);
+	port->icount.tx++;
+}
+
+static void eud_serial_console_write(struct console *co, const char *s,
+				     unsigned int count)
+{
+	struct uart_port *port;
+
+	port = &eud_port;
+
+	uart_console_write(port, s, count, eud_serial_write_char);
+}
+
+/* serial functions supported */
+static const struct uart_ops eud_uart_ops = {
+	.tx_empty	= eud_tx_empty,
+	.set_mctrl	= eud_set_mctrl,
+	.get_mctrl	= eud_get_mctrl,
+	.set_termios	= eud_set_termios,
+	.stop_tx	= eud_stop_tx,
+	.start_tx	= eud_start_tx,
+	.stop_rx	= eud_stop_rx,
+	.startup	= eud_startup,
+	.shutdown	= eud_shutdown,
+	.type		= eud_type,
+	.release_port	= eud_release_port,
+	.request_port	= eud_request_port,
+	.config_port	= eud_config_port,
+	.verify_port	= eud_verify_port,
+};
+
+static struct uart_driver eud_uart_driver;
+
+static struct console eud_console = {
+	.name = "ttyEUD",
+	.write = eud_serial_console_write,
+	.device = uart_console_device,
+	.setup = eud_serial_console_setup,
+	.flags = CON_PRINTBUFFER,
+	.index = -1,
+	.data = &eud_uart_driver,
+};
+
+static struct uart_driver eud_uart_driver = {
+	.owner		= THIS_MODULE,
+	.driver_name	= "qcom-eud",
+	.dev_name	= "ttyEUD",
+	.nr		= EUD_NR,
+	.cons		= &eud_console,
+};
+
+static int __init eud_serial_console_init(void)
+{
+	dump_stack();
+	register_console(&eud_console);
+	return 0;
+}
+
+console_initcall(eud_serial_console_init);
+
 static irqreturn_t handle_eud_irq(int irq, void *data)
 {
 	struct eud_chip *chip = data;
@@ -210,6 +493,12 @@ static irqreturn_t handle_eud_irq(int irq, void *data)
 
 	reg = readl(chip->base + EUD_REG_INT_STATUS_1);
 	switch (reg & EUD_INT_ALL) {
+	case EUD_INT_RX:
+		eud_uart_rx(chip);
+		return IRQ_HANDLED;
+	case EUD_INT_TX:
+		eud_uart_tx(chip);
+		return IRQ_HANDLED;
 	case EUD_INT_VBUS:
 		usb_attach_detach(chip);
 		return IRQ_WAKE_THREAD;
@@ -244,6 +533,31 @@ static int eud_usb_role_switch_set(struct usb_role_switch *sw,
 	struct eud_chip *chip = usb_role_switch_get_drvdata(sw);
 
 	return eud_usb_role_set(chip, role);
+}
+
+static int eud_uart_init(struct eud_chip *chip)
+{
+	struct uart_port *port;
+	int ret;
+
+	port = chip->port;
+	port->line = 0;
+	port->type = PORT_EUD_UART;
+	port->dev = chip->dev;
+	port->fifosize = MAX_FIFO_SIZE;
+	port->iotype = SERIAL_IO_MEM;
+	port->flags = UPF_BOOT_AUTOCONF;
+	port->membase = chip->base;
+	port->irq = chip->irq;
+	port->ops = &eud_uart_ops;
+
+	ret = uart_add_one_port(&eud_uart_driver, port);
+	if (ret < 0) {
+		dev_err(chip->dev, "failed to add uart port!\n");
+		return ret;
+	}
+
+	return 0;
 }
 
 static int eud_probe(struct platform_device *pdev)
@@ -292,9 +606,17 @@ static int eud_probe(struct platform_device *pdev)
 
 	mutex_init(&chip->mutex);
 
+	chip->port = &eud_port;
+
+	ret = eud_uart_init(chip);
+	if (ret < 0)
+		return dev_err_probe(chip->dev, ret, "failed to init uart\n");
+
 	enable_irq_wake(chip->irq);
 
 	platform_set_drvdata(pdev, chip);
+
+	enable_eud(chip);
 
 	return 0;
 }
@@ -316,6 +638,7 @@ static void eud_remove(struct platform_device *pdev)
 static const struct of_device_id eud_dt_match[] = {
 	{ .compatible = "qcom,eud" },
 	{ .compatible = "qcom,sm8450-eud" },
+	{ .compatible = "qcom,sm8650-eud" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, eud_dt_match);
@@ -329,7 +652,30 @@ static struct platform_driver eud_driver = {
 		.of_match_table = eud_dt_match,
 	},
 };
-module_platform_driver(eud_driver);
+
+static int __init eud_init(void)
+{
+	int ret;
+
+	ret = uart_register_driver(&eud_uart_driver);
+	if (ret < 0)
+		return ret;
+
+	ret = platform_driver_register(&eud_driver);
+	if (ret < 0)
+		uart_unregister_driver(&eud_uart_driver);
+
+	return ret;
+}
+
+static void __exit eud_exit(void)
+{
+	platform_driver_unregister(&eud_driver);
+	uart_unregister_driver(&eud_uart_driver);
+}
+
+module_init(eud_init);
+module_exit(eud_exit);
 
 MODULE_DESCRIPTION("QTI EUD driver");
 MODULE_LICENSE("GPL v2");
