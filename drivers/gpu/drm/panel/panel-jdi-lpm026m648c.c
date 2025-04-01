@@ -77,6 +77,13 @@ static const char * const lcd_bias_names[] = {
 
 #define PANEL_MFG_INFO_NUM_BYTES 40
 
+typedef enum
+{
+	MODE_120 = 0,
+	MODE_90,
+	MODE_80,
+} lpm026m648c_modes_t;
+
 struct lpm026m648c_ctx {
 	struct device *dev;
 	struct drm_panel panel;
@@ -105,6 +112,8 @@ struct lpm026m648c_ctx {
 	int backlight_ramp_percentage;
 	int backlight_ramp_step_size;
 	int backlight_ramp_step_time_msec;
+
+	lpm026m648c_modes_t current_mode;
 };
 
 static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
@@ -309,6 +318,8 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 
 	gpo1_tew1 = brightness > BRIGHTNESS_MAX_120 ?
 		    BRIGHTNESS_MAX_120 : brightness;
+	// Scale brightness based on current mode
+	gpo1_tew1 = gpo1_tew1 * modes[ctx->current_mode].vtotal / modes[MODE_120].vtotal;
 
 	ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
 	if (ctx->is_dual_panel)
@@ -605,8 +616,34 @@ static int lpm026m648c_mode_set(struct drm_panel *panel,
 			       const struct drm_display_mode *mode,
 			       const struct drm_display_mode *adjusted_mode)
 {
-    printk("lpm026m648c_mode_set\n");
-    return 0;
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+
+	lpm026m648c_modes_t new_mode;
+	// use the vtotal to determine the mode
+	if (mode->vtotal == modes[MODE_120].vtotal){
+			new_mode = MODE_120;
+	}else if (mode->vtotal == modes[MODE_90].vtotal){
+			new_mode = MODE_90;
+	}else if (mode->vtotal == modes[MODE_80].vtotal){
+			new_mode = MODE_80;
+	}else{
+			DRM_DEV_ERROR(ctx->dev, "Invalid vtotal in mode set %d", mode->vtotal);
+			return -EINVAL;
+	}
+
+	// check if we need to update settings
+	if (ctx->current_mode != new_mode)
+	{
+		ctx->current_mode = new_mode;
+		// only reset the panel parematers if we already initialized the panels
+		if (ctx->enabled)
+		{
+			// update brightness
+			set_brightness(ctx, ctx->backlight->props.brightness, ctx->backlight->props.pulse_offset_rows);
+		}
+	}
+
+	return 0;
 }
 
 static int panel_info_show(struct seq_file *s, void *data)
