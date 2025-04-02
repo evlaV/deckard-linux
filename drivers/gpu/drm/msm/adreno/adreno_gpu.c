@@ -138,15 +138,15 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 
 		newname = kasprintf(GFP_KERNEL, "qcom/%s", fwname);
 
-		ret = -EOPNOTSUPP; //qcom_mdt_load(dev, fw, newname, pasid,
-				//mem_region, mem_phys, mem_size, NULL);
+		ret = qcom_mdt_load(dev, fw, newname, pasid,
+				    mem_region, mem_phys, mem_size, NULL);
 		kfree(newname);
 	}
 	if (ret)
 		goto out;
 
 	/* Send the image to the secure world */
-	ret = -EOPNOTSUPP; //qcom_scm_pas_auth_and_reset(pasid);
+	ret = qcom_scm_pas_auth_and_reset(pasid);
 
 	/*
 	 * If the scm call returns -EOPNOTSUPP we assume that this target
@@ -176,7 +176,7 @@ int adreno_zap_shader_load(struct msm_gpu *gpu, u32 pasid)
 		return -ENODEV;
 
 	/* We need SCM to be able to load the firmware */
-	if (1) {
+	if (!qcom_scm_is_available()) {
 		DRM_DEV_INFO(&pdev->dev, "SCM is not available\n");
 		return -ENODEV;
 	}
