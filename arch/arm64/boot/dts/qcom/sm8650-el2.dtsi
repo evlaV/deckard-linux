@@ -21,7 +21,7 @@
 		/delete-node/ domain-idle-states;
 	};
 
-	/delete-node/ firmware;
+	// /delete-node/ firmware;
 	/delete-node/ reserved-memory;
 
 	reserved-memory {
@@ -43,7 +43,8 @@
 
 		/* merged aop_config, tme_crash_dump, tme_log */
 		aop_config_merged_mem: aop-config-merged-region@81c80000 {
-			reg = <0x0 0x81c80000 0x0 0x64000>;
+			//reg = <0x0 0x81c80000 0x0 0x64000>;
+			reg = <0x0 0x81c80000 0x0 0x75000>;
 			no-map;
 		};
 
@@ -61,6 +62,11 @@
 
 		video_mem: video@9bb00000 {
 			reg = <0 0x9bb00000 0 0x800000>;
+			no-map;
+		};
+
+		tz_stat_mem: tz-stat@82700000 {
+			reg = <0 0x82700000 0 0x100000>;
 			no-map;
 		};
 	};
