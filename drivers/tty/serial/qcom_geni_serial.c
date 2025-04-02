@@ -1103,8 +1103,6 @@ static void qcom_geni_serial_flush_buffer(struct uart_port *uport)
 	qcom_geni_serial_cancel_tx_cmd(uport);
 }
 
-void geni_load_firmware(struct geni_se *se, enum geni_se_protocol_type proto);
-
 static int qcom_geni_serial_port_setup(struct uart_port *uport)
 {
 	struct qcom_geni_serial_port *port = to_dev_port(uport);
@@ -1114,10 +1112,6 @@ static int qcom_geni_serial_port_setup(struct uart_port *uport)
 	int ret;
 
 	proto = geni_se_read_proto(&port->se);
-	if (proto == 0xff) {
-		geni_load_firmware(&port->se, GENI_SE_UART);
-		proto = geni_se_read_proto(&port->se);
-	}
 	if (proto != GENI_SE_UART) {
 		dev_err(uport->dev, "Invalid FW loaded, proto: %d\n", proto);
 		return -ENXIO;
