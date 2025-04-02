@@ -2093,7 +2093,7 @@ static int a7xx_cx_mem_init(struct a6xx_gpu *a6xx_gpu)
 		 * Print a warning because if you mess this up you're about to
 		 * crash horribly.
 		 */
-		if (1) {
+		if (!IS_ENABLED(CONFIG_QCOM_SCM) || !qcom_scm_is_available()) {
 			dev_warn_once(gpu->dev->dev,
 				"SCM is not available, poking fuse register\n");
 			a6xx_llc_write(a6xx_gpu, REG_A7XX_CX_MISC_SW_FUSE_VALUE,
@@ -2104,8 +2104,8 @@ static int a7xx_cx_mem_init(struct a6xx_gpu *a6xx_gpu)
 			return 0;
 		}
 
-		ret = -EINVAL; //qcom_scm_gpu_init_regs(QCOM_SCM_GPU_ALWAYS_EN_REQ |
-				//	     QCOM_SCM_GPU_TSENSE_EN_REQ);
+		ret = qcom_scm_gpu_init_regs(QCOM_SCM_GPU_ALWAYS_EN_REQ |
+					     QCOM_SCM_GPU_TSENSE_EN_REQ);
 		if (ret)
 			return ret;
 
