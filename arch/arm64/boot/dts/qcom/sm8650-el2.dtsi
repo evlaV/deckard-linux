@@ -298,6 +298,18 @@
 	/delete-node/ zap-shader;
 };
 
+&qupv3_id_1 {
+	firmware-name = "qcom/sm8650/qupv3fw.elf";
+};
+
+&qupv3_id_0 {
+	firmware-name = "qcom/sm8650/qupv3fw.elf";
+};
+
+&i2c_master_hub_0 {
+	firmware-name = "qcom/sm8650/qupv3fw.elf";
+};
+
 /* Disable GPI DMA until we can load the GPI firmware */
 
 &gpi_dma1 {
