@@ -1105,6 +1105,13 @@ static int qcom_pm8550b_charger_probe(struct platform_device *pdev)
 	pm8550b_charger_set_termination_current(chg, 200000);
 	termination_enable_set(chg, true);
 
+	/* Setup ISNS for QPH2 Charging with System Load */
+	regmap_update_bits(chg->regmap, chg->base[BASE_CHG2] + CHGR2_ICHG_SNS_CTRL, CHGR2_ICHG_SNS_CTRL_MASK,
+		CHGR2_ICHG_SNS_CTRL_RSNS_SEL_1MOHM | 
+		CHGR2_ICHG_SNS_CTRL_USE_RSNS | 
+		CHGR2_ICHG_SNS_CTRL_EN_QBAT1_ISNS_CHG | 
+		CHGR2_ICHG_SNS_CTRL_EN_QBAT1_ISNS_DISCHG);
+
 	/* disable watchdog */
 	regmap_write(chg->regmap, chg->base[BASE_CHG1] + CHGR_WD_CFG_ADDR, 0x00);
 
