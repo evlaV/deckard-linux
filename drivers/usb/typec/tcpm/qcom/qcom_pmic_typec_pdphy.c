@@ -413,7 +413,7 @@ int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int
 	val_raw = (val_u - MIN_USBIN_CURRENT_MA) / USBIN_CURRENT_STEP_MA;
 
 
-	regmap_write(pmic_typec_pdphy->regmap, USBIN_AICL_CFG_REG, USBIN_AICL_ENABLED | USBIN_AICL_HDC_EN);
+	regmap_write(pmic_typec_pdphy->regmap, USBIN_AICL_CFG_REG, USBIN_AICL_START_AT_MAX | USBIN_AICL_ENABLED | USBIN_AICL_HDC_EN);
 	regmap_write(pmic_typec_pdphy->regmap, USBIN_CURRENT_LIMIT_OVERRIDE_REG, ICL_OVERRIDE_ENABLED_AFTER_APSD);
 	return regmap_write(pmic_typec_pdphy->regmap, USBIN_CURRENT_LIMIT_CFG_REG, val_raw);
 }
