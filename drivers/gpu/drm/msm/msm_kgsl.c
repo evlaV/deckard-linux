@@ -657,7 +657,7 @@ case IOCTL_KGSL_GPUMEM_ALLOC_ID: {
 		return -EINVAL;
 	}
 
-	msm_gem_get_and_pin_iova(obj, ctx->aspace, (uint64_t *)&alloc.gpuaddr);
+	msm_gem_get_and_pin_iova(obj, ctx->vm, (uint64_t *)&alloc.gpuaddr);
 
 	drm_gem_object_put(obj);
 
@@ -695,7 +695,7 @@ case IOCTL_KGSL_GPUMEM_FREE_ID: {
 		return -EINVAL;
 
 	if (!msm_gem_is_vbo(obj))
-		msm_gem_unpin_iova(obj, ctx->aspace);
+		msm_gem_unpin_iova(obj, ctx->vm);
 
 	drm_gem_object_put(obj);
 
