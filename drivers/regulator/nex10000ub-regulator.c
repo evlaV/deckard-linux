@@ -27,15 +27,14 @@
 #define NEX10000UB_ENABLE_TIME_USEC		2000
 
 enum nex10000ub_regulator_id {
-	NEX10000UB_LDO_POS_LEFT,
-	NEX10000UB_LDO_NEG_LEFT,
-	NEX10000UB_LDO_POS_RIGHT,
-	NEX10000UB_LDO_NEG_RIGHT,
+	NEX10000UB_LDO_POS,
+	NEX10000UB_LDO_NEG,
 	NEX10000UB_NUM_REGULATORS,
 };
 
 struct nex10000ub_data {
-	struct i2c_adapter *adapter[2];
+	struct i2c_client *client;
+	struct regmap *regmap;
 	struct device *dev;
 
 	unsigned int pos_enabled;
@@ -51,27 +50,9 @@ struct nex10000ub_data {
 	struct regulator_dev *rdev[NEX10000UB_NUM_REGULATORS];
 };
 
-static int nex10000ub_i2c_write(struct nex10000ub_data *nex, u8 id, u8 reg, u8 val)
+static int nex10000ub_i2c_write(struct nex10000ub_data *nex, u8 reg, unsigned int val)
 {
-	struct i2c_msg xfer;
-	u8 buf[2] = { reg, val };
-	int ret;
-
-	xfer.addr = NEX10000UB_I2C_ADDR;
-	xfer.flags = 0;
-	xfer.len = 2;
-	xfer.buf = buf;
-
-	if ((id == NEX10000UB_LDO_POS_LEFT) || (id == NEX10000UB_LDO_NEG_LEFT)) {
-		ret = i2c_transfer(nex->adapter[0], &xfer, 1);
-	} else {
-		ret = i2c_transfer(nex->adapter[1], &xfer, 1);
-	}
-	if (ret != 1) {
-		return -EIO;
-	} else {
-		return 0;
-	}
+	return regmap_write(nex->regmap, reg, val);
 }
 
 static int nex10000ub_regulator_enable_time(struct regulator_dev *rdev) {
@@ -83,29 +64,27 @@ static int nex10000ub_regulator_enable(struct regulator_dev *rdev) {
 	struct nex10000ub_data *nex10000ub = rdev_get_drvdata(rdev);
 	enum nex10000ub_regulator_id id = rdev_get_id(rdev);
 	switch(id) {
-		case NEX10000UB_LDO_POS_LEFT:
-		case NEX10000UB_LDO_POS_RIGHT:
+		case NEX10000UB_LDO_POS:
 			gpiod_set_value(nex10000ub->enp_gpio, 1);
 			msleep(1);
 			for(i=0;i<10;i++) {
-				ret = nex10000ub_i2c_write(nex10000ub, id, NEX10000UB_REG_VOUT_POS, nex10000ub->voltage_sel[id]);
+				ret = nex10000ub_i2c_write(nex10000ub, NEX10000UB_REG_VOUT_POS, nex10000ub->voltage_sel[id]);
 				if(  ret == 0 )
 					break;
-			}			
+			}
 			if(  ret  ) {
 				dev_err(nex10000ub->dev, "Failed to set VPOS ( %d ) during enable\n", id);
 			}
 			nex10000ub->pos_enabled = 1;
 			return nex10000ub->pos_enabled;
-		case NEX10000UB_LDO_NEG_LEFT:
-		case NEX10000UB_LDO_NEG_RIGHT:
+		case NEX10000UB_LDO_NEG:
 			gpiod_set_value(nex10000ub->enn_gpio, 1);
 			msleep(1);
 			for(i=0;i<10;i++) {
-				ret = nex10000ub_i2c_write(nex10000ub, id, NEX10000UB_REG_VOUT_NEG, nex10000ub->voltage_sel[id]);
+				ret = nex10000ub_i2c_write(nex10000ub, NEX10000UB_REG_VOUT_NEG, nex10000ub->voltage_sel[id]);
 				if(  ret == 0 )
 					break;
-			}	
+			}
 			if(  ret  ) {
 				dev_err(nex10000ub->dev, "Failed to set VNEG ( %d )during enable\n", id);
 			}
@@ -122,14 +101,12 @@ static int nex10000ub_regulator_disable(struct regulator_dev *rdev) {
 	struct nex10000ub_data *nex10000ub = rdev_get_drvdata(rdev);
 	enum nex10000ub_regulator_id id = rdev_get_id(rdev);
 	switch(id) {
-		case NEX10000UB_LDO_POS_LEFT:
-		case NEX10000UB_LDO_POS_RIGHT:
+		case NEX10000UB_LDO_POS:
 			gpiod_set_value(nex10000ub->enp_gpio, 0);
 			nex10000ub->pos_enabled = 0;
 			return nex10000ub->pos_enabled;
 			break;
-		case NEX10000UB_LDO_NEG_LEFT:
-		case NEX10000UB_LDO_NEG_RIGHT:
+		case NEX10000UB_LDO_NEG:
 			gpiod_set_value(nex10000ub->enn_gpio, 0);
 			nex10000ub->neg_enabled = 0;
 			return nex10000ub->neg_enabled;
@@ -144,12 +121,10 @@ static int nex10000ub_regulator_is_enabled(struct regulator_dev *rdev) {
 	struct nex10000ub_data *nex10000ub = rdev_get_drvdata(rdev);
 	enum nex10000ub_regulator_id id = rdev_get_id(rdev);
 	switch(id) {
-		case NEX10000UB_LDO_POS_LEFT:
-		case NEX10000UB_LDO_POS_RIGHT:
+		case NEX10000UB_LDO_POS:
 			return nex10000ub->pos_enabled;
 			break;
-		case NEX10000UB_LDO_NEG_LEFT:
-		case NEX10000UB_LDO_NEG_RIGHT:
+		case NEX10000UB_LDO_NEG:
 			return nex10000ub->neg_enabled;
 			break;
 		default:
@@ -192,9 +167,9 @@ static const struct regulator_ops nex10000ub_regulator_voltage_table_ops = {
 
 static const struct regulator_desc nex10000ub_regulator_desc[] = {
 	{
-		.name           = "ldo_vposr",
-		.of_match       = "vpos_r",
-		.id             = NEX10000UB_LDO_POS_RIGHT,
+		.name           = "ldo_vpos",
+		.of_match       = "vpos",
+		.id             = NEX10000UB_LDO_POS,
 		.ops            = &nex10000ub_regulator_voltage_table_ops,
 		.n_voltages     = NEX10000UB_MAX_VSEL + 1,
 		.min_uV         = NEX10000UB_VOLTAGE_MIN,
@@ -205,9 +180,9 @@ static const struct regulator_desc nex10000ub_regulator_desc[] = {
 		.vsel_mask      = NEX10000UB_VOUT_MASK,
 	},
 	{
-		.name           = "ldo_vnegr",
-		.of_match       = "vneg_r",
-		.id             = NEX10000UB_LDO_NEG_RIGHT,
+		.name           = "ldo_vneg",
+		.of_match       = "vneg",
+		.id             = NEX10000UB_LDO_NEG,
 		.ops            = &nex10000ub_regulator_voltage_table_ops,
 		.n_voltages     = NEX10000UB_MAX_VSEL + 1,
 		.min_uV         = NEX10000UB_VOLTAGE_MIN,
@@ -217,32 +192,49 @@ static const struct regulator_desc nex10000ub_regulator_desc[] = {
 		.vsel_reg       = NEX10000UB_REG_VOUT_NEG,
 		.vsel_mask      = NEX10000UB_VOUT_MASK,
 	},
-	{
-		.name           = "ldo_vposl",
-		.of_match       = "vpos_l",
-		.id             = NEX10000UB_LDO_POS_LEFT,
-		.ops            = &nex10000ub_regulator_voltage_table_ops,
-		.n_voltages     = NEX10000UB_MAX_VSEL + 1,
-		.min_uV         = NEX10000UB_VOLTAGE_MIN,
-		.uV_step        = NEX10000UB_STEP_100mV,
-		.type           = REGULATOR_VOLTAGE,
-		.owner          = THIS_MODULE,
-		.vsel_reg       = NEX10000UB_REG_VOUT_NEG,
-		.vsel_mask      = NEX10000UB_VOUT_MASK,
-	},
-	{
-		.name           = "ldo_vnegl",
-		.of_match       = "vneg_l",
-		.id             = NEX10000UB_LDO_NEG_LEFT,
-		.ops            = &nex10000ub_regulator_voltage_table_ops,
-		.n_voltages     = NEX10000UB_MAX_VSEL + 1,
-		.min_uV         = NEX10000UB_VOLTAGE_MIN,
-		.uV_step        = NEX10000UB_STEP_100mV,
-		.type           = REGULATOR_VOLTAGE,
-		.owner          = THIS_MODULE,
-		.vsel_reg       = NEX10000UB_REG_VOUT_NEG,
-		.vsel_mask      = NEX10000UB_VOUT_MASK,
-	},
+};
+
+static bool nex10000ub_writeable_reg(struct device *dev, unsigned int reg)
+{
+	switch (reg) {
+	case NEX10000UB_REG_VOUT_POS:
+	case NEX10000UB_REG_VOUT_NEG:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool nex10000ub_readable_reg(struct device *dev, unsigned int reg)
+{
+	switch (reg) {
+	case NEX10000UB_REG_VOUT_POS:
+	case NEX10000UB_REG_VOUT_NEG:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool nex10000ub_volatile_reg(struct device *dev, unsigned int reg)
+{
+	switch (reg) {
+	case NEX10000UB_REG_VOUT_POS:
+	case NEX10000UB_REG_VOUT_NEG:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static const struct regmap_config nex10000ub_regmap_config = {
+	.reg_bits = 8,
+	.val_bits = 8,
+	.writeable_reg = nex10000ub_writeable_reg,
+	.readable_reg = nex10000ub_readable_reg,
+	.volatile_reg = nex10000ub_volatile_reg,
+	.val_format_endian = REGMAP_ENDIAN_BIG,
+	.cache_type = REGCACHE_NONE,
 };
 
 static struct nex10000ub_data *nex10000ub_parse_regulator_dt(
@@ -283,18 +275,16 @@ static struct nex10000ub_data *nex10000ub_parse_regulator_dt(
 	return nex10000ub;
 }
 
-static int nex10000ub_probe(struct platform_device *pdev)
+static int nex10000ub_probe(struct i2c_client *client)
 {
-	struct device *dev = &pdev->dev;
+	struct device *dev = &client->dev;
 	struct nex10000ub_data *nex10000ub;
 	struct regulator_config config = { };
-	unsigned int id, i;
+	unsigned int id;
 
 	static struct of_regulator_match nex10000ub_matches[] = {
-		{ .name = "vposr",     .driver_data = (void *)NEX10000UB_LDO_POS_RIGHT},
-		{ .name = "vnegr",     .driver_data = (void *)NEX10000UB_LDO_NEG_RIGHT},
-		{ .name = "vposl",     .driver_data = (void *)NEX10000UB_LDO_POS_LEFT},
-		{ .name = "vnegl",     .driver_data = (void *)NEX10000UB_LDO_NEG_LEFT},
+		{ .name = "vpos",     .driver_data = (void *)NEX10000UB_LDO_POS},
+		{ .name = "vneg",     .driver_data = (void *)NEX10000UB_LDO_NEG},
 	};
 
 	nex10000ub = nex10000ub_parse_regulator_dt(dev, nex10000ub_matches, ARRAY_SIZE(nex10000ub_matches));
@@ -302,15 +292,10 @@ static int nex10000ub_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	for (i = 0; i < 2; i++) {
-		struct device_node *node = of_parse_phandle(dev->of_node, "i2c-adapter", i);
-		if (!node)
-				return -ENOENT;
-
-		nex10000ub->adapter[i] = i2c_get_adapter_by_fwnode(of_fwnode_handle(node));
-		of_node_put(node);
-		if (!nex10000ub->adapter[i])
-				return -ENOENT;
+	nex10000ub->regmap = devm_regmap_init_i2c(client, &nex10000ub_regmap_config);
+	if (IS_ERR(nex10000ub->regmap)) {
+		dev_err(dev, "Failed to allocate register map: %ld\n", PTR_ERR(nex10000ub->regmap));
+		return PTR_ERR(nex10000ub->regmap);
 	}
 
 	nex10000ub->enp_gpio = devm_gpiod_get_optional(dev, "enp", GPIOD_OUT_LOW);
@@ -338,7 +323,10 @@ static int nex10000ub_probe(struct platform_device *pdev)
 			return PTR_ERR(nex10000ub->rdev[id]);
 		}
 	}
-	platform_set_drvdata(pdev, nex10000ub);
+
+	nex10000ub->client = client;
+	nex10000ub->dev = dev;
+	i2c_set_clientdata(client, nex10000ub);
 
 	return 0;
 }
@@ -349,17 +337,23 @@ static const struct of_device_id nex10000ub_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, nex10000ub_of_match);
 
-static struct platform_driver nex10000ub_driver = {
-	.probe = nex10000ub_probe,
+static const struct i2c_device_id nex10000ub_i2c_ids[] = {
+	{ "nex10000ub", 0 },
+	{ }
+};
+MODULE_DEVICE_TABLE(i2c, nex10000ub_i2c_ids);
+
+static struct i2c_driver nex10000ub_driver = {
+	.probe		= nex10000ub_probe,
 	.driver		= {
-		.name	= "nex10000ub",
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
+		.name		= "nex10000ub",
+		.probe_type	= PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_match_ptr(nex10000ub_of_match),
 	},
 };
-module_platform_driver(nex10000ub_driver);
+module_i2c_driver(nex10000ub_driver);
 
 /* Module information */
-MODULE_DESCRIPTION("NEXPERIA nex10000ub dual dual output LCD bias power supply driver");
+MODULE_DESCRIPTION("NEXPERIA nex10000ub dual output LCD bias power supply driver");
 MODULE_AUTHOR("Valve");
 MODULE_LICENSE("GPL v2");
