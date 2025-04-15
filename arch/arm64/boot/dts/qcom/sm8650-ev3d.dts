@@ -438,7 +438,7 @@
 
 	// lcd bias power supplies
 	LCD_BIAS: lcd_bias {
-		compatible = "nexperia,nex10000ub";
+		compatible = "nexperia,dual-nex10000ub";
 		status = "okay";
 		// left i2c, right i2c
 		i2c-adapter = <&i2c5 &i2c4>;
