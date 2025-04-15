@@ -1005,6 +1005,13 @@ config REGULATOR_NEX10000UB
 	  This driver controls a Nexperia nex10000ub dual output
 	  regulator via I2C bus.
 
+config REGULATOR_NEX10000UB_DUAL
+	tristate "Nexperia nex10000ub dual dual output LCD bias power regulator"
+	depends on I2C
+	help
+	  This driver controls two Nexperia nex10000ub dual output that share enable pins
+	  regulator via I2C bus.
+
 config REGULATOR_PALMAS
 	tristate "TI Palmas PMIC Regulators"
 	depends on MFD_PALMAS
