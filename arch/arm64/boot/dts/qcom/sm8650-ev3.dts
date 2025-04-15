@@ -428,46 +428,10 @@
 		};
 	};
 
-
-
 	BACKLIGHT_PREBOOST: backlight_preboost {
 		compatible = "ti,tps61377";
 		en-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
 		pgood-gpio = <&tlmm 69 GPIO_ACTIVE_HIGH>;
-	};
-
-	// lcd bias power supplies
-	LCD_BIAS: lcd_bias {
-		compatible = "nexperia,nex10000ub";
-		status = "okay";
-		// left i2c, right i2c
-		i2c-adapter = <&i2c5 &i2c4>;
-
-		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
-		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
-
-		regulators {
-			vpos_r: vposr{
-				regulator-name = "lcdr_vpos";
-				regulator-min-microvolt = <5800000>;
-				regulator-max-microvolt = <5800000>;
-			};
-			vneg_r: vnegr{
-				regulator-name = "lcdr_vneg";
-				regulator-min-microvolt = <5800000>;
-				regulator-max-microvolt = <5800000>;
-			};
-			vpos_l: vposl{
-				regulator-name = "lcdl_vpos";
-				regulator-min-microvolt = <5800000>;
-				regulator-max-microvolt = <5800000>;
-			};
-			vneg_l: vnegl{
-				regulator-name = "lcdl_vneg";
-				regulator-min-microvolt = <5800000>;
-				regulator-max-microvolt = <5800000>;
-			};
-		};
 	};
 
 	FPGA_clk: FPGA_clk {
@@ -1336,7 +1300,7 @@
 
 	panel: panel@0 {
 		reg = <0>;
-		compatible = "ev3,sharp-boe";
+		compatible = "deckard-panel";
 		dual-panel;
 
 		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
@@ -1684,7 +1648,7 @@
 		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
 		// bp pin removed in ev1
 
-		status = "okay";
+		status = "disable";
 	};
 
 	/* 3D Hall Sensor I2C */
@@ -1723,6 +1687,28 @@
 
 		status = "okay";
 	};
+
+	nex10000ub@3e{
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "nexperia,nex10000ub";
+		reg = <0x3e>;
+		enp-gpios = <&pm8550_gpios 8 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+		regulators {
+			vpos_r: vpos{
+				regulator-name = "lcdr_vpos";
+				regulator-min-microvolt = <5800000>;
+				regulator-max-microvolt = <5800000>;
+			};
+			vneg_r: vneg{
+				regulator-name = "lcdr_vneg";
+				regulator-min-microvolt = <5800000>;
+				regulator-max-microvolt = <5800000>;
+			};
+		};
+	};
 };
 
 &i2c5 {
@@ -1737,6 +1723,28 @@
 		regulator {
 			backlight_left: backlight{
 				regulator-name = "backlight_left";
+			};
+		};
+	};
+
+	nex10000ub@3e{
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "nexperia,nex10000ub";
+		reg = <0x3e>;
+		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+		regulators {
+			vpos_l: vpos{
+				regulator-name = "lcdl_vpos";
+				regulator-min-microvolt = <5800000>;
+				regulator-max-microvolt = <5800000>;
+			};
+			vneg_l: vneg{
+				regulator-name = "lcdl_vneg";
+				regulator-min-microvolt = <5800000>;
+				regulator-max-microvolt = <5800000>;
 			};
 		};
 	};
