@@ -39,14 +39,14 @@
 #define LPM02648C_TE_GPIO_CTL			0xbe
 #define LPM02648C_PPS_SET			0xe6
 #define LPM02648C_MFG_INFO			0xbf
-#define 	VENDOR_OFFSET			28
+#define 	VENDOR_OFFSET			27
 
 // Brightness settings
 #define BRIGHTNESS_DEFAULT 256
 #define BRIGHTNESS_MAX_120 380
 
 #define VFP		700
-#define VID_VS_DELAY	1536
+#define VID_VS_DELAY	1112
 #define VBP		800
 #define GPO1_TES1	233
 #define GPO1_TEW1	17
@@ -80,6 +80,13 @@ static const char * const lcd_bias_names[] = {
 
 #define PANEL_MFG_INFO_NUM_BYTES 40
 
+typedef enum
+{
+	MODE_120 = 0,
+	MODE_90,
+	MODE_80,
+} lpm026m648c_modes_t;
+
 struct lpm026m648c_ctx {
 	struct device *dev;
 	struct drm_panel panel;
@@ -103,6 +110,8 @@ struct lpm026m648c_ctx {
 	bool is_dual_panel;
 	bool prepared;
 	bool enabled;
+
+	lpm026m648c_modes_t current_mode;
 };
 
 static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
@@ -110,18 +119,47 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 	return container_of(panel, struct lpm026m648c_ctx, panel);
 }
 
-static const struct drm_display_mode modes[1] = {
+static const struct drm_display_mode modes[3] = {
 	{
 		.name = "  2160x2160_120",
-		.clock = (2160 + 40 + 90 + 10) * (2160 + 290 + 10 + 10) * 120 / 1000,
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 404 + 1 + 20) * 120 / 1000,
 		.hdisplay = 2160,
-		.hsync_start = (2160 + 40),
-		.hsync_end = (2160 + 40 + 90),
-		.htotal = (2160 + 40 + 90 + 10),
+		.hsync_start = (2160 + 24),
+		.hsync_end = (2160 + 24 + 20),
+		.htotal = (2160 + 24 + 20 + 20),
 		.vdisplay = 2160,
-		.vsync_start = 2160 + 290,
-		.vsync_end = 2160 + 290 + 10,
-		.vtotal = 2160 + 290 + 10 + 10,
+		.vsync_start = 2160 + 404,
+		.vsync_end = 2160 + 404 + 1,
+		.vtotal = 2160 + 404 + 1 + 20,
+		.width_mm = 50,
+		.height_mm = 50,
+
+	},
+	{
+		.name = "  2160x2160_90",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 1265 + 1 + 20) * 90 / 1000,
+		.hdisplay = 2160,
+		.hsync_start = (2160 + 24),
+		.hsync_end = (2160 + 24 + 20),
+		.htotal = (2160 + 24 + 20 + 20),
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 1265,
+		.vsync_end = 2160 + 1265 + 1,
+		.vtotal = 2160 + 1265 + 1 + 20,
+		.width_mm = 50,
+		.height_mm = 50,
+	},
+	{
+		.name = "  2160x2160_80",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 1697 + 1 + 20) * 80 / 1000,
+		.hdisplay = 2160,
+		.hsync_start = (2160 + 24),
+		.hsync_end = (2160 + 24 + 20),
+		.htotal = (2160 + 24 + 20 + 20),
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 1697,
+		.vsync_end = 2160 + 1697 + 1,
+		.vtotal = 2160 + 1697 + 1 + 20,
 		.width_mm = 50,
 		.height_mm = 50,
 	},
@@ -360,27 +398,61 @@ static int get_panel_info(struct drm_panel *panel)
 		offset =  id*PANEL_MFG_INFO_NUM_BYTES;
 		ret = mipi_dsi_generic_read(ctx->dsi[id], panel_info_regs, 1,
 				&info[offset], PANEL_MFG_INFO_NUM_BYTES);
-		if (ret < 0)
+		if (ret < 0) {
 			DRM_DEV_ERROR(ctx->dev, "failed to read panel%d info\n", id);
+        }
 	}
+    return 0;
 }
 
 static void dsi_write_panel_on(struct drm_panel *panel)
 {
 	int ret;
+	char panel_vendor, panel_left, panel_right;
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 	// read panel info to determine sharp vs boe
 	ret = get_panel_info(panel);
-	if ( ret )
-		return ret; 
-	if ( ctx->panel_mfg_info[VENDOR_OFFSET] == 'S' ) {
+	if ( ret ) {
+		DRM_DEV_ERROR(ctx->dev, "Could not get panel info for init sequence, defaulting to Sharp\n" );
+		panel_vendor = 'S';
+	} else {
+		// need to support old format JDI displays
+		if ( ctx->panel_mfg_info[VENDOR_OFFSET] == 1 ) {
+			panel_left = ctx->panel_mfg_info[VENDOR_OFFSET + 1];
+		} else {
+			panel_left = ctx->panel_mfg_info[VENDOR_OFFSET];
+		}
+		if ( ctx->panel_mfg_info[VENDOR_OFFSET + PANEL_MFG_INFO_NUM_BYTES] == 1 ) {
+			panel_right = ctx->panel_mfg_info[VENDOR_OFFSET + PANEL_MFG_INFO_NUM_BYTES + 1];
+		} else {
+			panel_right = ctx->panel_mfg_info[VENDOR_OFFSET + PANEL_MFG_INFO_NUM_BYTES];
+		}
+		if (panel_left && panel_right && panel_left != panel_right) {
+			DRM_DEV_ERROR(ctx->dev, "Displays don't match ( %c != %c ), using %c\n", panel_left, panel_right, panel_left );
+			panel_vendor = panel_left;
+		} else if (panel_left && panel_right) {
+			DRM_DEV_INFO(ctx->dev, "Displays match ( %c == %c ), using %c\n", panel_left, panel_right, panel_left );
+			panel_vendor = panel_left;
+		} else if ( panel_left && !panel_right ) {
+			DRM_DEV_INFO(ctx->dev, "Only left panel, using %c\n", panel_left);
+			panel_vendor = panel_left;
+		} else if ( !panel_left && panel_right ) {
+			DRM_DEV_INFO(ctx->dev, "Only right panel, using %c\n", panel_right );
+			panel_vendor = panel_right;
+		} else {
+			DRM_DEV_ERROR(ctx->dev, "no panel mfg info, defaulting to sharp ( %c %c )\n", panel_left, panel_right );
+			panel_vendor = 'S';
+		}
+	}
+
+	if ( panel_vendor == 'S' ) {
 		dsi_write_panel_on_sharp(panel);
-	} else if ( ctx->panel_mfg_info[VENDOR_OFFSET] == 'B' ) {
+	} else if ( panel_vendor == 'B' ) {
 		dsi_write_panel_on_boe(panel);
-	} else if ( ctx->panel_mfg_info[VENDOR_OFFSET] == 'J' ) {
+	} else if ( panel_vendor == 'J' ) {
 		dsi_write_panel_on_jdi(panel);
 	} else {
-		DRM_DEV_ERROR(ctx->dev, "unrecognized panel vendor ( %c )\n", ctx->panel_mfg_info[VENDOR_OFFSET] )
+		DRM_DEV_ERROR(ctx->dev, "unrecognized panel vendor ( %c ), defualt to sharp\n", ctx->panel_mfg_info[VENDOR_OFFSET] );
 	}
 }
 
@@ -403,6 +475,8 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 
 	gpo1_tew1 = brightness > BRIGHTNESS_MAX_120 ?
 		    BRIGHTNESS_MAX_120 : brightness;
+	// Scale brightness based on current mode
+	gpo1_tew1 = gpo1_tew1 * modes[ctx->current_mode].vtotal / modes[MODE_120].vtotal;
 
 	ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
 	if (ctx->is_dual_panel)
@@ -610,7 +684,6 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 	dsi_write_panel_on(panel);
 
 	ctx->backlight->props.pulse_offset_rows = GPO1_TES1;
-	lpm026m648c_backlight_work_init(ctx);
 
 	ret = backlight_enable(ctx->backlight);
 
@@ -658,6 +731,40 @@ static int lpm026m648c_get_modes(struct drm_panel *panel,
 	}
 
 	return i;
+}
+
+static int lpm026m648c_mode_set(struct drm_panel *panel,
+			       const struct drm_display_mode *mode,
+			       const struct drm_display_mode *adjusted_mode)
+{
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+
+	lpm026m648c_modes_t new_mode;
+	// use the vtotal to determine the mode
+	if (mode->vtotal == modes[MODE_120].vtotal){
+			new_mode = MODE_120;
+	}else if (mode->vtotal == modes[MODE_90].vtotal){
+			new_mode = MODE_90;
+	}else if (mode->vtotal == modes[MODE_80].vtotal){
+			new_mode = MODE_80;
+	}else{
+			DRM_DEV_ERROR(ctx->dev, "Invalid vtotal in mode set %d", mode->vtotal);
+			return -EINVAL;
+	}
+
+	// check if we need to update settings
+	if (ctx->current_mode != new_mode)
+	{
+		ctx->current_mode = new_mode;
+		// only reset the panel parematers if we already initialized the panels
+		if (ctx->enabled)
+		{
+			// update brightness
+			set_brightness(ctx, ctx->backlight->props.brightness, ctx->backlight->props.pulse_offset_rows);
+		}
+	}
+
+	return 0;
 }
 
 static int panel_info_show(struct seq_file *s, void *data)
@@ -736,7 +843,7 @@ static int panel_read_show(struct seq_file *s, void *data)
 	else
 	{
 		for (i = 0; i < ctx->panel_read_num_bytes; i++) {
-			seq_printf(s, "%x ",  ctx->panel_read_data[i]);
+			seq_printf(s, "%02x ",  ctx->panel_read_data[i]);
 		}
 		seq_printf(s, "\n");
 		return 0;
@@ -862,6 +969,7 @@ static const struct drm_panel_funcs lpm026m648c_drm_funcs = {
 	.unprepare = lpm026m648c_unprepare,
 	.prepare = lpm026m648c_prepare,
 	.get_modes = lpm026m648c_get_modes,
+    .mode_set = lpm026m648c_mode_set,
 	.debugfs_init = lpm026m648c_debugfs_init,
 };
 
@@ -941,7 +1049,7 @@ static int lpm026m648c_probe(struct mipi_dsi_device *dsi)
 	int i;
 
 	const struct mipi_dsi_device_info info = {
-		.type = "sharp4k",
+		.type = "deckard4k",
 		.channel = 0,
 		.node = NULL,
 	};
@@ -1038,14 +1146,14 @@ static void lpm026m648c_remove(struct mipi_dsi_device *dsi)
 }
 
 static const struct of_device_id lpm026m648c_of_match[] = {
-	{ .compatible = "ev3,sharp-boe" },
+	{ .compatible = "deckard-panel" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, lpm026m648c_of_match);
 
 static struct mipi_dsi_driver lpm026m648c_driver = {
 	.driver = {
-		.name = "panel-sharp-boe",
+		.name = "deckard-panel",
 		.of_match_table = lpm026m648c_of_match,
 	},
 	.probe = lpm026m648c_probe,
