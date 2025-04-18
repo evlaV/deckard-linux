@@ -2093,6 +2093,7 @@ static int a7xx_cx_mem_init(struct a6xx_gpu *a6xx_gpu)
 		 * Print a warning because if you mess this up you're about to
 		 * crash horribly.
 		 */
+		dev_warn_once(gpu->dev->dev, "SCM available = %d\n", qcom_scm_is_available());
 		if (!IS_ENABLED(CONFIG_QCOM_SCM) || !qcom_scm_is_available()) {
 			dev_warn_once(gpu->dev->dev,
 				"SCM is not available, poking fuse register\n");
