@@ -342,7 +342,7 @@ backlight_probe(struct platform_device *pdev)
 		bl->adapter[i] = i2c_get_adapter_by_fwnode(of_fwnode_handle(node));
 		of_node_put(node);
 		if (!bl->adapter[i])
-			return -ENOENT;
+			return -EPROBE_DEFER;
 
 	}
 	// XXX: missing cleanup: i2c_put_adapter() on bl->adapter[i] on fail/remove
