@@ -1771,6 +1771,11 @@ static int qcom_scm_qseecom_init(struct qcom_scm *scm)
 	u32 version;
 	int ret;
 
+	if(scm && scm->dev)
+	{
+		scm->dev->offline = true; //use this to indicate that we managed to talk to scm device
+	}
+
 	/*
 	 * Note: We do two steps of validation here: First, we try to query the
 	 * QSEECOM version as a check to see if the interface exists on this
@@ -1787,6 +1792,11 @@ static int qcom_scm_qseecom_init(struct qcom_scm *scm)
 		return 0;
 
 	dev_info(scm->dev, "qseecom: found qseecom with version 0x%x\n", version);
+
+	if(scm && scm->dev)
+	{
+		scm->dev->offline = false; //use this to indicate that we managed to talk to scm device
+	}
 
 	if (!qcom_scm_qseecom_machine_is_allowed()) {
 		dev_info(scm->dev, "qseecom: untested machine, skipping\n");
@@ -1826,7 +1836,18 @@ static int qcom_scm_qseecom_init(struct qcom_scm *scm)
  */
 bool qcom_scm_is_available(void)
 {
-	return !!READ_ONCE(__scm);
+	#if 0
+		return !!READ_ONCE(__scm);
+	#else
+		if(__scm && __scm->dev)
+		{
+			return ! __scm->dev->offline;
+		}
+		else
+		{
+			return 0;
+		}
+	#endif
 }
 EXPORT_SYMBOL_GPL(qcom_scm_is_available);
 
