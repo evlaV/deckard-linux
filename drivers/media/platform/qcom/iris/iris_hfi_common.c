@@ -87,9 +87,6 @@ int iris_hfi_core_init(struct iris_core *core)
 	if (ret)
 		return ret;
 
-	if (core->iris_platform_data->broken_suspend)
-		return 0;
-
 	return hfi_ops->sys_interframe_powercollapse(core);
 }
 
@@ -123,9 +120,6 @@ irqreturn_t iris_hfi_isr_handler(int irq, void *data)
 int iris_hfi_pm_suspend(struct iris_core *core)
 {
 	int ret;
-
-	if (core->iris_platform_data->broken_suspend)
-		return -EAGAIN;
 
 	ret = iris_vpu_prepare_pc(core);
 	if (ret) {

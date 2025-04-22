@@ -181,7 +181,6 @@ struct iris_platform_data {
 	unsigned int dec_ip_int_buf_tbl_size;
 	const u32 *dec_op_int_buf_tbl;
 	unsigned int dec_op_int_buf_tbl_size;
-	bool broken_suspend;
 };
 
 #endif
