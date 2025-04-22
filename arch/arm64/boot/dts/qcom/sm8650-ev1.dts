@@ -1163,6 +1163,9 @@
 		compatible = "pocf,jdi-lpm026m648c";
 		dual-panel;
 
+		pinctrl-0 = <&display_resx1>, <&display_resx2>;
+		pinctrl-names = "default";
+
 		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
 			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
 
@@ -1264,6 +1267,9 @@
 	status = "okay";
 };
 
+// For 1.8V operation on PM8550
+// VIN0 ( 0 ) for GPIO_01 to GPIO_04
+// VIN1 ( 1 ) for GPIO_05 to GPIO_12 ( except 7 )
 &pm8550_gpios {
 	sdc2_card_det_n: sdc2-card-det-state {
 		pins = "gpio12";
@@ -1280,6 +1286,18 @@
 		bias-pull-up;
 		input-enable;
 		power-source = <1>;
+	};
+
+	display_resx1: display_resx1-state {
+		pins = "gpio3";
+		function = "normal";
+		power-source = <0>; /* 1.8 V */
+	};
+
+	display_resx2: display_resx2-state {
+		pins = "gpio11";
+		function = "normal";
+		power-source = <1>; /* 1.8 V */
 	};
 };
 
