@@ -321,10 +321,6 @@ static const struct dev_pm_ops iris_pm_ops = {
 
 static const struct of_device_id iris_dt_match[] = {
 	{
-		.compatible = "qcom,sm8650-iris",
-		.data = &sm8650_data,
-	},
-	{
 		.compatible = "qcom,sm8550-iris",
 		.data = &sm8550_data,
 	},
