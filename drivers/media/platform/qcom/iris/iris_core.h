@@ -103,12 +103,6 @@ struct iris_core {
 	struct delayed_work			sys_error_handler;
 	struct list_head			instances;
 	struct platform_inst_fw_cap		inst_fw_caps[INST_FW_CAP_MAX];
- 	unsigned int				use_tz;
-	struct video_firmware {
-		struct device *dev;
-		struct iommu_domain *iommu_domain;
-		size_t mapped_mem_size;
-	} fw;
 };
 
 int iris_core_init(struct iris_core *core);

@@ -11,7 +11,6 @@
 
 #include "iris_core.h"
 #include "iris_firmware.h"
-#include "firmware_no_tz.h"
 
 #define MAX_FIRMWARE_NAME_SIZE	128
 
@@ -57,24 +56,14 @@ static int iris_load_fw_to_memory(struct iris_core *core, const char *fw_name)
 	if (!mem_virt)
 		goto err_release_fw;
 
-	if (core->use_tz) {
-		ret = qcom_mdt_load(dev, firmware, fw_name,
-				    pas_id, mem_virt, mem_phys, res_size, NULL);
-			goto err_mem_unmap;
+	ret = qcom_mdt_load(dev, firmware, fw_name,
+			    pas_id, mem_virt, mem_phys, res_size, NULL);
+	if (ret)
+		goto err_mem_unmap;
 
-		ret = qcom_scm_pas_auth_and_reset(pas_id);
-		if (ret)
-			goto err_mem_unmap;
-	} else {
-		ret = qcom_mdt_load_no_init(dev, firmware, fw_name,
-				    pas_id, mem_virt, mem_phys, res_size, NULL);
-		if (ret)
-			goto err_mem_unmap;
-
-		ret = auth_reset_fw_no_tz(core, mem_phys, res_size);
-		if (ret)
-			goto err_mem_unmap;
-	}
+	ret = qcom_scm_pas_auth_and_reset(pas_id);
+	if (ret)
+		goto err_mem_unmap;
 
 	return ret;
 
@@ -97,29 +86,20 @@ int iris_fw_load(struct iris_core *core)
 	if (ret)
 		fwpath = core->iris_platform_data->fwname;
 
-	core->use_tz = use_tz(core->dev);
-	if (!core->use_tz) {
-		ret = init_fw_no_tz(core);
-		if (ret)
-			return ret;
-	}
-
 	ret = iris_load_fw_to_memory(core, fwpath);
 	if (ret) {
 		dev_err(core->dev, "firmware download failed\n");
 		return -ENOMEM;
 	}
 
-	if (core->use_tz) {
-		ret = qcom_scm_mem_protect_video_var(cp_config->cp_start,
-						     cp_config->cp_size,
-						     cp_config->cp_nonpixel_start,
-						     cp_config->cp_nonpixel_size);
-		if (ret) {
-			dev_err(core->dev, "protect memory failed\n");
-			qcom_scm_pas_shutdown(core->iris_platform_data->pas_id);
-			return ret;
-		}
+	ret = qcom_scm_mem_protect_video_var(cp_config->cp_start,
+					     cp_config->cp_size,
+					     cp_config->cp_nonpixel_start,
+					     cp_config->cp_nonpixel_size);
+	if (ret) {
+		dev_err(core->dev, "protect memory failed\n");
+		qcom_scm_pas_shutdown(core->iris_platform_data->pas_id);
+		return ret;
 	}
 
 	return ret;
@@ -127,18 +107,10 @@ int iris_fw_load(struct iris_core *core)
 
 int iris_fw_unload(struct iris_core *core)
 {
-	if (!core->use_tz) {
-		unload_fw_no_tz(core);
-		return 0;
-	}
-
 	return qcom_scm_pas_shutdown(core->iris_platform_data->pas_id);
 }
 
 int iris_set_hw_state(struct iris_core *core, bool resume)
 {
-	if (core->use_tz)
-		return qcom_scm_set_remote_state(resume, 0);
-	else
-		return set_hw_state_no_tz(core, resume);
+	return qcom_scm_set_remote_state(resume, 0);
 }
