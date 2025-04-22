@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2019 Maxim Integrated Products, Inc.
+ * Copyright (C) 2024 Analog Devices, Inc.
+ *
  * Author : Maxim Integrated <opensource@maximintegrated.com>
  *
  * This program is free software; you can redistribute  it and/or modify
@@ -22,6 +24,9 @@
 #include <linux/regmap.h>
 #include <linux/firmware.h>
 #include <linux/slab.h>
+#include <linux/device.h>
+#include <linux/kernel.h>
+#include <linux/errno.h>
 
 #define DRV_NAME "max1720x"
 
@@ -33,11 +38,10 @@
 /* CONFIG register bits */
 #define MAX1720X_CONFIG_ALRT_EN (1 << 2)
 
-
-/* CONFIG register bits for MAX17330 & MAX17332*/
+/* CONFIG register bits for MAX17330 & MAX17332 & MAX17335 */
 #define MAX17330_CONFIG_SHIP (1 << 7)
 
-/* CONFIG register bits for MAX17332 */
+/* CONFIG register bits for MAX17332 & MAX17335 */
 #define MAX17332_CONFIG_MANCHG (1 << 15)
 
 /* CONFIG2 register bits */
@@ -140,15 +144,15 @@
 #define MAX17330_NJEITAV_ROOMCHARGINGV_POS 8
 #define MAX17330_NJEITAV_ROOMCHARGINGV (0xFF << MAX17330_NJEITAV_ROOMCHARGINGV_POS)
 
-/* nIChgCfg1 register bits for MAX17332 */
+/* nIChgCfg1 register bits for MAX17332 & MAX17335 */
 #define MAX17332_NICHGCFG1_ROOMCHARGINGI_POS 5
 #define MAX17332_NICHGCFG1_ROOMCHARGINGI (0x3F << MAX17332_NICHGCFG1_ROOMCHARGINGI_POS)
 
-/* nVChgCfg1 register bits for MAX17332 */
+/* nVChgCfg1 register bits for MAX17332 & MAX17335 */
 #define MAX17332_NVCHGCFG1_ROOMCHARGINGV_POS 4
 #define MAX17332_NVCHGCFG1_ROOMCHARGINGV (0xFF << MAX17332_NVCHGCFG1_ROOMCHARGINGV_POS)
 
-/* nDesignCap register bits for MAX17332 */
+/* nDesignCap register bits for MAX17332 & MAX17335 */
 #define MAX17332_DESIGNCAP_QSCALE_POS 0
 #define MAX17332_DESIGNCAP_QSCALE (0x7 << MAX17332_DESIGNCAP_QSCALE_POS)
 #define MAX17332_DESIGNCAP_VSCALE_POS 3
@@ -164,17 +168,17 @@
 #define MAX17330_NCHGCFG0_PREQUALVOLT_POS 8
 #define MAX17330_NCHGCFG0_PREQUALVOLT (0x1F << MAX17330_NCHGCFG0_PREQUALVOLT_POS)
 
-/* nChgCfg1 register bits for MAX17330 & MAX17332*/
+/* nChgCfg1 register bits for MAX17330 & MAX17332 & MAX17335 */
 #define MAX17330_NCHGCFG1_FETTHETA_POS 0
 #define MAX17330_NCHGCFG1_FETTHETA (0x1F << MAX17330_NCHGCFG1_FETTHETA_POS)
 #define MAX17330_NCHGCFG1_FETLIM_POS 5
 #define MAX17330_NCHGCFG1_FETLIM (0xF << MAX17330_NCHGCFG1_FETLIM_POS)
 
-/* nChgCfg1 register bits for MAX17330*/
+/* nChgCfg1 register bits for MAX17330 */
 #define MAX17330_NCHGCFG1_HEATLIM_POS 9
 #define MAX17330_NCHGCFG1_HEATLIM (0x1F << MAX17330_NCHGCFG1_HEATLIM_POS)
 
-/* nChgCfg1 register bits for MAX17332 */
+/* nChgCfg1 register bits for MAX17332 & MAX17335 */
 #define MAX17332_NCHGCFG1_HEATLIM_POS 9
 #define MAX17332_NCHGCFG1_HEATLIM (0x3F << MAX17332_NCHGCFG1_HEATLIM_POS)
 
@@ -200,7 +204,7 @@
 #define MAX17330_NIPRTTH1_OCCP_POS 8
 #define MAX17330_NIPRTTH1_OCCP (0xFF << MAX17330_NIPRTTH1_OCCP_POS)
 
-/* nOVPrtTh register bits for MAX17332 */
+/* nOVPrtTh register bits for MAX17332 & MAX17335 */
 #define MAX17332_NOVPRTTH_DOVPR_POS 0
 #define MAX17332_NOVPRTTH_DOVPR (0x3F << MAX17332_NOVPRTTH_DOVPR_POS)
 #define MAX17332_NOVPRTTH_DOVP_POS 6
@@ -209,13 +213,13 @@
 #define MAX17332_NOVPRTTH_OVPPERMFAIL (0x1F << MAX17332_NOVPRTTH_OVPPERMFAIL_POS)
 
 #define MAX17332_NIPRTTH1_VRES_POS 0
-/* nIPrtTh1 register bits for MAX17332 */
+/* nIPrtTh1 register bits for MAX17332 & MAX17335 */
 #define MAX17332_NIPRTTH1_VRES (0x7 << MAX17332_NIPRTTH1_VRES_POS)
 #define MAX17332_NIPRTTH1_OCCP_POS 6
 #define MAX17332_NIPRTTH1_OCCP (0x3FF << MAX17332_NIPRTTH1_OCCP_POS)
 
 #define MAX17332_NIPRTTH2_UVCHG_POS 0
-/* nIPrtTh2 register bits for MAX17332 */
+/* nIPrtTh2 register bits for MAX17332 & MAX17335 */
 #define MAX17332_NIPRTTH2_UVCHG (0x7 << MAX17332_NIPRTTH2_UVCHG_POS)
 #define MAX17332_NIPRTTH2_CHGDETTH_POS 3
 #define MAX17332_NIPRTTH2_CHGDETTH (0x7 << MAX17332_NIPRTTH2_CHGDETTH_POS)
@@ -230,7 +234,7 @@
 #define MAX17330_NODSCTH_OCTH_POS 10
 #define MAX17330_NODSCTH_OCTH (0x3F << MAX17330_NODSCTH_OCTH_POS)
 
-/* nUVPrtTh register bits for MAX17330 & MAX17332 */
+/* nUVPrtTh register bits for MAX17330 & MAX17332 & MAX17335 */
 #define MAX17330_NUVPRTTH_UVSHDN_POS 0
 #define MAX17330_NUVPRTTH_UVSHDN (0xF << MAX17330_NUVPRTTH_UVSHDN_POS)
 #define MAX17330_NUVPRTTH_UOCVP_POS 4
@@ -238,7 +242,7 @@
 #define MAX17330_NUVPRTTH_UVP_POS 10
 #define MAX17330_NUVPRTTH_UVP (0x3F << MAX17330_NUVPRTTH_UVP_POS)
 
-/* nUVPrtTh register bits for MAX17332 */
+/* nUVPrtTh register bits for MAX17332 & MAX17335 */
 #define MAX17332_NUVPRTTH_DISUVP_POS 9
 #define MAX17332_NUVPRTTH_DISUVP (0x1 << MAX17332_NUVPRTTH_DISUVP_POS)
 
@@ -279,7 +283,7 @@
 #define MAX17330_NTPRTTH3_TWARM_POS 0
 #define MAX17330_NTPRTTH3_TPERMFAILHOT_POS 8
 
-/* nTPrtTh1, nTPrtTh2, nTPrtTh3 register bits for MAX17332 */
+/* nTPrtTh1, nTPrtTh2, nTPrtTh3 register bits for MAX17332 & MAX17335 */
 #define MAX17332_NTPRTTH_THRESHOLD_MASK 0xF
 #define MAX17332_NTPRTTH1_TROOM_POS 0
 #define MAX17332_NTPRTTH1_TCOOL_POS 4
@@ -297,7 +301,7 @@
 
 #define MAX1720X_VMAX_TOLERANCE 50 /* 50 mV */
 
-/* nVEmpty register specific definations for MAX17330 & MAX17332 */
+/* nVEmpty register specific definations for MAX17330 & MAX17332 & MAX17335 */
 #define MAX17330_NVEMPTY_VE_MAX 5110	/* 5110 mv */
 #define MAX17330_NVEMPTY_VE_STEP 5		/* 10 mV	*/
 #define MAX17330_NVEMPTY_VR_MAX 5110	/* 5080 mv */
@@ -331,7 +335,7 @@
 #define MAX17330_NOVPRTH_CHGDETTH_MIN 10		/* 10 mv */
 #define MAX17330_NOVPRTH_CHGDETTH_STEP 10		/* 10 mv */
 
-/* nOVPrtTh register specific definitions for MAX17332 */
+/* nOVPrtTh register specific definitions for MAX17332 & MAX17335 */
 #define MAX17332_NOVPRTH_DOVP_MAX 155		/* 155 mv */
 #define MAX17332_NOVPRTH_DOVP_STEP 5		/* 5 mv */
 #define MAX17332_NOVPRTH_DOVPR_MAX 315		/* 315 mv */
@@ -340,7 +344,7 @@
 #define MAX17332_NOVPRTH_OVPPERMFAIL_MIN 40			/* 40 mv */
 #define MAX17332_NOVPRTH_OVPPERMFAIL_STEP 5			/* 5 mv */
 
-/* nIPrtTh2 register specific definitions for MAX17332 */
+/* nIPrtTh2 register specific definitions for MAX17332 & MAX17335 */
 #define MAX17332_NIPRTTH2_CHGDETTH_MAX 80		/* 80 mv */
 #define MAX17332_NIPRTTH2_CHGDETTH_MIN 10		/* 10 mv */
 #define MAX17332_NIPRTTH2_CHGDETTH_STEP 10		/* 10 mv */
@@ -363,7 +367,7 @@
 #define MAX17330_NODSCCFG_SCDLY_MIN 70	/* 70 us */
 #define MAX17330_NODSCCFG_SCDLY_STEP 61 /* 61 us */
 
-/* nVEmpty register specific definations for MAX17330 & MAX17332 */
+/* nVEmpty register specific definations for MAX17330 & MAX17332 & MAX17335 */
 #define MAX17330_NODSCTH_OCTH_MAX 39375		/* 39.378 mv */
 #define MAX17330_NODSCTH_OCTH_STEP 625		/* 0.625 mV */
 #define MAX17330_NODSCTH_SCTH_MIN -158720	/* -158.72 mv */
@@ -376,7 +380,7 @@
 #define MAX17330_NCHGCFG1_HEATLIM_MIN 510	/* 510 mW with Rsense 1mohm */
 #define MAX17330_NCHGCFG1_HEATLIM_STEP 510	/* 100 uV	*/
 
-/* nChgCfg1 register specific definitions for MAX17332 */
+/* nChgCfg1 register specific definitions for MAX17332 & MAX17335 */
 #define MAX17332_NCHGCFG1_HEATLIM_MAX 32640 /* 32640 mW with Rsense 1mohm */
 #define MAX17332_NCHGCFG1_HEATLIM_MIN 255	/* 255 mW with Rsense 1mohm */
 #define MAX17332_NCHGCFG1_HEATLIM_STEP 255	/* 255 uV	*/
@@ -389,7 +393,7 @@
 #define MAX17330_NCHGCFG1_FETTHETA_MIN 0 /* 0.0 */
 #define MAX17330_NCHGCFG1_FETTHETA_STEP 125 /* 0.125	*/
 
-/* nTPrtTh1, nTPrtTh2, nTPrtTh3 register specific definitions for MAX17330*/
+/* nTPrtTh1, nTPrtTh2, nTPrtTh3 register specific definitions for MAX17330 */
 #define MAX17330_NTPRTTH_MAX 255 /* 255 */
 
 /* LSB Size for Time Registers */
@@ -399,7 +403,7 @@
 #define MAX1720x_CURRENT_MAX 51198400 /* 51198.4 uV/Rsense */
 #define MAX1720x_CURRENT_MIN -51200000 /* 51200.0 uV/Rsense */
 
-/* nTPrtTh1, nTPrtTh2, nTPrtTh3 register specific definitions for MAX17332*/
+/* nTPrtTh1, nTPrtTh2, nTPrtTh3 register specific definitions for MAX17332 & MAX17335 */
 #define MAX17332_NTPRTTH_MAX 375 /* 37.5 */
 #define MAX17332_NTPRTTH_STEP 25 /* 2.5 */
 
@@ -412,15 +416,12 @@
 #define NONVOLATILE_DATA_I2C_ADDR 0x0B
 
 struct max1720x_platform_data {
-	/* TODO POC-F Northgate seems to have a 2.5 mOhm resistor on it, even though 2 mOhm was spec'd
-	   Determine why and correct. For now change scale factor on rsense
-	*/
 	/*
 	 * rsense in miliOhms.
-	 * default 100 (if rsense = 0) as it is the recommended value by
+	 * default 10 (if rsense = 0) as it is the recommended value by
 	 * the datasheet although it can be changed by board designers.
 	 */
-	unsigned int rsense; /* in 100's of uOhm */
+	unsigned int rsense; /* in mOhm */
 	int volt_min; /* in mV */
 	int volt_max; /* in mV */
 	int temp_min; /* in DegreC */
@@ -455,6 +456,7 @@ enum chip_id {
 	ID_MAX17320,
 	ID_MAX17330,
 	ID_MAX17332,
+	ID_MAX17335,
 };
 
 enum register_ids {
@@ -552,6 +554,7 @@ static int (*get_battery_health_handlers[])(struct max1720x_priv *priv, int *hea
 	[ID_MAX17320] = max17320_get_battery_health,
 	[ID_MAX17330] = max17330_get_battery_health,
 	[ID_MAX17332] = max17330_get_battery_health,
+	[ID_MAX17335] = max17330_get_battery_health,
 };
 
 static u32 register_to_read;
@@ -570,6 +573,7 @@ static irqreturn_t (*irq_handlers[])(int id, void *dev) = {
 	[ID_MAX17320] = max17320_irq_handler,
 	[ID_MAX17330] = max17330_irq_handler,
 	[ID_MAX17332] = max17330_irq_handler,
+	[ID_MAX17335] = max17330_irq_handler,
 };
 
 /* Register addresses  */
@@ -863,6 +867,80 @@ static const u16 max17332_regs[] = {
 	[REMAINING_UPDATES_REG] = 0x1FD,
 };
 
+static const u16 max17335_regs[] = {
+	[STATUS_REG] = 0x00,
+	[VALRTTH_REG] = 0x01,
+	[TALRTTH_REG] = 0x02,
+	[SALRTTH_REG] = 0x03,
+	[ATRATE_REG] = 0x04,
+	[REPCAP_REG] = 0x05,
+	[REPSOC_REG] = 0x06,
+	[MAXMINVOLT_REG] = 0x08,
+	[CONFIG_REG] = 0x0B,
+	[CONFIG2_REG] = 0xAB,
+	[FULLCAPREP_REG] = 0x10,
+	[TTE_REG] = 0x11,
+	[CYCLES_REG] = 0x17,
+	[DESIGNCAP_REG] = 0x18,
+	[AVGVCELL_REG] = 0x19,
+	[VCELL_REG] = 0x1A,
+	[TEMP_REG] = 0x1B,
+	[CURRENT_REG] = 0x1C,
+	[AVGCURRENT_REG] = 0x1D,
+	[TTF_REG] = 0x20,
+	[VERSION_REG] = 0x21,
+	[VEMPTY_REG] = 0x3A,
+	[QH_REG] = 0x4D,
+	[COMMAND_REG] = 0x60,
+	[COMMSTAT_REG] = 0x61,
+	[IALRTTH_REG] = 0xAC,
+	[PROTSTATUS_REG] = 0xD9,
+	[PROTALRTS_REG] = 0xAF,
+	[ATTTE_REG] = 0xDD,
+	[BATT_REG] = 0xD7,
+	[VFOCV_REG] = 0xFB,
+	[CELL1_REG] = 0xD8,
+	[PCKP_REG] = 0xDB,
+	[DIETEMP_REG] = 0x34,
+	[CHGSTAT_REG] = 0xA3,
+	[TEMP1_REG] = 0x134,
+	[LEAKCURRREP_REG] = 0x16F,
+	[NRSENSE_REG] = 0x19C,
+	[NVEMPTY_REG] = 0x19E,
+	[NRCOMP0_REG] = 0x1A6,
+	[NCONFIG_REG] = 0x1B0,
+	[NDESIGNCAP_REG] = 0x1B3,
+	[NFULLCFG_REG] = 0x1B5,
+	[NROMID0_REG] = 0x1BC,
+	[NROMID3_REG] = 0x1BF,
+	[NICHGTERM_REG] = 0x1C1,
+	[NCHGCFG0_REG] = 0x1C2,
+	[NSTEPCURR_REG] = 0x1C4,
+	[NSTEPVOLT_REG] = 0x1C5,
+	[NFULLSOCTHR_REG] = 0x1C6,
+	[NPACKCFG_REG] = 0x1C7,
+	[NCHGCFG1_REG] = 0x1CB,
+	[NVCHGCFG1_REG] = 0x1CC,
+	[NVCHGCFG2_REG] = 0x1CD,
+	[NICHGCFG1_REG] = 0x1CE,
+	[NICHGCFG2_REG] = 0x1CF,
+	[NUVPRTTH_REG] = 0x1D0,
+	[NTPRTTH1_REG] = 0x1D1,
+	[NTPRTTH3_REG] = 0x1D2,
+	[NIPRTTH1_REG] = 0x1D3,
+	[NIPRTTH2_REG] = 0x1D4,
+	[NTPRTTH2_REG] = 0x1D5,
+	[NPROTMISCTH_REG] = 0x1D6,
+	[NPROTCFG_REG] = 0x1D7,
+	[NNVCFG1_REG] = 0x1D9,
+	[NOVPRTTH_REG] = 0x1DA,
+	[NDELAYCFG_REG] = 0x1DC,
+	[NODSCTH_REG] = 0x1DD,
+	[NODSCCFG_REG] = 0x1DE,
+	[NCHECKSUM_REG] = 0x1DF,
+	[REMAINING_UPDATES_REG] = 0x1FD,
+};
+
 static const u16 *chip_regs[] = {
 	[ID_MAX1720X] = max1720x_regs,
 	[ID_MAX1730X] = max1730x_regs,
@@ -870,6 +948,7 @@ static const u16 *chip_regs[] = {
 	[ID_MAX17320] = max17320_regs,
 	[ID_MAX17330] = max17330_regs,
 	[ID_MAX17332] = max17332_regs,
+	[ID_MAX17335] = max17335_regs,
 };
 
 static const u8 nvmem_high_addrs[] = {
@@ -879,6 +958,7 @@ static const u8 nvmem_high_addrs[] = {
 	[ID_MAX17320] = 0xEF,
 	[ID_MAX17330] = 0xEF,
 	[ID_MAX17332] = 0xEF,
+	[ID_MAX17335] = 0xEF,
 };
 
 static const int cycles_reg_lsb_percents[] = {
@@ -888,6 +968,7 @@ static const int cycles_reg_lsb_percents[] = {
 	[ID_MAX17320] = 25,
 	[ID_MAX17330] = 25,
 	[ID_MAX17332] = 25,
+	[ID_MAX17335] = 25,
 };
 
 static enum power_supply_property max1720x_battery_props[] = {
@@ -925,21 +1006,13 @@ static inline int max1720x_raw_voltage_to_uvolts(struct max1720x_priv *priv,
 static inline int max1720x_raw_current_to_uamps(struct max1720x_priv *priv,
 												int curr)
 {
-#if 0
 	return curr * 15625 / ((int)priv->pdata->rsense * 10);
-#else /* Northgate POC-F */
-	return curr * 15625 / ((int)priv->pdata->rsense);
-#endif
 }
 
 static inline int max1720x_raw_capacity_to_uamph(struct max1720x_priv *priv,
 												 int cap)
 {
-#if 0
 	return cap * 5000 / (int)priv->pdata->rsense;
-#else /* Northgate POC-F */
-	return cap * 50000 / (int)priv->pdata->rsense;
-#endif
 }
 
 static ssize_t log_show(struct device *dev,
@@ -1054,21 +1127,12 @@ static ssize_t atrate_store(struct device *dev,
 		in_val = (decimal_val * 10000);
 	}
 
-#if 0
 	if (in_val > (MAX1720x_CURRENT_MAX * (int)priv->pdata->rsense * 10))
 		return -EINVAL;
 	else if (in_val < (MAX1720x_CURRENT_MIN * (int)priv->pdata->rsense * 10))
 		return -EINVAL;
 
 	in_val = in_val / (MAX1720x_CURRENT_LSB * ((int)priv->pdata->rsense * 10));
-#else /* Northgate POC-F */
-	if (in_val > (MAX1720x_CURRENT_MAX * (int)priv->pdata->rsense))
-		return -EINVAL;
-	else if (in_val < (MAX1720x_CURRENT_MIN * (int)priv->pdata->rsense))
-		return -EINVAL;
-
-	in_val = in_val / (MAX1720x_CURRENT_LSB * ((int)priv->pdata->rsense));
-#endif
 
 	ret = max1720x_regmap_write(priv, priv->regs[ATRATE_REG], in_val);
 	if (ret < 0)
@@ -1288,12 +1352,7 @@ static ssize_t leakcurr_show(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-#if 0
 	leakcurr_val = val * 15625 / ((int)priv->pdata->rsense * 160); /* LEAKCURR LSB: 1.5625/16 uV for 1mOhm sense resistor */
-#else /* Northgate POC-F */
-	leakcurr_val = val * 15625 / ((int)priv->pdata->rsense * 16); /* LEAKCURR LSB: 1.5625/16 uV for 1mOhm sense resistor */
-#endif
-
 	rc += snprintf(buf + rc, PAGE_SIZE - rc, "LEAKCURRENT : %d\n", leakcurr_val);
 
 	return rc;
@@ -1386,7 +1445,7 @@ static ssize_t voltageVal_store(struct device *dev,
 		ret = max1720x_regmap_write(priv, priv->regs[NVCHGCFG_REG], val);
 		if (ret < 0)
 			return ret;
-	} else { // ID_MAX17332
+	} else { // ID_MAX17332 & ID_MAX17335
 		ret = max1720x_regmap_read(priv, priv->regs[NDESIGNCAP_REG], &designCap_val);
 		if (ret < 0)
 			return ret;
@@ -1465,7 +1524,7 @@ static ssize_t voltageVal_show(struct device *dev,
 		}
 
 		val = (val & MAX17332_NVCHGCFG1_ROOMCHARGINGV) >> MAX17332_NVCHGCFG1_ROOMCHARGINGV_POS;
-		// Calculate Room Charging voltage Voltage
+		// Calculate Room Charging voltage
 		if (val & (((MAX17332_NVCHGCFG1_ROOMCHARGINGV >> MAX17332_NVCHGCFG1_ROOMCHARGINGV_POS) + 1) >> 1)) {
 			// Negative
 			val = (~val) + 1;
@@ -2095,9 +2154,9 @@ static ssize_t rsense_store(struct device *dev,
 	if (kstrtouint(buf, 0, &val))
 		return -EINVAL;
 
-	/* rsense input is mohm for MAX17332 */
+	/* rsense input is mohm for MAX17332, MAX17335 */
 	/* rsense input is uohm for ID_MAX1720X, ID_MAX1730X, ID_MAX17300, ID_MAX17320, ID_MAX17330 */
-	if (priv->driver_data != ID_MAX17332) {
+	if ((priv->driver_data != ID_MAX17332) && (priv->driver_data != ID_MAX17335)) {
 		if (val > 0xFFFF)
 			return -EINVAL;
 		val = val / 10;
@@ -2148,7 +2207,7 @@ static ssize_t rsense_show(struct device *dev,
 		return ret;
 	}
 
-	if (priv->driver_data != ID_MAX17332) {
+	if ((priv->driver_data != ID_MAX17332) && (priv->driver_data != ID_MAX17335)) {
 		val = val * 10;
 		rc += snprintf(buf + rc, PAGE_SIZE - rc, "Rsense : %d uohm!\n", val);
 	} else {
@@ -2396,7 +2455,7 @@ static ssize_t dOVPR_show(struct device *dev,
 	return rc;
 }
 
-static ssize_t OVP_perm_fail_store(struct device *dev,
+static ssize_t ovp_perm_fail_store(struct device *dev,
 								   struct device_attribute *attr,
 								   const char *buf, size_t count)
 {
@@ -2436,7 +2495,7 @@ static ssize_t OVP_perm_fail_store(struct device *dev,
 	return count;
 }
 
-static ssize_t OVP_perm_fail_show(struct device *dev,
+static ssize_t ovp_perm_fail_show(struct device *dev,
 								  struct device_attribute *attr, char *buf)
 {
 	struct max1720x_priv *priv = dev_get_drvdata(dev);
@@ -4292,10 +4351,9 @@ static ssize_t program_nvm_memory_store(struct device *dev,
 	const struct firmware *fw;
 
 	fw_path = kstrdup(buf, GFP_ATOMIC);
-	if (!fw_path) {
-		dev_err(dev, "kstrdup failed\n");
+	if (!fw_path)
 		return -EINVAL;
-	}
+
 	fw_path = strim(fw_path);
 
 	if (len < 1)
@@ -4435,67 +4493,72 @@ error:
 	return ret;
 }
 
-static DEVICE_ATTR(log, 0444, log_show, NULL);
-static DEVICE_ATTR(nvmem, 0444, nvmem_show, NULL);
-static DEVICE_ATTR(atrate, 0644, atrate_show, atrate_store);
-static DEVICE_ATTR(voltageVal, 0644, voltageVal_show, voltageVal_store);
-static DEVICE_ATTR(currentVal, 0644, currentVal_show, currentVal_store);
-static DEVICE_ATTR(ship, 0644, ship_show, ship_store);
-static DEVICE_ATTR(fet, 0644, fet_show, fet_store);
-static DEVICE_ATTR(dfet, 0644, dfet_show, dfet_store);
-static DEVICE_ATTR(attte, 0444, attte_show, NULL);
-static DEVICE_ATTR(cell, 0444, cell_show, NULL);
-static DEVICE_ATTR(temp, 0444, temp_show, NULL);
-static DEVICE_ATTR(batt, 0444, batt_show, NULL);
-static DEVICE_ATTR(leakcurr, 0444, leakcurr_show, NULL);
-static DEVICE_ATTR(max17320_protstat, 0444, max17320_protstat_show, NULL);
-static DEVICE_ATTR(max17330_protstat, 0444, max17330_protstat_show, NULL);
-static DEVICE_ATTR(register_store, 0200, NULL, register_store_store);
-static DEVICE_ATTR(register_read, 0644, register_read_show, register_read_store);
-static DEVICE_ATTR(delay_config, 0644, delay_config_show, delay_config_store);
-static DEVICE_ATTR(rsense, 0644, rsense_show, rsense_store);
-static DEVICE_ATTR(recovery_voltage, 0644, recovery_voltage_show, recovery_voltage_store);
-static DEVICE_ATTR(empty_voltage, 0644, empty_voltage_show, empty_voltage_store);
-static DEVICE_ATTR(dOVP, 0644, dOVP_show, dOVP_store);
-static DEVICE_ATTR(dOVPR, 0644, dOVPR_show, dOVPR_store);
-static DEVICE_ATTR(ovp_perm_fail, 0644, OVP_perm_fail_show, OVP_perm_fail_store);
-static DEVICE_ATTR(ChgDetTh, 0644, ChgDetTh_show, ChgDetTh_store);
-static DEVICE_ATTR(OCTH, 0644, OCTH_show, OCTH_store);
-static DEVICE_ATTR(ODTH, 0644, ODTH_show, ODTH_store);
-static DEVICE_ATTR(SCTH, 0644, SCTH_show, SCTH_store);
-static DEVICE_ATTR(UVP, 0644, UVP_show, UVP_store);
-static DEVICE_ATTR(UOCVP, 0644, UOCVP_show, UOCVP_store);
-static DEVICE_ATTR(UVShdn, 0644, UVShdn_show, UVShdn_store);
-static DEVICE_ATTR(DisUVP, 0644, DisUVP_show, DisUVP_store);
-static DEVICE_ATTR(A1EN, 0644, A1EN_show, A1EN_store);
-static DEVICE_ATTR(R100, 0644, R100_show, R100_store);
-static DEVICE_ATTR(OCDLY, 0644, OCDLY_show, OCDLY_store);
-static DEVICE_ATTR(SCDLY, 0644, SCDLY_show, SCDLY_store);
-static DEVICE_ATTR(T1, 0644, T1_show, T1_store);
-static DEVICE_ATTR(T2, 0644, T2_show, T2_store);
-static DEVICE_ATTR(T3, 0644, T3_show, T3_store);
-static DEVICE_ATTR(T4, 0644, T4_show, T4_store);
-static DEVICE_ATTR(Twarm, 0644, Twarm_show, Twarm_store);
-static DEVICE_ATTR(TpermFailHot, 0644, TpermFailHot_show, TpermFailHot_store);
-static DEVICE_ATTR(Troom, 0644, Troom_show, Troom_store);
-static DEVICE_ATTR(Tcool, 0644, Tcool_show, Tcool_store);
-static DEVICE_ATTR(Tcold1, 0644, Tcold1_show, Tcold1_store);
-static DEVICE_ATTR(Tcold2, 0644, Tcold2_show, Tcold2_store);
-static DEVICE_ATTR(Thot1, 0644, Thot1_show, Thot1_store);
-static DEVICE_ATTR(Thot2, 0644, Thot2_show, Thot2_store);
-static DEVICE_ATTR(Ttoohot, 0644, Ttoohot_show, Ttoohot_store);
-static DEVICE_ATTR(PreQualVolt, 0644, PreQualVolt_show, PreQualVolt_store);
-static DEVICE_ATTR(VSysMin, 0644, VSysMin_show, VSysMin_store);
-static DEVICE_ATTR(PreChgCurr, 0644, PreChgCurr_show, PreChgCurr_store);
-static DEVICE_ATTR(HeatLim, 0644, HeatLim_show, HeatLim_store);
-static DEVICE_ATTR(FETLim, 0644, FETLim_show, FETLim_store);
-static DEVICE_ATTR(FetTheta, 0644, FetTheta_show, FetTheta_store);
-static DEVICE_ATTR(push_button, 0644, push_button_show, push_button_store);
-static DEVICE_ATTR(enJ, 0644, enJ_show, enJ_store);
-static DEVICE_ATTR(control, 0200, NULL, control_store);
-static DEVICE_ATTR(remaining_nmv_updates, 0444, remaining_nmv_updates_show, NULL);
-static DEVICE_ATTR(manChg, 0644, manChg_show, manChg_store);
-static DEVICE_ATTR(program_nvm_memory, 0200, NULL, program_nvm_memory_store);
+// Read-only attributes (0444) - DEVICE_ATTR_RO
+static DEVICE_ATTR_RO(log);
+static DEVICE_ATTR_RO(nvmem);
+static DEVICE_ATTR_RO(attte);
+static DEVICE_ATTR_RO(cell);
+static DEVICE_ATTR_RO(temp);
+static DEVICE_ATTR_RO(batt);
+static DEVICE_ATTR_RO(leakcurr);
+static DEVICE_ATTR_RO(max17320_protstat);
+static DEVICE_ATTR_RO(max17330_protstat);
+static DEVICE_ATTR_RO(remaining_nmv_updates);
+
+// Read/Write attributes (0644) - DEVICE_ATTR_RW
+static DEVICE_ATTR_RW(atrate);
+static DEVICE_ATTR_RW(voltageVal);
+static DEVICE_ATTR_RW(currentVal);
+static DEVICE_ATTR_RW(ship);
+static DEVICE_ATTR_RW(fet);
+static DEVICE_ATTR_RW(dfet);
+static DEVICE_ATTR_RW(register_read);
+static DEVICE_ATTR_RW(delay_config);
+static DEVICE_ATTR_RW(rsense);
+static DEVICE_ATTR_RW(recovery_voltage);
+static DEVICE_ATTR_RW(empty_voltage);
+static DEVICE_ATTR_RW(dOVP);
+static DEVICE_ATTR_RW(dOVPR);
+static DEVICE_ATTR_RW(ovp_perm_fail);
+static DEVICE_ATTR_RW(ChgDetTh);
+static DEVICE_ATTR_RW(OCTH);
+static DEVICE_ATTR_RW(ODTH);
+static DEVICE_ATTR_RW(SCTH);
+static DEVICE_ATTR_RW(UVP);
+static DEVICE_ATTR_RW(UOCVP);
+static DEVICE_ATTR_RW(UVShdn);
+static DEVICE_ATTR_RW(DisUVP);
+static DEVICE_ATTR_RW(A1EN);
+static DEVICE_ATTR_RW(R100);
+static DEVICE_ATTR_RW(OCDLY);
+static DEVICE_ATTR_RW(SCDLY);
+static DEVICE_ATTR_RW(T1);
+static DEVICE_ATTR_RW(T2);
+static DEVICE_ATTR_RW(T3);
+static DEVICE_ATTR_RW(T4);
+static DEVICE_ATTR_RW(Twarm);
+static DEVICE_ATTR_RW(TpermFailHot);
+static DEVICE_ATTR_RW(Troom);
+static DEVICE_ATTR_RW(Tcool);
+static DEVICE_ATTR_RW(Tcold1);
+static DEVICE_ATTR_RW(Tcold2);
+static DEVICE_ATTR_RW(Thot1);
+static DEVICE_ATTR_RW(Thot2);
+static DEVICE_ATTR_RW(Ttoohot);
+static DEVICE_ATTR_RW(PreQualVolt);
+static DEVICE_ATTR_RW(VSysMin);
+static DEVICE_ATTR_RW(PreChgCurr);
+static DEVICE_ATTR_RW(HeatLim);
+static DEVICE_ATTR_RW(FETLim);
+static DEVICE_ATTR_RW(FetTheta);
+static DEVICE_ATTR_RW(push_button);
+static DEVICE_ATTR_RW(enJ);
+static DEVICE_ATTR_RW(manChg);
+
+// Write-only attributes (0200) - DEVICE_ATTR_WO
+static DEVICE_ATTR_WO(register_store);
+static DEVICE_ATTR_WO(control);
+static DEVICE_ATTR_WO(program_nvm_memory);
 
 static struct attribute *max1720x_attr[] = {
 	&dev_attr_log.attr,
@@ -4512,7 +4575,6 @@ static struct attribute *max17320_attr[] = {
 	&dev_attr_log.attr,
 	&dev_attr_nvmem.attr,
 	&dev_attr_atrate.attr,
-	&dev_attr_ship.attr,
 	&dev_attr_attte.attr,
 	&dev_attr_cell.attr,
 	&dev_attr_temp.attr,
@@ -4637,6 +4699,66 @@ static struct attribute *max17332_attr[] = {
 	NULL
 };
 
+static struct attribute *max17335_attr[] = {
+	&dev_attr_log.attr,
+	&dev_attr_nvmem.attr,
+	&dev_attr_atrate.attr,
+	&dev_attr_voltageVal.attr,
+	&dev_attr_currentVal.attr,
+	&dev_attr_fet.attr,
+	&dev_attr_dfet.attr,
+	&dev_attr_ship.attr,
+	&dev_attr_attte.attr,
+	&dev_attr_cell.attr,
+	&dev_attr_temp.attr,
+	&dev_attr_batt.attr,
+	&dev_attr_leakcurr.attr,
+	&dev_attr_max17330_protstat.attr,
+	&dev_attr_register_store.attr,
+	&dev_attr_register_read.attr,
+	&dev_attr_delay_config.attr,
+	&dev_attr_rsense.attr,
+	&dev_attr_recovery_voltage.attr,
+	&dev_attr_empty_voltage.attr,
+	&dev_attr_dOVP.attr,
+	&dev_attr_dOVPR.attr,
+	&dev_attr_ovp_perm_fail.attr,
+	&dev_attr_ChgDetTh.attr,
+	&dev_attr_OCTH.attr,
+	&dev_attr_ODTH.attr,
+	&dev_attr_SCTH.attr,
+	&dev_attr_UVP.attr,
+	&dev_attr_UOCVP.attr,
+	&dev_attr_UVShdn.attr,
+	&dev_attr_A1EN.attr,
+	&dev_attr_R100.attr,
+	&dev_attr_OCDLY.attr,
+	&dev_attr_SCDLY.attr,
+	&dev_attr_Troom.attr,
+	&dev_attr_Tcool.attr,
+	&dev_attr_Tcold1.attr,
+	&dev_attr_Tcold2.attr,
+	&dev_attr_Thot1.attr,
+	&dev_attr_Thot2.attr,
+	&dev_attr_Ttoohot.attr,
+	&dev_attr_Twarm.attr,
+	&dev_attr_TpermFailHot.attr,
+	&dev_attr_PreQualVolt.attr,
+	&dev_attr_VSysMin.attr,
+	&dev_attr_PreChgCurr.attr,
+	&dev_attr_HeatLim.attr,
+	&dev_attr_FETLim.attr,
+	&dev_attr_FetTheta.attr,
+	&dev_attr_push_button.attr,
+	&dev_attr_enJ.attr,
+	&dev_attr_control.attr,
+	&dev_attr_remaining_nmv_updates.attr,
+	&dev_attr_program_nvm_memory.attr,
+	&dev_attr_DisUVP.attr,
+	&dev_attr_manChg.attr,
+	NULL
+};
+
 static struct attribute_group max1720x_attr_group = {
 	.attrs = max1720x_attr,
 };
@@ -4653,6 +4775,10 @@ static struct attribute_group max17332_attr_group = {
 	.attrs = max17332_attr,
 };
 
+static struct attribute_group max17335_attr_group = {
+	.attrs = max17335_attr,
+};
+
 static struct attribute_group *attr_groups[] = {
 	[ID_MAX1720X] = &max1720x_attr_group,
 	[ID_MAX1730X] = &max1720x_attr_group,
@@ -4660,6 +4786,7 @@ static struct attribute_group *attr_groups[] = {
 	[ID_MAX17320] = &max17320_attr_group,
 	[ID_MAX17330] = &max17330_attr_group,
 	[ID_MAX17332] = &max17332_attr_group,
+	[ID_MAX17335] = &max17335_attr_group,
 };
 
 static int max1720x_regmap_read(struct max1720x_priv *priv, unsigned int reg, unsigned int *val)
@@ -4687,9 +4814,8 @@ static int max1720x_regmap_write(struct max1720x_priv *priv, unsigned int reg, u
 	struct regmap *map = priv->regmap;
 
 	mutex_lock(&priv->lock);
-	if ((priv->driver_data == ID_MAX17320) ||
-		(priv->driver_data == ID_MAX17330) ||
-		(priv->driver_data == ID_MAX17332)) {
+	if ((priv->driver_data == ID_MAX17320) || (priv->driver_data == ID_MAX17330) ||
+		(priv->driver_data == ID_MAX17332) || (priv->driver_data == ID_MAX17335)) {
 
 		ret = regmap_read(priv->regmap, priv->regs[COMMSTAT_REG], &data);
 		if (!(ret < 0)) {
@@ -5546,6 +5672,30 @@ static int max1720x_init(struct max1720x_priv *priv)
 		{priv->regs[NCHECKSUM_REG], 0x1065},
 	};
 
+	u16 max17335_nvm_defaults[][2] = {
+		{priv->regs[NRSENSE_REG], 0x0005},
+		{priv->regs[NRCOMP0_REG], 0x04B8},
+		{priv->regs[NDESIGNCAP_REG], 0x2A83},
+		{priv->regs[NFULLCFG_REG], 0x0785},
+		{priv->regs[NICHGTERM_REG], 0x01E0},
+		{priv->regs[NSTEPCURR_REG], 0x0000},
+		{priv->regs[NSTEPVOLT_REG], 0x0000},
+		{priv->regs[NPACKCFG_REG], 0x0000},
+		{priv->regs[NVCHGCFG1_REG], 0x0280},
+		{priv->regs[NVCHGCFG2_REG], 0x0000},
+		{priv->regs[NICHGCFG1_REG], 0x06E0},
+		{priv->regs[NICHGCFG2_REG], 0x0000},
+		{priv->regs[NUVPRTTH_REG], 0x0008},
+		{priv->regs[NTPRTTH1_REG], 0x1112},
+		{priv->regs[NTPRTTH2_REG], 0xA028},
+		{priv->regs[NPROTMISCTH_REG], 0x7A5F},
+		{priv->regs[NPROTCFG_REG], 0x3408},
+		{priv->regs[NVCHGCFG1_REG], 0x2102},
+		{priv->regs[NOVPRTTH_REG], 0xFF88},
+		{priv->regs[NDELAYCFG_REG], 0x1B3D},
+		{priv->regs[NCHECKSUM_REG], 0x1065},
+	};
+
 	ret = max1720x_regmap_read(priv, priv->regs[VERSION_REG], &fgrev);
 	if (ret < 0)
 		return ret;
@@ -5565,7 +5715,9 @@ static int max1720x_init(struct max1720x_priv *priv)
 	if (ret < 0)
 		return ret;
 
-	if ((priv->driver_data == ID_MAX17330) || (priv->driver_data == ID_MAX17332)) {
+	if ((priv->driver_data == ID_MAX17330) ||
+		(priv->driver_data == ID_MAX17332) ||
+		(priv->driver_data == ID_MAX17335)) {
 		ret = regmap_read(priv->regmap, priv->regs[COMMSTAT_REG], &data);
 		if (!(ret < 0)) {
 			// Unlock Write Protection
@@ -5579,6 +5731,9 @@ static int max1720x_init(struct max1720x_priv *priv)
 			} else if (priv->driver_data == ID_MAX17332) {
 				for (reg_ctr = 0; reg_ctr < ARRAY_SIZE(max17332_nvm_defaults); reg_ctr++)
 					regmap_write(priv->regmap, (max17332_nvm_defaults[reg_ctr][0] & 0xFF), max17332_nvm_defaults[reg_ctr][1]);
+			} else if (priv->driver_data == ID_MAX17335) {
+				for (reg_ctr = 0; reg_ctr < ARRAY_SIZE(max17335_nvm_defaults); reg_ctr++)
+					regmap_write(priv->regmap, (max17335_nvm_defaults[reg_ctr][0] & 0xFF), max17335_nvm_defaults[reg_ctr][1]);
 			}
 			priv->client->addr = MODELGAUGE_DATA_I2C_ADDR;
 
@@ -5653,7 +5808,7 @@ static struct max1720x_platform_data *max1720x_parse_dt(struct device *dev)
 
 	ret = of_property_read_u32(np, "rsense", &pdata->rsense);
 	if (ret < 0)
-		pdata->rsense = 100;
+		pdata->rsense = 10;
 
 	return pdata;
 }
@@ -5674,19 +5829,14 @@ static const struct power_supply_desc max1720x_fg_desc = {
 	.property_is_writeable = max1720x_property_is_writeable,
 };
 
-static const struct i2c_device_id max1720x_id[];
-
-static int max1720x_probe(struct i2c_client *client)
-// TGOYEN
-// static int max1720x_probe(struct i2c_client *client,
-// 						  const struct i2c_device_id *id)
+static int max1720x_probe(struct i2c_client *client,
+						  const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
 	struct max1720x_priv *priv;
 	struct power_supply_config psy_cfg = {};
 	int ret;
 	u32 data;
-	const struct i2c_device_id *id = i2c_match_id(max1720x_id, client);
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_WORD_DATA))
 		return -EIO;
@@ -5716,12 +5866,6 @@ static int max1720x_probe(struct i2c_client *client)
 	priv->regmap = devm_regmap_init_i2c(client, &max1720x_regmap);
 	if (IS_ERR(priv->regmap))
 		return PTR_ERR(priv->regmap);
-	// check for i2c comms
-	ret = max1720x_regmap_read(priv, register_to_read, &data);
-	if ( ret ) {
-		dev_err(&client->dev, "i2c comms failed: %d\n", ret);
-		return -EIO;
-	}
 
 	INIT_WORK(&priv->init_worker, max1720x_init_worker);
 	schedule_work(&priv->init_worker);
@@ -5748,9 +5892,8 @@ static int max1720x_probe(struct i2c_client *client)
 					client->irq);
 			goto err_irq;
 		} else {
-			if ((id->driver_data == ID_MAX17320) ||
-				(id->driver_data == ID_MAX17330) ||
-				(id->driver_data == ID_MAX17332)) {
+			if ((id->driver_data == ID_MAX17320) ||	(id->driver_data == ID_MAX17330) ||
+				(id->driver_data == ID_MAX17332) || (id->driver_data == ID_MAX17335)) {
 				ret = regmap_read(priv->regmap, priv->regs[COMMSTAT_REG], &data);
 				if (!(ret < 0)) {
 					// Unlock Write Protection
@@ -5794,13 +5937,15 @@ err_attr:
 	return ret;
 }
 
-static void max1720x_remove(struct i2c_client *client)
+static int max1720x_remove(struct i2c_client *client)
 {
 	struct max1720x_priv *priv = i2c_get_clientdata(client);
 
 	cancel_work_sync(&priv->init_worker);
 	sysfs_remove_group(&priv->dev->kobj, priv->attr_grp);
 	power_supply_unregister(priv->battery);
+
+	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -5863,6 +6008,9 @@ static const struct of_device_id max1720x_match[] = {
 	{
 		.compatible = "maxim,max17332",
 	},
+	{
+		.compatible = "maxim,max17335",
+	},
 	{},
 };
 MODULE_DEVICE_TABLE(of, max1720x_match);
@@ -5878,6 +6026,7 @@ static const struct i2c_device_id max1720x_id[] = {
 	{"max17320", ID_MAX17320},
 	{"max17330", ID_MAX17330},
 	{"max17332", ID_MAX17332},
+	{"max17335", ID_MAX17335},
 	{},
 };
 MODULE_DEVICE_TABLE(i2c, max1720x_id);
@@ -5896,4 +6045,5 @@ module_i2c_driver(max1720x_i2c_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("opensource@maximintegrated.com");
-MODULE_DESCRIPTION("Maxim MAX17201/5, MAX17300/1/2/3, MAX17320 and MAX17330/2 Fuel Gauge driver");
+MODULE_DESCRIPTION("Maxim MAX17201/5, MAX17300/1/2/3, MAX17320 and MAX17330/2/5 Fuel Gauge driver");
+MODULE_VERSION("1.0.5");
