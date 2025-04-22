@@ -416,12 +416,15 @@
 #define NONVOLATILE_DATA_I2C_ADDR 0x0B
 
 struct max1720x_platform_data {
+	/* TODO POC-F Northgate seems to have a 2.5 mOhm resistor on it, even though 2 mOhm was spec'd
+	   Determine why and correct. For now change scale factor on rsense
+	*/
 	/*
 	 * rsense in miliOhms.
-	 * default 10 (if rsense = 0) as it is the recommended value by
+	 * default 100 (if rsense = 0) as it is the recommended value by
 	 * the datasheet although it can be changed by board designers.
 	 */
-	unsigned int rsense; /* in mOhm */
+	unsigned int rsense; /* in 100's of uOhm */
 	int volt_min; /* in mV */
 	int volt_max; /* in mV */
 	int temp_min; /* in DegreC */
@@ -1006,13 +1009,21 @@ static inline int max1720x_raw_voltage_to_uvolts(struct max1720x_priv *priv,
 static inline int max1720x_raw_current_to_uamps(struct max1720x_priv *priv,
 												int curr)
 {
+#if 0
 	return curr * 15625 / ((int)priv->pdata->rsense * 10);
+#else /* Northgate POC-F */
+	return curr * 15625 / ((int)priv->pdata->rsense);
+#endif
 }
 
 static inline int max1720x_raw_capacity_to_uamph(struct max1720x_priv *priv,
 												 int cap)
 {
+#if 0
 	return cap * 5000 / (int)priv->pdata->rsense;
+#else /* Northgate POC-F */
+	return cap * 50000 / (int)priv->pdata->rsense;
+#endif
 }
 
 static ssize_t log_show(struct device *dev,
@@ -1127,12 +1138,21 @@ static ssize_t atrate_store(struct device *dev,
 		in_val = (decimal_val * 10000);
 	}
 
+#if 0
 	if (in_val > (MAX1720x_CURRENT_MAX * (int)priv->pdata->rsense * 10))
 		return -EINVAL;
 	else if (in_val < (MAX1720x_CURRENT_MIN * (int)priv->pdata->rsense * 10))
 		return -EINVAL;
 
 	in_val = in_val / (MAX1720x_CURRENT_LSB * ((int)priv->pdata->rsense * 10));
+#else /* Northgate POC-F */
+	if (in_val > (MAX1720x_CURRENT_MAX * (int)priv->pdata->rsense))
+		return -EINVAL;
+	else if (in_val < (MAX1720x_CURRENT_MIN * (int)priv->pdata->rsense))
+		return -EINVAL;
+
+	in_val = in_val / (MAX1720x_CURRENT_LSB * ((int)priv->pdata->rsense));
+#endif
 
 	ret = max1720x_regmap_write(priv, priv->regs[ATRATE_REG], in_val);
 	if (ret < 0)
@@ -1352,7 +1372,12 @@ static ssize_t leakcurr_show(struct device *dev,
 	if (ret < 0)
 		return ret;
 
+#if 0
 	leakcurr_val = val * 15625 / ((int)priv->pdata->rsense * 160); /* LEAKCURR LSB: 1.5625/16 uV for 1mOhm sense resistor */
+#else /* Northgate POC-F */
+	leakcurr_val = val * 15625 / ((int)priv->pdata->rsense * 16); /* LEAKCURR LSB: 1.5625/16 uV for 1mOhm sense resistor */
+#endif
+
 	rc += snprintf(buf + rc, PAGE_SIZE - rc, "LEAKCURRENT : %d\n", leakcurr_val);
 
 	return rc;
@@ -4575,6 +4600,7 @@ static struct attribute *max17320_attr[] = {
 	&dev_attr_log.attr,
 	&dev_attr_nvmem.attr,
 	&dev_attr_atrate.attr,
+	&dev_attr_ship.attr,
 	&dev_attr_attte.attr,
 	&dev_attr_cell.attr,
 	&dev_attr_temp.attr,
@@ -5808,7 +5834,7 @@ static struct max1720x_platform_data *max1720x_parse_dt(struct device *dev)
 
 	ret = of_property_read_u32(np, "rsense", &pdata->rsense);
 	if (ret < 0)
-		pdata->rsense = 10;
+		pdata->rsense = 100;
 
 	return pdata;
 }
@@ -5829,14 +5855,19 @@ static const struct power_supply_desc max1720x_fg_desc = {
 	.property_is_writeable = max1720x_property_is_writeable,
 };
 
-static int max1720x_probe(struct i2c_client *client,
-						  const struct i2c_device_id *id)
+static const struct i2c_device_id max1720x_id[];
+
+static int max1720x_probe(struct i2c_client *client)
+// TGOYEN
+// static int max1720x_probe(struct i2c_client *client,
+// 						  const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
 	struct max1720x_priv *priv;
 	struct power_supply_config psy_cfg = {};
 	int ret;
 	u32 data;
+	const struct i2c_device_id *id = i2c_match_id(max1720x_id, client);
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_WORD_DATA))
 		return -EIO;
@@ -5866,6 +5897,12 @@ static int max1720x_probe(struct i2c_client *client,
 	priv->regmap = devm_regmap_init_i2c(client, &max1720x_regmap);
 	if (IS_ERR(priv->regmap))
 		return PTR_ERR(priv->regmap);
+	// check for i2c comms
+	ret = max1720x_regmap_read(priv, register_to_read, &data);
+	if ( ret ) {
+		dev_err(&client->dev, "i2c comms failed: %d\n", ret);
+		return -EIO;
+	}
 
 	INIT_WORK(&priv->init_worker, max1720x_init_worker);
 	schedule_work(&priv->init_worker);
@@ -5937,15 +5974,13 @@ err_attr:
 	return ret;
 }
 
-static int max1720x_remove(struct i2c_client *client)
+static void max1720x_remove(struct i2c_client *client)
 {
 	struct max1720x_priv *priv = i2c_get_clientdata(client);
 
 	cancel_work_sync(&priv->init_worker);
 	sysfs_remove_group(&priv->dev->kobj, priv->attr_grp);
 	power_supply_unregister(priv->battery);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
