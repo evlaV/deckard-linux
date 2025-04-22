@@ -4294,7 +4294,7 @@ static ssize_t enJ_show(struct device *dev,
 	return rc;
 }
 
-static ssize_t remaining_nmv_updates_show(struct device *dev,
+static ssize_t remaining_nvm_updates_show(struct device *dev,
 						struct device_attribute *attr, char *buf)
 {
 	struct max1720x_priv *priv = dev_get_drvdata(dev);
@@ -4528,7 +4528,7 @@ static DEVICE_ATTR_RO(batt);
 static DEVICE_ATTR_RO(leakcurr);
 static DEVICE_ATTR_RO(max17320_protstat);
 static DEVICE_ATTR_RO(max17330_protstat);
-static DEVICE_ATTR_RO(remaining_nmv_updates);
+static DEVICE_ATTR_RO(remaining_nvm_updates);
 
 // Read/Write attributes (0644) - DEVICE_ATTR_RW
 static DEVICE_ATTR_RW(atrate);
@@ -4660,7 +4660,7 @@ static struct attribute *max17330_attr[] = {
 	&dev_attr_push_button.attr,
 	&dev_attr_enJ.attr,
 	&dev_attr_control.attr,
-	&dev_attr_remaining_nmv_updates.attr,
+	&dev_attr_remaining_nvm_updates.attr,
 	&dev_attr_program_nvm_memory.attr,
 	NULL
 };
@@ -4718,7 +4718,7 @@ static struct attribute *max17332_attr[] = {
 	&dev_attr_push_button.attr,
 	&dev_attr_enJ.attr,
 	&dev_attr_control.attr,
-	&dev_attr_remaining_nmv_updates.attr,
+	&dev_attr_remaining_nvm_updates.attr,
 	&dev_attr_program_nvm_memory.attr,
 	&dev_attr_DisUVP.attr,
 	&dev_attr_manChg.attr,
@@ -4778,7 +4778,7 @@ static struct attribute *max17335_attr[] = {
 	&dev_attr_push_button.attr,
 	&dev_attr_enJ.attr,
 	&dev_attr_control.attr,
-	&dev_attr_remaining_nmv_updates.attr,
+	&dev_attr_remaining_nvm_updates.attr,
 	&dev_attr_program_nvm_memory.attr,
 	&dev_attr_DisUVP.attr,
 	&dev_attr_manChg.attr,
