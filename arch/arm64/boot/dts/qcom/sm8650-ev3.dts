@@ -1303,6 +1303,9 @@
 		compatible = "deckard-panel";
 		dual-panel;
 
+		pinctrl-0 = <&display_resx1>, <&display_resx2>;
+		pinctrl-names = "default";
+
 		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
 			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
 
@@ -1406,6 +1409,9 @@
 	status = "okay";
 };
 
+// For 1.8V operation on PM8550
+// VIN0 ( 0 ) for GPIO_01 to GPIO_04
+// VIN1 ( 1 ) for GPIO_05 to GPIO_12 ( except 7 )
 &pm8550_gpios {
 	sdc2_card_det_n: sdc2-card-det-state {
 		pins = "gpio12";
@@ -1422,6 +1428,42 @@
 		bias-pull-up;
 		input-enable;
 		power-source = <1>;
+	};
+
+	display_resx1: display_resx1-state {
+		pins = "gpio3";
+		function = "normal";
+		power-source = <1>; /* 1.8 V */
+	};
+
+	display_resx2: display_resx2-state {
+		pins = "gpio11";
+		function = "normal";
+		power-source = <1>; /* 1.8 V */
+	};
+
+	display_avdd_en_l: display_avdd_en_l-state {
+		pins = "gpio4";
+		function = "normal";
+		power-source = <0>; /* 1.8 V */
+	};
+
+	display_avdd_en_r: display_avdd_en_r-state {
+		pins = "gpio8";
+		function = "normal";
+		power-source = <1>; /* 1.8 V */
+	};
+
+	display_avee_en_l: display_avee_en_l-state {
+		pins = "gpio9";
+		function = "normal";
+		power-source = <0>; /* 1.8 V */
+	};
+
+	display_avee_en_r: display_avee_en_r-state {
+		pins = "gpio10";
+		function = "normal";
+		power-source = <0>; /* 1.8 V */
 	};
 };
 
@@ -1440,6 +1482,12 @@
 		power-source = <1>;
 		bias-pull-up;
 		input-enable;
+	};
+
+	uart_detect: uart_detect-state {
+		pins = "gpio6";
+		function = "normal";
+		power-source = <1>;
 	};
 };
 
@@ -1693,6 +1741,8 @@
 		#size-cells = <0>;
 		compatible = "nexperia,nex10000ub";
 		reg = <0x3e>;
+		pinctrl-0 = <&display_avdd_en_r>, <&display_avee_en_r>;
+		pinctrl-names = "default";
 		enp-gpios = <&pm8550_gpios 8 GPIO_ACTIVE_HIGH>;
 		enn-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
 		status = "okay";
@@ -1732,6 +1782,8 @@
 		#size-cells = <0>;
 		compatible = "nexperia,nex10000ub";
 		reg = <0x3e>;
+		pinctrl-0 = <&display_avdd_en_l>, <&display_avee_en_l>;
+		pinctrl-names = "default";
 		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
 		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
 		status = "okay";
