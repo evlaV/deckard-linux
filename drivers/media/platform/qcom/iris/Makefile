@@ -23,7 +23,6 @@ qcom-iris-objs += \
              iris_vpu3x.o \
              iris_vpu_buffer.o \
              iris_vpu_common.o \
-	     firmware_no_tz.o \
 
 ifeq ($(CONFIG_VIDEO_QCOM_VENUS),)
 qcom-iris-objs += iris_platform_sm8250.o
