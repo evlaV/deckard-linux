@@ -267,6 +267,8 @@
 #define MAX17330_NPACKCFG_R100 (1 << MAX17330_NPACKCFG_R100_POS)
 #define MAX17330_NPACKCFG_A1EN_POS 12
 #define MAX17330_NPACKCFG_A1EN (1 << MAX17330_NPACKCFG_A1EN_POS)
+#define MAX17320_NPACKCFG_NCELLS_POS 0
+#define MAX17320_NPACKCFG_NCELLS (0x3 << MAX17320_NPACKCFG_NCELLS_POS)
 
 /* nODSCCfg register bits for MAX17330 */
 #define MAX17330_NODSCCFG_OCDLY_POS 0
@@ -303,9 +305,9 @@
 
 /* nVEmpty register specific definations for MAX17330 & MAX17332 & MAX17335 */
 #define MAX17330_NVEMPTY_VE_MAX 5110	/* 5110 mv */
-#define MAX17330_NVEMPTY_VE_STEP 5		/* 10 mV	*/
+#define MAX17330_NVEMPTY_VE_STEP 10		/* 10 mV	*/
 #define MAX17330_NVEMPTY_VR_MAX 5110	/* 5080 mv */
-#define MAX17330_NVEMPTY_VR_STEP 5		/* 40 mV	*/
+#define MAX17330_NVEMPTY_VR_STEP 40		/* 40 mV	*/
 
 /* nJEITAV register specific definitions */
 #define MAX17330_ROOMCHARGINGV_DEFAULT 4200 /* 4200 mv */
@@ -416,9 +418,6 @@
 #define NONVOLATILE_DATA_I2C_ADDR 0x0B
 
 struct max1720x_platform_data {
-	/* TODO POC-F Northgate seems to have a 2.5 mOhm resistor on it, even though 2 mOhm was spec'd
-	   Determine why and correct. For now change scale factor on rsense
-	*/
 	/*
 	 * rsense in miliOhms.
 	 * default 100 (if rsense = 0) as it is the recommended value by
@@ -447,6 +446,7 @@ struct max1720x_priv {
 	const u16 *regs;
 	u8 nvmem_high_addr;
 	int cycles_reg_lsb_percent;
+	int num_cells;
 	kernel_ulong_t driver_data;
 	int (*get_charging_status)(void);
 	int (*get_battery_health)(struct max1720x_priv *priv, int *health);
@@ -543,6 +543,7 @@ enum register_ids {
 	REMAINING_UPDATES_REG,
 	NDESIGNCAP_REG,
 	NFULLCFG_REG,
+	SDESIGNVOLT_REG,
 };
 
 static int max1720x_get_battery_health(struct max1720x_priv *priv, int *health);
@@ -709,6 +710,7 @@ static const u16 max17320_regs[] = {
 	[VERSION_REG] = 0x21,
 	[VEMPTY_REG] = 0x3A,
 	[QH_REG] = 0x4D,
+	[COMMAND_REG] = 0x60,
 	[COMMSTAT_REG] = 0x61,
 	[IALRTTH_REG] = 0xAC,
 	[PROTSTATUS_REG] = 0xD9,
@@ -726,6 +728,10 @@ static const u16 max17320_regs[] = {
 	[TEMP2_REG] = 0x139,
 	[TEMP3_REG] = 0x138,
 	[TEMP4_REG] = 0x137,
+	[NVEMPTY_REG] = 0x19E,
+	[NPACKCFG_REG] = 0x1B5,
+	[REMAINING_UPDATES_REG] = 0x1FD,
+	[SDESIGNVOLT_REG] = 0x119,
 };
 
 static const u16 max17330_regs[] = {
@@ -978,6 +984,7 @@ static enum power_supply_property max1720x_battery_props[] = {
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
+	POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN,
 	POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_AVG,
@@ -4607,6 +4614,8 @@ static struct attribute *max17320_attr[] = {
 	&dev_attr_batt.attr,
 	&dev_attr_max17320_protstat.attr,
 	&dev_attr_register_store.attr,
+	&dev_attr_register_read.attr,
+	&dev_attr_remaining_nvm_updates.attr,
 	NULL
 };
 
@@ -5236,6 +5245,16 @@ static int max1720x_get_property(struct power_supply *psy,
 			return ret;
 		val->intval = reg >> 8;
 		val->intval *= 20000; /* Units of LSB = 20mV */
+		val->intval *= priv->num_cells; 
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
+		ret = max1720x_regmap_read(priv, priv->regs[SDESIGNVOLT_REG], &reg);
+		if (ret < 0)
+			return ret;
+		val->intval = reg;
+		val->intval *= 1000; /* Units of LSB = 1mV */
+		/* WORK AROUND MAX17320 reports sDesignVoltage Incorrectly */
+		val->intval *= priv->num_cells; 
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN:
 		ret = max1720x_regmap_read(priv, priv->regs[VEMPTY_REG], &reg);
@@ -5243,6 +5262,7 @@ static int max1720x_get_property(struct power_supply *psy,
 			return ret;
 		val->intval = reg >> 7;
 		val->intval *= 10000; /* Units of LSB = 10mV */
+		val->intval *= priv->num_cells; 
 		break;
 	case POWER_SUPPLY_PROP_STATUS:
 		if (pdata && priv->get_charging_status)
@@ -5255,18 +5275,21 @@ static int max1720x_get_property(struct power_supply *psy,
 		if (ret < 0)
 			return ret;
 		val->intval = max1720x_raw_voltage_to_uvolts(priv, reg);
+		val->intval *= priv->num_cells; 
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
 		ret = max1720x_regmap_read(priv, priv->regs[AVGVCELL_REG], &reg);
 		if (ret < 0)
 			return ret;
 		val->intval = max1720x_raw_voltage_to_uvolts(priv, reg);
+		val->intval *= priv->num_cells; 
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_OCV:
 		ret = max1720x_regmap_read(priv, priv->regs[VFOCV_REG], &reg);
 		if (ret < 0)
 			return ret;
 		val->intval = max1720x_raw_voltage_to_uvolts(priv, reg);
+		val->intval *= priv->num_cells; 
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		ret = max1720x_regmap_read(priv, priv->regs[REPSOC_REG], &reg);
@@ -5776,7 +5799,15 @@ static int max1720x_init(struct max1720x_priv *priv)
 		}
 		priv->pdata->rsense = 5;
 	}
+	else if (priv->driver_data == ID_MAX17320)
+	{
+		// Read Number of Cells
+		ret = max1720x_regmap_read(priv, priv->regs[NPACKCFG_REG], &data);
+		data &= MAX17320_NPACKCFG_NCELLS;
+		data = data >> MAX17320_NPACKCFG_NCELLS_POS;
 
+		priv->num_cells = data + 2;
+	}
 
 	return 0;
 }
@@ -5879,6 +5910,7 @@ static int max1720x_probe(struct i2c_client *client)
 	priv->regs = chip_regs[id->driver_data];
 	priv->nvmem_high_addr = nvmem_high_addrs[id->driver_data];
 	priv->cycles_reg_lsb_percent = cycles_reg_lsb_percents[id->driver_data];
+	priv->num_cells = 1;
 	priv->get_battery_health = get_battery_health_handlers[id->driver_data];
 	register_to_read = 0x180; /* First register of nvm */
 	priv->driver_data = id->driver_data;
