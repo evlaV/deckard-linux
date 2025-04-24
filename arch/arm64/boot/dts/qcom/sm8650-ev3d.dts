@@ -1333,6 +1333,7 @@
 		reg = <0>;
 		compatible = "deckard-panel";
 		dual-panel;
+		dphy;
 
 		pinctrl-0 = <&display_resx1>, <&display_resx2>;
 		pinctrl-names = "default";
