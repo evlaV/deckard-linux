@@ -14,8 +14,8 @@
 #include "sm8650-el2.dtsi"
 
 / {
-	model = "SM8650 EV3 dphy rev1 4slam 2et";
-	compatible = "qcom,sm8650-ev3", "qcom,sm8650";
+	model = "SM8650 EV2 dphy rev1 4slam 2et";
+	compatible = "qcom,sm8650-ev2", "qcom,sm8650";
 
 	aliases {
 		serial0 = &uart15;
@@ -1374,7 +1374,7 @@
 
 &mdss_dsi0_out {
 	remote-endpoint = <&panel0_in>;
-	data-lanes = <0 1 2>;
+	data-lanes = <0 1 2 3>;
 };
 
 &mdss_dsi0_phy {
@@ -1395,13 +1395,13 @@
 
 &mdss_dsi1_out {
 	remote-endpoint = <&panel1_in>;
-	data-lanes = <0 1 2>;
+	data-lanes = <0 1 2 3>;
 };
 
 &mdss_dsi1_phy {
 	vdds-supply = <&vreg_l1i_0p88>;
 	status = "okay";
-	phy-type = <PHY_TYPE_CPHY>;
+	phy-type = <PHY_TYPE_DPHY>;
 };
 
 &pcie0 {
