@@ -104,8 +104,8 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 // Modeset params: terms are defined per panel.
 #define H_PIXELS           2160
 
-#define V_BACK_PORCH       10
-#define V_SYNC             10
+#define V_BACK_PORCH       20
+#define V_SYNC             1
 #define NUM_PANELS         2
 
 // Brightness settings
@@ -119,13 +119,13 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 #define CAMERA_TRIGGER_OFFSET 50
 
 #ifdef PANEL_FIFO_MODE
-	#define H_FRONT_PORCH      40
-	#define H_BACK_PORCH       10
-	#define H_SYNC             90
+	#define H_FRONT_PORCH      24
+	#define H_BACK_PORCH       20
+	#define H_SYNC             20
 	#define V_LINES            2160
-	#define V_FRONT_PORCH_120  290
-	#define V_FRONT_PORCH_90   290
-	#define V_FRONT_PORCH_80   290
+	#define V_FRONT_PORCH_120  404
+	#define V_FRONT_PORCH_90   1265
+	#define V_FRONT_PORCH_80   1697
 
 	// DSI DCS command related
 
@@ -138,12 +138,12 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 	#define PANEL_VBP_80  800
 
 	// TODO adjust DPU overclocked settings for 90 Hz mode
-	#define PANEL_VID_VS_DELAY_120   1536
-	#define PANEL_VID_VS_DELAY_90    1536
-	#define PANEL_VID_VS_DELAY_80    1536
-	#define PIXEL_CLOCK_KHZ_120    684458
-	#define PIXEL_CLOCK_KHZ_90     511801
-	#define PIXEL_CLOCK_KHZ_80     454480
+	#define PANEL_VID_VS_DELAY_120   1112
+	#define PANEL_VID_VS_DELAY_90    1112
+	#define PANEL_VID_VS_DELAY_80    1112
+	#define PIXEL_CLOCK_KHZ_120    689884
+	#define PIXEL_CLOCK_KHZ_90     689884
+	#define PIXEL_CLOCK_KHZ_80     689884
 
 	//previously we used these with the lower DPU freq -- no longer needed -- keep for reference
 	/*
@@ -304,6 +304,7 @@ void _get_per_mode_settings(rad_modes_t mode, unsigned * panel_vfp, unsigned * v
 #define DSI_CMD(_payload...) ({ u8 payload[] = {_payload}; _DSI_CMD(payload); })
 #define SLEEP(x) usleep_range((x) * 1000, (x) * 1000 + 1000)
 
+#define LE16(x) (x)&0xff, (x)>>8
 #define BE16(x) (x)>>8,(x)&0xff
 
 #if 1
@@ -369,7 +370,7 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	//TE and TE2 settings  TODO: do we still need this?
 	DSI_CMD(0xbe, 0x00, 0x6A, 0x02 ), //TE=GPIO2 0x6A, TE2=internal vsync 0x02
 	// Display Timing
-	DSI_CMD(0xc0, 0x3B, 0x86, 0x19, 0x00, 0x08, 0x70, 0x00, 0x08, 0x00, 0x00, 0x08, 0x3B, 0x00, 0x00, 0x19, 0x01, 0x22),
+	DSI_CMD(0xc0, 0x3b, 0x86, LE16(VBP), 0x08, 0x70, BE16(VFP), 0x00, 0x00, 0x08, 0x3B, 0x00, 0x00, 0x19, 0x01, 0x22),
     // Source Setting
 	DSI_CMD(0xc6,0x08,0x70,0x28,0x48,0x00,0x00,0x13,0x21,0xff,0x00,0x0f,0x01,0x14,0x17,0x00,0x00,0x00,0x02,0x40,0x0C,0x00,0x00,0x00,
             0x20,0x00,0x00,0x00,0x40,0x00,0x00,0x70,0x08,0xD0,0x02,0x21,0x6F,0x08,0x5A,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00),
