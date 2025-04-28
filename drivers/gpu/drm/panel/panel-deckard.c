@@ -47,11 +47,22 @@
 #define BRIGHTNESS_DEFAULT 256
 #define BRIGHTNESS_MAX_120 380
 
+// Panel settings
 #define VFP		700
 #define VID_VS_DELAY	1112
-#define VBP		800
-#define GPO1_TES1	233
-#define GPO1_TEW1	17
+#define VBP		100
+#define GPO1_TES1	4000
+#define GPO1_TEW1	0
+#define RTN 59
+
+// Workaround for sharp ghosting issue
+#define VBP_SHARP		800
+#define GPO1_TES1_SHARP	233
+
+// Panel Vendor types
+#define VENDOR_SHARP	'S'
+#define VENDOR_JDI		'J'
+#define VENDOR_BOE		'B'
 
 /*
  * Camera capture signal on panel tester is GPIO2 routed out TE pin
@@ -113,6 +124,8 @@ struct lpm026m648c_ctx {
 	bool dphy;
 	bool prepared;
 	bool enabled;
+
+	char panel_vendor;
 
 	lpm026m648c_modes_t current_mode;
 };
@@ -259,7 +272,7 @@ static void dsi_write_panel_on_jdi(struct drm_panel *panel)
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3, 0x70, 0x08, 0xd0,
 				  0x02, 0x21, 0x6f, 0x08, 0x5a, 0x00, 0x00,
 				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, 0x3a, 0x86,
+	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86,
 				  LE16(VBP), 0x08, 0x70, BE16(VFP));
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
@@ -299,7 +312,7 @@ static void dsi_write_panel_on_sharp(struct drm_panel *panel)
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 				  0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-				  BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00,
+				  BE16(GPO1_TES1_SHARP), BE16(GPO1_TEW1), 0x00, 0x00,
 				  0x00, 0x00,
 				  BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
 				  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
@@ -310,9 +323,8 @@ static void dsi_write_panel_on_sharp(struct drm_panel *panel)
 				  0xD0, 0x02, 0x21, 0x6F, 0x08, 0x5A, 0x00, 0x00, 0x00, 0x00,
 				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				  0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, 0x3b, 0x86,
-				  0x19,0x00, 0x08, 0x70, 0x00, 0x08, 0x00, 0x00, 0x08,
-                  0x3B, 0x00, 0x00, 0x19, 0x01, 0x22);
+	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP_SHARP), 0x08, 0x70,
+				  BE16(VFP), 0x00, 0x00, 0x08, 0x3B, 0x00, 0x00, 0x19, 0x01, 0x22);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
 				  0x46, 0x61, 0x00, 0x8b);
@@ -338,9 +350,6 @@ static void dsi_write_panel_on_sharp(struct drm_panel *panel)
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_ON);
 	msleep(200);
 }
-
-
-
 
 static void dsi_write_panel_on_boe(struct drm_panel *panel)
 {
@@ -371,9 +380,9 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 					  0x70, 0x08, 0xD0, 0x02, 0x21, 0x6F, 0x08, 0x5A, 0x00,
 					  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 					  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, 0x3A, 0x86, 0x17,
-					  0x00, 0x08, 0x70, 0x00, 0x17, 0x00, 0x00, 0x08, 0x3A,
-					  0x00, 0x00, 0x17, 0x00, 0x17);
+		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP),
+					  0x08, 0x70, LE16(VFP), 0x00, 0x00, 0x08, 0x3A, 0x00, 0x00,
+					  0x17, 0x00, 0x17);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
 					  0x46, 0x61, 0x00, 0x8b);
@@ -399,9 +408,9 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 					0x00, 0x00,
 					BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
 					BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, 0x3A, 0x86, 0x17,
-					0x00, 0x08, 0x70, 0x00, 0x17, 0x00, 0x00, 0x08, 0x3A,
-					0x00, 0x00, 0x17, 0x00, 0x17);
+		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP),
+					0x08, 0x70, BE16(VFP), 0x00, 0x00, 0x08, 0x3A, 0x00, 0x00,
+					0x17, 0x00, 0x17);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET2, 0x00);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3, 0x0B);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
@@ -444,7 +453,7 @@ static int get_panel_info(struct drm_panel *panel)
 static void dsi_write_panel_on(struct drm_panel *panel)
 {
 	int ret;
-	char panel_vendor, panel_left, panel_right;
+	char panel_left, panel_right;
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 
 	if (!ctx->dphy) {
@@ -452,7 +461,7 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 		ret = get_panel_info(panel);
 		if ( ret ) {
 			DRM_DEV_ERROR(ctx->dev, "Could not get panel info for init sequence, defaulting to Sharp\n" );
-			panel_vendor = 'S';
+			ctx->panel_vendor = VENDOR_SHARP;
 		} else {
 			// need to support old format JDI displays
 			if ( ctx->panel_mfg_info[VENDOR_OFFSET] == 1 ) {
@@ -467,36 +476,37 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 			}
 			if (panel_left && panel_right && panel_left != panel_right) {
 				DRM_DEV_ERROR(ctx->dev, "Displays don't match ( %c != %c ), using %c\n", panel_left, panel_right, panel_left );
-				panel_vendor = panel_left;
+				ctx->panel_vendor = panel_left;
 			} else if (panel_left && panel_right) {
 				DRM_DEV_INFO(ctx->dev, "Displays match ( %c == %c ), using %c\n", panel_left, panel_right, panel_left );
-				panel_vendor = panel_left;
+				ctx->panel_vendor = panel_left;
 			} else if ( panel_left && !panel_right ) {
 				DRM_DEV_INFO(ctx->dev, "Only left panel, using %c\n", panel_left);
-				panel_vendor = panel_left;
+				ctx->panel_vendor = panel_left;
 			} else if ( !panel_left && panel_right ) {
 				DRM_DEV_INFO(ctx->dev, "Only right panel, using %c\n", panel_right );
-				panel_vendor = panel_right;
+				ctx->panel_vendor = panel_right;
 			} else {
 				DRM_DEV_ERROR(ctx->dev, "no panel mfg info, defaulting to sharp ( %c %c )\n", panel_left, panel_right );
-				panel_vendor = 'S';
+				ctx->panel_vendor = VENDOR_SHARP;
 			}
 		}
 	} else {
 		// Dphy units default to BOE
 		DRM_DEV_INFO(ctx->dev, "DPHY board, default to BOE\n" );
-		panel_vendor = 'B';
+		ctx->panel_vendor = VENDOR_BOE;
 	}
 
-	if ( panel_vendor == 'S' ) {
+	if ( ctx->panel_vendor == VENDOR_SHARP ) {
 		dsi_write_panel_on_sharp(panel);
-	} else if ( panel_vendor == 'B' ) {
+	} else if ( ctx->panel_vendor == VENDOR_BOE ) {
 		dsi_write_panel_on_boe(panel);
-	} else if ( panel_vendor == 'J' ) {
+	} else if ( ctx->panel_vendor == VENDOR_JDI ) {
 		dsi_write_panel_on_jdi(panel);
 	} else {
 		DRM_DEV_ERROR(ctx->dev, "unrecognized panel vendor ( %c ), defualt to sharp\n", ctx->panel_mfg_info[VENDOR_OFFSET] );
 		dsi_write_panel_on_sharp(panel);
+		ctx->panel_vendor = VENDOR_SHARP;
 	}
 }
 
@@ -731,7 +741,11 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 	msleep(20);
 	dsi_write_panel_on(panel);
 
-	ctx->backlight->props.pulse_offset_rows = GPO1_TES1;
+	if ( ctx->panel_vendor == VENDOR_SHARP) {
+		ctx->backlight->props.pulse_offset_rows = GPO1_TES1_SHARP;
+	} else {
+		ctx->backlight->props.pulse_offset_rows = GPO1_TES1;
+	}
 
 	ret = backlight_enable(ctx->backlight);
 
