@@ -284,9 +284,11 @@ static int max98390_set_clock(struct snd_soc_component *component,
 		/* BCLK configuration */
 		value = max98390_get_bclk_sel(blr_clk_ratio);
 		if (!value) {
-			dev_err(component->dev, "format unsupported %d\n",
-				params_format(params));
-			return -EINVAL;
+			/*
+			 * Returning -ENOTSUPP instead of -EINVAL avoids
+			 * an unnecessary dev_err message in the caller.
+			 */
+			return -ENOTSUPP;
 		}
 
 		regmap_update_bits(max98390->regmap,
