@@ -485,6 +485,10 @@ static void gic_poke_irq(struct irq_data *d, u32 offset)
 
 static void gic_mask_irq(struct irq_data *d)
 {
+	/* HACK: always keep SGI 0 enabled - see other comment */
+	if (d->hwirq == 0)
+		return;
+
 	gic_poke_irq(d, GICD_ICENABLER);
 	if (gic_irq_in_rdist(d))
 		gic_redist_wait_for_rwp();
