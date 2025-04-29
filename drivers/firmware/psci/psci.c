@@ -219,6 +219,13 @@ static int __psci_cpu_on(u32 fn, unsigned long cpuid, unsigned long entry_point)
 	int err;
 
 	err = invoke_psci_fn(fn, cpuid, entry_point, 0);
+	/* workaround for TZ bug: the CPU wakeup SGI (8) is not properly configured on secondary CPUs
+	 * use our own SGI (0) to wake it up after CPU_ON
+	 * this is needed after CPU_OFF (not needed for the first CPU_ON)
+	 * SGI 0 is used by linux as the "Rescheduling" interrupt, keeping it enabled during suspend should be OK?
+	 */
+	if (cpuid)
+		write_sysreg_s(1 | cpuid << 8 | 0 << 24, SYS_ICC_SGI1R_EL1); // send SGI 0 to the CPU
 	return psci_to_linux_errno(err);
 }
 
