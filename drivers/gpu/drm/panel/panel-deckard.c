@@ -723,7 +723,7 @@ static const struct backlight_ops lpm026m648c_bl_ops = {
 static int lpm026m648c_enable(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-	int ret;
+	int ret, i;
 
 	if (ctx->enabled)
 		return 0;
@@ -745,6 +745,16 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 		ctx->backlight->props.pulse_offset_rows = GPO1_TES1_SHARP;
 	} else {
 		ctx->backlight->props.pulse_offset_rows = GPO1_TES1;
+	}
+
+	if ( ctx->panel_vendor == VENDOR_SHARP || ctx->panel_vendor == VENDOR_BOE ) {
+		for ( i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++ ) {
+			regulator_set_voltage(ctx->lcd_bias_regulators[i].consumer, 5800000, 5800000);
+		}
+	} else {
+		for ( i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++ ) {
+			regulator_set_voltage(ctx->lcd_bias_regulators[i].consumer, 5700000, 5700000);
+		}
 	}
 
 	ret = backlight_enable(ctx->backlight);
