@@ -134,11 +134,39 @@ static int nex10000ub_regulator_is_enabled(struct regulator_dev *rdev) {
 }
 
 static int nex10000ub_set_voltage_sel(struct regulator_dev *rdev, unsigned sel) {
+	int ret, i = 0;
 	struct nex10000ub_data *nex10000ub = rdev_get_drvdata(rdev);
 	enum nex10000ub_regulator_id id = rdev_get_id(rdev);
 	// save selection for when enable is called
 	if ( id < NEX10000UB_NUM_REGULATORS ) {
 		nex10000ub->voltage_sel[id] = sel;
+		if ( nex10000ub_regulator_is_enabled( rdev ) ) {
+			switch(id) {
+				case NEX10000UB_LDO_POS:
+					for(i=0;i<10;i++) {
+						ret = nex10000ub_i2c_write(nex10000ub, NEX10000UB_REG_VOUT_POS, nex10000ub->voltage_sel[id]);
+						if( ret == 0 )
+							break;
+					}
+					if( ret ) {
+						dev_err(nex10000ub->dev, "Failed to set VPOS ( %d ) during enable\n", id);
+					}
+					return ret;
+				case NEX10000UB_LDO_NEG:
+					for(i=0;i<10;i++) {
+						ret = nex10000ub_i2c_write(nex10000ub, NEX10000UB_REG_VOUT_NEG, nex10000ub->voltage_sel[id]);
+						if( ret == 0 )
+							break;
+					}
+					if( ret ) {
+						dev_err(nex10000ub->dev, "Failed to set VNEG ( %d )during enable\n", id);
+					}
+					return ret;
+				default:
+					return 0;
+					break;
+			}
+		}
 		return 0;
 	} else {
 		return -EINVAL;
