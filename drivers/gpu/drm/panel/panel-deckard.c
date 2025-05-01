@@ -55,6 +55,9 @@
 #define GPO1_TEW1	0
 #define RTN 59
 
+// BOE VBP(reg) functions differently
+#define VBP_BOE_DPHY		23
+
 // Workaround for sharp ghosting issue
 #define VBP_SHARP		800
 #define GPO1_TES1_SHARP	233
@@ -408,7 +411,7 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 					0x00, 0x00,
 					BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
 					BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP),
+		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP_BOE_DPHY),
 					0x08, 0x70, BE16(VFP), 0x00, 0x00, 0x08, 0x3A, 0x00, 0x00,
 					0x17, 0x00, 0x17);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET2, 0x00);
