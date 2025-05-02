@@ -1189,7 +1189,7 @@ static struct platform_driver qcom_pm8550b_charger_driver = {
 		.of_match_table = qcom_pm8550b_charger_table,
 	},
 	.probe = qcom_pm8550b_charger_probe,
-	.remove_new = qcom_pm8550b_charger_remove,
+	.remove = qcom_pm8550b_charger_remove,
 };
 
 module_platform_driver(qcom_pm8550b_charger_driver);
