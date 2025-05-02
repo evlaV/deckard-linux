@@ -206,8 +206,8 @@
 	southgate_fg {
 		compatible = "deckard,southgate_fg";
 		status="okay";
-		io-channels = <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_SNS_CHGR>,
-					  <&pmk8550_vadc PM8550B_ADC5_GEN3_ICHG_FB>;
+		io-channels = <&pmk8550_vadc ADC5_GEN3_VBAT_SNS_CHGR(7)>,
+					  <&pmk8550_vadc ADC5_GEN3_ICHG_FB(7)>;
 		io-channel-names = "vbat", "ibat";
 	};
 
@@ -905,8 +905,8 @@
 
 	vdd-pdphy-supply = <&vreg_l5b_3p1>;
 
-	io-channels = <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_SNS_CHGR>,
-				  <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_2S_MID_CHGR>;
+	io-channels = <&pmk8550_vadc ADC5_GEN3_VBAT_SNS_CHGR(7)>,
+				  <&pmk8550_vadc ADC5_GEN3_VBAT_2S_MID_CHGR(7)>;
 	io-channel-names = "vbat", "vmid";
 
 	connector {
