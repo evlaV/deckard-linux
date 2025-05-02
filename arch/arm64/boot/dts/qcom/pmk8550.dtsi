@@ -13,12 +13,12 @@
 #include <dt-bindings/iio/adc/qcom,spmi-adc5-gen3-pm8550vx.h>
 #include <dt-bindings/iio/adc/qcom,spmi-vadc.h>
 
-#include <dt-bindings/iio/qcom,spmi-adc5-gen3-pmk8550.h>
-#include <dt-bindings/iio/qcom,spmi-adc5-gen3-pm8550.h>
-#include <dt-bindings/iio/qcom,spmi-adc5-gen3-pm8550b.h>
+#include <dt-bindings/iio/adc/qcom,spmi-adc5-gen3-pmk8550.h>
+#include <dt-bindings/iio/adc/qcom,spmi-adc5-gen3-pm8550.h>
+#include <dt-bindings/iio/adc/qcom,spmi-adc5-gen3-pm8550b.h>
 #define PM8550VE_SID	8
-#include <dt-bindings/iio/qcom,spmi-adc5-gen3-pm8550vx.h>
-#include <dt-bindings/iio/qcom,spmi-vadc.h>
+#include <dt-bindings/iio/adc/qcom,spmi-adc5-gen3-pm8550vx.h>
+#include <dt-bindings/iio/adc/qcom,spmi-vadc.h>
 
 / {
 	reboot-mode {
@@ -129,87 +129,87 @@
 
 			/* PMK8550 Channel nodes */
 			pmk8550_offset_ref {
-				reg = <PMK8550_ADC5_GEN3_OFFSET_REF>;
+				reg = <PMK8550_ADC5_GEN3_REF_GND(0)>;
 				label = "pmk8550_offset_ref";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			pmk8550_vref_1p25 {
-				reg = <PMK8550_ADC5_GEN3_1P25VREF>;
+				reg = <PMK8550_ADC5_GEN3_1P25VREF(0)>;
 				label = "pmk8550_vref_1p25";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			pmk8550_die_temp {
-				reg = <PMK8550_ADC5_GEN3_DIE_TEMP>;
+				reg = <PMK8550_ADC5_GEN3_DIE_TEMP(0)>;
 				label = "pmk8550_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			/* PM8550 Channel nodes */
 			pm8550_offset_ref {
-				reg = <PM8550_ADC5_GEN3_OFFSET_REF>;
+				reg = <PM8550_ADC5_GEN3_REF_GND(1)>;
 				label = "pm8550_offset_ref";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			pm8550_vref_1p25 {
-				reg = <PM8550_ADC5_GEN3_1P25VREF>;
+				reg = <PM8550_ADC5_GEN3_1P25VREF(1)>;
 				label = "pm8550_vref_1p25";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			pm8550_die_temp {
-				reg = <PM8550_ADC5_GEN3_DIE_TEMP>;
+				reg = <PM8550_ADC5_GEN3_DIE_TEMP(1)>;
 				label = "pm8550_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			pm8550_vph_pwr {
-				reg = <PM8550_ADC5_GEN3_VPH_PWR>;
+				reg = <PM8550_ADC5_GEN3_VPH_PWR(1)>;
 				label = "pm8550_vph_pwr";
 				qcom,pre-scaling = <1 3>;
 			};
 
 			/* PM8550B Channel nodes */
 			pm8550b_offset_ref {
-				reg = <PM8550B_ADC5_GEN3_OFFSET_REF>;
+				reg = <PM8550B_ADC5_GEN3_REF_GND(7)>;
 				label = "pm8550b_offset_ref";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			pm8550b_vref_1p25 {
-				reg = <PM8550B_ADC5_GEN3_1P25VREF>;
+				reg = <PM8550B_ADC5_GEN3_1P25VREF(7)>;
 				label = "pm8550b_vref_1p25";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			pm8550b_die_temp {
-				reg = <PM8550B_ADC5_GEN3_DIE_TEMP>;
+				reg = <PM8550B_ADC5_GEN3_DIE_TEMP(7)>;
 				label = "pm8550b_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			pm8550b_lite_die_temp {
-				reg = <PM8550B_ADC5_GEN3_TEMP_ALARM_LITE>;
+				reg = <PM8550B_ADC5_GEN3_TEMP_ALARM_LITE(7)>;
 				label = "pm8550b_lite_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			pm8550b_vph_pwr {
-				reg = <PM8550B_ADC5_GEN3_VPH_PWR>;
+				reg = <PM8550B_ADC5_GEN3_VPH_PWR(7)>;
 				label = "pm8550b_vph_pwr";
 				qcom,pre-scaling = <1 3>;
 			};
 
 			pm8550b_vbat_sns_qbg {
-				reg = <PM8550B_ADC5_GEN3_VBAT_SNS_QBG>;
+				reg = <PM8550B_ADC5_GEN3_VBAT_SNS_QBG(7)>;
 				label = "pm8550b_vbat_sns_qbg";
 				qcom,pre-scaling = <1 6>;
 			};
 
 			pm8550b_vbat_sns_chgr {
-				reg = <PM8550B_ADC5_GEN3_VBAT_SNS_CHGR>;
+				reg = <PM8550B_ADC5_GEN3_VBAT_SNS_CHGR(7)>;
 				label = "pm8550b_vbat_sns_chgr";
 				qcom,pre-scaling = <1 6>;
 			};
@@ -217,93 +217,93 @@
 			// NOTE That this seems correct, but is not... TGoyen
 			// qcom,scale-fn-type = <ADC_SCALE_HW_CALIB_PM5_GEN3_BATT_THERM_100K>;
 			battery_temp {
-				reg = <PM8550B_ADC5_GEN3_AMUX_THM1_BATT_THERM_100K_PU>;
+				reg = <PM8550B_ADC5_GEN3_AMUX_THM1_BATT_THERM_100K_PU(7)>;
 				label = "battery_temp";
                 qcom,ratiometric;
                 qcom,hw-settle-time = <200>;
 			};
 
 			pm8550b_vbat_2s_mid_qbg {
-				reg = <PM8550B_ADC5_GEN3_VBAT_2S_MID_QBG>;
+				reg = <PM8550B_ADC5_GEN3_VBAT_2S_MID_QBG(7)>;
 				label = "pm8550b_vbat_2s_mid_qbg";
 				qcom,pre-scaling = <1 3>;
 			};
 
 			pm8550b_vbat_2s_mid_chgr {
-				reg = <PM8550B_ADC5_GEN3_VBAT_2S_MID_CHGR>;
+				reg = <PM8550B_ADC5_GEN3_VBAT_2S_MID_CHGR(7)>;
 				label = "pm8550b_vbat_2s_mid_chgr";
 				qcom,pre-scaling = <1 3>;
 			};
 
 			pm8550b_chg_temp {
-				reg = <PM8550B_ADC5_GEN3_CHG_TEMP>;
+				reg = <PM8550B_ADC5_GEN3_CHG_TEMP(7)>;
 				label = "pm8550b_chg_temp";
 			};
 
 			pm8550b_usb_sns_v_div_16 {
-				reg = <PM8550B_ADC5_GEN3_USB_SNS_V_16>;
+				reg = <PM8550B_ADC5_GEN3_USB_SNS_V_16(7)>;
 				label = "pm8550b_usb_sns_v_div_16";
 				qcom,pre-scaling = <1 16>;
 			};
 
 			pm8550b_wls_vin_div_16 {
-				reg = <PM8550B_ADC5_GEN3_VIN_DIV16_MUX>;
+				reg = <PM8550B_ADC5_GEN3_VIN_DIV16_MUX(7)>;
 				label = "pm8550b_wls_vin_div_16";
 				qcom,pre-scaling = <1 16>;
 			};
 
 			// TODO Check Scaling of these
 			pm8550b_iin_fb {
-				reg = <PM8550B_ADC5_GEN3_IIN_FB>;
+				reg = <PM8550B_ADC5_GEN3_IIN_FB(7)>;
 				label = "pm8550b_iin_fb";
 			};
 
 			pm8550b_iin_smb {
-				reg = <PM8550B_ADC5_GEN3_SMB_IIN>;
+				reg = <PM8550B_ADC5_GEN3_SMB_IIN(7)>;
 				label = "pm8550b_iin_smb";
 			};
 
 			pm8550b_ichg_fb {
-				reg = <PM8550B_ADC5_GEN3_ICHG_FB>;
+				reg = <PM8550B_ADC5_GEN3_ICHG_FB(7)>;
 				label = "pm8550b_ichg_fb";
 			};
 
 			pm8550b_ichg_smb {
-				reg = <PM8550B_ADC5_GEN3_SMB_ICHG>;
+				reg = <PM8550B_ADC5_GEN3_SMB_ICHG(7)>;
 				label = "pm8550b_ichg_smb";
 			};
 
 			/* PM8550VS_C Channel nodes */
 			pm8550vs_c_die_temp {
-				reg = <PM8550VS_C_ADC5_GEN3_DIE_TEMP>;
+				reg = <PM8550VS_ADC5_GEN3_DIE_TEMP(2)>;
 				label = "pm8550vs_c_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			/* PM8550VS_D Channel nodes */
 			pm8550vs_d_die_temp {
-				reg = <PM8550VS_D_ADC5_GEN3_DIE_TEMP>;
+				reg = <PM8550VS_ADC5_GEN3_DIE_TEMP(3)>;
 				label = "pm8550vs_d_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			/* PM8550VS_E Channel nodes */
 			pm8550vs_e_die_temp {
-				reg = <PM8550VS_E_ADC5_GEN3_DIE_TEMP>;
+				reg = <PM8550VS_ADC5_GEN3_DIE_TEMP(4)>;
 				label = "pm8550vs_e_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			/* PM8550VS_G Channel nodes */
 			pm8550vs_g_die_temp {
-				reg = <PM8550VS_G_ADC5_GEN3_DIE_TEMP>;
+				reg = <PM8550VS_ADC5_GEN3_DIE_TEMP(6)>;
 				label = "pm8550vs_g_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
 
 			/* PM8550VE Channel nodes */
 			pm8550ve_die_temp {
-				reg = <PM8550VE_ADC5_GEN3_DIE_TEMP>;
+				reg = <PM8550VE_ADC5_GEN3_DIE_TEMP(8)>;
 				label = "pm8550ve_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
