@@ -1073,8 +1073,8 @@ static int adc5_gen3_hs_probe(struct platform_device *pdev)
 	// Start the Timer at the end
 	adc->slow_period = ktime_set(0, 1000 * NSEC_PER_MSEC);
 	adc->sample_period = ktime_set(0, 1 * NSEC_PER_MSEC);
-	hrtimer_init(&adc->sample_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	adc->sample_timer.function = &adc5_gen3_hs_start_sample;
+	hrtimer_setup(&adc->sample_timer, &adc5_gen3_hs_start_sample,
+			CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 
 	return devm_iio_device_register(dev, indio_dev);
 
