@@ -2051,11 +2051,13 @@ static int ath12k_host_cap_parse_mlo(struct ath12k_base *ab,
 	u8 hw_link_id = 0;
 	int i, j, ret;
 
+#if 0
 	if (!ag->mlo_capable) {
 		ath12k_dbg(ab, ATH12K_DBG_QMI,
 			   "MLO is disabled hence skip QMI MLO cap");
 		return 0;
 	}
+#endif
 
 	if (!ab->qmi.num_radios || ab->qmi.num_radios == U8_MAX) {
 		ag->mlo_capable = false;
@@ -2075,41 +2077,45 @@ static int ath12k_host_cap_parse_mlo(struct ath12k_base *ab,
 	req->mlo_chip_id_valid = 1;
 	req->mlo_chip_id = ab->device_id;
 	req->mlo_group_id_valid = 1;
-	req->mlo_group_id = ag->id;
+	req->mlo_group_id = 0; //ag->id;
 	req->max_mlo_peer_valid = 1;
 	/* Max peer number generally won't change for the same device
 	 * but needs to be synced with host driver.
 	 */
 	req->max_mlo_peer = ab->hw_params->max_mlo_peer;
 	req->mlo_num_chips_valid = 1;
-	req->mlo_num_chips = ag->num_devices;
+	req->mlo_num_chips = 1; //ag->num_devices;
 
 	ath12k_dbg(ab, ATH12K_DBG_QMI, "mlo capability advertisement device_id %d group_id %d num_devices %d",
 		   req->mlo_chip_id, req->mlo_group_id, req->mlo_num_chips);
 
 	mutex_lock(&ag->mutex);
 
+#if 0
 	if (!ag->hw_link_id_init_done)
 		ath12k_host_cap_hw_link_id_init(ag);
+#endif
 
 	for (i = 0; i < ag->num_devices; i++) {
 		info = &req->mlo_chip_info[i];
-		partner_ab = ag->ab[i];
+		//partner_ab = ag->ab[i];
 
+#if 0
 		if (partner_ab->device_id == ATH12K_INVALID_DEVICE_ID) {
 			ath12k_err(ab, "failed to send MLO cap due to invalid partner device id\n");
 			ret = -EINVAL;
 			goto device_cleanup;
 		}
+#endif
 
-		info->chip_id = partner_ab->device_id;
-		info->num_local_links = partner_ab->qmi.num_radios;
+		info->chip_id = ab->device_id;//partner_ab->device_id;
+		info->num_local_links = ab->qmi.num_radios;//partner_ab->qmi.num_radios;
 
 		ath12k_dbg(ab, ATH12K_DBG_QMI, "mlo device id %d num_link %d\n",
 			   info->chip_id, info->num_local_links);
 
 		for (j = 0; j < info->num_local_links; j++) {
-			info->hw_link_id[j] = partner_ab->wsi_info.hw_link_id_base + j;
+			info->hw_link_id[j] = hw_link_id; //partner_ab->wsi_info.hw_link_id_base + j;
 			info->valid_mlo_link_id[j] = 1;
 
 			ath12k_dbg(ab, ATH12K_DBG_QMI, "mlo hw_link_id %d\n",
