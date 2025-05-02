@@ -520,7 +520,7 @@
 
 	// NOTE Setting qcom,adc-tm-type errors out driver and blocks all channels with obscure error. Need Thermal Zone setup to match.
 	pmk8550_xo_therm {
-		reg = <PMK8550_ADC5_GEN3_AMUX_THM1_XO_THERM_100K_PU>;
+		reg = <PMK8550_ADC5_GEN3_AMUX_THM1_XO_THERM_100K_PU(0)>;
 		label = "pmk8550_xo_therm";
 		qcom,ratiometric;
 		qcom,hw-settle-time = <200>;
@@ -532,7 +532,7 @@
 	// 200 us measured on POC-F Boards as required time to reach stability.
 	pcba_at_fan_exhaust {
 		// Quiet Therm RT0502
-		reg = <PM8550_ADC5_GEN3_AMUX_THM1_100K_PU>;
+		reg = <PM8550_ADC5_GEN3_AMUX_THM1_100K_PU(1)>;
 		label = "pcba_at_fan_exhaust";
 		qcom,hw-settle-time = <200>;
 		qcom,ratiometric;
@@ -540,7 +540,7 @@
 
 	pcba_at_40pin_connector {
 		// SDM SKIN Therm RT507
-		reg = <PM8550_ADC5_GEN3_AMUX_THM2_100K_PU>;
+		reg = <PM8550_ADC5_GEN3_AMUX_THM2_100K_PU(1)>;
 		label = "pcba_at_40pin_connector";
 		qcom,hw-settle-time = <200>;
 		qcom,ratiometric;
@@ -548,7 +548,7 @@
 
 	pcba_at_wifi {
 		// WLAN Therm RT0503
-		reg = <PM8550_ADC5_GEN3_AMUX_THM3_100K_PU>;
+		reg = <PM8550_ADC5_GEN3_AMUX_THM3_100K_PU(1)>;
 		label = "pcba_at_wifi";
 		qcom,hw-settle-time = <200>;
 		qcom,ratiometric;
@@ -556,7 +556,7 @@
 
 	pcba_at_flash {
 		// ADC_1 Therm RT506
-		reg = <PM8550_ADC5_GEN3_AMUX_THM4_100K_PU>;
+		reg = <PM8550_ADC5_GEN3_AMUX_THM4_100K_PU(1)>;
 		label = "pcba_at_flash";
 		qcom,hw-settle-time = <200>;
 		qcom,ratiometric;
@@ -564,7 +564,7 @@
 
 	pcba_at_nrf {
 		// ADC_2 Therm RT505
-		reg = <PM8550_ADC5_GEN3_AMUX_THM5_100K_PU>;
+		reg = <PM8550_ADC5_GEN3_AMUX_THM5_100K_PU(1)>;
 		label = "pcba_at_nrf";
 		qcom,hw-settle-time = <200>;
 		qcom,ratiometric;
@@ -573,7 +573,7 @@
 
 	/* External PM8550B Thermistors */
 	pcba_at_heat_sink_fins {
-		reg = <PM8550B_ADC5_GEN3_AMUX_THM4_USB_THERM_100K_PU>;
+		reg = <PM8550B_ADC5_GEN3_AMUX_THM4_USB_THERM_100K_PU(7)>;
 		label = "pcba_at_heat_sink_fins";
 		qcom,hw-settle-time = <200>;
 		qcom,ratiometric;
