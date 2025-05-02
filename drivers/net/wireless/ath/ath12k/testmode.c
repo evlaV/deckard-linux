@@ -292,15 +292,13 @@ static int ath12k_tm_cmd_testmode_start(struct ath12k *ar, struct nlattr *tb[])
 	ath12k_warn(ar->ab, "%s\n", __func__);
 
 	if (ar->ah->state == ATH12K_HW_STATE_TM) {
-		ret = -EALREADY;
 		ath12k_warn(ar->ab, "%s ALREADY\n", __func__);
-		goto out;
+		return -EALREADY;
 	}
 
 	if (ar->ah->state != ATH12K_HW_STATE_OFF) {
-		ret = -EBUSY;
 		ath12k_warn(ar->ab, "%s OFF\n", __func__);
-		goto out;
+		return -EBUSY;
 	}
 
 	ar->ab->ftm_event_obj.eventdata = kzalloc(ATH_FTM_EVENT_MAX_BUF_LENGTH,
