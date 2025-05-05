@@ -493,11 +493,6 @@ static void og0ve10_reset(struct og0ve10_dev *sensor)
 	if (!sensor->reset_gpio)
 		return;
 
-	usleep_range(1000, 1100);
-
-	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
-	usleep_range(1000, 1100);
-
 	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
 	usleep_range(5000, 5100);
 }
@@ -534,6 +529,7 @@ xclk_off:
 
 static void og0ve10_set_power_off(struct og0ve10_dev *sensor)
 {
+	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
 	regulator_bulk_disable(og0ve10_NUM_SUPPLIES, sensor->supplies);
 	clk_disable_unprepare(sensor->xclk);
 }
@@ -1265,7 +1261,7 @@ static int og0ve10_probe(struct i2c_client *client)
 
 	/* request optional reset pin */
 	sensor->reset_gpio =
-		devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
+		devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(sensor->reset_gpio))
 		return PTR_ERR(sensor->reset_gpio);
 
