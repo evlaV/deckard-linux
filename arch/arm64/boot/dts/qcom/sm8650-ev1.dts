@@ -1695,6 +1695,22 @@
 			};
 		};
 	};
+
+	// Unused FGPA Sync pins that need to be driven low
+	fpga_cam0_frame_sync {
+		gpio-hog;
+		gpios = <124 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "fpga_cam0_frame_sync";
+	};
+
+	// Unused FGPA Sync pins that need to be driven low
+	fpga_cam1_frame_sync {
+		gpio-hog;
+		gpios = <110 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "fpga_cam1_frame_sync";
+	};
 };
 
 
