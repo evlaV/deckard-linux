@@ -331,6 +331,18 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	if (enable)
 		__csid_configure_wrapper(csid);
 
+	// Reset isp/kernel_raw_ts offset computation when starting streaming
+	spin_lock(&isp_to_kernel_raw_ts_offset_estimation_spinlock);
+	if(enable && (isp_to_kernel_raw_ts_offset_stream_cnt == 0))
+	{
+		isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_INIT;
+		isp_to_kernel_raw_ts_offset_counter = 0;
+		isp_to_kernel_raw_ts_offset_refinement_vote_cnt = 0;
+		isp_to_kernel_raw_ts_offset_floor = LONG_MAX;
+	}
+	isp_to_kernel_raw_ts_offset_stream_cnt += (enable ? 1 : -1);
+	spin_unlock(&isp_to_kernel_raw_ts_offset_estimation_spinlock);
+
 	if (!enable) {
 		csid_reset(csid);
 		struct camss_buf_done_info buf_done_info;
