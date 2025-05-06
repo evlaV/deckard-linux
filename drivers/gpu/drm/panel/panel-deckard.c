@@ -111,6 +111,7 @@ typedef enum
 	MODE_90,
 	MODE_80,
 	MODE_144,
+	MODE_72,
 } lpm026m648c_modes_t;
 
 struct lpm026m648c_ctx {
@@ -135,6 +136,7 @@ struct lpm026m648c_ctx {
 	struct drm_dsc_config dsc_cfg;
 	bool is_dual_panel;
 	bool dphy;
+	bool low_fps_support;
 	bool prepared;
 	bool enabled;
 
@@ -151,7 +153,7 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 	return container_of(panel, struct lpm026m648c_ctx, panel);
 }
 
-static const struct drm_display_mode modes[4] = {
+static const struct drm_display_mode modes[5] = {
 	{
 		.name = "  2160x2160_120",
 		.clock = (2160 + 24 + 20 + 20) * (2160 + 404 + 1 + 20) * 120 / 1000,
@@ -209,6 +211,20 @@ static const struct drm_display_mode modes[4] = {
 		.width_mm = 50,
 		.height_mm = 50,
 
+	},
+	{
+		.name = "  2160x2160_72",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 2128 + 1 + 20) * 72 / 1000,
+		.hdisplay = 2160,
+		.hsync_start = (2160 + 24),
+		.hsync_end = (2160 + 24 + 20),
+		.htotal = (2160 + 24 + 20 + 20),
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 2128,
+		.vsync_end = 2160 + 2128 + 1,
+		.vtotal = 2160 + 2128 + 1 + 20,
+		.width_mm = 50,
+		.height_mm = 50,
 	},
 };
 
@@ -871,6 +887,13 @@ static int lpm026m648c_get_modes(struct drm_panel *panel,
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(modes); i++) {
+		// only add 72 Hz if the backlight driver supports it
+		if ( i == MODE_72 ) {
+			if ( !ctx->low_fps_support ) {
+				continue;
+			}
+		}
+
 		mode = drm_mode_create(connector->dev);
 		if (!mode) {
 			DRM_DEV_ERROR(ctx->dev,
@@ -913,6 +936,8 @@ static int lpm026m648c_mode_set(struct drm_panel *panel,
 			new_mode = MODE_90;
 	}else if (mode->vtotal == modes[MODE_80].vtotal){
 			new_mode = MODE_80;
+	}else if (mode->vtotal == modes[MODE_72].vtotal){
+			new_mode = MODE_72;
 	}else if (mode->vtotal == modes[MODE_144].vtotal){
 			new_mode = MODE_144;
 	}else{
@@ -1148,7 +1173,11 @@ static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 		gpo1_tes1 = GPO1_TES1_90;
 	}
 
-	if ( ctx->panel_vendor == VENDOR_JDI || ctx->panel_vendor == VENDOR_BOE || ctx->current_mode == MODE_90 ) {
+	if ( ctx->panel_vendor == VENDOR_JDI 
+		|| ctx->panel_vendor == VENDOR_BOE
+		|| ctx->current_mode == MODE_72
+		|| ctx->current_mode == MODE_80
+		|| ctx->current_mode == MODE_90 ) {
 		// VID_VS_DELAY + TES
 		vsync_to_photons_nsec = VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + gpo1_tes1 * INTERNAL_LINE_TIME_NSEC;
 	} else { // SHARP 120/144
@@ -1340,6 +1369,8 @@ skip_panel2:
 		ctx->dsi[1]->dsc_slice_per_pkt = 4;
 	}
 #endif
+
+	ctx->low_fps_support = of_property_read_bool(dev->of_node, "low-fps-support");
 
 	ret = lpm026m648c_panel_add(ctx);
 	if (ret) {
