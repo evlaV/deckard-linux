@@ -94,12 +94,60 @@ struct rad {
 	int backlight_ramp_percentage;
 	int backlight_ramp_step_size;
 	int backlight_ramp_step_time_msec;
+
+	char panel_vendor;
 };
 
 static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 {
 	return container_of(panel, struct rad, panel);
 }
+
+// Brightness settings
+#define BRIGHTNESS_DEFAULT 256
+#define BRIGHTNESS_MAX_120 380
+
+/* panel specific MIPI DSI CMD */
+#define LPM02648C_MF_CMD_ACCESS_PROTECT		0xb0
+#define LPM02648C_SEQ_CTL			0xd6
+#define LPM02648C_DSI_CTL			0xb6
+#define LPM02648C_DISP_MODE			0xb7
+#define LPM02648C_GEN_OUTPIN_SET		0xb9
+#define LPM02648C_DISP_SET1			0xc0
+#define LPM02648C_DISP_SET2			0xf1
+#define LPM02648C_DISP_SET3			0xc6
+#define LPM02648C_DISP_SET3_2			0xcd
+#define LPM02648C_DISP_SET4			0xcf
+#define LPM02648C_DISP_SET5			0xec
+#define LPM02648C_DISP_SET6			0xef
+#define LPM02648C_TE_GPIO_CTL			0xbe
+#define LPM02648C_PPS_SET			0xe6
+#define LPM02648C_MFG_INFO			0xbf
+#define 	VENDOR_OFFSET			27
+
+// Brightness settings
+#define BRIGHTNESS_DEFAULT 256
+#define BRIGHTNESS_MAX_120 380
+
+// Panel settings
+#define VFP		700
+#define VID_VS_DELAY	1112
+#define VBP		100
+#define GPO1_TES1	4000
+#define GPO1_TEW1	0
+#define RTN 59
+
+// BOE VBP(reg) functions differently
+#define VBP_BOE_DPHY		23
+
+// Workaround for sharp ghosting issue
+#define VBP_SHARP		800
+#define GPO1_TES1_SHARP	233
+
+// Panel Vendor types
+#define VENDOR_SHARP	'S'
+#define VENDOR_JDI		'J'
+#define VENDOR_BOE		'B'
 
 // Modeset params: terms are defined per panel.
 #define H_PIXELS           2160
@@ -118,128 +166,53 @@ static inline struct rad *panel_to_ctx(struct drm_panel *panel)
 // Need 100usec of offest on either side, so we use 50 lines at 2usec / internal line time
 #define CAMERA_TRIGGER_OFFSET 50
 
-#ifdef PANEL_FIFO_MODE
-	#define H_FRONT_PORCH      24
-	#define H_BACK_PORCH       20
-	#define H_SYNC             20
-	#define V_LINES            2160
-	#define V_FRONT_PORCH_120  404
-	#define V_FRONT_PORCH_90   1265
-	#define V_FRONT_PORCH_80   1697
-
-	// DSI DCS command related
-
-	#define PANEL_VFP_120 700
-	#define PANEL_VFP_90  1500
-	#define PANEL_VFP_80  1500
-	
-	#define PANEL_VBP_120 800
-	#define PANEL_VBP_90  800
-	#define PANEL_VBP_80  800
-
-	// TODO adjust DPU overclocked settings for 90 Hz mode
-	#define PANEL_VID_VS_DELAY_120   1112
-	#define PANEL_VID_VS_DELAY_90    1112
-	#define PANEL_VID_VS_DELAY_80    1112
-	#define PIXEL_CLOCK_KHZ_120    689884
-	#define PIXEL_CLOCK_KHZ_90     689884
-	#define PIXEL_CLOCK_KHZ_80     689884
-
-	//previously we used these with the lower DPU freq -- no longer needed -- keep for reference
-	/*
-		#define PANEL_VID_VS_DELAY_120 315
-		#define PANEL_VID_VS_DELAY_90  315
-		#define PANEL_VID_VS_DELAY_80  315
-
-		#define PIXEL_CLOCK_KHZ_120    717574
-		#define PIXEL_CLOCK_KHZ_90     717574
-		#define PIXEL_CLOCK_KHZ_80     717574
-	*/
-#else
-	#define H_FRONT_PORCH      54
-	#define H_BACK_PORCH       18
-	#define H_SYNC             2
-	#define V_LINES            2160
-	// VFP = PIXEL_CLOCK / (REFRESH_RATE * HTOTAL) - (V_LINES+VBP+VS)
-	#define V_FRONT_PORCH_120  1892
-	#define V_FRONT_PORCH_90   3250
-	#define V_FRONT_PORCH_80   3928
-	// mininum VBP is 2, but MDP needs time to prefill output (during VS+VBP)
-	// the amount needed depends on things like pixel clock, mdp clock,etc.
-	// 15 works with these settings but needs some margin to be safe, 20 is probably OK
-	
-	// DSI DCS command related
-	#define PANEL_VFP_120 50     /* max is (V_FRONT_PORCH-5) - any reason to use a lower/higher value? */
-	#define PANEL_VFP_90 50
-	#define PANEL_VFP_80 50
-	
-	#define PANEL_VBP_120 (V_BACK_PORCH+5)
-	#define PANEL_VBP_90  (V_BACK_PORCH+5)
-	#define PANEL_VBP_80  (V_BACK_PORCH+5)
-	
-	#define PANEL_VID_VS_DELAY_120 0
-	#define PANEL_VID_VS_DELAY_90 0
-	#define PANEL_VID_VS_DELAY_80 0     /* 0 for video through mode */
-
-	// pixel clock for 2.046 usec/line is (2160+HBP+HS+HFP)/(2.046us)
-	// note the real pixel/byte clock will be (2160+(HBP+HS+HFP)*3)/(2.046us) as the driver adjusts for DSC
-	#define PIXEL_CLOCK_KHZ 1091887 /* 1164.2Mhz - 1.358Gsps/lane (panel spec is max 1.30 Gsps/lane) */
-	// if HFP could be reduced to 20 then 2.046us/line would be possible with 1.30 Gsps/lane
-	// (get DSI errors when HFP<22, but HFP<54 has causes corruption on the edge of the screen - why?)
-	// (or keep using FIFO mode but with high pixel clock that corresponds to 1.30 Gsps/lane)
-	
-	#define	PIXEL_CLOCK_KHZ_120  PIXEL_CLOCK_KHZ
-	#define	PIXEL_CLOCK_KHZ_90   PIXEL_CLOCK_KHZ
-	#define	PIXEL_CLOCK_KHZ_80   PIXEL_CLOCK_KHZ
-	
-#endif
-
 
 
 // Total frame time can be calculated as
 // ( htotal*vtotal ) / PIXEL_CLOCK_KHZ
 // example: ( (2160 + 24 + 20 + 20) * ( 2160 + 1404 + 1 + 20))/( 717574000 ) = 0.011 sec = 90 Hz
 // The simplest way to create a new video mode is change vblank, which means changing V_FRONT_PORCH
-// 120 Hz: ( (2160 + 24 + 20 + 20) * ( 2160 + 401 + 1 + 40))/( 690000000 ) = 0.083 sec = 120 Hz
+// 120 Hz: ( (2160 + 24 + 20 + 20) * ( 2160 + 401 + 1 + 40))/( 690000000 ) = 0.083 sec = 120 Hz!
 static const struct drm_display_mode modes[3] = {
 	{
-		.name = "4320x2160_120",
-		.clock = PIXEL_CLOCK_KHZ_120 * NUM_PANELS,
-		.hdisplay = H_PIXELS * NUM_PANELS,
-		.hsync_start = (H_PIXELS + H_FRONT_PORCH) * NUM_PANELS,
-		.hsync_end = (H_PIXELS + H_FRONT_PORCH + H_SYNC) * NUM_PANELS,
-		.htotal = (H_PIXELS + H_FRONT_PORCH + H_SYNC + H_BACK_PORCH) * NUM_PANELS,
-		.vdisplay = V_LINES,
-		.vsync_start = V_LINES + V_FRONT_PORCH_120,
-		.vsync_end = V_LINES + V_FRONT_PORCH_120 + V_SYNC,
-		.vtotal = V_LINES + V_FRONT_PORCH_120 + V_SYNC + V_BACK_PORCH,
+		.name = "  2160x2160_120",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 404 + 1 + 20) * 120 / 1000 * NUM_PANELS,
+		.hdisplay = 2160 * NUM_PANELS,
+		.hsync_start = (2160 + 24) * NUM_PANELS,
+		.hsync_end = (2160 + 24 + 20) * NUM_PANELS,
+		.htotal = (2160 + 24 + 20 + 20) * NUM_PANELS,
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 404,
+		.vsync_end = 2160 + 404 + 1,
+		.vtotal = 2160 + 404 + 1 + 20,4
 	},
 	{
-		.name = "4320x2160_90",
-		.clock = PIXEL_CLOCK_KHZ_90 * NUM_PANELS,
-		.hdisplay = H_PIXELS * NUM_PANELS,
-		.hsync_start = (H_PIXELS + H_FRONT_PORCH) * NUM_PANELS,
-		.hsync_end = (H_PIXELS + H_FRONT_PORCH + H_SYNC) * NUM_PANELS,
-		.htotal = (H_PIXELS + H_FRONT_PORCH + H_SYNC + H_BACK_PORCH) * NUM_PANELS,
-		.vdisplay = V_LINES,
-		.vsync_start = V_LINES + V_FRONT_PORCH_90,
-		.vsync_end = V_LINES + V_FRONT_PORCH_90 + V_SYNC,
-		.vtotal = V_LINES + V_FRONT_PORCH_90 + V_SYNC + V_BACK_PORCH,
+		.name = "  2160x2160_90",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 1265 + 1 + 20) * 90 / 1000 * NUM_PANELS,
+		.hdisplay = 2160 * NUM_PANELS,
+		.hsync_start = (2160 + 24) * NUM_PANELS,
+		.hsync_end = (2160 + 24 + 20) * NUM_PANELS,
+		.htotal = (2160 + 24 + 20 + 20) * NUM_PANELS,
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 1265,
+		.vsync_end = 2160 + 1265 + 1,
+		.vtotal = 2160 + 1265 + 1 + 20,
 	},
 	{
-		.name = "4320x2160_80",
-		.clock = PIXEL_CLOCK_KHZ_80 * NUM_PANELS,
-		.hdisplay = H_PIXELS * NUM_PANELS,
-		.hsync_start = (H_PIXELS + H_FRONT_PORCH) * NUM_PANELS,
-		.hsync_end = (H_PIXELS + H_FRONT_PORCH + H_SYNC) * NUM_PANELS,
-		.htotal = (H_PIXELS + H_FRONT_PORCH + H_SYNC + H_BACK_PORCH) * NUM_PANELS,
-		.vdisplay = V_LINES,
-		.vsync_start = V_LINES + V_FRONT_PORCH_80,
-		.vsync_end = V_LINES + V_FRONT_PORCH_80 + V_SYNC,
-		.vtotal = V_LINES + V_FRONT_PORCH_80 + V_SYNC + V_BACK_PORCH,
-	}
+		.name = "  2160x2160_80",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 1697 + 1 + 20) * 80 / 1000 * NUM_PANELS,
+		.hdisplay = 2160 * NUM_PANELS,
+		.hsync_start = (2160 + 24) * NUM_PANELS,
+		.hsync_end = (2160 + 24 + 20) * NUM_PANELS,
+		.htotal = (2160 + 24 + 20 + 20) * NUM_PANELS,
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 1697,
+		.vsync_end = 2160 + 1697 + 1,
+		.vtotal = 2160 + 1697 + 1 + 20,
+	},
 };
 
+#if 0
 void _get_per_mode_settings(rad_modes_t mode, unsigned * panel_vfp, unsigned * vid_vs_delay, unsigned * vbp)
 {
 	switch(mode)
@@ -266,6 +239,7 @@ void _get_per_mode_settings(rad_modes_t mode, unsigned * panel_vfp, unsigned * v
 		break;
 	}
 }
+#endif
 
 // Important init parameters
 // Reg 0xC0, param 1 is the RTN value.  This is the what determines the line load time for the panel
@@ -347,6 +321,279 @@ static void rad_init_dsc_config(struct rad *ctx)
 	dsi_populate_dsc_params(&ctx->dsc_cfg);
 }
 
+
+static void dsi_write_panel_on_jdi(struct drm_panel *panel)
+{
+	struct rad *ctx = panel_to_ctx(panel);
+
+	u8 pps_cmd[1 + sizeof(struct drm_dsc_picture_parameter_set)];
+
+	drm_dsc_pps_payload_pack((void *)&pps_cmd[1], &ctx->dsc_cfg);
+	pps_cmd[0] = LPM02648C_PPS_SET;
+
+	DSI_CMD( LPM02648C_MF_CMD_ACCESS_PROTECT, 0x04);
+	DSI_CMD( LPM02648C_SEQ_CTL, 0x00);
+	DSI_CMD( LPM02648C_DSI_CTL,
+				  0x20, 0x6b, 0x80, 0x06, 0x33, 0x9a, 0x00,
+				  0x1a, 0x7a);
+	DSI_CMD( LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
+				  0x00);
+	DSI_CMD( LPM02648C_GEN_OUTPIN_SET,
+				  BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00,
+				  0x00, 0x00,
+				  BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
+				  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
+	DSI_CMD( LPM02648C_DISP_SET2, 0x1e);
+	DSI_CMD( LPM02648C_DISP_SET3, 0x70, 0x08, 0xd0,
+				  0x02, 0x21, 0x6f, 0x08, 0x5a, 0x00, 0x00,
+				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
+	DSI_CMD( LPM02648C_DISP_SET1, RTN, 0x86,
+				  LE16(VBP), 0x08, 0x70, BE16(VFP));
+	DSI_CMD( LPM02648C_DISP_SET3_2, 0x00);
+	DSI_CMD( LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
+				  0x46, 0x61, 0x00, 0x8b);
+	DSI_CMD( LPM02648C_DISP_SET5, BE16(VID_VS_DELAY),
+				  0x00, 0x00, 0x00);
+	DSI_CMD( LPM02648C_TE_GPIO_CTL, 0x00, 0x6A, 0x02);
+	// PPS Setting
+	_DSI_CMD(pps_cmd);
+	DSI_CMD( MIPI_DCS_GET_COMPRESSION_MODE, 0x01);
+	DSI_CMD( MIPI_DCS_SET_TEAR_SCANLINE, 0x00, 0x00);
+	DSI_CMD( MIPI_DCS_SET_TEAR_ON, 0x00);
+	DSI_CMD( MIPI_DCS_SET_ADDRESS_MODE, 0x00);
+	DSI_CMD( MIPI_DCS_SET_PIXEL_FORMAT, 0x77);
+	DSI_CMD( MIPI_DCS_EXIT_SLEEP_MODE);
+	msleep(170);
+	DSI_CMD( MIPI_DCS_SET_DISPLAY_ON);
+	//DSI_CMD( LPM02648C_SEQ_CTL, 0x80);
+	msleep(200);
+	DSI_CMD( LPM02648C_MF_CMD_ACCESS_PROTECT, 0x03);
+	msleep(200);
+}
+
+static void dsi_write_panel_on_sharp(struct drm_panel *panel)
+{
+	struct rad *ctx = panel_to_ctx(panel);
+
+	u8 pps_cmd[1 + sizeof(struct drm_dsc_picture_parameter_set)];
+
+	drm_dsc_pps_payload_pack((void *)&pps_cmd[1], &ctx->dsc_cfg);
+	pps_cmd[0] = LPM02648C_PPS_SET;
+
+	DSI_CMD( LPM02648C_MF_CMD_ACCESS_PROTECT, 0x00);
+	DSI_CMD( LPM02648C_SEQ_CTL, 0x00);
+	DSI_CMD( LPM02648C_DSI_CTL,
+				  0x20, 0x6b, 0x80, 0x06, 0x33, 0x9a, 0x00,
+				  0x1a, 0x7a);
+	DSI_CMD( LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
+				  0x00);
+	DSI_CMD( LPM02648C_GEN_OUTPIN_SET,
+				  BE16(GPO1_TES1_SHARP), BE16(GPO1_TEW1), 0x00, 0x00,
+				  0x00, 0x00,
+				  BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
+				  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
+	DSI_CMD( LPM02648C_DISP_SET3, 0x08, 0x70, 0x28,
+				  0x48, 0x00, 0x00, 0x13, 0x21, 0xff, 0x00, 0x0f, 0x01,
+				  0x14, 0x17, 0x00, 0x00, 0x00, 0x02, 0x40, 0x0C, 0x00, 0x00,
+				  0x00, 0x20, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x70, 0x08,
+				  0xD0, 0x02, 0x21, 0x6F, 0x08, 0x5A, 0x00, 0x00, 0x00, 0x00,
+				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				  0x00);
+	DSI_CMD( LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP_SHARP), 0x08, 0x70,
+				  BE16(VFP), 0x00, 0x00, 0x08, 0x3B, 0x00, 0x00, 0x19, 0x01, 0x22);
+	DSI_CMD( LPM02648C_DISP_SET3_2, 0x00);
+	DSI_CMD( LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
+				  0x46, 0x61, 0x00, 0x8b);
+	DSI_CMD( LPM02648C_DISP_SET5, BE16(VID_VS_DELAY),
+				  0x00, 0x00, 0x00);
+	DSI_CMD( LPM02648C_DISP_SET6, 0x00, 0x24, 0x00, 0x00,
+				  0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00,
+				  0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0A, 0x0A,
+				  0x00, 0x00, 0x00, 0x03, 0x1D, 0x01, 0x00, 0x00, 0x00, 0x01,
+				  0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00,
+				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);				  
+	DSI_CMD( LPM02648C_TE_GPIO_CTL, 0x00, 0x6A, 0x02);
+	// PPS Setting
+	_DSI_CMD(pps_cmd);
+	//DSI_CMD( MIPI_DCS_GET_COMPRESSION_MODE, 0x01);
+	//DSI_CMD( MIPI_DCS_SET_TEAR_SCANLINE, 0x00, 0x00);
+	DSI_CMD( MIPI_DCS_SET_TEAR_ON, 0x00);
+	DSI_CMD( MIPI_DCS_SET_ADDRESS_MODE, 0x40);
+	//DSI_CMD( MIPI_DCS_SET_PIXEL_FORMAT, 0x77);
+	DSI_CMD( MIPI_DCS_EXIT_SLEEP_MODE);
+	msleep(170);
+	DSI_CMD( MIPI_DCS_SET_DISPLAY_ON);
+	msleep(200);
+}
+
+static void dsi_write_panel_on_boe(struct drm_panel *panel)
+{
+	struct rad *ctx = panel_to_ctx(panel);
+
+	u8 pps_cmd[1 + sizeof(struct drm_dsc_picture_parameter_set)];
+
+	drm_dsc_pps_payload_pack((void *)&pps_cmd[1], &ctx->dsc_cfg);
+	pps_cmd[0] = LPM02648C_PPS_SET;
+
+	DSI_CMD( LPM02648C_MF_CMD_ACCESS_PROTECT, 0x00);
+	DSI_CMD( LPM02648C_SEQ_CTL, 0x00);
+	DSI_CMD( LPM02648C_DSI_CTL,
+					0x20, 0x6b, 0x00, 0x06, 0x33, 0x9A, 0x00,
+					0x1a, 0x7a);
+	DSI_CMD( LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
+					0x00);
+	DSI_CMD( LPM02648C_GEN_OUTPIN_SET,
+					BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00,
+					0x00, 0x00,
+					BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
+					BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
+	DSI_CMD( LPM02648C_DISP_SET3, 0x0B, 0x70, 0x08,
+					0x48, 0x00, 0x00, 0x13, 0x01, 0xFF, 0x00, 0x01, 0x09,
+					0x16, 0x16, 0x00, 0x00, 0x00, 0x01, 0x40, 0x0C, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00,
+					0x70, 0x08, 0xD0, 0x02, 0x21, 0x6F, 0x08, 0x5A, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
+	DSI_CMD( LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP),
+					0x08, 0x70, LE16(VFP), 0x00, 0x00, 0x08, 0x3A, 0x00, 0x00,
+					0x17, 0x00, 0x17);
+	DSI_CMD( LPM02648C_DISP_SET3_2, 0x00);
+	DSI_CMD( LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
+					0x46, 0x61, 0x00, 0x8b);
+	DSI_CMD( LPM02648C_DISP_SET5, BE16(VID_VS_DELAY),
+					0x00, 0x00, 0x00);
+	DSI_CMD( LPM02648C_TE_GPIO_CTL, 0x00, 0x6A, 0x02);
+	// PPS Setting
+	_DSI_CMD(pps_cmd);
+	//DSI_CMD( MIPI_DCS_GET_COMPRESSION_MODE, 0x01);
+	//DSI_CMD( MIPI_DCS_SET_TEAR_SCANLINE, 0x00, 0x00);
+	DSI_CMD( MIPI_DCS_SET_TEAR_ON, 0x00);
+	//DSI_CMD( MIPI_DCS_SET_ADDRESS_MODE, 0x00);
+	//DSI_CMD( MIPI_DCS_SET_PIXEL_FORMAT, 0x77);
+
+	DSI_CMD( MIPI_DCS_EXIT_SLEEP_MODE);
+	msleep(170);
+	DSI_CMD( MIPI_DCS_SET_DISPLAY_ON);
+	msleep(200);
+}
+
+// uncomment this line to print out panel mfg info to dmesg
+#define PRINT_PANEL_MFG_INFO
+static int get_panel_info(struct drm_panel *panel)
+{
+	struct rad *ctx = panel_to_ctx(panel);
+	u8 panel_info_regs[] = { 0xBF };
+	u8 *panel_mfg_info = ctx->panel_mfg_info;
+	int ret;
+	unsigned int id, offset;
+
+	// read panel info from register 0xBF
+	// only DVT+ panels will have data other than synaptics driver IDs populated
+	for (id = 0; id < ARRAY_SIZE(ctx->dsi); id++)
+	{
+		offset =  id*PANEL_MFG_INFO_NUM_BYTES;
+		ret = mipi_dsi_generic_read(ctx->dsi[id], panel_info_regs, 1,
+									&panel_mfg_info[offset], PANEL_MFG_INFO_NUM_BYTES);
+		if ( ret < 0 )
+		{
+			DRM_DEV_ERROR(ctx->dev, "failed to read panel %d mfg info reg\n", id);
+		}
+
+        #ifdef PRINT_PANEL_MFG_INFO
+		printk("printing jdi4k Panel info for %s panel : \n", id ? "right" : "left" );
+		// parse the results
+		printk(" synapticsSupplierID  %x\n",  panel_mfg_info[1+offset] << 8 | panel_mfg_info[0+offset] );
+		printk(" synapticsDriverICProductCode  %x\n",  panel_mfg_info[3+offset] << 8 | panel_mfg_info[2+offset] );
+		printk(" brightnessDataW255  %x\n",  panel_mfg_info[5+offset] );
+		printk(" colorPointofWhiteX  %x\n",  panel_mfg_info[6+offset] );
+		printk(" colorPointofWhiteY  %x\n",  panel_mfg_info[7+offset] );
+		printk(" contrast  %x\n",  panel_mfg_info[8+offset] );
+		printk(" gamma  %x\n",  panel_mfg_info[9+offset] );
+		printk(" brightnessDataW32  %x\n",  panel_mfg_info[12+offset] );
+		printk(" vcom1  %x\n",  panel_mfg_info[13+offset] );
+		printk(" vcom2  %x\n",  panel_mfg_info[14+offset] );
+		printk(" colorPointofRedX  %x\n",  panel_mfg_info[21+offset] );
+		printk(" colorPointofRedY  %x\n",  panel_mfg_info[22+offset] );
+		printk(" colorPointofGreenX  %x\n",  panel_mfg_info[23+offset] );
+		printk(" colorPointofGreenY  %x\n",  panel_mfg_info[24+offset] );
+		printk(" colorPointofBlueX  %x\n",  panel_mfg_info[25+offset] );
+		printk(" colorPointofBlueY  %x\n",  panel_mfg_info[26+offset] );
+		printk(" format  %x\n",  panel_mfg_info[27+offset] );
+		printk(" vendor1  %x\n",  panel_mfg_info[28+offset] );
+		printk(" vendor2  %x\n",  panel_mfg_info[29+offset] );
+		printk(" mdlBaseCode1  %x\n",  panel_mfg_info[30+offset] );
+		printk(" mdlBaseCode2  %x\n",  panel_mfg_info[31+offset] );
+		printk(" mdlBaseCode3  %x\n",  panel_mfg_info[32+offset] );
+		printk(" id  %x\n",  panel_mfg_info[33+offset] );
+		printk(" serialization3  %x\n",  panel_mfg_info[34+offset] );
+		printk(" serialization2  %x\n",  panel_mfg_info[35+offset] );
+		printk(" serialization1  %x\n",  panel_mfg_info[36+offset] );
+		printk(" year  %x\n",  panel_mfg_info[37+offset] );
+		printk(" week  %x\n",  panel_mfg_info[38+offset] );
+		printk(" day  %x\n",  panel_mfg_info[39+offset] );
+		#endif
+	}
+	return 0;
+}
+
+
+static void dsi_write_panel_on(struct drm_panel *panel)
+{
+	int ret;
+	char panel_left, panel_right;
+	struct rad *ctx = panel_to_ctx(panel);
+
+	// read panel info to determine panel type
+	ret = get_panel_info(panel);
+	if ( ret ) {
+		DRM_DEV_ERROR(ctx->dev, "Could not get panel info for init sequence, defaulting to Sharp\n" );
+		ctx->panel_vendor = VENDOR_SHARP;
+	} else {
+		// need to support old format JDI displays
+		if ( ctx->panel_mfg_info[VENDOR_OFFSET] == 1 ) {
+			panel_left = ctx->panel_mfg_info[VENDOR_OFFSET + 1];
+		} else {
+			panel_left = ctx->panel_mfg_info[VENDOR_OFFSET];
+		}
+		if ( ctx->panel_mfg_info[VENDOR_OFFSET + PANEL_MFG_INFO_NUM_BYTES] == 1 ) {
+			panel_right = ctx->panel_mfg_info[VENDOR_OFFSET + PANEL_MFG_INFO_NUM_BYTES + 1];
+		} else {
+			panel_right = ctx->panel_mfg_info[VENDOR_OFFSET + PANEL_MFG_INFO_NUM_BYTES];
+		}
+		if (panel_left && panel_right && panel_left != panel_right) {
+			DRM_DEV_ERROR(ctx->dev, "Displays don't match ( %c != %c ), using %c\n", panel_left, panel_right, panel_left );
+			ctx->panel_vendor = panel_left;
+		} else if (panel_left && panel_right) {
+			DRM_DEV_INFO(ctx->dev, "Displays match ( %c == %c ), using %c\n", panel_left, panel_right, panel_left );
+			ctx->panel_vendor = panel_left;
+		} else if ( panel_left && !panel_right ) {
+			DRM_DEV_INFO(ctx->dev, "Only left panel, using %c\n", panel_left);
+			ctx->panel_vendor = panel_left;
+		} else if ( !panel_left && panel_right ) {
+			DRM_DEV_INFO(ctx->dev, "Only right panel, using %c\n", panel_right );
+			ctx->panel_vendor = panel_right;
+		} else {
+			DRM_DEV_ERROR(ctx->dev, "no panel mfg info, defaulting to sharp ( %c %c )\n", panel_left, panel_right );
+			ctx->panel_vendor = VENDOR_SHARP;
+		}
+	}
+
+	if ( ctx->panel_vendor == VENDOR_SHARP ) {
+		dsi_write_panel_on_sharp(panel);
+	} else if ( ctx->panel_vendor == VENDOR_BOE ) {
+		dsi_write_panel_on_boe(panel);
+	} else if ( ctx->panel_vendor == VENDOR_JDI ) {
+		dsi_write_panel_on_jdi(panel);
+	} else {
+		DRM_DEV_ERROR(ctx->dev, "unrecognized panel vendor ( %c ), defualt to sharp\n", ctx->panel_mfg_info[VENDOR_OFFSET] );
+		dsi_write_panel_on_sharp(panel);
+		ctx->panel_vendor = VENDOR_SHARP;
+	}
+}
+
+#if 0
 static void dsi_write_panel_on(struct drm_panel *panel)
 {
 	struct rad *ctx = panel_to_ctx(panel);
@@ -403,6 +650,7 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	SLEEP(170),
 	DSI_CMD(MIPI_DCS_SET_DISPLAY_ON);
 }
+#endif
 
 static void dsi_write_panel_off(struct drm_panel *panel)
 {
@@ -418,63 +666,6 @@ static void dsi_write_panel_off(struct drm_panel *panel)
  * sysfs
  */
 
-// uncomment this line to print out panel mfg info to dmesg
-#define PRINT_PANEL_MFG_INFO
-static void get_panel_info(struct drm_panel *panel)
-{
-	struct rad *ctx = panel_to_ctx(panel);
-	u8 panel_info_regs[] = { 0xBF };
-	u8 *panel_mfg_info = ctx->panel_mfg_info;
-	int ret;
-	unsigned int id, offset;
-
-	// read panel info from register 0xBF
-	// only DVT+ panels will have data other than synaptics driver IDs populated
-	for (id = 0; id < ARRAY_SIZE(ctx->dsi); id++)
-	{
-		offset =  id*PANEL_MFG_INFO_NUM_BYTES;
-		ret = mipi_dsi_generic_read(ctx->dsi[id], panel_info_regs, 1,
-									&panel_mfg_info[offset], PANEL_MFG_INFO_NUM_BYTES);
-		if ( ret < 0 )
-		{
-						DRM_DEV_ERROR(ctx->dev, "failed to read panel %d mfg info reg\n", id);
-		}
-
-        #ifdef PRINT_PANEL_MFG_INFO
-		printk("printing jdi4k Panel info for %s panel : \n", id ? "right" : "left" );
-		// parse the results
-		printk(" synapticsSupplierID  %x\n",  panel_mfg_info[1+offset] << 8 | panel_mfg_info[0+offset] );
-		printk(" synapticsDriverICProductCode  %x\n",  panel_mfg_info[3+offset] << 8 | panel_mfg_info[2+offset] );
-		printk(" brightnessDataW255  %x\n",  panel_mfg_info[5+offset] );
-		printk(" colorPointofWhiteX  %x\n",  panel_mfg_info[6+offset] );
-		printk(" colorPointofWhiteY  %x\n",  panel_mfg_info[7+offset] );
-		printk(" contrast  %x\n",  panel_mfg_info[8+offset] );
-		printk(" gamma  %x\n",  panel_mfg_info[9+offset] );
-		printk(" brightnessDataW32  %x\n",  panel_mfg_info[12+offset] );
-		printk(" vcom1  %x\n",  panel_mfg_info[13+offset] );
-		printk(" vcom2  %x\n",  panel_mfg_info[14+offset] );
-		printk(" colorPointofRedX  %x\n",  panel_mfg_info[21+offset] );
-		printk(" colorPointofRedY  %x\n",  panel_mfg_info[22+offset] );
-		printk(" colorPointofGreenX  %x\n",  panel_mfg_info[23+offset] );
-		printk(" colorPointofGreenY  %x\n",  panel_mfg_info[24+offset] );
-		printk(" colorPointofBlueX  %x\n",  panel_mfg_info[25+offset] );
-		printk(" colorPointofBlueY  %x\n",  panel_mfg_info[26+offset] );
-		printk(" format  %x\n",  panel_mfg_info[27+offset] );
-		printk(" vendor1  %x\n",  panel_mfg_info[28+offset] );
-		printk(" vendor2  %x\n",  panel_mfg_info[29+offset] );
-		printk(" mdlBaseCode1  %x\n",  panel_mfg_info[30+offset] );
-		printk(" mdlBaseCode2  %x\n",  panel_mfg_info[31+offset] );
-		printk(" mdlBaseCode3  %x\n",  panel_mfg_info[32+offset] );
-		printk(" id  %x\n",  panel_mfg_info[33+offset] );
-		printk(" serialization3  %x\n",  panel_mfg_info[34+offset] );
-		printk(" serialization2  %x\n",  panel_mfg_info[35+offset] );
-		printk(" serialization1  %x\n",  panel_mfg_info[36+offset] );
-		printk(" year  %x\n",  panel_mfg_info[37+offset] );
-		printk(" week  %x\n",  panel_mfg_info[38+offset] );
-		printk(" day  %x\n",  panel_mfg_info[39+offset] );
-		#endif
-	}
-}
 
 #if 1
 static ssize_t panel_mfg_info_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -651,22 +842,22 @@ static const struct attribute_group jdi4k_attr_group = {
 
 static int set_brightness(struct rad *ctx, u16 brightness, u16 pulse_offset_rows)
 {
-	unsigned GPO1_TES1 = pulse_offset_rows; // same as on init
-	unsigned GPO1_TEW1 = brightness;
+	unsigned gp01_tes1 = pulse_offset_rows; // same as on init
+	unsigned gpo1_tew1 = brightness;
 	signed CAM_TRIGGER_START, CAM_TRIGGER_WIDTH = 0;
 
 	// limit max brigthness based on mode
-	if (ctx->current_mode == RAD_MODE_120 && GPO1_TEW1 > BRIGHTNESS_MAX_120)
+	if (ctx->current_mode == RAD_MODE_120 && gpo1_tew1 > BRIGHTNESS_MAX_120)
 	{
-		GPO1_TEW1 = BRIGHTNESS_MAX_120;
+		gpo1_tew1 = BRIGHTNESS_MAX_120;
 	}
-	else if (ctx->current_mode == RAD_MODE_90 && GPO1_TEW1 > BRIGHTNESS_MAX_90)
+	else if (ctx->current_mode == RAD_MODE_90 && gpo1_tew1 > BRIGHTNESS_MAX_90)
 	{
-		GPO1_TEW1 = BRIGHTNESS_MAX_90;
+		gpo1_tew1 = BRIGHTNESS_MAX_90;
 	}
-	else if (ctx->current_mode == RAD_MODE_80 && GPO1_TEW1 > BRIGHTNESS_MAX_80 )
+	else if (ctx->current_mode == RAD_MODE_80 && gpo1_tew1 > BRIGHTNESS_MAX_80 )
 	{
-		GPO1_TEW1 = BRIGHTNESS_MAX_80;
+		gpo1_tew1 = BRIGHTNESS_MAX_80;
 	}
 
 	ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
@@ -674,11 +865,11 @@ static int set_brightness(struct rad *ctx, u16 brightness, u16 pulse_offset_rows
 
 	if ( brightness != 0 )
 	{
-		CAM_TRIGGER_START = (GPO1_TES1 > CAMERA_TRIGGER_OFFSET) ? (GPO1_TES1 - CAMERA_TRIGGER_OFFSET) : 0;
-		CAM_TRIGGER_WIDTH = GPO1_TEW1 + CAMERA_TRIGGER_OFFSET*2;
+		CAM_TRIGGER_START = (gp01_tes1 > CAMERA_TRIGGER_OFFSET) ? (gp01_tes1 - CAMERA_TRIGGER_OFFSET) : 0;
+		CAM_TRIGGER_WIDTH = gpo1_tew1 + CAMERA_TRIGGER_OFFSET*2;
 	}
 
-	DSI_CMD(0xb9, BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00, 0x00, 0x00, BE16(CAM_TRIGGER_START), BE16(CAM_TRIGGER_WIDTH));
+	DSI_CMD(0xb9, BE16(gp01_tes1), BE16(gpo1_tew1), 0x00, 0x00, 0x00, 0x00, BE16(CAM_TRIGGER_START), BE16(CAM_TRIGGER_WIDTH));
 
 	ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
 	ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
@@ -895,6 +1086,7 @@ static const struct backlight_ops rad_bl_ops = {
 
 static struct drm_panel *_panel;
 
+#if 0
 int panel_mode_set(const struct drm_display_mode *mode)
 {
 	struct rad *ctx = panel_to_ctx(_panel);
@@ -930,6 +1122,7 @@ int panel_mode_set(const struct drm_display_mode *mode)
 
 	return 0;
 }
+#endif
 
 static int rad_enable(struct drm_panel *panel)
 {
