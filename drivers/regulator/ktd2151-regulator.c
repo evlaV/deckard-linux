@@ -157,10 +157,24 @@ static int ktd2151_set_voltage_sel(struct regulator_dev *rdev, unsigned sel) {
 		case ktd2151_LDO_POS_LEFT:
 		case ktd2151_LDO_POS_RIGHT:
 			ktd2151->pos_sel = sel;
+            if ( ktd2151->pos_enabled ) {
+                ret = ktd2151_i2c_write(ktd2151, ktd2151_LDO_POS_RIGHT, ktd2151_REG_VOUT_POS, ktd2151->pos_sel);
+                ret |= ktd2151_i2c_write(ktd2151, ktd2151_LDO_POS_LEFT, ktd2151_REG_VOUT_POS, ktd2151->pos_sel);
+            }
+            if ( ret ) {
+                dev_err(ktd2151->dev, "failed to write right voltages, will be default ( %d )\n", ret);
+            }
 			break;
 		case ktd2151_LDO_NEG_LEFT:
 		case ktd2151_LDO_NEG_RIGHT:
-			ktd2151->neg_sel = sel;                       
+			ktd2151->neg_sel = sel;
+            if ( ktd2151->neg_enabled ) {
+                ret = ktd2151_i2c_write(ktd2151, ktd2151_LDO_NEG_RIGHT, ktd2151_REG_VOUT_NEG, ktd2151->neg_sel);
+                ret |= ktd2151_i2c_write(ktd2151, ktd2151_LDO_NEG_LEFT, ktd2151_REG_VOUT_NEG, ktd2151->neg_sel);
+            }
+            if ( ret ) {
+                dev_err(ktd2151->dev, "failed to write left voltages, will be default ( %d )\n", ret);
+            }
 			break;
 		default:
 			ret = -EINVAL;

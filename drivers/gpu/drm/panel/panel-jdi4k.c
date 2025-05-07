@@ -1127,7 +1127,7 @@ int panel_mode_set(const struct drm_display_mode *mode)
 static int rad_enable(struct drm_panel *panel)
 {
 	struct rad *ctx = panel_to_ctx(panel);
-	int ret;
+	int ret, i;
 
 	if (ctx->enabled)
 		return 0;
@@ -1146,7 +1146,15 @@ static int rad_enable(struct drm_panel *panel)
 	usleep_range(20000, 21000);
 	dsi_write_panel_on(panel);
 
-    get_panel_info(panel);
+	if ( ctx->panel_vendor == VENDOR_SHARP || ctx->panel_vendor == VENDOR_BOE ) {
+		for ( i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++ ) {
+			regulator_set_voltage(ctx->lcd_bias_regulators[i].consumer, 5800000, 5800000);
+		}
+	} else {
+		for ( i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++ ) {
+			regulator_set_voltage(ctx->lcd_bias_regulators[i].consumer, 5700000, 5700000);
+		}
+	}
 
 	ctx->backlight->props.pulse_offset_rows = 233;
 	rad_backlight_work_init(ctx);
