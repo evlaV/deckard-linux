@@ -18,6 +18,8 @@
 #include <linux/workqueue.h>
 #include "qcom_pmic_typec_port.h"
 
+#include "trace.h"
+
 struct pmic_typec_port_irq_data {
 	int				virq;
 	int				irq;
@@ -51,6 +53,28 @@ static const char * const typec_cc_status_name[] = {
 };
 
 static const char *rp_unknown = "unknown";
+
+//// TYPEC TRACING ////
+////////////////////////////////////////////////////////////////////////////////////////////
+#define regmap_write(map,reg,val) \
+   ( { unsigned int __writeval = val; trace_typec_log("[regmap_WR] 0x%02X = 0x%02X\n", reg, __writeval);  \
+		regmap_write(map,reg,__writeval); })
+	
+#define regmap_read(map,reg,val) \
+   ( { int __ret = regmap_read(map,reg,val); trace_typec_log("[regmap_RD] 0x%02X = 0x%02X\n", reg, *val); __ret;})
+
+#define regmap_update_bits(map,reg,mask,val) \
+   ( { unsigned int __writeval = val; unsigned int __maskval = mask;  \
+	   trace_typec_log("[regmap_WR] 0x%02X = mask [0x%02X] = 0x%02X\n", reg, __maskval, __writeval); \
+	   regmap_update_bits(map,reg,__maskval,__writeval); })
+	
+#define regmap_read_poll_timeoutx(map,addr,val,cond,sleep_us,timeout_us) \
+   ( { int __ret, __tmp; \
+		__tmp = read_poll_timeout(regmap_read, __ret, __ret || (cond), sleep_us, timeout_us, false, (map), (addr), &(val)); \
+		trace_typec_log("[regmap_RD] polled 0x%02X = 0x%02X\n", addr, val); \
+		__ret ?: __tmp; })
+
+////////////////////////////////////////////////////////////////////////////////////////////
 
 static const char *cc_to_name(enum typec_cc_status cc)
 {
@@ -88,6 +112,9 @@ static void qcom_pmic_typec_port_cc_debounce(struct work_struct *work)
 	spin_unlock_irqrestore(&pmic_typec_port->lock, flags);
 
 	dev_dbg(pmic_typec_port->dev, "Debounce cc complete\n");
+	trace_typec_log("[port_cc_debounce] Debounce cc complete\n");
+	trace_typec_qcom_port_debounce(0);
+	
 }
 
 static irqreturn_t pmic_typec_port_isr(int irq, void *dev_id)
@@ -105,21 +132,40 @@ static irqreturn_t pmic_typec_port_isr(int irq, void *dev_id)
 	ret = regmap_read(pmic_typec_port->regmap,
 			  pmic_typec_port->base + TYPEC_MISC_STATUS_REG,
 			  &misc_stat);
+
 	if (ret)
 		goto done;
 
 	switch (irq_data->virq) {
 	case PMIC_TYPEC_VBUS_IRQ:
+		trace_typec_log("[port_isr] PMIC_TYPEC_VBUS_IRQ");
 		vbus_change = true;
 		break;
 	case PMIC_TYPEC_CC_STATE_IRQ:
+		trace_typec_log("[port_isr] PMIC_TYPEC_CC_STATE_IRQ");
 	case PMIC_TYPEC_ATTACH_DETACH_IRQ:
+		trace_typec_log("[port_isr] PMIC_TYPEC_ATTACH_DETACH_IRQ");
 		if (!pmic_typec_port->debouncing_cc)
+		{
 			cc_change = true;
+			trace_typec_log("[port_isr] PMIC_TYPEC_ATTACH_DETACH_IRQ cc_change = true");
+		}
+		break;
+	case PMIC_TYPEC_LEGACY_CABLE_IRQ:
+		trace_typec_log("[port_isr] MIC_TYPEC_LEGACY_CABLE_IRQ");
+		break;
+	case PMIC_TYPEC_TRY_SNK_SRC_IRQ:
+		trace_typec_log("[port_isr] PMIC_TYPEC_TRY_SNK_SRC_IRQ");
+		break;
+	default:
+		trace_typec_log("[port_isr] OTHER %d",irq_data->virq);
 		break;
 	}
 
+	trace_typec_log("[port_isr] vbus_change %d",vbus_change);
+	trace_typec_log("[port_isr] cc_change %d",vbus_change);
 done:
+	trace_typec_log("[port_isr] done");
 	spin_unlock_irqrestore(&pmic_typec_port->lock, flags);
 
 	if (vbus_change)
@@ -140,10 +186,12 @@ int qcom_pmic_typec_port_get_vbus(struct pmic_typec_port *pmic_typec_port)
 	ret = regmap_read(pmic_typec_port->regmap,
 			  pmic_typec_port->base + TYPEC_MISC_STATUS_REG,
 			  &misc);
+
 	if (ret)
 		misc = 0;
 
 	dev_dbg(dev, "get_vbus: 0x%08x detect %d\n", misc, !!(misc & TYPEC_VBUS_DETECT));
+	trace_typec_qcom_port_get_vbus(misc,!!(misc & TYPEC_VBUS_DETECT));
 
 	return !!(misc & TYPEC_VBUS_DETECT);
 }
@@ -157,6 +205,7 @@ bool qcom_pmic_typec_port_is_vbus_vsafe0v(struct pmic_typec_port *pmic_typec_por
 	ret = regmap_read(pmic_typec_port->regmap,
 			  pmic_typec_port->base + TYPEC_SM_STATUS_REG,
 			  &sensor_status);
+
 	if (ret) {
 		safe = false;
 	} else {
@@ -164,6 +213,8 @@ bool qcom_pmic_typec_port_is_vbus_vsafe0v(struct pmic_typec_port *pmic_typec_por
 	}
 
 	pr_warn("qcom_pmic_typec_is_vbus_vsafe0v reading 0x%08X - safe %d\n", sensor_status, safe);
+
+	trace_typec_qcom_port_is_vbus_vsafe0v(sensor_status, safe);
 
 	return (safe);
 }
@@ -176,12 +227,14 @@ int qcom_pmic_typec_port_set_vbus(struct pmic_typec_port *pmic_typec_port, bool 
 
 	if (on) {
 		ret = regulator_enable(pmic_typec_port->vdd_vbus);
+		trace_typec_log("[port_set_vbus] regulator_enable vdd_vbus");
 		if (ret)
 			return ret;
 
 		val = TYPEC_SM_VBUS_VSAFE5V;
 	} else {
 		ret = regulator_disable(pmic_typec_port->vdd_vbus);
+		trace_typec_log("[port_set_vbus] regulator_disable vdd_vbus");
 		if (ret)
 			return ret;
 
@@ -189,12 +242,15 @@ int qcom_pmic_typec_port_set_vbus(struct pmic_typec_port *pmic_typec_port, bool 
 	}
 
 	/* Poll waiting for transition to required vSafe5V or vSafe0V */
-	ret = regmap_read_poll_timeout(pmic_typec_port->regmap,
+	ret = regmap_read_poll_timeoutx(pmic_typec_port->regmap,
 				       pmic_typec_port->base + TYPEC_SM_STATUS_REG,
 				       sm_stat, sm_stat & val,
 				       100, 250000);
-	if (ret)
+
+	if (ret) {
 		dev_warn(pmic_typec_port->dev, "vbus vsafe%dv fail\n", on ? 5 : 0);
+		trace_typec_qcom_port_set_vbus(on);
+	}
 
 	return 0;
 }
@@ -210,12 +266,16 @@ int qcom_pmic_typec_port_get_cc(struct pmic_typec_port *pmic_typec_port,
 
 	ret = regmap_read(pmic_typec_port->regmap,
 			  pmic_typec_port->base + TYPEC_MISC_STATUS_REG, &misc);
+
 	if (ret)
 		goto done;
 
 	attached = !!(misc & CC_ATTACHED);
 
+	trace_typec_qcom_port_get_cc_misc_status_attached(attached);
+
 	if (pmic_typec_port->debouncing_cc) {
+		trace_typec_log("[port_get_cc] debouncing_cc");
 		ret = -EBUSY;
 		goto done;
 	}
@@ -227,6 +287,7 @@ int qcom_pmic_typec_port_get_cc(struct pmic_typec_port *pmic_typec_port,
 		goto done;
 
 	if (misc & SNK_SRC_MODE) {
+		trace_typec_qcom_port_get_cc_misc_status_sink_src_mode(1);
 		ret = regmap_read(pmic_typec_port->regmap,
 				  pmic_typec_port->base + TYPEC_SRC_STATUS_REG,
 				  &val);
@@ -234,24 +295,29 @@ int qcom_pmic_typec_port_get_cc(struct pmic_typec_port *pmic_typec_port,
 			goto done;
 		switch (val & DETECTED_SRC_TYPE_MASK) {
 		case AUDIO_ACCESS_RA_RA:
+			trace_typec_qcom_port_get_cc_src_status("AUDIO_ACCESS_RA_RA",0);
 			val = TYPEC_CC_RA;
 			*cc1 = TYPEC_CC_RA;
 			*cc2 = TYPEC_CC_RA;
 			break;
 		case SRC_RD_OPEN:
+			trace_typec_qcom_port_get_cc_src_status("SRC_RD_OPEN",0);
 			val = TYPEC_CC_RD;
 			break;
 		case SRC_RD_RA_VCONN:
+			trace_typec_qcom_port_get_cc_src_status("SRC_RD_RA_VCONN",0);
 			val = TYPEC_CC_RD;
 			*cc1 = TYPEC_CC_RA;
 			*cc2 = TYPEC_CC_RA;
 			break;
 		default:
 			dev_warn(dev, "unexpected src status %.2x\n", val);
+			trace_typec_qcom_port_get_cc_src_status("unexpected src status",val);
 			val = TYPEC_CC_RD;
 			break;
 		}
 	} else {
+		trace_typec_qcom_port_get_cc_misc_status_sink_src_mode(0);
 		ret = regmap_read(pmic_typec_port->regmap,
 				  pmic_typec_port->base + TYPEC_SNK_STATUS_REG,
 				  &val);
@@ -259,16 +325,20 @@ int qcom_pmic_typec_port_get_cc(struct pmic_typec_port *pmic_typec_port,
 			goto done;
 		switch (val & DETECTED_SNK_TYPE_MASK) {
 		case SNK_RP_STD:
+			trace_typec_qcom_port_get_cc_snk_status("DETECTED_SNK_TYPE_MASK",0);
 			val = TYPEC_CC_RP_DEF;
 			break;
 		case SNK_RP_1P5:
+			trace_typec_qcom_port_get_cc_snk_status("SNK_RP_1P5",0);
 			val = TYPEC_CC_RP_1_5;
 			break;
 		case SNK_RP_3P0:
+			trace_typec_qcom_port_get_cc_snk_status("SNK_RP_3P0",0);
 			val = TYPEC_CC_RP_3_0;
 			break;
 		default:
 			dev_warn(dev, "unexpected snk status %.2x\n", val);
+			trace_typec_qcom_port_get_cc_snk_status("unexpected snk status",val);
 			val = TYPEC_CC_RP_DEF;
 			break;
 		}
@@ -281,6 +351,10 @@ int qcom_pmic_typec_port_get_cc(struct pmic_typec_port *pmic_typec_port,
 
 done:
 	dev_dbg(dev, "get_cc: misc 0x%08x cc1 0x%08x %s cc2 0x%08x %s attached %d cc=%s\n",
+		misc, *cc1, cc_to_name(*cc1), *cc2, cc_to_name(*cc2), attached,
+		misc_to_cc(misc));
+
+	trace_typec_log("[port_get_cc] get_cc: misc 0x%08x cc1 0x%08x %s cc2 0x%08x %s attached %d cc=%s\n",
 		misc, *cc1, cc_to_name(*cc1), *cc2, cc_to_name(*cc2), attached,
 		misc_to_cc(misc));
 
@@ -315,23 +389,29 @@ int qcom_pmic_typec_port_set_cc(struct pmic_typec_port *pmic_typec_port,
 
 	switch (cc) {
 	case TYPEC_CC_OPEN:
+		trace_typec_log("[port_set_cc] TYPEC_CC_OPEN\n");	
 		currsrc = TYPEC_SRC_RP_SEL_80UA;
 		break;
 	case TYPEC_CC_RP_DEF:
+		trace_typec_log("[port_set_cc] TYPEC_CC_RP_DEF\n");	
 		currsrc = TYPEC_SRC_RP_SEL_80UA;
 		break;
 	case TYPEC_CC_RP_1_5:
+		trace_typec_log("[port_set_cc] TYPEC_CC_RP_1_5\n");
 		currsrc = TYPEC_SRC_RP_SEL_180UA;
 		break;
 	case TYPEC_CC_RP_3_0:
+		trace_typec_log("[port_set_cc] TYPEC_CC_RP_3_0\n");
 		currsrc = TYPEC_SRC_RP_SEL_330UA;
 		break;
 	case TYPEC_CC_RD:
+		trace_typec_log("[port_set_cc] TYPEC_CC_RD\n");
 		currsrc = TYPEC_SRC_RP_SEL_80UA;
 		mode = EN_SNK_ONLY;
 		break;
 	default:
 		dev_warn(dev, "unexpected set_cc %d\n", cc);
+		trace_typec_log("[port_set_cc] unexpected set_cc %d\n", cc);
 		ret = -EINVAL;
 		goto done;
 	}
@@ -352,6 +432,12 @@ done:
 	spin_unlock_irqrestore(&pmic_typec_port->lock, flags);
 
 	dev_dbg(dev, "set_cc: currsrc=%x %s mode %s debounce %d attached %d cc=%s\n",
+		currsrc, rp_sel_to_name(currsrc),
+		mode == EN_SRC_ONLY ? "EN_SRC_ONLY" : "EN_SNK_ONLY",
+		pmic_typec_port->debouncing_cc, !!(misc & CC_ATTACHED),
+		misc_to_cc(misc));
+		
+	trace_typec_log("[port_set_cc] set_cc: currsrc=%x %s mode %s debounce %d attached %d cc=%s\n",
 		currsrc, rp_sel_to_name(currsrc),
 		mode == EN_SRC_ONLY ? "EN_SRC_ONLY" : "EN_SNK_ONLY",
 		pmic_typec_port->debouncing_cc, !!(misc & CC_ATTACHED),
@@ -393,6 +479,9 @@ done:
 	dev_dbg(dev, "set_vconn: orientation %d control 0x%08x state %s cc %s vconn %s\n",
 		orientation, value, on ? "on" : "off", misc_to_vconn(misc), misc_to_cc(misc));
 
+	trace_typec_log("[port_set_vconn] set_vconn: orientation %d control 0x%08x state %s cc %s vconn %s\n",
+		orientation, value, on ? "on" : "off", misc_to_vconn(misc), misc_to_cc(misc));
+
 	return ret;
 }
 
@@ -409,8 +498,10 @@ int qcom_pmic_typec_port_legacy_cable_reset(struct pmic_typec_port *pmic_typec_p
 	// check legacy cable status
 	regmap_read(pmic_typec_port->regmap,
 				pmic_typec_port->base + LEGACY_CABLE_STATUS_REG, &regval);
+
 	if ( regval & TYPEC_LEGACY_CABLE_STATUS ) {
 		dev_dbg(pmic_typec_port->dev, "Legacy cable detected on TypeC start, toggling CC to clear\n");
+		trace_typec_qcom_port_get_legacy_cable_status(1);
 		// disable cc ( set port role disabled )
 		ret = regmap_write(pmic_typec_port->regmap,
 				pmic_typec_port->base + TYPEC_MODE_CFG_REG,
@@ -424,6 +515,9 @@ int qcom_pmic_typec_port_legacy_cable_reset(struct pmic_typec_port *pmic_typec_p
 		ret = regmap_write(pmic_typec_port->regmap,
 				pmic_typec_port->base + TYPEC_MODE_CFG_REG, 0);
 	}
+	else
+		trace_typec_qcom_port_get_legacy_cable_status(0);
+
     return ret;
 }
 
@@ -467,6 +561,9 @@ int qcom_pmic_typec_port_start_toggling(struct pmic_typec_port *pmic_typec_port,
 		goto done;
 
 	dev_dbg(dev, "start_toggling: misc 0x%08x attached %d port_type %d current cc %d new %d\n",
+		misc, !!(misc & CC_ATTACHED), port_type, pmic_typec_port->cc, cc);
+
+	trace_typec_log("[port_start_toggling] misc 0x%08x attached %d port_type %d current cc %d new %d\n",
 		misc, !!(misc & CC_ATTACHED), port_type, pmic_typec_port->cc, cc);
 
 	qcom_pmic_set_cc_debounce(pmic_typec_port);
@@ -574,6 +671,8 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 	struct pmic_typec_port_irq_data *irq_data;
 	int i, ret, irq;
 
+	printk(KERN_INFO "qcom_pmic_typec_port_probe start");
+	trace_typec_log("[port_probe] start");
 	if (!res->nr_irqs || res->nr_irqs > PMIC_TYPEC_MAX_IRQS)
 		return -EINVAL;
 
@@ -584,6 +683,7 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 
 	pmic_typec_port->vdd_vbus = devm_regulator_get(dev, "vdd-vbus");
 	if (IS_ERR(pmic_typec_port->vdd_vbus)) {
+		trace_typec_log("[port_probe] Failed to Find USB OTG Supply\n");
 		pr_warn("qcom_pmic_typec_port_probe Failed to Find USB OTG Supply\n");
 		return PTR_ERR(pmic_typec_port->vdd_vbus);
 	}
@@ -618,5 +718,7 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 			return ret;
 	}
 
+	printk(KERN_INFO "qcom_pmic_typec_port_probe done");
+	trace_typec_log("[port_probe] done");
 	return 0;
 }

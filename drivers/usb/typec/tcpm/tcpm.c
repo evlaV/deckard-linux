@@ -34,6 +34,7 @@
 #include <uapi/linux/sched/types.h>
 
 #include <linux/reboot.h>
+#include "trace.h"
 
 #define FOREACH_STATE(S)			\
 	S(INVALID_STATE),			\
@@ -701,10 +702,18 @@ static void _tcpm_log(struct tcpm_port *port, const char *fmt, va_list args)
 	}
 
 	rem_nsec = do_div(ts_nsec, 1000000000);
+#if 0	
 	scnprintf(port->logbuffer[port->logbuffer_head],
-		  LOG_BUFFER_ENTRY_SIZE, "[%5lu.%06lu] %s",
-		  (unsigned long)ts_nsec, rem_nsec / 1000,
+		  LOG_BUFFER_ENTRY_SIZE, "[%5lu.%06lu] [  typeclog  ] %s",
+		  (unsigned long)ts_nsec, rem_nsec / 1000,          
 		  tmpbuffer);
+#else
+	trace_typec_tcpm_log(tmpbuffer);
+
+	scnprintf(port->logbuffer[port->logbuffer_head],
+		  LOG_BUFFER_ENTRY_SIZE, "[  typeclog  ] %s", tmpbuffer);	
+
+#endif		  
 	port->logbuffer_head = (port->logbuffer_head + 1) % LOG_BUFFER_ENTRIES;
 
 abort:
@@ -1339,6 +1348,9 @@ static void mod_send_discover_delayed_work(struct tcpm_port *port, unsigned int 
 static void tcpm_set_state(struct tcpm_port *port, enum tcpm_state state,
 			   unsigned int delay_ms)
 {
+
+	trace_printk("tcpm_set_state target [%s]",tcpm_states[state]);
+	
 	if (delay_ms) {
 		tcpm_log(port, "pending state change %s -> %s @ %u ms [%s %s]",
 			 tcpm_states[port->state], tcpm_states[state], delay_ms,
@@ -5964,6 +5976,8 @@ static void _tcpm_pd_vbus_on(struct tcpm_port *port)
 	 */
 	port->vbus_vsafe0v = false;
 
+	trace_printk("[_tcpm_pd_vbus_on] port->state = %d",port->state);
+
 	switch (port->state) {
 	case SNK_TRANSITION_SINK_VBUS:
 		port->explicit_contract = true;
@@ -6236,19 +6250,26 @@ static void tcpm_pd_event_handler(struct kthread_work *work)
 	mutex_lock(&port->lock);
 
 	spin_lock(&port->pd_event_lock);
+	trace_printk("[typecTCPMevt] tcpm_pd_event_handler");
 	while (port->pd_events) {
 		events = port->pd_events;
 		port->pd_events = 0;
 		spin_unlock(&port->pd_event_lock);
 		if (events & TCPM_RESET_EVENT)
+		{
+			trace_typec_tcpm_event_handler("TCPM_RESET_EVENT",0);
 			_tcpm_pd_hard_reset(port);
+		}
 		if (events & TCPM_VBUS_EVENT) {
 			bool vbus;
 
+			trace_typec_tcpm_event_handler("TCPM_VBUS_EVENT",0);
 			vbus = port->tcpc->get_vbus(port->tcpc);
 			if (vbus) {
+				trace_typec_tcpm_event_handler("TCPM_VBUS_EVENT",1);
 				_tcpm_pd_vbus_on(port);
 			} else {
+				trace_typec_tcpm_event_handler("TCPM_VBUS_EVENT",2);
 				_tcpm_pd_vbus_off(port);
 				/*
 				 * When TCPC does not support detecting vsafe0v voltage level,
@@ -6257,28 +6278,36 @@ static void tcpm_pd_event_handler(struct kthread_work *work)
 				 */
 				if (!port->tcpc->is_vbus_vsafe0v ||
 				    port->tcpc->is_vbus_vsafe0v(port->tcpc))
+					{
+					trace_typec_tcpm_event_handler("TCPM_VBUS_EVENT",3);
 					_tcpm_pd_vbus_vsafe0v(port);
+					}
 			}
 		}
 		if (events & TCPM_CC_EVENT) {
 			enum typec_cc_status cc1, cc2;
 
+			trace_typec_tcpm_event_handler("TCPM_CC_EVENT",0);
 			if (port->tcpc->get_cc(port->tcpc, &cc1, &cc2) == 0)
 				_tcpm_cc_change(port, cc1, cc2);
 		}
 		if (events & TCPM_FRS_EVENT) {
+			trace_typec_tcpm_event_handler("TCPM_FRS_EVENT",0);
 			if (port->state == SNK_READY) {
 				int ret;
 
+				trace_typec_tcpm_event_handler("TCPM_FRS_EVENT",1);
 				port->upcoming_state = FR_SWAP_SEND;
 				ret = tcpm_ams_start(port, FAST_ROLE_SWAP);
 				if (ret == -EAGAIN)
 					port->upcoming_state = INVALID_STATE;
 			} else {
+				trace_typec_tcpm_event_handler("TCPM_FRS_EVENT",2);
 				tcpm_log(port, "Discarding FRS_SIGNAL! Not in sink ready");
 			}
 		}
 		if (events & TCPM_SOURCING_VBUS) {
+			trace_typec_tcpm_event_handler("TCPM_SOURCING_VBUS",1);
 			tcpm_log(port, "sourcing vbus");
 			/*
 			 * In fast role swap case TCPC autonomously sources vbus. Set vbus_source
@@ -6291,6 +6320,7 @@ static void tcpm_pd_event_handler(struct kthread_work *work)
 			_tcpm_pd_vbus_on(port);
 		}
 		if (events & TCPM_PORT_CLEAN) {
+			trace_typec_tcpm_event_handler("TCPM_PORT_CLEAN",1);
 			tcpm_log(port, "port clean");
 			if (port->state == CHECK_CONTAMINANT) {
 				if (tcpm_start_toggling(port, tcpm_rp_cc(port)))
@@ -6300,6 +6330,7 @@ static void tcpm_pd_event_handler(struct kthread_work *work)
 			}
 		}
 		if (events & TCPM_PORT_ERROR) {
+			trace_typec_tcpm_event_handler("TCPM_PORT_ERROR",1);
 			tcpm_log(port, "port triggering error recovery");
 			tcpm_set_state(port, ERROR_RECOVERY, 0);
 		}

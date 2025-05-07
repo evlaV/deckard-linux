@@ -20,6 +20,8 @@
 #include "qcom_pmic_typec_pdphy.h"
 #include "qcom_pmic_typec_port.h"
 
+#include "trace.h"
+
 struct pmic_typec_resources {
 	struct pmic_typec_pdphy_resources	*pdphy_res;
 	struct pmic_typec_port_resources	*port_res;
@@ -210,6 +212,9 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	static int defer;
 	int defercount = 0;
 
+	printk(KERN_INFO "qcom_pmic_typec_probe start");
+	trace_typec_qcom_pmic_probe(0);
+
 	if (++defer <= defercount)
 	{
 		dev_info(dev, "tcpm defer probe %d of %d\n", defer, defercount);
@@ -295,6 +300,8 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 
 	qcom_pmic_charger_init(regmap);
 
+	printk(KERN_INFO "qcom_pmic_typec_probe done");
+	trace_typec_qcom_pmic_probe(1);
 	return 0;
 
 fwnode_remove:

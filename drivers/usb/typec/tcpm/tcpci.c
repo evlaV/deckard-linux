@@ -710,6 +710,8 @@ irqreturn_t tcpci_irq(struct tcpci *tcpci)
 	int irq_ret;
 	unsigned int raw;
 
+	printk(KERN_INFO "[typecTCPIirq] tcpci_irq");
+
 	tcpci_read16(tcpci, TCPC_ALERT, &status);
 	irq_ret = status & tcpci->alert_mask;
 
@@ -937,6 +939,9 @@ static int tcpci_probe(struct i2c_client *client)
 	disable_irq(client->irq);
 	chip->tcpci = tcpci_register_port(&client->dev, &chip->data);
 	enable_irq(client->irq);
+
+
+	printk(KERN_INFO "[typecTCPIx01] tcpci_probe done");
 
 	return PTR_ERR_OR_ZERO(chip->tcpci);
 }

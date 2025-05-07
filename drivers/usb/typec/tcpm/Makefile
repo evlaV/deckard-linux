@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
-obj-$(CONFIG_TYPEC_TCPM)		+= tcpm.o
+CFLAGS_trace.o			:= -I$(src)
+
+obj-$(CONFIG_TYPEC_TCPM)		+= tcpm.o trace.o
 obj-$(CONFIG_TYPEC_FUSB302)		+= fusb302.o
 obj-$(CONFIG_TYPEC_WCOVE)		+= typec_wcove.o
 typec_wcove-y				:= wcove.o
@@ -10,3 +12,4 @@ obj-$(CONFIG_TYPEC_TCPCI_MT6370)	+= tcpci_mt6370.o
 obj-$(CONFIG_TYPEC_TCPCI_MAXIM)		+= tcpci_maxim.o
 tcpci_maxim-y				+= tcpci_maxim_core.o maxim_contaminant.o
 obj-$(CONFIG_TYPEC_QCOM_PMIC)		+= qcom/
+

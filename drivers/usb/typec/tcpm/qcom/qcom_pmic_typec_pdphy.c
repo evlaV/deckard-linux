@@ -16,6 +16,8 @@
 #include <linux/usb/tcpm.h>
 #include "qcom_pmic_typec_pdphy.h"
 
+#include "trace.h"
+
 struct pmic_typec_pdphy_irq_data {
 	int				virq;
 	int				irq;
@@ -37,6 +39,34 @@ struct pmic_typec_pdphy {
 	spinlock_t			lock;		/* Register atomicity */
 };
 
+//// TYPEC TRACING ////
+////////////////////////////////////////////////////////////////////////////////////////////
+#define regmap_write(map,reg,val) \
+   ( { unsigned int __writeval = val; trace_typec_log("[regmap_WR] 0x%02X = 0x%02X\n", reg, __writeval);  \
+		regmap_write(map,reg,__writeval); })
+	
+#define regmap_read(map,reg,val) \
+   ( { int __ret = regmap_read(map,reg,val); trace_typec_log("[regmap_RD] 0x%02X = 0x%02X\n", reg, *val); __ret;})
+
+#define regmap_update_bits(map,reg,mask,val) \
+   ( { unsigned int __writeval = val; unsigned int __maskval = mask;  \
+	   trace_typec_log("[regmap_WR] 0x%02X = mask [0x%02X] = 0x%02X\n", reg, __maskval, __writeval); \
+	   regmap_update_bits(map,reg,__maskval,__writeval); })
+	
+
+#define regmap_bulk_writex(map, reg, val, val_count) \
+	({  int __ret = regmap_bulk_write(map,reg,val,val_count); \
+		int __valcount=val_count; trace_typec_log("[regmap_WB] 0x%02X = 0x%02X, len = %d\n", reg, *(u8 *)val, __valcount); \
+		for(int i=0; i<val_count; i++) { trace_typec_log("   [regmap_WB] [0x%02X] [%d] = 0x%02X\n", reg, i, ((u8 *)val)[i]); } \
+		__ret;})
+
+#define regmap_bulk_read(map, reg, val, val_count) \
+	({	int __ret = regmap_bulk_read(map, reg, val, val_count); \
+		int __valcount=val_count; trace_typec_log("[regmap_RB] 0x%02X = 0x%02X, len=%d\n", reg, *(u8 *)val, __valcount); \
+		for(int i=0; i<val_count; i++) { trace_typec_log("   [regmap_RB] [0x%02X] [%d] = 0x%02X\n", reg, i, ((u8 *)val)[i]); } \
+		__ret;})
+////////////////////////////////////////////////////////////////////////////////////////////
+
 static void qcom_pmic_typec_pdphy_reset_on(struct pmic_typec_pdphy *pmic_typec_pdphy)
 {
 	struct device *dev = pmic_typec_pdphy->dev;
@@ -56,6 +86,7 @@ static void qcom_pmic_typec_pdphy_reset_on(struct pmic_typec_pdphy *pmic_typec_p
 	return;
 err:
 	dev_err(dev, "pd_reset_on error\n");
+	trace_typec_log("[pdphy_reset_on] error\n");
 }
 
 static void qcom_pmic_typec_pdphy_reset_off(struct pmic_typec_pdphy *pmic_typec_pdphy)
@@ -66,8 +97,12 @@ static void qcom_pmic_typec_pdphy_reset_off(struct pmic_typec_pdphy *pmic_typec_
 	ret = regmap_write(pmic_typec_pdphy->regmap,
 			   pmic_typec_pdphy->base + USB_PDPHY_FRAME_FILTER_REG,
 			   FRAME_FILTER_EN_SOP | FRAME_FILTER_EN_HARD_RESET);
+
 	if (ret)
+	{
 		dev_err(dev, "pd_reset_off error\n");
+		trace_typec_log("[pdphy_reset_off] error\n");
+	}
 }
 
 static void qcom_pmic_typec_pdphy_sig_reset_work(struct work_struct *work)
@@ -105,7 +140,10 @@ qcom_pmic_typec_pdphy_clear_tx_control_reg(struct pmic_typec_pdphy *pmic_typec_p
 
 done:
 	if (ret)
+	{
 		dev_err(dev, "pd_clear_tx_control_reg: clear tx flag\n");
+		trace_typec_log("[pdphy_clear_tx_control_reg] clear tx flag\n");
+	}
 
 	return ret;
 }
@@ -144,6 +182,8 @@ done:
 
 	dev_vdbg(dev, "pd_transmit_signal: type %d negotiate_rev %d send %d\n",
 		 type, negotiated_rev, ret);
+		 
+	trace_typec_log("[typecPHY x03] pd_transmit_signal: type %d negotiate_rev %d send %d\n",type, negotiated_rev, ret);
 
 	return ret;
 }
@@ -164,11 +204,13 @@ qcom_pmic_typec_pdphy_pd_transmit_payload(struct pmic_typec_pdphy *pmic_typec_pd
 	ret = regmap_read(pmic_typec_pdphy->regmap,
 			  pmic_typec_pdphy->base + USB_PDPHY_RX_ACKNOWLEDGE_REG,
 			  &val);
+
 	if (ret)
 		goto done;
 
 	if (val) {
 		dev_err(dev, "pd_transmit_payload: RX message pending\n");
+		trace_typec_log("[typecPHY x04] pd_transmit_payload: RX message pending\n");
 		ret = -EBUSY;
 		goto done;
 	}
@@ -186,6 +228,7 @@ qcom_pmic_typec_pdphy_pd_transmit_payload(struct pmic_typec_pdphy *pmic_typec_pd
 	ret = regmap_bulk_write(pmic_typec_pdphy->regmap,
 				pmic_typec_pdphy->base + USB_PDPHY_TX_BUFFER_HDR_REG,
 				&msg->header, hdr_len);
+
 	if (ret)
 		goto done;
 
@@ -226,8 +269,11 @@ done:
 	if (ret) {
 		dev_err(dev, "pd_transmit_payload: hdr %*ph data %*ph ret %d\n",
 			hdr_len, &msg->header, txbuf_len, &msg->payload, ret);
+		trace_typec_log("[typecPHY x05] pd_transmit_payload: hdr %*ph data %*ph ret %d\n",
+			hdr_len, &msg->header, txbuf_len, &msg->payload, ret);
 	}
 
+	trace_typec_log("[typecPHY x05] pd_transmit_payload: hdr %*ph data %*ph ret %d\n", hdr_len, &msg->header, txbuf_len, &msg->payload, ret);
 	return ret;
 }
 
@@ -250,7 +296,12 @@ int qcom_pmic_typec_pdphy_pd_transmit(struct pmic_typec_pdphy *pmic_typec_pdphy,
 	}
 
 	if (ret)
+	{
 		dev_dbg(dev, "pd_transmit: type %x result %d\n", type, ret);
+		trace_typec_log("[typecPHY x06] pd_transmit: type %x result %d\n", type, ret);
+	}
+
+	trace_typec_log("[typecPHY x06] pd_transmit: type %x result %d\n", type, ret);
 
 	return ret;
 }
@@ -267,12 +318,14 @@ static void qcom_pmic_typec_pdphy_pd_receive(struct pmic_typec_pdphy *pmic_typec
 
 	ret = regmap_read(pmic_typec_pdphy->regmap,
 			  pmic_typec_pdphy->base + USB_PDPHY_RX_SIZE_REG, &size);
+
 	if (ret)
 		goto done;
 
 	/* Hardware requires +1 of the real read value to be passed */
 	if (size < 1 || size > sizeof(msg.payload) + 1) {
 		dev_dbg(dev, "pd_receive: invalid size %d\n", size);
+		trace_typec_log("[typecPHY x07] pd_receive: invalid size %d\n", size);
 		goto done;
 	}
 
@@ -287,6 +340,7 @@ static void qcom_pmic_typec_pdphy_pd_receive(struct pmic_typec_pdphy *pmic_typec
 	ret = regmap_bulk_read(pmic_typec_pdphy->regmap,
 			       pmic_typec_pdphy->base + USB_PDPHY_RX_BUFFER_REG,
 			       (u8 *)&msg, size);
+
 	if (ret)
 		goto done;
 
@@ -299,8 +353,11 @@ done:
 
 	if (!ret) {
 		dev_vdbg(dev, "pd_receive: handing %d bytes to tcpm\n", size);
+		trace_typec_log("[pdphy_pd_receive] pd_receive: handing %d bytes to tcpm\n", size);
 		tcpm_pd_receive(pmic_typec_pdphy->tcpm_port, &msg, TCPC_TX_SOP);
 	}
+
+	trace_typec_log("[pdphy_pd_receive] pd_receive: handing %d bytes to tcpm\n", size);
 }
 
 static irqreturn_t qcom_pmic_typec_pdphy_isr(int irq, void *dev_id)
@@ -309,27 +366,45 @@ static irqreturn_t qcom_pmic_typec_pdphy_isr(int irq, void *dev_id)
 	struct pmic_typec_pdphy *pmic_typec_pdphy = irq_data->pmic_typec_pdphy;
 	struct device *dev = pmic_typec_pdphy->dev;
 
+	
+	trace_typec_log("[pdphy_isr] 0x%02X\n", irq_data->virq);
+
 	switch (irq_data->virq) {
 	case PMIC_PDPHY_SIG_TX_IRQ:
 		dev_err(dev, "isr: tx_sig\n");
+		trace_typec_log("[pdphy_isr] PMIC_PDPHY_SIG_TX_IRQ");
 		break;
 	case PMIC_PDPHY_SIG_RX_IRQ:
+		trace_typec_log("[pdphy_isr] PMIC_PDPHY_SIG_RX_IRQ");
 		schedule_work(&pmic_typec_pdphy->reset_work);
 		break;
 	case PMIC_PDPHY_MSG_TX_IRQ:
+		trace_typec_log("[pdphy_isr] PMIC_PDPHY_MSG_TX_IRQ");
 		tcpm_pd_transmit_complete(pmic_typec_pdphy->tcpm_port,
 					  TCPC_TX_SUCCESS);
 		break;
 	case PMIC_PDPHY_MSG_RX_IRQ:
+		trace_typec_log("[pdphy_isr] PMIC_PDPHY_MSG_RX_IRQ");
 		qcom_pmic_typec_pdphy_pd_receive(pmic_typec_pdphy);
 		break;
 	case PMIC_PDPHY_MSG_TX_FAIL_IRQ:
+		trace_typec_log("[pdphy_isr] PMIC_PDPHY_MSG_TX_FAIL_IRQ");
 		tcpm_pd_transmit_complete(pmic_typec_pdphy->tcpm_port,
 					  TCPC_TX_FAILED);
 		break;
 	case PMIC_PDPHY_MSG_TX_DISCARD_IRQ:
+		trace_typec_log("[pdphy_isr] PMIC_PDPHY_MSG_TX_DISCARD_IRQ");
 		tcpm_pd_transmit_complete(pmic_typec_pdphy->tcpm_port,
 					  TCPC_TX_DISCARDED);
+		break;
+	case PMIC_PDPHY_MSG_RX_DISCARD_IRQ:
+		trace_typec_log("[pdphy_isr] PMIC_PDPHY_MSG_RX_DISCARD_IRQ");
+		break;
+	case PMIC_PDPHY_FR_SWAP_IRQ:
+		trace_typec_log("[pdphy_isr] PMIC_PDPHY_FR_SWAP_IRQ");
+		break;
+	default:
+		trace_typec_log("[pdphy_isr] OTHER %d",irq_data->virq);
 		break;
 	}
 
@@ -345,10 +420,12 @@ int qcom_pmic_typec_pdphy_set_pd_rx(struct pmic_typec_pdphy *pmic_typec_pdphy, b
 
 	ret = regmap_write(pmic_typec_pdphy->regmap,
 			   pmic_typec_pdphy->base + USB_PDPHY_RX_ACKNOWLEDGE_REG, !on);
-
+	
 	spin_unlock_irqrestore(&pmic_typec_pdphy->lock, flags);
 
 	dev_dbg(pmic_typec_pdphy->dev, "set_pd_rx: %s\n", on ? "on" : "off");
+	
+	trace_typec_log("[pdphy_set_pd_rx] set_pd_rx: %s\n", on ? "on" : "off");
 
 	return ret;
 }
@@ -372,6 +449,8 @@ int qcom_pmic_typec_pdphy_set_roles(struct pmic_typec_pdphy *pmic_typec_pdphy,
 
 	dev_dbg(dev, "pdphy_set_roles: data_role_host=%d power_role_src=%d\n",
 		data_role_host, power_role_src);
+		
+	trace_typec_log("[pdphy_set_roles] data_role_host=%d power_role_src=%d\n", data_role_host, power_role_src);
 
 	return ret;
 }
@@ -396,9 +475,13 @@ int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int
 {
 	int val_u = icl_ma;
 	int val_raw;
+	int ret = 0;
 
 	if (icl_ma > MAX_USBIN_CURRENT_MA || icl_ma < MIN_USBIN_CURRENT_MA)
+	{
 		dev_err(pmic_typec_pdphy->dev, "USBIN current %d is out of range [%d, %d]\n", icl_ma, MAX_USBIN_CURRENT_MA, MIN_USBIN_CURRENT_MA);
+		trace_typec_log("[pdphy_set_usbin_current_limit] USBIN current %d is out of range [%d, %d]\n", icl_ma, MAX_USBIN_CURRENT_MA, MIN_USBIN_CURRENT_MA);
+	}
 
 	if (val_u > MAX_USBIN_CURRENT_MA)
 		val_u = MAX_USBIN_CURRENT_MA;
@@ -529,6 +612,7 @@ static int qcom_pmic_typec_pdphy_enable(struct pmic_typec_pdphy *pmic_typec_pdph
 
 	ret = regmap_write(pmic_typec_pdphy->regmap,
 			   pmic_typec_pdphy->base + USB_PDPHY_EN_CONTROL_REG, 0);
+			    
 	if (ret)
 		goto done;
 
@@ -543,6 +627,7 @@ done:
 	if (ret) {
 		regulator_disable(pmic_typec_pdphy->vdd_pdphy);
 		dev_err(dev, "pdphy_enable fail %d\n", ret);
+		trace_typec_log("[pdphy_enable] pdphy_enable fail %d\n", ret);
 	}
 
 	return ret;
@@ -564,6 +649,7 @@ static int pmic_typec_pdphy_reset(struct pmic_typec_pdphy *pmic_typec_pdphy)
 {
 	int ret;
 
+	trace_typec_log("[pdphy_reset] pmic_typec_pdphy_reset");
 	ret = qcom_pmic_typec_pdphy_disable(pmic_typec_pdphy);
 	if (ret)
 		goto done;
@@ -623,6 +709,8 @@ int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
 	struct pmic_typec_pdphy_irq_data *irq_data;
 	int i, ret, irq;
 
+	printk(KERN_INFO "qcom_pmic_typec_pdphy_probe start");
+	trace_typec_log("[pdphy_probe] start");
 	if (!res->nr_irqs || res->nr_irqs > PMIC_PDPHY_MAX_IRQS)
 		return -EINVAL;
 
@@ -647,6 +735,7 @@ int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
 	ret = qcom_pmic_typec_pdphy_set_over_voltage_protection(pmic_typec_pdphy);
 	if (ret) {
 		dev_warn(dev, "pdphy_probe failed to set OVP: %d\n", ret);
+		trace_typec_log("[pdphy_probe] pdphy_probe failed to set OVP: %d\n", ret);
 	}
 
 	for (i = 0; i < res->nr_irqs; i++, irq_data++) {
@@ -667,5 +756,7 @@ int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
 			return ret;
 	}
 
+	printk(KERN_INFO "qcom_pmic_typec_pdphy_probe done");
+	trace_typec_log("[pdphy_probe] done");
 	return 0;
 }
