@@ -317,7 +317,7 @@
 
 			/* PM8550VE Channel nodes */
 			pm8550ve_die_temp {
-				reg = <PM8550VE_ADC5_GEN3_DIE_TEMP(5)>;
+				reg = <PM8550VE_ADC5_GEN3_DIE_TEMP(8)>;
 				label = "pm8550ve_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};
