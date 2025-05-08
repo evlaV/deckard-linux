@@ -293,19 +293,8 @@ static int adc5_gen3_read_raw(struct iio_dev *indio_dev,
 	}
 }
 
-static int adc5_gen3_read_label(struct iio_dev *indio_dev,
-				const struct iio_chan_spec *chan, char *label)
-{
-	struct adc5_chip *adc = iio_priv(indio_dev);
-	struct adc5_channel_prop *prop;
-
-	prop = &adc->chan_props[chan->address];
-	return sprintf(label, "%s\n", prop->common_props.label);
-}
-
 static const struct iio_info adc5_gen3_info = {
 	.read_raw = adc5_gen3_read_raw,
-	.read_label = adc5_gen3_read_label,
 	.fwnode_xlate = adc5_gen3_fwnode_xlate,
 };
 
@@ -341,8 +330,8 @@ static const struct adc5_channels adc5_gen3_chans_pmic[ADC5_MAX_CHANNEL] = {
 	[ADC5_GEN3_VBAT_SNS_QBG]	= ADC5_CHAN_VOLT(1, SCALE_HW_CALIB_DEFAULT)
 	[ADC5_GEN3_AMUX3_THM]		= ADC5_CHAN_TEMP(9, SCALE_HW_CALIB_PM7_SMB_TEMP)
 	[ADC5_GEN3_CHG_TEMP]		= ADC5_CHAN_TEMP(0, SCALE_HW_CALIB_PM7_CHG_TEMP)
-	[ADC5_GEN3_USB_SNS_V_16]	= ADC5_CHAN_TEMP(8, SCALE_HW_CALIB_DEFAULT)
-	[ADC5_GEN3_VIN_DIV16_MUX]	= ADC5_CHAN_TEMP(8, SCALE_HW_CALIB_DEFAULT)
+	[ADC5_GEN3_USB_SNS_V_16]	= ADC5_CHAN_VOLT(1, SCALE_HW_CALIB_DEFAULT)
+	[ADC5_GEN3_VIN_DIV16_MUX]	= ADC5_CHAN_VOLT(1, SCALE_HW_CALIB_DEFAULT)
 	[ADC5_GEN3_IIN_FB]		= ADC5_CHAN_CUR(10,
 						SCALE_HW_CALIB_CUR)
 	[ADC5_GEN3_ICHG_SMB]		= ADC5_CHAN_CUR(13,
@@ -527,10 +516,11 @@ static int adc5_get_fw_data(struct adc5_chip *adc)
 		chan_props->common_props.scale_fn_type = adc_chan->scale_fn_type;
 
 		iio_chan->channel = V_CHAN(chan_props->common_props);
+		iio_chan->datasheet_name = chan_props->common_props.label;
+		iio_chan->extend_name = chan_props->common_props.label;
 		iio_chan->info_mask_separate = adc_chan->info_mask;
 		iio_chan->type = adc_chan->type;
 		iio_chan->address = index;
-		iio_chan->indexed = 1;
 		iio_chan++;
 		chan_props++;
 		index++;
