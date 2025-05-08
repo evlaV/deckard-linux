@@ -310,7 +310,7 @@ static int nex10000ub_probe(struct platform_device *pdev)
 		nex10000ub->adapter[i] = i2c_get_adapter_by_fwnode(of_fwnode_handle(node));
 		of_node_put(node);
 		if (!nex10000ub->adapter[i])
-				return -ENOENT;
+				return -EPROBE_DEFER;
 	}
 
 	nex10000ub->enp_gpio = devm_gpiod_get_optional(dev, "enp", GPIOD_OUT_LOW);
