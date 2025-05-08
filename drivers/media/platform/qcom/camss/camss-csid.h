@@ -230,6 +230,8 @@ struct csid_device {
 	struct device_attribute rx_dbg_en_attr;
 	struct device_attribute rx_dbg_stats_attr;
 
+	u64 last_frame_arrival_time;
+
 	// debug rx irq counters
 	u32 rx_dbg_irq_counters[32];
 #endif
