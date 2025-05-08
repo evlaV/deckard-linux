@@ -128,70 +128,120 @@
 #define OFFSET_ESTIMATION_STATE_INIT 0
 #define OFFSET_ESTIMATION_STATE_REFINE 1
 
-#define MAX_OFFSET_DELTA_FOR_ADJUSTMENT_IN_NS 10000
-#define MAX_OFFSET_DELTA_FOR_VOTE_IN_NS 30000
-#define MAX_NUM_OFFSETS 100
-#define VOTE_COUNT_THRESHOLD_FOR_OFFSET_RESET (MAX_NUM_OFFSETS/4)
+#define NUM_OFFSET_ESTIMATORS 5
+#define NUM_OFFSET_ESTIMATORS_NEEDED_IN_AGREEMENT 3
+#define MIN_FRAMES_BEFORE_SWITCH 100
+#define ESTIMATOR_CHECK_INTERVAL 200
+#define DROP_THRESHOLD_NS 1000
+#define ESTIMATOR_AGREEMENT_THRESHOLD_NS 1000
+
 DEFINE_SPINLOCK(isp_to_kernel_raw_ts_offset_estimation_spinlock);
 u32 isp_to_kernel_raw_ts_offset_stream_cnt = 0;
-u32 isp_to_kernel_raw_ts_offset_estimation_state;
 u64 isp_to_kernel_raw_ts_offset_counter;
-u32 isp_to_kernel_raw_ts_offset_refinement_vote_cnt;
-s64 isp_to_kernel_raw_ts_offset_floor;
+s64 isp_to_kernel_raw_ts_offset_floor[NUM_OFFSET_ESTIMATORS];
+static int offset_estimator_update_idx = 0;
+static int current_active_estimator = 0;
+static u64 total_frames_since_reset = 0;
 
-static void update_isp_to_kernel_raw_ts_offset_estimate(u64 ts_monotonic_raw, u64 sof_isp_timestamp)
+static void check_and_switch_estimators(struct csid_device *csid) {
+    int agreement_count;
+    int highest_estimator = current_active_estimator;
+    s64 highest_estimate = isp_to_kernel_raw_ts_offset_floor[current_active_estimator];
+    bool found_good_estimator = false;
+    
+    // Try each estimator starting with current
+    for (int start = 0; start < NUM_OFFSET_ESTIMATORS && !found_good_estimator; start++) {
+        int test_estimator = (current_active_estimator + start) % NUM_OFFSET_ESTIMATORS;
+        agreement_count = 0;
+        
+        // Compare against all other estimators
+        for (int other = 0; other < NUM_OFFSET_ESTIMATORS; other++) {
+            if (other == test_estimator)
+                continue;
+                
+            s64 diff = isp_to_kernel_raw_ts_offset_floor[test_estimator] - 
+                      isp_to_kernel_raw_ts_offset_floor[other];
+            
+            if (abs(diff) < ESTIMATOR_AGREEMENT_THRESHOLD_NS)
+                agreement_count++;
+        }
+        
+        // If this estimator agrees with at least 3 others, use it
+        if (agreement_count >= NUM_OFFSET_ESTIMATORS_NEEDED_IN_AGREEMENT) {
+            if (test_estimator != current_active_estimator) {
+                dev_info(csid->camss->dev, "Switching from estimator %d to %d based on agreement\n", 
+                       current_active_estimator, test_estimator);
+                current_active_estimator = test_estimator;
+            }
+            found_good_estimator = true;
+            break;
+        }
+        
+        // Track highest estimate in case we don't find agreement
+        if (isp_to_kernel_raw_ts_offset_floor[test_estimator] > highest_estimate) {
+            highest_estimate = isp_to_kernel_raw_ts_offset_floor[test_estimator];
+            highest_estimator = test_estimator;
+        }
+    }
+    
+    // If no estimator had good agreement, use the one with highest estimate
+    if (!found_good_estimator) {
+        if (highest_estimator != current_active_estimator) {
+            dev_err(csid->camss->dev, "No good agreement found, switching to highest estimator %d\n", highest_estimator);
+            current_active_estimator = highest_estimator;
+        }
+        
+        // Reset all other estimators to match the highest
+        for (int i = 0; i < NUM_OFFSET_ESTIMATORS; i++) {
+            if (i != current_active_estimator)
+                isp_to_kernel_raw_ts_offset_floor[i] = LONG_MAX;
+        }
+    }
+}
+
+static void update_isp_to_kernel_raw_ts_offset_estimate(struct csid_device *csid, u64 ts_monotonic_raw, u64 sof_isp_timestamp)
 {
 	s64 detected_isp_to_kernel_raw_ts_offset = ts_monotonic_raw - sof_isp_timestamp;
+	int estimator_idx;
+
+	// Cycle through estimators for each update
+	estimator_idx = offset_estimator_update_idx;
+	offset_estimator_update_idx = (offset_estimator_update_idx + 1) % NUM_OFFSET_ESTIMATORS;
 
 	isp_to_kernel_raw_ts_offset_counter++;
-	
-	// Handle estimation state change
-	if(isp_to_kernel_raw_ts_offset_counter == MAX_NUM_OFFSETS)
-	{
-		if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
-		{
-			isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_REFINE;
+	total_frames_since_reset++;
+
+	// If the detected offset is lower than the current floor, update the floor
+	if (detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor[estimator_idx]) {
+		s64 drop = isp_to_kernel_raw_ts_offset_floor[estimator_idx] - detected_isp_to_kernel_raw_ts_offset;
+		dev_info(csid->camss->dev, "Estimator %d lowered the floor by %lld ns on csid: %d\n", estimator_idx, drop, csid->id);
+		
+		// Check if we should switch estimators due to large drop
+		if (total_frames_since_reset >= MIN_FRAMES_BEFORE_SWITCH && 
+		    estimator_idx == current_active_estimator && 
+		    drop > DROP_THRESHOLD_NS) {
+		    current_active_estimator = (current_active_estimator + 1) % NUM_OFFSET_ESTIMATORS;
+
+		    dev_warn(csid->camss->dev, "Active estimator %d, Large drop detected. Running switch now", current_active_estimator);
+			check_and_switch_estimators(csid);
 		}
-		else
-		{
-			// If the a percentage of the recent offsets disagreed with the current floor
-			// reset the floor and go back to INIT state
-			if(isp_to_kernel_raw_ts_offset_refinement_vote_cnt < VOTE_COUNT_THRESHOLD_FOR_OFFSET_RESET)
-			{
-				isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_INIT;
-				isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
-			}
-		}
+		
+		isp_to_kernel_raw_ts_offset_floor[estimator_idx] = detected_isp_to_kernel_raw_ts_offset;
+	}
+
+	// Check estimators periodically
+	if (isp_to_kernel_raw_ts_offset_counter == ESTIMATOR_CHECK_INTERVAL) {
 		isp_to_kernel_raw_ts_offset_counter = 0;
-		isp_to_kernel_raw_ts_offset_refinement_vote_cnt = 0;
-	}
-
-	// Compute the difference in nanoseconds between the current floor and the detected offset
-	s64 offsets_delta = (detected_isp_to_kernel_raw_ts_offset > isp_to_kernel_raw_ts_offset_floor) ?
-		(detected_isp_to_kernel_raw_ts_offset - isp_to_kernel_raw_ts_offset_floor) :
-		(isp_to_kernel_raw_ts_offset_floor - detected_isp_to_kernel_raw_ts_offset);
-
-	// In INIT just update the floor with the latest measurement if lower
-	if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_INIT)
-	{
-		if(detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor)
-		{
-			isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
-		}
-	}
-	else if(isp_to_kernel_raw_ts_offset_estimation_state == OFFSET_ESTIMATION_STATE_REFINE)
-	{
-		// Update the vote counter if detected offset is close to the current floor
-		if(offsets_delta < MAX_OFFSET_DELTA_FOR_VOTE_IN_NS)
-		{
-			isp_to_kernel_raw_ts_offset_refinement_vote_cnt++;
-		}
-
-		// If detected value is lower and very close to the current floor we adjust to it
-		if((detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor) && (offsets_delta < MAX_OFFSET_DELTA_FOR_ADJUSTMENT_IN_NS))
-		{
-			isp_to_kernel_raw_ts_offset_floor = detected_isp_to_kernel_raw_ts_offset;
-		}
+		
+		// Print the difference between each estimator and estimator 0
+		// for (int j = 1; j < NUM_OFFSET_ESTIMATORS; j++) {
+		// 	s64 diff = isp_to_kernel_raw_ts_offset_floor[j] - isp_to_kernel_raw_ts_offset_floor[0];
+		// 	dev_info(csid->camss->dev, "Estimator %d diff from 0: %lld ns\n", j, diff);
+		// }
+		u64 check_start = ktime_get_raw_ns();
+		check_and_switch_estimators(csid);
+		u64 check_end = ktime_get_raw_ns();
+		//dev_info(csid->camss->dev, "Estimator check took %lld ns\n", check_end - check_start);
 	}
 }
 
@@ -335,10 +385,11 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	spin_lock(&isp_to_kernel_raw_ts_offset_estimation_spinlock);
 	if(enable && (isp_to_kernel_raw_ts_offset_stream_cnt == 0))
 	{
-		isp_to_kernel_raw_ts_offset_estimation_state = OFFSET_ESTIMATION_STATE_INIT;
 		isp_to_kernel_raw_ts_offset_counter = 0;
-		isp_to_kernel_raw_ts_offset_refinement_vote_cnt = 0;
-		isp_to_kernel_raw_ts_offset_floor = LONG_MAX;
+		total_frames_since_reset = 0;
+		current_active_estimator = 0;
+		for (int j = 0; j < NUM_OFFSET_ESTIMATORS; ++j)
+			isp_to_kernel_raw_ts_offset_floor[j] = LONG_MAX;
 	}
 	isp_to_kernel_raw_ts_offset_stream_cnt += (enable ? 1 : -1);
 	spin_unlock(&isp_to_kernel_raw_ts_offset_estimation_spinlock);
@@ -449,9 +500,9 @@ static irqreturn_t csid_isr(int irq, void *dev)
 
 				if(sof_isp_timestamp != 0) {
 					// update the isp->kernel_raw timestamp offset estimate with the new SOF measurement
-					update_isp_to_kernel_raw_ts_offset_estimate(ts_monotonic_raw, sof_isp_timestamp);
+					update_isp_to_kernel_raw_ts_offset_estimate(csid,ts_monotonic_raw, sof_isp_timestamp);
 
-					csid->path_cur_sof_isp_timestamp_converted[i] = sof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
+					csid->path_cur_sof_isp_timestamp_converted[i] = sof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor[current_active_estimator];
 					if(csid->do_post_sof_work != NULL) {
 						u8 group = (sof_timestamp_lower & 1) ? 1 : 0;
 						csid->do_post_sof_work(csid->capture_subdev, csid->path_cur_sof_isp_timestamp_converted[i], ts_monotonic_raw, group);
@@ -553,7 +604,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 					CAM_IFE_CSID_MUL_FACTOR,
 					CAM_IFE_CSID_DIV_FACTOR);
 
-				u64 cur_eof_isp_timestamp_converted = eof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor;
+				u64 cur_eof_isp_timestamp_converted = eof_isp_timestamp + isp_to_kernel_raw_ts_offset_floor[current_active_estimator];
 
 				struct camss_buf_done_info buf_done_info;
 				memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
@@ -561,7 +612,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 				buf_done_info.status = path_buf_done_val; // path buf_done bits only!
 				buf_done_info.sof_isp_ts_conv = csid->path_cur_sof_isp_timestamp_converted[i];
 				buf_done_info.eof_isp_ts_conv = cur_eof_isp_timestamp_converted;
-				buf_done_info.isp_to_kernel_raw_ts_offset = isp_to_kernel_raw_ts_offset_floor;
+				buf_done_info.isp_to_kernel_raw_ts_offset = isp_to_kernel_raw_ts_offset_floor[current_active_estimator];
 				buf_done_info.sof_kernel_ts = csid->path_last_sof_kernel_ts[i];
 				// Provide sensor metadata if available
 				if(csid->get_metadata != NULL)
