@@ -94,6 +94,14 @@ static const char * const lcd_bias_names[] = {
 	"right-neg"
 };
 
+typedef enum
+{
+	LEFT_POS = 0,
+	LEFT_NEG,
+	RIGHT_POS,
+	RIGHT_NEG,
+} lpm026m648c_bias_t;
+
 #define PANEL_MFG_INFO_NUM_BYTES 40
 
 typedef enum
@@ -570,11 +578,20 @@ static int lpm026m648c_power_on(struct lpm026m648c_ctx *ctx)
 		return ret;
 
 	usleep_range(1000, 2000);
-	// turn on AVDD and AVEE
-	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->lcd_bias_regulators), ctx->lcd_bias_regulators);
-	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev,
-			"regulator_bulk_enable failed %d\n", ret);
+
+	// turn on AVDD
+	ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_POS].consumer);
+	ret |= regulator_enable(ctx->lcd_bias_regulators[RIGHT_POS].consumer);
+	if ( ret ) {
+			dev_err(ctx->dev, "Could not enable AVDD\n");
+			return ret;
+	}
+	usleep_range(1000, 2000);
+	// turn on AVEE
+	ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
+	ret |= regulator_enable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+	if ( ret ) {
+			dev_err(ctx->dev, "Could not enable AVEE\n");
 			return ret;
 	}
 	
@@ -591,14 +608,20 @@ static int lpm026m648c_power_off(struct lpm026m648c_ctx *ctx)
 	gpiod_set_value(ctx->reset_gpios->desc[1], 0);
 	msleep(25);
 
-	// turn off AVDD and AVEE
-	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->lcd_bias_regulators), ctx->lcd_bias_regulators);
-	if (ret < 0)
-	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev,
-			"regulator_bulk_disable failed %d\n", ret);
-			return ret;
+	// turn off AVEE
+	ret = regulator_disable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
+	ret |= regulator_disable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+	if ( ret ) {
+			dev_err(ctx->dev, "Could not disable AVEE\n");
 	}
+	usleep_range(1000, 2000);
+	// turn off AVDD
+	ret = regulator_disable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
+	ret |= regulator_disable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+	if ( ret ) {
+			dev_err(ctx->dev, "Could not disable AVEE\n");
+	}
+
 	msleep(20);
 
 	return regulator_bulk_disable(ARRAY_SIZE(ctx->power_supplies),
