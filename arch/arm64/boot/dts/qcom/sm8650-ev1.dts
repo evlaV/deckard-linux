@@ -1160,7 +1160,7 @@
 
 	panel: panel@0 {
 		reg = <0>;
-		compatible = "pocf,jdi-lpm026m648c";
+		compatible = "deckard-panel";
 		dual-panel;
 
 		pinctrl-0 = <&display_resx1>, <&display_resx2>;
