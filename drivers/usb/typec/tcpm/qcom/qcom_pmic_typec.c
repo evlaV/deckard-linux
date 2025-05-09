@@ -208,7 +208,7 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	u32 base[2];
 	int ret;
 	static int defer;
-	int defercount = 3;
+	int defercount = 0;
 
 	if (++defer <= defercount)
 	{
