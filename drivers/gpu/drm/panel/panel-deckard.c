@@ -583,16 +583,16 @@ static int lpm026m648c_power_on(struct lpm026m648c_ctx *ctx)
 	ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_POS].consumer);
 	ret |= regulator_enable(ctx->lcd_bias_regulators[RIGHT_POS].consumer);
 	if ( ret ) {
-			dev_err(ctx->dev, "Could not enable AVDD\n");
-			return ret;
+		dev_err(ctx->dev, "Could not enable AVDD\n");
+		return ret;
 	}
 	usleep_range(1000, 2000);
 	// turn on AVEE
 	ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
 	ret |= regulator_enable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
 	if ( ret ) {
-			dev_err(ctx->dev, "Could not enable AVEE\n");
-			return ret;
+		dev_err(ctx->dev, "Could not enable AVEE\n");
+		return ret;
 	}
 	
 	msleep(20);
@@ -612,14 +612,14 @@ static int lpm026m648c_power_off(struct lpm026m648c_ctx *ctx)
 	ret = regulator_disable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
 	ret |= regulator_disable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
 	if ( ret ) {
-			dev_err(ctx->dev, "Could not disable AVEE\n");
+		dev_err(ctx->dev, "Could not disable AVEE\n");
 	}
 	usleep_range(1000, 2000);
 	// turn off AVDD
-	ret = regulator_disable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
-	ret |= regulator_disable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+	ret = regulator_disable(ctx->lcd_bias_regulators[LEFT_POS].consumer);
+	ret |= regulator_disable(ctx->lcd_bias_regulators[RIGHT_POS].consumer);
 	if ( ret ) {
-			dev_err(ctx->dev, "Could not disable AVEE\n");
+		dev_err(ctx->dev, "Could not disable AVDD\n");
 	}
 
 	msleep(20);
@@ -1054,9 +1054,45 @@ static int panel_available_show(struct seq_file *s, void *data)
 	return 0;
 }
 
+// RCLK = 32.5 MHz
+#define RCLK_PERIOD_NSEC ( 1000000/32500 )
+#define INTERNAL_LINE_TIME_NSEC  ( RTN * RCLK_PERIOD_NSEC )
+#define EXTERNAL_LINE_TIME_NSEC ( ( 1000000 * (uint32_t)modes[0].htotal ) / ( (uint32_t)modes[0].clock ) )
+
+static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
+{
+	struct drm_panel *panel = s->private;
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+	uint32_t vsync_to_photons_nsec, frame_period_nsec;
+
+	switch ( ctx->current_mode ) {
+		case MODE_120:
+			frame_period_nsec = 1000000000 / 120;
+			break;
+		case MODE_90:
+			frame_period_nsec = 1000000000 / 90;
+			break;
+		case MODE_80:
+			frame_period_nsec = 1000000000 / 80;
+			break;
+		default:
+			frame_period_nsec = 1000000000 / 120;
+	}
+	if ( ctx->panel_vendor == VENDOR_SHARP ) {
+		// 1/FPS + VID_VS_DELAY + TES
+		vsync_to_photons_nsec = frame_period_nsec + VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + GPO1_TES1_SHARP * INTERNAL_LINE_TIME_NSEC;
+	} else {
+		// VID_VS_DELAY + TES
+		vsync_to_photons_nsec = VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + GPO1_TES1 * INTERNAL_LINE_TIME_NSEC;
+	}
+	seq_printf(s, "%u\n", vsync_to_photons_nsec / 1000);
+	return 0;
+}
+
 DEFINE_SHOW_ATTRIBUTE(panel_info);
 DEFINE_SHOW_ATTRIBUTE(panel_mfg_info);
 DEFINE_SHOW_ATTRIBUTE(panel_available);
+DEFINE_SHOW_ATTRIBUTE(panel_vsync_to_photons_usec);
 DEFINE_SHOW_STORE_ATTRIBUTE(panel_read);
 DEFINE_SHOW_STORE_ATTRIBUTE(panel_write);
 
@@ -1065,6 +1101,7 @@ static void lpm026m648c_debugfs_init(struct drm_panel *panel, struct dentry *roo
 	debugfs_create_file("panel_info", 0600, root, panel, &panel_info_fops);
 	debugfs_create_file("panel_mfg_info", 0600, root, panel, &panel_mfg_info_fops);
 	debugfs_create_file("panel_available", 0600, root, panel, &panel_available_fops);
+	debugfs_create_file("panel_vsync_to_photons_usec", 0600, root, panel, &panel_vsync_to_photons_usec_fops);
 	debugfs_create_file("panel_write", 0600, root, panel, &panel_write_fops);
 	debugfs_create_file("panel_read", 0600, root, panel, &panel_read_fops);
 }
