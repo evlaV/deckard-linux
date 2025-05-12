@@ -580,12 +580,20 @@ static int lpm026m648c_power_on(struct lpm026m648c_ctx *ctx)
 	usleep_range(1000, 2000);
 
 	// turn on AVDD
-	regulator_enable(ctx->lcd_bias_regulators[LEFT_POS].consumer);
-	regulator_enable(ctx->lcd_bias_regulators[RIGHT_POS].consumer);
+	ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_POS].consumer);
+	ret |= regulator_enable(ctx->lcd_bias_regulators[RIGHT_POS].consumer);
+	if ( ret ) {
+			dev_err(ctx->dev, "Could not enable AVDD\n");
+			return ret;
+	}
 	usleep_range(1000, 2000);
 	// turn on AVEE
-	regulator_enable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
-	regulator_enable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+	ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
+	ret |= regulator_enable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+	if ( ret ) {
+			dev_err(ctx->dev, "Could not enable AVEE\n");
+			return ret;
+	}
 	
 	msleep(20);
 	gpiod_set_value(ctx->reset_gpios->desc[0], 1);
@@ -601,12 +609,18 @@ static int lpm026m648c_power_off(struct lpm026m648c_ctx *ctx)
 	msleep(25);
 
 	// turn off AVEE
-	regulator_disable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
-	regulator_disable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+	ret = regulator_disable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
+	ret |= regulator_disable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+	if ( ret ) {
+			dev_err(ctx->dev, "Could not disable AVEE\n");
+	}
 	usleep_range(1000, 2000);
 	// turn off AVDD
-	regulator_disable(ctx->lcd_bias_regulators[LEFT_POS].consumer);
-	regulator_disable(ctx->lcd_bias_regulators[RIGHT_POS].consumer);
+	ret = regulator_disable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
+	ret |= regulator_disable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+	if ( ret ) {
+			dev_err(ctx->dev, "Could not disable AVEE\n");
+	}
 
 	msleep(20);
 
