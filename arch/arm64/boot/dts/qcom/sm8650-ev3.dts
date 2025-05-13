@@ -20,6 +20,7 @@
 	aliases {
 		serial0 = &uart15;
 		serial1 = &uart14;
+		serial2 = &uart3;
 	};
 
 	chosen {
@@ -456,6 +457,10 @@
 		v1v1-supply = <&vreg_l2g_1p1>;
 		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
 	};
+};
+
+&uart3 {
+	status = "okay";
 };
 
 &fpga {
