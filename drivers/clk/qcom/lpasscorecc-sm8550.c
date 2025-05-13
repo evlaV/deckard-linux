@@ -468,6 +468,13 @@ static int lpass_aon_cc_sm8550_probe(struct platform_device *pdev)
 	// lpass_aon_cc_va_2x_clk / lpass_aon_cc_tx_mclk_clk
 	regmap_update_bits(regmap, 0x1300c, BIT(0), BIT(0));
 
+	// lpass_aon_cc_main_src
+	regmap_write(regmap, 0x11004, 0x407); // 76.8 MHz
+	regmap_write(regmap, 0x11000, 1); // update
+	// XXX model these as clocks instead of setting this on probe
+	// - LPASS_AON_CC_MAIN is parent of LPASS_AON_CC_VA_MEM0)
+	// - parent 4 of LPASS_AON_CC_MAIN is LPASS_AON_CC_PLL_OUT_EVEN
+
 	// lpass_aon_cc_va_mem0_clk
 	regmap_update_bits(regmap, 0x9060, BIT(0), BIT(0));
 
