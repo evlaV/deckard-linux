@@ -132,6 +132,8 @@
 #define DMA_CODEC_INTF_CODEC_ENABLE BIT(30)
 #define DMA_CODEC_INTF_CODEC_RESET BIT(31)
 
+#define SND_CACHED_MAPPINGS_WITH_CACHE_SYNC
+
 enum {
 	AIF_WSA,
 	AIF_VA,
@@ -315,6 +317,17 @@ static int lpass_platform_pcmops_open(struct snd_soc_component *component,
 	substream->dma_buffer.addr = aif->lpm_phys;
 	substream->dma_buffer.bytes = aif->lpm_size;
 	snd_pcm_set_runtime_buffer(substream, &substream->dma_buffer);
+
+#ifdef SND_CACHED_MAPPINGS_WITH_CACHE_SYNC
+	// hack for snd_dma_lpm_sync to be used
+	substream->dma_buffer.dev.type = SNDRV_DMA_TYPE_UNKNOWN;
+	substream->dma_buffer.dev.dir = DMA_TO_DEVICE;
+	if (aif->id == AIF_VA || 
+		aif->id == AIF_MI2S)
+		substream->dma_buffer.dev.dir = DMA_FROM_DEVICE;
+	substream->dma_buffer.dev.need_sync = 1;
+	substream->runtime->hw.info |= SNDRV_PCM_INFO_EXPLICIT_SYNC;
+#endif
 
 	return 0;
 }
@@ -508,10 +521,15 @@ static int lpass_platform_pcmops_mmap(struct snd_soc_component *component,
 	unsigned long count = ai->lpm_size >> PAGE_SHIFT;
 	unsigned long pfn = PHYS_PFN(ai->lpm_phys);
 
+#ifdef SND_CACHED_MAPPINGS_WITH_CACHE_SYNC
+	// use cached (non-coherent) with explicit sync instead
+#else
 	vma->vm_page_prot = pgprot_dmacoherent(vma->vm_page_prot);
+#endif
 
 	if (vma->vm_pgoff >= count || user_count > count - vma->vm_pgoff)
 		return -ENXIO;
+	printk(KERN_INFO "lpass_platform_pcmops_mmap(vma, 0x%lx, %ld (0x%lx), %ld, prot)", vma->vm_start, pfn + vma->vm_pgoff, (pfn + vma->vm_pgoff) << PAGE_SHIFT, user_count << PAGE_SHIFT);
 	return remap_pfn_range(vma, vma->vm_start, pfn + vma->vm_pgoff,
 			user_count << PAGE_SHIFT, vma->vm_page_prot);
 }
@@ -654,7 +672,20 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 		} else {
 
 			res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name_lpm[i]);
+
+#ifdef SND_CACHED_MAPPINGS_WITH_CACHE_SYNC
+			// "devm_ioremap_cached"
+			{
+				void __iomem **ptr;
+				ptr = devres_alloc(devm_ioremap_release, sizeof(*ptr), GFP_KERNEL);
+				aif->lpm_base = ioremap_prot(res->start, resource_size(res), __pgprot(PROT_NORMAL));
+				*ptr = aif->lpm_base;
+				devres_add(dev, ptr);
+			}
+#else
 			aif->lpm_base = devm_ioremap_resource_wc(dev, res);
+#endif
+			
 			if (IS_ERR(aif->lpm_base))
 				return PTR_ERR(aif->lpm_base);
 
