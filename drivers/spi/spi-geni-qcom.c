@@ -755,7 +755,7 @@ static bool geni_spi_handle_tx(struct spi_geni_master *mas)
 		bytes_to_write = min(bytes_per_fifo_word, max_bytes - i);
 		for (j = 0; j < bytes_to_write; j++)
 			fifo_byte[j] = tx_buf[i++];
-		iowrite32_rep(se->base + SE_GENI_TX_FIFOn, &fifo_word, 1);
+		iowrite32_rep(se->base + SE_GENI_TX_FIFOn, &fifo_word, 1); //cpu usage scales with this function when transferring more bytes
 	}
 	mas->tx_rem_bytes -= max_bytes;
 	if (!mas->tx_rem_bytes) {
