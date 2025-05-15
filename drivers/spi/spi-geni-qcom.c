@@ -355,6 +355,7 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 
 	// BUG!  mode isn't the only thing that can be different between slaves,
 	// for example the chip select! aaronna
+#define ALLOW_LAST_MODE_BUG
 #ifdef ALLOW_LAST_MODE_BUG
 	if (mas->last_mode != spi_slv->mode) {
 #endif
@@ -385,7 +386,8 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 	}
 #endif
 
-	return geni_spi_set_clock_and_bw(mas, spi_slv->max_speed_hz);
+       //setup_se_xfer will call this
+       return 0; // geni_spi_set_clock_and_bw(mas, spi_slv->max_speed_hz);
 }
 
 static void
@@ -659,6 +661,8 @@ static int spi_geni_init(struct spi_geni_master *mas)
 	else
 		mas->oversampling = 1;
 
+	mas->last_mode = 0xffff; //init to some value	
+	
 	fifo_disable = readl(se->base + GENI_IF_DISABLE_RO) & FIFO_IF_DISABLE;
 #ifdef ALLOW_DMA
 	fifo_disable = 0;
@@ -867,7 +871,8 @@ static int setup_se_xfer(struct spi_transfer *xfer,
 #else
 	mas->cur_xfer_mode = GENI_SE_FIFO;
 #endif
-	geni_se_select_mode(se, mas->cur_xfer_mode);
+	//this should be setup in the init function already
+	//geni_se_select_mode(se, mas->cur_xfer_mode);
 
 	/* don't toggle CS unless CS change is needed and its the last transfer */
 	if (!xfer->cs_change) {
