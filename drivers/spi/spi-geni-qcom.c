@@ -16,6 +16,7 @@
 #include <linux/soc/qcom/geni-se.h>
 #include <linux/spi/spi.h>
 #include <linux/spinlock.h>
+#include <trace/gpuvis.h>
 
 /* SPI SE specific registers and respective register fields */
 #define SE_SPI_CPHA		0x224
@@ -153,6 +154,8 @@ static void handle_se_timeout(struct spi_controller *spi,
 	struct geni_se *se = &mas->se;
 	const struct spi_transfer *xfer;
 
+	TRACE_BEGIN_CTX();
+
 	spin_lock_irq(&mas->lock);
 	if (mas->cur_xfer_mode == GENI_SE_FIFO)
 		writel(0, se->base + SE_GENI_TX_WATERMARK_REG);
@@ -254,6 +257,8 @@ static bool spi_geni_is_abort_still_pending(struct spi_geni_master *mas)
 {
 	struct geni_se *se = &mas->se;
 	u32 m_irq, m_irq_en;
+
+	TRACE_BEGIN_CTX();
 
 	if (!mas->abort_failed)
 		return false;
@@ -544,6 +549,8 @@ static int spi_geni_prepare_message(struct spi_controller *spi,
 	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	int ret;
 
+	TRACE_BEGIN_CTX();
+
 	switch (mas->cur_xfer_mode) {
 	case GENI_SE_FIFO:
 	case GENI_SE_DMA:
@@ -726,6 +733,8 @@ static bool geni_spi_handle_tx(struct spi_geni_master *mas)
 	unsigned int bytes_per_fifo_word = geni_byte_per_fifo_word(mas);
 	unsigned int i = 0;
 
+	TRACE_BEGIN_CTX();
+
 	/* Stop the watermark IRQ if nothing to send */
 	if (!mas->cur_xfer) {
 		writel(0, se->base + SE_GENI_TX_WATERMARK_REG);
@@ -765,6 +774,8 @@ static void geni_spi_handle_rx(struct spi_geni_master *mas)
 	u8 *rx_buf;
 	unsigned int bytes_per_fifo_word = geni_byte_per_fifo_word(mas);
 	unsigned int i = 0;
+
+	TRACE_BEGIN_CTX();
 
 	rx_fifo_status = readl(se->base + SE_GENI_RX_FIFO_STATUS);
 	rx_bytes = (rx_fifo_status & RX_FIFO_WC_MSK) * bytes_per_fifo_word;
@@ -809,6 +820,8 @@ static int setup_se_xfer(struct spi_transfer *xfer,
 	u32 len;
 	struct geni_se *se = &mas->se;
 	int ret;
+
+	TRACE_BEGIN_CTX();
 
 	/*
 	 * Ensure that our interrupt handler isn't still running from some
@@ -909,6 +922,8 @@ static int spi_geni_transfer_one(struct spi_controller *spi,
 {
 	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	int ret;
+
+	TRACE_BEGIN_CTX();
 
 	if (spi_geni_is_abort_still_pending(mas))
 		return -EBUSY;
