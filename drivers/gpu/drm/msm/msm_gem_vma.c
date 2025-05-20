@@ -773,16 +773,11 @@ msm_gem_vm_create(struct drm_device *drm, struct msm_mmu *mmu, const char *name,
 	}
 
 	if (!managed) {
-		struct drm_sched_init_args args = {
-			.ops = &msm_vm_bind_ops,
-			.num_rqs = 1,
-			.credit_limit = 1,
-			.timeout = MAX_SCHEDULE_TIMEOUT,
-			.name = "msm-vm-bind",
-			.dev = drm->dev,
-		};
-
-		ret = drm_sched_init(&vm->sched, &args);
+		ret = drm_sched_init(&vm->sched, &msm_vm_bind_ops,
+							 NULL,
+							 1, 1, 0, MAX_SCHEDULE_TIMEOUT,
+							 NULL, NULL,
+							 "msm-vm-bind", drm->dev);
 		if (ret)
 			goto err_free_dummy;
 	}
