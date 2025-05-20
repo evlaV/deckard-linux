@@ -331,7 +331,8 @@
 		vin-supply = <&vreg_l2n_1p2>;
 		enable-active-high;
 	};
-
+// Enable to use DTS ETcam power
+#if 0
 	eyetck_dovdd_1v8: eyetck_dovdd_1v8 {
 		compatible = "regulator-fixed";
 		regulator-name = "eyetck_dovdd_1v8";
@@ -340,9 +341,8 @@
 		enable-active-high;
 		gpio = <&tlmm 74 GPIO_ACTIVE_HIGH>;
 		vin-supply = <&vreg_l5m_1p8>;
-
-		regulator-always-on; // AON CAM ADSP TEST
 	};
+#endif
 
 	exp_vout_5v: exp_vout_5v {
 		compatible = "regulator-valve_5v_exp";
@@ -920,8 +920,6 @@
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // AON CAM ADSP TEST
 		};
 
 		vreg_l6m_2p8: ldo6 {
@@ -929,8 +927,6 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // AON CAM ADSP TEST
 		};
 
 		vreg_l7m_3p3: ldo7 {
@@ -991,8 +987,6 @@
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // AON CAM ADSP TEST
 		};
 
 		vreg_l6n_2p8: ldo6 {
@@ -1000,8 +994,6 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // AON CAM ADSP TEST
 		};
 	};
 };
