@@ -1116,7 +1116,7 @@ vm_bind_prealloc_count(struct msm_vm_bind_job *job)
 	/* Flush the remaining range: */
 	prealloc_count(job, first, last);
 
-	job->base.enqueue_credits = job->prealloc.count;
+	//job->base.enqueue_credits = job->prealloc.count;
 }
 
 /*
@@ -1430,7 +1430,7 @@ msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 	 */
 	fence = dma_fence_get(job->fence);
 
-	ret = drm_sched_entity_push_job(&job->base);
+	drm_sched_entity_push_job(&job->base);
 
 	msm_syncobj_reset(syncobjs_to_reset, args->nr_in_syncobjs);
 	msm_syncobj_process_post_deps(post_deps, args->nr_out_syncobjs, fence);
