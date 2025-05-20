@@ -142,6 +142,8 @@ void msm_gem_vm_unusable(struct drm_gpuvm *gpuvm);
 
 struct msm_fence_context;
 
+#define MSM_VMA_DUMP (DRM_GPUVA_USERBITS << 0)
+
 /**
  * struct msm_gem_vma - a VMA mapping
  *
