@@ -891,6 +891,7 @@ static void msm_gem_free_vbo(struct drm_gem_object *obj)
 	struct msm_gem_vbo *vbo = to_msm_vbo(obj);
 	struct msm_gem_vbo_entry *entry, *tmp;
 	struct msm_gem_vm *vm = to_msm_vm(vbo->vm);
+	struct drm_exec exec;
 
 	msm_iommu_pagetable_unmap(vm->mmu, vbo->mm_node.start, vbo->mm_node.size);
 
@@ -899,9 +900,17 @@ static void msm_gem_free_vbo(struct drm_gem_object *obj)
 		kfree(entry);
 	}
 
-	spin_lock(&vm->mm_lock);
+	drm_exec_init(&exec, 0, 0);
+	drm_exec_until_all_locked (&exec) {
+		struct drm_gpuvm_bo *vm_bo;
+		drm_gem_for_each_gpuvm_bo (vm_bo, obj) {
+			drm_exec_lock_obj(&exec,
+						drm_gpuvm_resv_obj(vm_bo->vm));
+			drm_exec_retry_on_contention(&exec);
+		}
+	}
 	drm_mm_remove_node(&vbo->mm_node);
-	spin_unlock(&vm->mm_lock);
+	drm_exec_fini(&exec);     /* drop locks */
 
 	// TODO remove onj from vm?
 	//msm_gem_address_space_put(vbo->aspace);
@@ -918,6 +927,7 @@ struct drm_gem_object *msm_gem_vbo_new(struct drm_device *dev, u64 size, u32 fla
 {
 	struct msm_gem_vbo *vbo;
 	struct msm_gem_vm *vm = to_msm_vm(_vm);
+	struct drm_exec exec;
 	int ret;
 
 	vbo = kzalloc(sizeof(*vbo), GFP_KERNEL);
@@ -930,11 +940,11 @@ struct drm_gem_object *msm_gem_vbo_new(struct drm_device *dev, u64 size, u32 fla
 	vbo->base.funcs = &msm_gem_vbo_funcs;
 	drm_gem_private_object_init(dev, &vbo->base, size);
 
-	spin_lock(&vm->mm_lock);
+	msm_gem_lock_vm_and_obj(&exec, &vbo->base, &vm->base);
 	ret = drm_mm_insert_node_in_range(&vm->mm, &vbo->mm_node,
 					  size, 1ull << ((flags >> 20) & 0x3f), 0,
 					  0, U64_MAX, 0);
-	spin_unlock(&vm->mm_lock);
+	drm_exec_fini(&exec);     /* drop locks */
 
 	if (ret) {
 		kfree(vbo);
