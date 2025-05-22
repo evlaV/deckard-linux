@@ -27,9 +27,12 @@
 #define  PON_PS_HOLD_TYPE_SHUTDOWN	4
 #define  PON_PS_HOLD_TYPE_HARD_RESET	7
 
+#define PON_AOP_PON_REASON1		0x7269
+
 struct qcom_pon_data {
 	long reason_shift;
 	bool needs_pbs_ps_hold_sw_ctl;
+	bool pmk8550_pon_reason;
 };
 
 struct qcom_pon {
@@ -40,6 +43,7 @@ struct qcom_pon {
 	struct reboot_mode_driver reboot_mode;
 	long reason_shift;
 	bool needs_pbs_ps_hold_sw_ctl;
+	u32 pmic_pon_reason_regval;
 };
 
 static void qcom_reboot_ps_hold_type_setup(struct qcom_pon *pon, unsigned int type)
@@ -91,11 +95,29 @@ static int qcom_pon_reboot_mode_write(struct reboot_mode_driver *reboot,
 	return ret;
 }
 
+static ssize_t pon_reason_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct qcom_pon *pon = dev_get_drvdata(dev);
+	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon_reason_regval);
+}
+
+static DEVICE_ATTR_RO(pon_reason);
+
+static struct attribute *attrs[] = {
+	&dev_attr_pon_reason.attr,
+	NULL,
+};
+
+static struct attribute_group sysfs_group = {
+	.attrs = attrs,
+};
+
 static int qcom_pon_probe(struct platform_device *pdev)
 {
 	const struct qcom_pon_data *data;
 	struct qcom_pon *pon;
 	int error;
+	u32 pmic_pon_reason_regval;
 
 	data = device_get_match_data(&pdev->dev);
 	if (!data)
@@ -143,6 +165,32 @@ static int qcom_pon_probe(struct platform_device *pdev)
 		}
 	}
 
+	if (data->pmk8550_pon_reason) {
+		error = sysfs_create_group(&pdev->dev.kobj, &sysfs_group);
+		if (error) {
+			dev_err(&pdev->dev, "can't create sysfs group\n");
+			return error;
+		}
+
+		/*
+		* 0x09 -> `reboot` w/ USB connected
+		* 0x01 -> `reboot` w/o USB
+		* 0x81 -> power button for 16 seconds HARD_RESET
+		* 0x08 -> remove battery and power on via USB insertion
+		* 0x08 -> poweroff with USB removed then USB insertion
+		* 0x80 -> poweroff then power on button with no USB connected
+		*
+		* NOTE buttonledcontrol only looks at 0x80 to start steamvr
+		*/
+
+		/* Load the PON Reason from the Always On Processor in PMK8550 SDAM3 */
+		/* NOTE The PMK8550 seems to detect USB Insertion as Wireless,
+			* but otherwise the codes are unchanged from XR2 */
+		error = regmap_read(pon->regmap, PON_AOP_PON_REASON1, &pmic_pon_reason_regval);
+		dev_warn(&pdev->dev, "PON_PON_REASON1 0x%02X ret=%d\n", pmic_pon_reason_regval, error);
+		pon->pmic_pon_reason_regval = pmic_pon_reason_regval;
+	}
+
 	platform_set_drvdata(pdev, pon);
 
 	return devm_of_platform_populate(&pdev->dev);
@@ -161,6 +209,7 @@ static const struct qcom_pon_data pm8998_pon_data = {
 static const struct qcom_pon_data pmk8350_el2_pon_data = {
 	.reason_shift = GEN2_REASON_SHIFT,
 	.needs_pbs_ps_hold_sw_ctl = true,
+	.pmk8550_pon_reason = true,
 };
 
 static const struct of_device_id qcom_pon_id_table[] = {
