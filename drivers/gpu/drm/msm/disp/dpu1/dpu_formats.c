@@ -268,7 +268,6 @@ static int dpu_format_get_plane_sizes(
 }
 
 static int _dpu_format_populate_addrs_ubwc(
-		struct msm_gem_vm *vm,
 		struct drm_framebuffer *fb,
 		struct dpu_hw_fmt_layout *layout)
 {
@@ -280,8 +279,7 @@ static int _dpu_format_populate_addrs_ubwc(
 		return -EINVAL;
 	}
 
-	if (vm)
-		base_addr = msm_framebuffer_iova(fb, vm, 0);
+	base_addr = msm_framebuffer_iova(fb, 0);
 	if (!base_addr) {
 		DRM_ERROR("failed to retrieve base addr\n");
 		return -EFAULT;
@@ -359,7 +357,6 @@ static int _dpu_format_populate_addrs_ubwc(
 }
 
 static int _dpu_format_populate_addrs_linear(
-		struct msm_gem_vm *vm,
 		struct drm_framebuffer *fb,
 		struct dpu_hw_fmt_layout *layout)
 {
@@ -376,9 +373,8 @@ static int _dpu_format_populate_addrs_linear(
 
 	/* Populate addresses for simple formats here */
 	for (i = 0; i < layout->num_planes; ++i) {
-		if (vm)
-			layout->plane_addr[i] =
-				msm_framebuffer_iova(fb, vm, i);
+		layout->plane_addr[i] =
+			msm_framebuffer_iova(fb, i);
 		if (!layout->plane_addr[i]) {
 			DRM_ERROR("failed to retrieve base addr\n");
 			return -EFAULT;
@@ -389,7 +385,6 @@ static int _dpu_format_populate_addrs_linear(
 }
 
 int dpu_format_populate_layout(
-		struct msm_gem_vm *vm,
 		struct drm_framebuffer *fb,
 		struct dpu_hw_fmt_layout *layout)
 {
@@ -417,9 +412,9 @@ int dpu_format_populate_layout(
 	/* Populate the addresses given the fb */
 	if (MSM_FORMAT_IS_UBWC(layout->format) ||
 			MSM_FORMAT_IS_TILE(layout->format))
-		ret = _dpu_format_populate_addrs_ubwc(vm, fb, layout);
+		ret = _dpu_format_populate_addrs_ubwc(fb, layout);
 	else
-		ret = _dpu_format_populate_addrs_linear(vm, fb, layout);
+		ret = _dpu_format_populate_addrs_linear(fb, layout);
 
 	return ret;
 }

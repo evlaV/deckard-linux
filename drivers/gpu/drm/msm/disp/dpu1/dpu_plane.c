@@ -656,9 +656,6 @@ static int dpu_plane_prepare_fb(struct drm_plane *plane,
 
 	DPU_DEBUG_PLANE(pdpu, "FB[%u]\n", fb->base.id);
 
-	/* cache vm */
-	pstate->vm = kms->base.vm;
-
 	/*
 	 * TODO: Need to sort out the msm_framebuffer_prepare() call below so
 	 *       we can use msm_atomic_prepare_fb() instead of doing the
@@ -666,23 +663,17 @@ static int dpu_plane_prepare_fb(struct drm_plane *plane,
 	 */
 	drm_gem_plane_helper_prepare_fb(plane, new_state);
 
-	if (pstate->vm) {
-		ret = msm_framebuffer_prepare(new_state->fb,
-				pstate->vm, pstate->needs_dirtyfb);
-		if (ret) {
-			DPU_ERROR("failed to prepare framebuffer\n");
-			return ret;
-		}
+	ret = msm_framebuffer_prepare(new_state->fb, pstate->needs_dirtyfb);
+	if (ret) {
+		DPU_ERROR("failed to prepare framebuffer\n");
+		return ret;
 	}
 
 	/* validate framebuffer layout before commit */
-	ret = dpu_format_populate_layout(pstate->vm,
-			new_state->fb, &layout);
+	ret = dpu_format_populate_layout(new_state->fb, &layout);
 	if (ret) {
 		DPU_ERROR_PLANE(pdpu, "failed to get format layout, %d\n", ret);
-		if (pstate->vm)
-			msm_framebuffer_cleanup(new_state->fb, pstate->vm,
-						pstate->needs_dirtyfb);
+		msm_framebuffer_cleanup(new_state->fb, pstate->needs_dirtyfb);
 		return ret;
 	}
 
@@ -702,8 +693,7 @@ static void dpu_plane_cleanup_fb(struct drm_plane *plane,
 
 	DPU_DEBUG_PLANE(pdpu, "FB[%u]\n", old_state->fb->base.id);
 
-	msm_framebuffer_cleanup(old_state->fb, old_pstate->vm,
-				old_pstate->needs_dirtyfb);
+	msm_framebuffer_cleanup(old_state->fb, old_pstate->needs_dirtyfb);
 }
 
 static int dpu_plane_check_inline_rotation(struct dpu_plane *pdpu,
@@ -1423,12 +1413,11 @@ static void dpu_plane_sspp_atomic_update(struct drm_plane *plane)
 	const struct msm_format *fmt =
 		msm_framebuffer_format(fb);
 	struct dpu_kms *kms = _dpu_plane_get_kms(&pdpu->base);
-	struct msm_gem_vm *vm = kms->base.vm;
 	struct dpu_hw_fmt_layout layout;
 	bool layout_valid = false;
 	int ret, i;
 
-	ret = dpu_format_populate_layout(vm, fb, &layout);
+	ret = dpu_format_populate_layout(fb, &layout);
 	if (ret)
 		DPU_ERROR_PLANE(pdpu, "failed to get format layout, %d\n", ret);
 	else
