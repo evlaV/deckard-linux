@@ -439,9 +439,7 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 
 	DSI_CMD( LPM02648C_MF_CMD_ACCESS_PROTECT, 0x04);
 	DSI_CMD( LPM02648C_SEQ_CTL, 0x00);
-	DSI_CMD( LPM02648C_DSI_CTL,
-					0x30, 0x6b, 0x00, 0x06, 0x33, 0x9A, 0x00,
-					0x1a, 0x7a);
+	DSI_CMD( LPM02648C_DSI_CTL, 0x20, 0x6b, 0x80, 0x06, 0x33, 0x9A, 0x00, 0x1a, 0x7a);
 	DSI_CMD( LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 					0x00);
 	DSI_CMD( LPM02648C_GEN_OUTPIN_SET,
@@ -449,7 +447,10 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 					0x00, 0x00,
 					BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
 					BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
-	DSI_CMD( LPM02648C_DISP_SET3, 0x0B);
+	// Source Setting
+	DSI_CMD(LPM02648C_DISP_SET3, 0x0B, 0x70, 0x08, 0x48, 0x00, 0x00, 0x13, 0x01, 0xFF, 0x00, 0x01, 0x09, 0x16, 0x16, 0x00, 0x00, 0x00, 0x01,
+		0x40, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x70, 0x08, 0xD0, 0x02, 0x21, 0x6F, 0x08,
+		0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 ),
 	DSI_CMD( LPM02648C_DISP_SET3_2, 0x00);
 	DSI_CMD( LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP_BOE_DPHY),
 		0x08, 0x70, BE16(VFP), 0x00, 0x00, 0x08, 0x3A, 0x00, 0x00,
@@ -576,6 +577,7 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	if ( ctx->panel_vendor == VENDOR_SHARP ) {
 		dsi_write_panel_on_sharp(panel);
 	} else if ( ctx->panel_vendor == VENDOR_BOE ) {
+		DRM_DEV_INFO(ctx->dev, "Using BOE init sequence\n");
 		dsi_write_panel_on_boe(panel);
 	} else if ( ctx->panel_vendor == VENDOR_JDI ) {
 		dsi_write_panel_on_jdi(panel);
@@ -684,7 +686,11 @@ static ssize_t panel_read_show(struct device *dev, struct device_attribute *attr
 	ssize_t len = 0;
 	unsigned int i;
 	struct rad *ctx = dev_get_drvdata(dev);
-	ret = mipi_dsi_generic_read(ctx->dsi[ctx->panel_read_id], &ctx->panel_read_reg_addr, 1, ctx->panel_read_data, ctx->panel_read_num_bytes);
+	if (ctx->panel_read_reg_addr >= 0xb0) {
+		ret = mipi_dsi_generic_read(ctx->dsi[ctx->panel_read_id], &ctx->panel_read_reg_addr, 1, ctx->panel_read_data, ctx->panel_read_num_bytes);
+	} else {
+		ret = mipi_dsi_dcs_read(ctx->dsi[ctx->panel_read_id], ctx->panel_read_reg_addr, ctx->panel_read_data, ctx->panel_read_num_bytes);
+	}
 	if ( ret < 0 )
 	{
 		DRM_DEV_ERROR(ctx->dev, "failed to read panel %d reg %u\n", ctx->panel_read_id, ctx->panel_read_reg_addr);
@@ -760,9 +766,11 @@ static ssize_t panel_write_store(struct device *dev, struct device_attribute *at
 	}
 
 	if (addr >= 0xb0)
-		ret = mipi_dsi_generic_write(ctx->dsi[id], payload, ARRAY_SIZE(payload));
+		ret = mipi_dsi_generic_write(ctx->dsi[id], payload, len+1);
+	else if (len == 0)
+		ret = mipi_dsi_dcs_write(ctx->dsi[id], addr, NULL, 0);
 	else
-		ret = mipi_dsi_dcs_write_buffer(ctx->dsi[id], payload, ARRAY_SIZE(payload));
+		ret = mipi_dsi_dcs_write_buffer(ctx->dsi[id], payload, len+1);
 	if (ret < 0)
 	{
 		DRM_DEV_ERROR(ctx->dev, "failed to tx cmd [%.2x], err: %d\n", payload[0], ret);
@@ -980,40 +988,6 @@ static int rad_unprepare(struct drm_panel *panel)
 	return ret;
 }
 
-// 20 msec period, conversion is not precise and ends up being closer to 50 msec
-#define RAD_BACKLIGHT_WORK_PERIOD msecs_to_jiffies(ctx->backlight_ramp_step_time_msec)
-
-static void rad_backlight_delayed_work_handler(struct work_struct *work)
-{
-	struct rad *ctx = container_of((struct delayed_work *)work, struct rad, wdt_work);
-	int backlight_setting;
-	int backlight_ramp_max = ( ( ctx->backlight->props.max_brightness * ctx->backlight_ramp_percentage ) / 100 );
-
-	// bump the allowed backlight setting
-	ctx->backlight_ramp_percentage += ctx->backlight_ramp_step_size;
-
-	backlight_setting =  backlight_ramp_max < ctx->backlight->props.brightness ? backlight_ramp_max : ctx->backlight->props.brightness;
-
-	set_brightness(ctx, backlight_setting, ctx->backlight->props.pulse_offset_rows);
-
-	printk("jdi4k: set brightness to %d ( %d )\n", backlight_setting, ctx->backlight->props.brightness );
-
-	if ( ctx->backlight_ramp_percentage <= 100 ) {
-		schedule_delayed_work(&ctx->wdt_work, RAD_BACKLIGHT_WORK_PERIOD);
-	} else {
-		printk("jdi4k backlight ramp complete\n");
-	}
-}
-
-static void rad_backlight_work_init(struct rad *ctx)
-{
-	if ( ctx->backlight_ramp_step_size && ctx->backlight_ramp_step_time_msec ){
-		ctx->backlight_ramp_percentage = 0;
-		INIT_DELAYED_WORK(&ctx->wdt_work, rad_backlight_delayed_work_handler);
-		schedule_delayed_work(&ctx->wdt_work, RAD_BACKLIGHT_WORK_PERIOD);
-	}
-}
-
 static int rad_prepare(struct drm_panel *panel)
 {
 	int ret;
@@ -1140,6 +1114,7 @@ static int rad_enable(struct drm_panel *panel)
 	dsi_write_panel_on(panel);
 
 	if ( ctx->panel_vendor == VENDOR_SHARP || ctx->panel_vendor == VENDOR_BOE ) {
+		DRM_DEV_INFO(ctx->dev, "setting +-5800000 bias voltage for %c display\n", ctx->panel_vendor );
 		for ( i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++ ) {
 			regulator_set_voltage(ctx->lcd_bias_regulators[i].consumer, 5800000, 5800000);
 		}
@@ -1149,8 +1124,11 @@ static int rad_enable(struct drm_panel *panel)
 		}
 	}
 
-	ctx->backlight->props.pulse_offset_rows = 233;
-	rad_backlight_work_init(ctx);
+	if ( ctx->panel_vendor == VENDOR_SHARP ) {
+		ctx->backlight->props.pulse_offset_rows = GPO1_TES1_SHARP;
+	} else {
+		ctx->backlight->props.pulse_offset_rows = GPO1_TES1;
+	}
 
 	ret = backlight_enable(ctx->backlight);
 	if (ret < 0)
