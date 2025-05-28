@@ -375,7 +375,7 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x00);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x00);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DSI_CTL,
-					  0x20, 0x6b, 0x00, 0x06, 0x33, 0x9A, 0x00,
+					  0x20, 0x6b, 0x80, 0x06, 0x33, 0x9A, 0x00,
 					  0x1a, 0x7a);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 					  0x00);
