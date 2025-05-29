@@ -210,6 +210,9 @@ struct og0ve10_dev {
 
 	bool dual_i2c_available;
 	bool dual_i2c_main;
+
+	bool otp_valid;
+	u8 otp_data[32];
 };
 
 struct og0ve10_dev *sensors_og0VE10[4];
@@ -534,6 +537,35 @@ static void og0ve10_set_power_off(struct og0ve10_dev *sensor)
 	clk_disable_unprepare(sensor->xclk);
 }
 
+static int og0ve10_read_otp_once(struct og0ve10_dev *sensor, u8 *otp_data)
+{
+	int ret;
+	
+	/* Clear OTP buffer registers */
+	for (int i = 0x3d00; i <= 0x3d1f; i++) {
+		ret = og0ve10_write_reg(sensor, i, 0x00);
+		if (ret)
+			return ret;
+	}
+
+	/* Start OTP read */
+	ret = og0ve10_write_reg(sensor, 0x3d81, 0x01);
+	if (ret)
+		return ret;
+
+	/* Wait for OTP read to complete */
+	usleep_range(15000, 15100);
+
+	/* Read OTP data into buffer */
+	for (int k = 0; k < 32; k++) {
+		ret = og0ve10_read_reg(sensor, 0x3d00 + k, &otp_data[k]);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int og0ve10_set_power(struct og0ve10_dev *sensor, bool on)
 {
 	dev_info(&sensor->i2c_client->dev, "og0ve10_set_power: on = %d\n", on);
@@ -754,6 +786,7 @@ static int og0ve10_s_power(struct v4l2_subdev *sd, int on)
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
 	int ret = 0;
 	static char *gpionames[] = { "ira", "irb" };
+	
 	mutex_lock(&sensor->lock);
 	reset_groups_og0VE10(sensor);
 
@@ -975,6 +1008,7 @@ static int og0ve10_check_chip_id(struct og0ve10_dev *sensor)
 	if (ret)
 		return ret;
 
+	/* Check chip ID */
 	ret = og0ve10_read_reg_len(sensor, OG01A1B_REG_CHIP_ID, 2, (u32 *)&chip_id);
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to read chip identifier\n",
@@ -989,10 +1023,9 @@ static int og0ve10_check_chip_id(struct og0ve10_dev *sensor)
 			of_property_read_string(dev->of_node, "id", &id) ?
 				"unknown camera" :
 				id);
-		ret = -ENXIO;
 		ret = 0;
 	} else {
-		dev_err(&client->dev,
+		dev_info(&client->dev,
 			"%s: Camera connection verified ( chip ID 0x%x ) for %s\n",
 			__func__, chip_id,
 			of_property_read_string(dev->of_node, "id", &id) ?
@@ -1192,6 +1225,136 @@ static void update_groups_og0VE10_work_fn(struct work_struct *Wq)
 	update_groups_og0VE10(sensor);
 }
 
+static ssize_t otp_show(struct device *dev,
+                           struct device_attribute *attr, char *buf)
+{
+        struct i2c_client *client = to_i2c_client(dev);
+		struct v4l2_subdev *sd = i2c_get_clientdata(client);
+		struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
+		int ret;
+
+#if 0
+	/* DEBUG: OTP read loop for testing - always runs when enabled */
+	dev_info(dev, "DEBUG: Running OTP read loop test (200 iterations)\n");
+	
+	ret = og0ve10_set_power_on(sensor);
+	if (ret) {
+		dev_err(dev, "DEBUG: Failed to power on sensor for OTP loop: %d\n", ret);
+	} else {
+		og0ve10_write_reg(sensor, 0x100, 0x01);
+		usleep_range(5000, 5100);
+		
+		u8 val[32];
+		u8 otp_data_first_read[32];
+		bool first_read = false;
+		bool mismatch = false;
+
+		for(int j = 0; j < 200; j++) {
+			memset(val, 0, sizeof(val));
+			dev_info(dev, "DEBUG: OTP read iteration %d\n", j);
+			
+			/* Use the single-read function */
+			if (og0ve10_read_otp_once(sensor, val) != 0) {
+				dev_err(dev, "DEBUG: Failed to read OTP on iteration %d\n", j);
+				continue;
+			}
+
+			if(first_read == false) {
+				memcpy(otp_data_first_read, val, 32);
+				first_read = true;
+			}
+			/* Compare current read with first read */
+			if (memcmp(val, otp_data_first_read, 32) != 0) {
+				mismatch = true;
+				dev_err(dev, "DEBUG: OTP data mismatch detected on iteration %d\n", j);
+			} else {
+				dev_info(dev, "DEBUG: OTP data matches first read on iteration %d\n", j);
+			}
+			dev_info(dev, "DEBUG: OTP data: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+				val[0], val[1], val[2], val[3], val[4], val[5], val[6], val[7],
+				val[8], val[9], val[10], val[11], val[12], val[13], val[14], val[15],
+				val[16], val[17], val[18], val[19], val[20], val[21], val[22], val[23],
+				val[24], val[25], val[26], val[27], val[28], val[29], val[30], val[31]);
+		}
+
+		if(mismatch) {
+			dev_err(dev, "DEBUG: OTP data mismatch detected after 200 iterations\n");
+		} else {
+			dev_info(dev, "DEBUG: OTP data matches first read after 200 iterations\n");
+		}
+		
+		og0ve10_set_power_off(sensor);
+	}
+	dev_info(dev, "DEBUG: OTP read loop test completed\n");
+#endif
+
+		mutex_lock(&sensor->lock);
+
+        /* If OTP is already cached, return it immediately */
+        if (sensor->otp_valid) {
+			memcpy(buf, sensor->otp_data, sizeof(sensor->otp_data));
+			mutex_unlock(&sensor->lock);
+            return sizeof(sensor->otp_data);
+		}
+
+		/* Check if sensor is currently powered on (being used by something else) */
+		if (sensor->power_count > 0) {
+			dev_err(dev, "Cannot read OTP while sensor is powered on (power_count=%d)\n", sensor->power_count);
+			mutex_unlock(&sensor->lock);
+			return -EBUSY;
+		}
+
+		/* Lazy read: Power on sensor and read OTP for the first time */
+		ret = og0ve10_set_power_on(sensor);
+		if (ret) {
+			dev_err(dev, "Failed to power on sensor for OTP read: %d\n", ret);
+			mutex_unlock(&sensor->lock);
+			return ret;
+		}
+
+		/* Start sensor for OTP reading */
+		ret = og0ve10_write_reg(sensor, 0x100, 0x01);
+		if (ret) {
+			dev_err(dev, "Failed to start sensor for OTP read: %d\n", ret);
+			goto power_off;
+		}
+		
+		usleep_range(5000, 5100);
+		
+		/* Read OTP data */
+		ret = og0ve10_read_otp_once(sensor, sensor->otp_data);
+		if (ret) {
+			dev_err(dev, "Failed to read OTP data: %d\n", ret);
+			goto power_off;
+		}
+
+		/* Mark as valid and cache the result */
+		sensor->otp_valid = true;
+
+		/* Power off sensor */
+		og0ve10_set_power_off(sensor);
+		mutex_unlock(&sensor->lock);
+
+		/* Return the cached data */
+		memcpy(buf, sensor->otp_data, sizeof(sensor->otp_data));
+		return sizeof(sensor->otp_data);
+
+power_off:
+		og0ve10_set_power_off(sensor);
+		mutex_unlock(&sensor->lock);
+		return ret;
+}
+
+static DEVICE_ATTR_RO(otp);
+
+static struct attribute *og0ve10_dev_attrs[] = {
+	&dev_attr_otp.attr,
+	NULL,
+};
+static const struct attribute_group og0ve10_attr_group = {
+    .attrs = og0ve10_dev_attrs,
+};
+
 static int og0ve10_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
@@ -1205,6 +1368,11 @@ static int og0ve10_probe(struct i2c_client *client)
 	sensor = devm_kzalloc(dev, sizeof(*sensor), GFP_KERNEL);
 	if (!sensor)
 		return -ENOMEM;
+	
+	// Initialize OTP as invalid initially
+	sensor->otp_valid = false;
+	memset(sensor->otp_data, 0, sizeof(sensor->otp_data));
+	
 	sensor->is_streaming = false;
 	sensor->sensor_index = numSensors_og0VE10;
 	sensor->last_set_led_state = 0;
@@ -1224,9 +1392,19 @@ static int og0ve10_probe(struct i2c_client *client)
 
 	sensors_og0VE10[numSensors_og0VE10] = sensor;
 	numSensors_og0VE10++;
+	
 	sensor->group_mode = MODE_NOGROUPS;
 
 	sensor->i2c_client = client;
+
+	/* Expose the sysfs attributes declared above               */
+	ret = devm_device_add_group(&client->dev, &og0ve10_attr_group);
+	if (ret) {
+		dev_err(&client->dev,
+			"failed to create sysfs files for serial/OTP: %d\n",
+			ret);
+		goto entity_cleanup;
+	}
 
 	fmt = &sensor->fmt;
 	fmt->code = MEDIA_BUS_FMT_Y8_1X8;
