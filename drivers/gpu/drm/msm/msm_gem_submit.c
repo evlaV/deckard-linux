@@ -321,7 +321,8 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 		if (ret)
 			break;
 
-		submit->bos[i].iova = vma->iova;
+		submit->bos[i].vm_bo = drm_gpuvm_bo_get(vma->base.vm_bo);
+		submit->bos[i].iova = vma->base.va.addr;
 	}
 
 	for (i = 0; i < submit->nr_bos; i++) {
@@ -467,8 +468,10 @@ void msm_submit_retire(struct msm_gem_submit *submit)
 
 	for (i = 0; i < submit->nr_bos; i++) {
 		struct drm_gem_object *obj = submit->bos[i].obj;
+		struct drm_gpuvm_bo *vm_bo = submit->bos[i].vm_bo;
 
 		drm_gem_object_put(obj);
+		drm_gpuvm_bo_put(vm_bo);
 	}
 }
 
