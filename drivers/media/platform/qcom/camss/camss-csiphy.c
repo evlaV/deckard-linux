@@ -202,6 +202,7 @@ static int csiphy_set_clock_rates(struct csiphy_device *csiphy)
  */
 static int csiphy_set_power(struct v4l2_subdev *sd, int on)
 {
+	
 	struct csiphy_device *csiphy = v4l2_get_subdevdata(sd);
 	struct device *dev = csiphy->camss->dev;
 
@@ -321,6 +322,7 @@ static void csiphy_stream_off(struct csiphy_device *csiphy)
  */
 static int csiphy_set_stream(struct v4l2_subdev *sd, int enable)
 {
+	
 	struct csiphy_device *csiphy = v4l2_get_subdevdata(sd);
 	int ret = 0;
 
