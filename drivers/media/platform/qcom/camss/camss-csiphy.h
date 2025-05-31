@@ -113,6 +113,7 @@ struct csiphy_device {
 	const struct csiphy_subdev_resources *res;
 	struct csiphy_device_regs *regs;
 	bool combo_mode;
+	int lanes_enable_count;
 };
 
 struct camss_subdev_resources;
