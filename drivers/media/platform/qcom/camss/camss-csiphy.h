@@ -99,6 +99,7 @@ struct csiphy_device {
 	struct v4l2_mbus_framefmt fmt[MSM_CSIPHY_PADS_NUM];
 	const struct csiphy_subdev_resources *res;
 	bool combo_mode;
+	int lanes_enable_count;
 	void *data;
 };
 
