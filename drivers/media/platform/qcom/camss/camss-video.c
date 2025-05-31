@@ -17,6 +17,7 @@
 
 #include "camss-video.h"
 #include "camss.h"
+#include "camss-csiphy.h"
 
 #define CAMSS_FRAME_MIN_WIDTH		1
 #define CAMSS_FRAME_MAX_WIDTH		8191
@@ -62,6 +63,57 @@ static int video_mbus_to_pix_mp(const struct v4l2_mbus_framefmt *mbus,
 	}
 
 	return 0;
+}
+
+/*
+ * Helper functions to identify and manage CSIPHY devices
+ */
+static bool is_csiphy_subdev(struct v4l2_subdev *subdev)
+{
+	return strstr(subdev->name, "csiphy") != NULL;
+}
+
+static int csiphy_get_lanes_enable_count(struct v4l2_subdev *subdev)
+{
+	struct csiphy_device *csiphy;
+	
+	if (!is_csiphy_subdev(subdev))
+		return -1;
+		
+	csiphy = v4l2_get_subdevdata(subdev);
+	if (!csiphy)
+		return -1;
+		
+	return csiphy->lanes_enable_count;
+}
+
+static void csiphy_increment_lanes_enable_count(struct v4l2_subdev *subdev)
+{
+	struct csiphy_device *csiphy;
+	
+	if (!is_csiphy_subdev(subdev))
+		return;
+		
+	csiphy = v4l2_get_subdevdata(subdev);
+	if (csiphy)
+		csiphy->lanes_enable_count++;
+}
+
+static void csiphy_decrement_lanes_enable_count(struct v4l2_subdev *subdev)
+{
+	struct csiphy_device *csiphy;
+	
+	if (!is_csiphy_subdev(subdev))
+		return;
+		
+	csiphy = v4l2_get_subdevdata(subdev);
+	if (csiphy) {
+		csiphy->lanes_enable_count--;
+		if (csiphy->lanes_enable_count < 0) {
+			dev_warn(csiphy->camss->dev, "csiphy%d lanes_enable_count went negative, resetting to 0\n", csiphy->id);
+			csiphy->lanes_enable_count = 0;
+		}
+	}
 }
 
 static struct v4l2_subdev *video_remote_subdev(struct camss_video *video,
@@ -318,14 +370,32 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 		entity = pad->entity;
 		subdev = media_entity_to_v4l2_subdev(entity);
 
-		if(!v4l2_subdev_is_streaming(subdev)) {
-			ret = v4l2_subdev_call(subdev, video, s_stream, 1);
-			if (ret < 0 && ret != -ENOIOCTLCMD) {
-				printk(KERN_ERR "");
+		bool should_stream = true;
+		
+		if (is_csiphy_subdev(subdev)) {
+			int current_count = csiphy_get_lanes_enable_count(subdev);
+			if (current_count < 0) {
+				dev_err(video->camss->dev, "Failed to get CSIPHY lanes enable count\n");
 				goto error;
 			}
-		} else {
-			dev_warn(video->camss->dev, "Skipping already streaming subdev %s when starting video pipeline %s \n", subdev->name, vdev->name);
+			
+			// Only stream if this is the first enable (0 -> 1 transition)
+			should_stream = (current_count == 0);
+			
+			// Increment count regardless
+			csiphy_increment_lanes_enable_count(subdev);
+			
+			if (!should_stream) {
+				dev_info(video->camss->dev, "Skipping already streaming CSIPHY subdev %s when starting video pipeline %s\n", subdev->name, vdev->name);
+			}
+		}
+
+		if (should_stream) {
+			ret = v4l2_subdev_call(subdev, video, s_stream, 1);
+			if (ret < 0 && ret != -ENOIOCTLCMD) {
+				dev_err(video->camss->dev, "Failed to start subdev %s: %d\n", subdev->name, ret);
+				goto error;
+			}
 		}
 
 		/* find corresponding sink pad */
@@ -375,14 +445,32 @@ static void video_stop_streaming(struct vb2_queue *q)
 		entity = pad->entity;
 		subdev = media_entity_to_v4l2_subdev(entity);
 
-		if(v4l2_subdev_is_streaming(subdev)) {
-			ret = v4l2_subdev_call(subdev, video, s_stream, 0);
-			if (ret) {
-				dev_err(video->camss->dev, "Video pipeline stop failed: %d\n", ret);
+		bool should_stream = true;
+		
+		if (is_csiphy_subdev(subdev)) {
+			int current_count = csiphy_get_lanes_enable_count(subdev);
+			if (current_count < 0) {
+				dev_err(video->camss->dev, "Failed to get CSIPHY lanes enable count\n");
 				return;
 			}
-		} else {
-			dev_warn(video->camss->dev, "Skipping already idle subdev %s when stopping video pipeline %s \n", subdev->name, vdev->name);
+			
+			// Only stream if this will be the last disable (1 -> 0 transition)
+			should_stream = (current_count == 1);
+			
+			// Decrement count regardless
+			csiphy_decrement_lanes_enable_count(subdev);
+			
+			if (!should_stream) {
+				dev_info(video->camss->dev, "Skipping already idle CSIPHY subdev %s when stopping video pipeline %s\n", subdev->name, vdev->name);
+			}
+		}
+
+		if (should_stream) {
+			ret = v4l2_subdev_call(subdev, video, s_stream, 0);
+			if (ret) {
+				dev_err(video->camss->dev, "Video pipeline stop failed for subdev %s: %d\n", subdev->name, ret);
+				return;
+			}
 		}
 
 		/* find corresponding sink pad */
@@ -979,3 +1067,5 @@ void msm_video_unregister(struct camss_video *video)
 	vb2_video_unregister_device(&video->vdev);
 	atomic_dec(&video->camss->ref_count);
 }
+
+
