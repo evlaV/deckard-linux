@@ -214,7 +214,7 @@ static void update_isp_to_kernel_raw_ts_offset_estimate(struct csid_device *csid
 	// If the detected offset is lower than the current floor, update the floor
 	if (detected_isp_to_kernel_raw_ts_offset < isp_to_kernel_raw_ts_offset_floor[estimator_idx]) {
 		s64 drop = isp_to_kernel_raw_ts_offset_floor[estimator_idx] - detected_isp_to_kernel_raw_ts_offset;
-		dev_info(csid->camss->dev, "Estimator %d lowered the floor by %lld ns on csid: %d\n", estimator_idx, drop, csid->id);
+		//dev_info(csid->camss->dev, "Estimator %d lowered the floor by %lld ns on csid: %d\n", estimator_idx, drop, csid->id);
 		
 		// Check if we should switch estimators due to large drop
 		if (total_frames_since_reset >= MIN_FRAMES_BEFORE_SWITCH && 
