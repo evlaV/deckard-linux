@@ -697,7 +697,7 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 			{
 				void __iomem **ptr;
 				ptr = devres_alloc(devm_ioremap_release, sizeof(*ptr), GFP_KERNEL);
-				aif->lpm_base = ioremap_prot(res->start, resource_size(res), PROT_NORMAL);
+				aif->lpm_base = ioremap_prot(res->start, resource_size(res), __pgprot(PROT_NORMAL));
 				*ptr = aif->lpm_base;
 				devres_add(dev, ptr);
 			}
