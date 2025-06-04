@@ -22,4 +22,8 @@
 #define PLAIN_FORMAT_PLAIN16	0x1 /* supports DPCM, UNCOMPRESSED_10/16_BIT */
 #define PLAIN_FORMAT_PLAIN32	0x2 /* supports UNCOMPRESSED_20_BIT */
 
+// Custom port_id values used in camss_reg_update to allow setting/clearing the RUP/AUP bits on the IPP path
+// Start at 0x100 but since port_id=rdi_id in the current codebase any value out of the [0,5] range should be fine
+#define CSID_780_CUSTOM_PORT_ID_IPP0 0x100
+
 #endif /* __QC_MSM_CAMSS_CSID_GEN3_H__ */

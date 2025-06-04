@@ -91,7 +91,7 @@
 					(0x300 + 0x100 * (rdi)) :\
 					(0x500 + 0x100 * (rdi)))
 #define		RDI_CFG0_TIMESTAMP_EN		BIT(6)
-#define		RDI_CFG0_TIMESTAMP_STB_SEL	BIT(8)
+#define		RDI_CFG0_TIMESTAMP_STB_SEL	8
 #define		RDI_CFG0_DECODE_FORMAT		12
 #define		RDI_CFG0_DT			16
 #define		RDI_CFG0_VC			22
@@ -326,7 +326,9 @@ static void __csid_configure_rdi_stream(struct csid_device *csid, u8 enable, u8 
 	u8 dt_id = vc & 0x03;
 
 	val = RDI_CFG0_TIMESTAMP_EN;
-	val |= RDI_CFG0_TIMESTAMP_STB_SEL;
+	// RDI_CFG0_TIMESTAMP_STB_SEL (on bits [9,8]) can be PRE_HALT (0x0), POST_HALT (0x1) or POST_IRQ (0x2)
+	// Use CSID_TIMESTAMP_STB_POST_IRQ by default
+	val |=  2 << RDI_CFG0_TIMESTAMP_STB_SEL;
 	/* RDI_CFG0_SOF_RETIME_DIS */
 	val |= 1 << 5;
 	/* note: for non-RDI path, this should be format->decode_format */
@@ -419,10 +421,18 @@ static int csid_configure_testgen_pattern(struct csid_device *csid, s32 val)
 
 static void csid_subdev_reg_update(struct csid_device *csid, int port_id, bool clear)
 {
+	u32 val = 0;
+	if (port_id == CSID_780_CUSTOM_PORT_ID_IPP0) {
+		val = BIT(0) | BIT(16) | BIT(28); // RUP_IPP0 | AUP_IPP0 | MUP
+	}
+	else {
+		val = CSID_RUP_AUP_RDI(port_id);
+	}
+
 	if (clear) {
-		csid->reg_update &= ~CSID_RUP_AUP_RDI(port_id);
+		csid->reg_update &= ~val;
 	} else {
-		csid->reg_update |= CSID_RUP_AUP_RDI(port_id);
+		csid->reg_update |= val;
 		writel(csid->reg_update, csid->base + CSID_RUP_AUP_CMD);
 	}
 }
