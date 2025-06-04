@@ -11,6 +11,8 @@
 
 #include "camss.h"
 #include "camss-vfe.h"
+// Needed to access custom port_io values for IPP0 path RUP/AUP
+#include "camss-csid-gen3.h"
 
 #define BUS_REG_BASE			(vfe_is_lite(vfe) ? 0x200 : 0xC00)
 
@@ -604,7 +606,7 @@ static void vfe_reg_update(struct vfe_device *vfe, enum vfe_line_id line_id)
 	struct vfe_line *line = &vfe->line[line_id];
 	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
 	if (pix->pixelformat == V4L2_PIX_FMT_NV12) {
-		camss_reg_update(vfe->camss, vfe->id, -4, false); // HACK: needed to set IPP bits in RUP_AUP_CMD
+		camss_reg_update(vfe->camss, vfe->id, CSID_780_CUSTOM_PORT_ID_IPP0, false);
 	}
 	else {
 		int port_id = line_id;
@@ -618,7 +620,7 @@ static inline void vfe_reg_update_clear(struct vfe_device *vfe,
 	struct vfe_line *line = &vfe->line[line_id];
 	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
 	if (pix->pixelformat == V4L2_PIX_FMT_NV12) {
-		camss_reg_update(vfe->camss, vfe->id, -4, true); // HACK: needed to set IPP bits in RUP_AUP_CMD
+		camss_reg_update(vfe->camss, vfe->id, CSID_780_CUSTOM_PORT_ID_IPP0, true);
 	}
 	else {
 		int port_id = line_id;
