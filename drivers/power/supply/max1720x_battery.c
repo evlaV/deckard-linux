@@ -448,7 +448,6 @@ struct max1720x_priv {
 	int cycles_reg_lsb_percent;
 	int num_cells;
 	kernel_ulong_t driver_data;
-	int (*get_charging_status)(void);
 	int (*get_battery_health)(struct max1720x_priv *priv, int *health);
 };
 
@@ -1004,7 +1003,9 @@ static enum power_supply_property max1720x_battery_props[] = {
 	POWER_SUPPLY_PROP_CURRENT_AVG,
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG,
+	POWER_SUPPLY_PROP_TIME_TO_EMPTY_NOW,
 	POWER_SUPPLY_PROP_TIME_TO_FULL_AVG,
+	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
 };
 
 static inline int max1720x_raw_voltage_to_uvolts(struct max1720x_priv *priv,
@@ -5214,12 +5215,39 @@ static int max1720x_set_max_capacity_alert_th(struct max1720x_priv *priv,
 	return 0;
 }
 
+static int max1720x_get_status(struct max1720x_priv *priv)
+{
+	unsigned int reg;
+	int cur;
+	int ret;
+	int soc;
+
+	ret = max1720x_regmap_read(priv, priv->regs[REPSOC_REG], &reg);
+	if (ret < 0)
+		return ret;
+	soc = reg >> 8; /* RepSOC LSB: 1/256 % */
+
+	if (soc >= 100)
+		return POWER_SUPPLY_STATUS_FULL;
+
+	ret = max1720x_regmap_read(priv, priv->regs[AVGCURRENT_REG], &reg);
+	if (ret < 0)
+		return ret;
+	cur = max1720x_raw_current_to_uamps(priv, sign_extend32(reg, 15));
+
+	if (cur > 10000)
+		return POWER_SUPPLY_STATUS_CHARGING;
+	else if (cur < -10000)
+		return POWER_SUPPLY_STATUS_DISCHARGING;
+	else
+		return POWER_SUPPLY_STATUS_NOT_CHARGING;
+}
+
 static int max1720x_get_property(struct power_supply *psy,
 								 enum power_supply_property psp,
 								 union power_supply_propval *val)
 {
 	struct max1720x_priv *priv = power_supply_get_drvdata(psy);
-	struct max1720x_platform_data *pdata = priv->pdata;
 	unsigned int reg;
 	int ret;
 
@@ -5265,10 +5293,10 @@ static int max1720x_get_property(struct power_supply *psy,
 		val->intval *= priv->num_cells; 
 		break;
 	case POWER_SUPPLY_PROP_STATUS:
-		if (pdata && priv->get_charging_status)
-			val->intval = priv->get_charging_status();
-		else
-			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
+		ret = max1720x_get_status(priv);
+		if (ret < 0)
+			return ret;
+		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		ret = max1720x_regmap_read(priv, priv->regs[VCELL_REG], &reg);
@@ -5372,12 +5400,14 @@ static int max1720x_get_property(struct power_supply *psy,
 		val->intval = max1720x_raw_current_to_uamps(priv, sign_extend32(reg, 15));
 		break;
 	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG:
+	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_NOW:
 		ret = max1720x_regmap_read(priv, priv->regs[TTE_REG], &reg);
 		if (ret < 0)
 			return ret;
 		val->intval = (reg * 45) >> 3; /* TTE LSB: 5.625 sec */
 		break;
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_AVG:
+	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
 		ret = max1720x_regmap_read(priv, priv->regs[TTF_REG], &reg);
 		if (ret < 0)
 			return ret;
