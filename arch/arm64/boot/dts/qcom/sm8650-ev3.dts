@@ -1738,11 +1738,11 @@
 			vpos_r: vpos{
 				regulator-name = "lcdr_vpos";
 				regulator-min-microvolt = <5700000>;
-				regulator-max-microvolt = <5700000>;
+				regulator-max-microvolt = <5800000>;
 			};
 			vneg_r: vneg{
 				regulator-name = "lcdr_vneg";
-				regulator-min-microvolt = <5800000>;
+				regulator-min-microvolt = <5700000>;
 				regulator-max-microvolt = <5800000>;
 			};
 		};
