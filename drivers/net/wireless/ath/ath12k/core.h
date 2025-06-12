@@ -626,7 +626,6 @@ struct ath12k_fw_stats {
 	struct list_head pdevs;
 	struct list_head vdevs;
 	struct list_head bcn;
-	bool fw_stats_done;
 };
 
 struct ath12k_dbg_htt_stats {
@@ -806,6 +805,7 @@ struct ath12k {
 	bool regdom_set_by_user;
 
 	struct completion fw_stats_complete;
+	struct completion fw_stats_done;
 
 	struct completion mlo_setup_done;
 	u32 mlo_setup_status;
