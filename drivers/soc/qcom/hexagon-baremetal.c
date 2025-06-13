@@ -524,7 +524,7 @@ static long dsp_map_dmabuf(struct dsp *dsp, int fd, u32 iova)
 		goto attach_err;
 	}
 
-	map->table = dma_buf_map_attachment(map->attach, DMA_BIDIRECTIONAL);
+	map->table = dma_buf_map_attachment_unlocked(map->attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(map->table)) {
 		ret = PTR_ERR(map->table);
 		goto map_err;
@@ -546,7 +546,7 @@ static long dsp_map_dmabuf(struct dsp *dsp, int fd, u32 iova)
 	return ret;
 
 iommu_err:
-	dma_buf_unmap_attachment(map->attach, map->table, DMA_BIDIRECTIONAL);
+	dma_buf_unmap_attachment_unlocked(map->attach, map->table, DMA_BIDIRECTIONAL);
 map_err:
 	dma_buf_detach(map->buf, map->attach);
 attach_err:
@@ -588,7 +588,7 @@ static void dsp_unmap(struct dsp *dsp, struct dma_map *map)
 {
 	iommu_unmap(dsp->iommu, map->iova, map->size);
 	if (map->buf) {
-		dma_buf_unmap_attachment(map->attach, map->table, DMA_BIDIRECTIONAL);
+		dma_buf_unmap_attachment_unlocked(map->attach, map->table, DMA_BIDIRECTIONAL);
 		dma_buf_detach(map->buf, map->attach);
 		dma_buf_put(map->buf);
 	}
