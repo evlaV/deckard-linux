@@ -1139,7 +1139,6 @@ vm_bind_prealloc_count(struct msm_vm_bind_job *job)
 static int
 vm_bind_job_lock_objects(struct msm_vm_bind_job *job, struct drm_exec *exec)
 {
-	struct drm_gem_object *obj;
 	int ret;
 
 	/* Lock VM and objects: */
@@ -1149,8 +1148,29 @@ vm_bind_job_lock_objects(struct msm_vm_bind_job *job, struct drm_exec *exec)
 		if (ret)
 			return ret;
 
-		job_foreach_bo (obj, job) {
-			ret = drm_exec_prepare_obj(exec, obj, 1);
+		for (unsigned i = 0; i < job->nr_ops; i++) {
+			const struct msm_vm_bind_op *op = &job->ops[i];
+
+			switch (op->op) {
+			case MSM_VM_BIND_OP_UNMAP:
+				ret = drm_gpuvm_sm_unmap_lock(job->vm, exec,
+							      op->iova,
+							      op->obj_offset);
+				break;
+			case MSM_VM_BIND_OP_MAP:
+			case MSM_VM_BIND_OP_MAP_NULL:
+				ret = drm_gpuvm_sm_map_lock(job->vm, exec, 1,
+							    op->iova, op->range,
+							    op->obj, op->obj_offset);
+				break;
+			default:
+				/*
+				* lookup_op() should have already thrown an error for
+				* invalid ops
+				*/
+				BUG_ON("unreachable");
+			}
+
 			drm_exec_retry_on_contention(exec);
 			if (ret)
 				return ret;
