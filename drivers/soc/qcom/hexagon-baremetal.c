@@ -764,6 +764,8 @@ static int dsp_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&dsp->maps);
 	init_waitqueue_head(&dsp->waitqueue);
 
+	spin_lock_init(&dsp->lock);
+
 	ret = devm_clk_bulk_get_all(dev, &dsp->clks);
 	if (ret < 0)
 		return ret;
