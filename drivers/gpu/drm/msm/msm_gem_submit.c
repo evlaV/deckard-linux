@@ -355,7 +355,6 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 
 	for (i = 0; i < submit->nr_bos; i++) {
 		struct drm_gem_object *obj = submit->bos[i].obj;
-		msm_gem_lock(obj);
 		struct drm_gpuva *vma;
 
 		/* if locking succeeded, pin bo: */
@@ -366,7 +365,6 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 		}
 
 		ret = msm_gem_pin_vma_locked(obj, vma);
-		msm_gem_unlock(obj);
 		if (ret)
 			break;
 
@@ -375,11 +373,9 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 	}
 
 	for (i = 0; i < submit->nr_bos; i++) {
-		msm_gem_lock(submit->bos[i].obj);
 		mutex_lock(&priv->lru.lock);
 		msm_gem_pin_obj_locked(submit->bos[i].obj);
 		mutex_unlock(&priv->lru.lock);
-		msm_gem_unlock(submit->bos[i].obj);
 	}
 
 	submit->bos_pinned = true;
@@ -417,7 +413,6 @@ static void submit_attach_object_fences(struct msm_gem_submit *submit)
 	for (unsigned i = 0; i < submit->nr_bos; i++) {
 		struct drm_gem_object *obj = submit->bos[i].obj;
 
-		dma_resv_reserve_fences(obj->resv, 1);
 		if (submit->bos[i].flags & MSM_SUBMIT_BO_WRITE)
 			dma_resv_add_fence(obj->resv, submit->user_fence,
 					   DMA_RESV_USAGE_WRITE);
@@ -666,12 +661,14 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (ret)
 		goto out;
 
-	ret = submit_pin_objects(submit);
+	/* copy_*_user while holding a ww ticket upsets lockdep */
+	ret = submit_lock_objects(submit);
 	if (ret)
 		goto out;
 
-	/* copy_*_user while holding a ww ticket upsets lockdep */
-	ret = submit_lock_objects(submit);
+	ret = submit_pin_objects(submit);
+	if (ret)
+		goto out;
 
 	if (!(args->flags & MSM_SUBMIT_NO_IMPLICIT)) {
 		ret = submit_fence_sync(submit);
