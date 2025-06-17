@@ -1294,6 +1294,8 @@ static struct workqueue_struct *drm_sched_alloc_wq(const char *name)
 
 	return alloc_ordered_workqueue_lockdep_map(name, WQ_MEM_RECLAIM, &map);
 #else
+	if(strcmp(name, "msm-vm-bind") == 0)
+		return alloc_ordered_workqueue(name, WQ_MEM_RECLAIM);
 	return alloc_ordered_workqueue(name, WQ_MEM_RECLAIM | WQ_SYSFS | __WQ_FORCE_ALLOW_SYSFS);
 #endif
 }
