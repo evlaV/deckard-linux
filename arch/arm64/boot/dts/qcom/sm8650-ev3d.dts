@@ -1965,18 +1965,6 @@
         vcc-supply  = <&vreg_l15b_1p8>;
     };
 
-	// Northgate/Enthusiast Paddle Card Silego
-	slg46534v@48 {
-			compatible = "silego,northgate";
-			reg = <0x48>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			status = "ok";
-	};
-};
-
-&i2c5 {
     max34417_1: max34417@12 {
         compatible = "maxim,max34417";
         reg = <0x12>;
@@ -2054,8 +2042,18 @@
 
 	// Northgate/Enthusiast Paddle Card Silego
 	slg46534v@48 {
-		compatible = "silego,northgate";
+		compatible = "silego,northgate_paddle";
 		reg = <0x48>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		status = "ok";
+	};
+
+	// Northgate/Enthusiast Hotswap Card Silego
+	slg4ad48669m@18 {
+		compatible = "silego,northgate_hotswap";
+		reg = <0x18>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 
