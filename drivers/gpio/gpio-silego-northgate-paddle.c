@@ -15,36 +15,43 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
-static const struct i2c_device_id slg_northgate_id[] = { { "slg-northgate", 0 },
-							 {} };
+static const struct i2c_device_id slg_northgate_id[] = {
+	{ "slg-northgate-paddle", 0 },
+	{}
+};
 MODULE_DEVICE_TABLE(i2c, slg_northgate_id);
 
 static const struct of_device_id slg_northgate_of_table[] = {
-	{ .compatible = "silego,northgate", (void *)8 },
+	{ .compatible = "silego,northgate_paddle", (void *)8 },
 	{}
 };
 MODULE_DEVICE_TABLE(of, slg_northgate_of_table);
 
-#define SLG_NORTHGATE_GPIO_MAX 7
+#define SLG_NORTHGATE_GPIO_MAX 5
 
-#define SLG_NORTHGATE_REG_BUTTON 0xF2
-#define SLG_NORTHGATE_REG_OUTPUT 0xF4
+#define SLG_NORTHGATE_REG_LUT2_3 0xF1
+#define SLG_NORTHGATE_REG_LUT3_4 0xF2
+#define SLG_NORTHGATE_REG_VIRTUAL_INPUT 0xF4
 
-#define SLG_NORTHGATE_GPIO_INPUT_MASK 0x0F
-#define SLG_NORTHGATE_GPIO_OUTPUT_MASK 0x70
+#define SLG_NORTHGATE_GPIO_INPUT_MASK 0x03
+#define SLG_NORTHGATE_GPIO_OUTPUT_MASK 0x1C
 
-#define SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOTLOADER 0x10
-#define SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOT 0x20
-#define SLG_NORTHGATE_GPIO_OUTPUT_MASK_DISABLE_3P3 0x40
-
-static const char *gpio_names[SLG_NORTHGATE_GPIO_MAX] = {
-	"northgate_button1",	"northgate_button2",	 "northgate_button3",
-	"northgate_button4",	"esp32_load_bootloader", "esp32_run",
-	"northgate_disable_3p3"
+struct northgate_gpio {
+	u8 address;
+	u8 mask;
 };
 
-static const int index_map[SLG_NORTHGATE_GPIO_MAX] = {
-	0x02, 0x04, 0x08, 0x10, 0x01, 0x20, 0x04,
+static const char *gpio_names[SLG_NORTHGATE_GPIO_MAX] = {
+	"1p8_enabled", "remote_battery", "ra2e1_bootloader", "disable_1p8",
+	"ra2e1_reset"
+};
+
+static struct northgate_gpio gpios[SLG_NORTHGATE_GPIO_MAX] = {
+	{ SLG_NORTHGATE_REG_LUT2_3, BIT(2) },
+	{ SLG_NORTHGATE_REG_LUT3_4, BIT(1) },
+	{ SLG_NORTHGATE_REG_VIRTUAL_INPUT, BIT(0) },
+	{ SLG_NORTHGATE_REG_VIRTUAL_INPUT, BIT(2) },
+	{ SLG_NORTHGATE_REG_VIRTUAL_INPUT, BIT(5) },
 };
 
 struct slg_northgate {
@@ -55,8 +62,9 @@ struct slg_northgate {
 static bool slg_northgate_readable_reg(struct device *dev, unsigned int reg)
 {
 	switch (reg) {
-	case SLG_NORTHGATE_REG_BUTTON:
-	case SLG_NORTHGATE_REG_OUTPUT:
+	case SLG_NORTHGATE_REG_LUT2_3:
+	case SLG_NORTHGATE_REG_LUT3_4:
+	case SLG_NORTHGATE_REG_VIRTUAL_INPUT:
 		return true;
 	default:
 		return false;
@@ -66,9 +74,10 @@ static bool slg_northgate_readable_reg(struct device *dev, unsigned int reg)
 static bool slg_northgate_writeable_reg(struct device *dev, unsigned int reg)
 {
 	switch (reg) {
-	case SLG_NORTHGATE_REG_OUTPUT:
+	case SLG_NORTHGATE_REG_VIRTUAL_INPUT:
 		return true;
-	case SLG_NORTHGATE_REG_BUTTON:
+	case SLG_NORTHGATE_REG_LUT2_3:
+	case SLG_NORTHGATE_REG_LUT3_4:
 	default:
 		return false;
 	}
@@ -77,9 +86,10 @@ static bool slg_northgate_writeable_reg(struct device *dev, unsigned int reg)
 static bool slg_northgate_volatile_reg(struct device *dev, unsigned int reg)
 {
 	switch (reg) {
-	case SLG_NORTHGATE_REG_BUTTON:
+	case SLG_NORTHGATE_REG_LUT2_3:
+	case SLG_NORTHGATE_REG_LUT3_4:
 		return true;
-	case SLG_NORTHGATE_REG_OUTPUT:
+	case SLG_NORTHGATE_REG_VIRTUAL_INPUT:
 	default:
 		return false;
 	}
@@ -100,135 +110,75 @@ static const struct regmap_config slg_northgate_regmap_config = {
 static int slg_northgate_get(struct gpio_chip *chip, unsigned int offset)
 {
 	struct slg_northgate *slg_ng = gpiochip_get_data(chip);
-
-	const unsigned long mask = 1 << offset;
 	unsigned int value;
 	int ret;
 
-	if (mask & SLG_NORTHGATE_GPIO_INPUT_MASK) {
-		ret = regmap_read(slg_ng->regmap, SLG_NORTHGATE_REG_BUTTON,
-				  &value);
-		if (ret != 0)
-			return ret;
+	ret = regmap_read(slg_ng->regmap, gpios[offset].address, &value);
+	if (ret != 0)
+		return ret;
 
-		// Button Logic is inverted
-		return (value & index_map[offset] ? 0 : 1);
-
-	} else if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK) {
-		ret = regmap_read(slg_ng->regmap, SLG_NORTHGATE_REG_OUTPUT,
-				  &value);
-		if (ret != 0)
-			return ret;
-
-		return (value & index_map[offset] ? 1 : 0);
-
-	} else {
-		return -EINVAL;
-	}
+	return ((value & gpios[offset].mask) ? 1 : 0);
 }
 
 static int slg_northgate_get_multiple(struct gpio_chip *chip,
 				      unsigned long *mask, unsigned long *bits)
 {
 	struct slg_northgate *slg_ng = gpiochip_get_data(chip);
-	unsigned int button_reg, output_reg;
-	unsigned long value;
+	unsigned long full_value = 0;
+	unsigned int value;
 	int ret;
+	int i;
 
-	/* Update Button Reg */
-	ret = regmap_read(slg_ng->regmap, SLG_NORTHGATE_REG_BUTTON,
-			  &button_reg);
-	if (ret != 0)
-		return ret;
-	ret = regmap_read(slg_ng->regmap, SLG_NORTHGATE_REG_OUTPUT,
-			  &output_reg);
-	if (ret != 0)
-		return ret;
+	for (i = 0; i < SLG_NORTHGATE_GPIO_MAX; i++) {
+		ret = regmap_read(slg_ng->regmap, gpios[i].address, &value);
+		if (ret != 0)
+			return ret;
 
-	// Rebuild the Value register in the packed order for linux userspace
-	value = (output_reg & 0x01) << 4;
-	value |= (output_reg & 0x20);
-	value |= (output_reg & 0x04) << 4;
-	value |= (button_reg >> 1);
+		if (value & gpios[i].mask)
+			full_value |= (1 << i);
+	}
 
 	*bits &= ~*mask;
-	*bits |= value & *mask;
+	*bits |= full_value & *mask;
 
 	return 0;
 }
 
-static void slg_northgate_set(struct gpio_chip *chip, unsigned int offset,
+static int slg_northgate_set(struct gpio_chip *chip, unsigned int offset,
 			      int value)
 {
 	struct slg_northgate *slg_ng = gpiochip_get_data(chip);
 
-	const unsigned long mask = 1 << offset;
-	unsigned int reg_value;
-	int ret;
-
-	if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK) {
-		ret = regmap_read(slg_ng->regmap, SLG_NORTHGATE_REG_OUTPUT,
-				  &reg_value);
-		if (ret != 0)
-			return;
-
-		if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOTLOADER) {
-			if (value)
-				reg_value |= 0x01;
-			else
-				reg_value &= ~0x01;
-		} else if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOT) {
-			if (value)
-				reg_value |= 0x20;
-			else
-				reg_value &= ~0x20;
-		} else if (mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_DISABLE_3P3) {
-			if (value)
-				reg_value |= 0x04;
-			else
-				reg_value &= ~0x04;
-		}
-
-		regmap_write(slg_ng->regmap, SLG_NORTHGATE_REG_OUTPUT,
-			     reg_value);
-	}
+	if (value)
+		return regmap_set_bits(slg_ng->regmap, gpios[offset].address,
+				gpios[offset].mask);
+	else
+		return regmap_clear_bits(slg_ng->regmap, gpios[offset].address,
+				  gpios[offset].mask);
 }
 
-static void slg_northgate_set_multiple(struct gpio_chip *chip,
+static int slg_northgate_set_multiple(struct gpio_chip *chip,
 				       unsigned long *mask, unsigned long *bits)
 {
 	struct slg_northgate *slg_ng = gpiochip_get_data(chip);
-	unsigned int reg_value;
-	int ret;
+	unsigned long index_mask;
+	int i, ret = 0;
 
-	// Ignore Inputs
-	*mask &= SLG_NORTHGATE_GPIO_OUTPUT_MASK;
-	*bits &= SLG_NORTHGATE_GPIO_OUTPUT_MASK;
+	for (i = 0; i < SLG_NORTHGATE_GPIO_MAX; i++) {
+		index_mask = 1 << i;
 
-	// Check for NOOP
-	if (*mask == 0)
-		return;
+		if (*bits & index_mask)
+			ret = regmap_set_bits(slg_ng->regmap, gpios[i].address,
+					gpios[i].mask);
+		else if (*mask & index_mask)
+			ret = regmap_clear_bits(slg_ng->regmap, gpios[i].address,
+					  gpios[i].mask);
 
-	ret = regmap_read(slg_ng->regmap, SLG_NORTHGATE_REG_OUTPUT, &reg_value);
-	if (ret != 0)
-		return;
+		if (ret)
+			return ret;
+	}
 
-	if (*bits & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOTLOADER)
-		reg_value |= 0x01;
-	else if (*mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOTLOADER)
-		reg_value &= ~0x01;
-
-	if (*bits & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOT)
-		reg_value |= 0x20;
-	else if (*mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_BOOT)
-		reg_value &= ~0x20;
-
-	if (*bits & SLG_NORTHGATE_GPIO_OUTPUT_MASK_DISABLE_3P3)
-		reg_value |= 0x04;
-	else if (*mask & SLG_NORTHGATE_GPIO_OUTPUT_MASK_DISABLE_3P3)
-		reg_value &= ~0x04;
-
-	regmap_write(slg_ng->regmap, SLG_NORTHGATE_REG_OUTPUT, reg_value);
+	return 0;
 }
 
 static int slg_northgate_get_direction(struct gpio_chip *chip,
@@ -291,10 +241,10 @@ static int slg_northgate_probe(struct i2c_client *client)
 
 	dev_info(&client->dev, "probed\n");
 
-	// Power Down the Espressif
-	dev_info(&client->dev, "booting espressif\n");
-	slg_northgate_set(&slg_ng->chip, 4, 0);
-	slg_northgate_set(&slg_ng->chip, 5, 1);
+	// // Power Down the Espressif
+	// dev_info(&client->dev, "booting espressif\n");
+	// slg_northgate_set(&slg_ng->chip, 4, 0);
+	// slg_northgate_set(&slg_ng->chip, 5, 1);
 
 	return 0;
 
@@ -319,7 +269,7 @@ static void slg_northgate_remove(struct i2c_client *client)
 
 static struct i2c_driver slg_northgate_driver = {
 	.driver = {
-		.name	= "slg_northgate",
+		.name	= "slg_northgate_paddle",
 		.of_match_table = slg_northgate_of_table,
 	},
 	.probe = slg_northgate_probe,
@@ -344,4 +294,4 @@ static void __exit slg_northgate_exit(void)
 module_exit(slg_northgate_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Todd Goyen");
+MODULE_AUTHOR("Todd Goyen <todd@tgoyen.com>");
