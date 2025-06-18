@@ -194,6 +194,16 @@
 		vin-supply = <&vph_pwr>;
 	};
 
+	RGBCAM_DOVDD_3V3: RGBCAM_DOVDD_3V3 {
+		compatible = "regulator-fixed";
+		regulator-name = "RGBCAM_DOVDD_3V3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+		gpio = <&tlmm 38 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_l7m_3p3>;
+	};
+
 	wcn7850-pmu {
 		compatible = "qcom,wcn7850-pmu";
 
@@ -872,7 +882,11 @@
 	status = "okay";
 
 	vdda-csi01-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi24-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi35-0p9-supply = <&vreg_l2i_0p88>;
 	vdda-csi01-1p2-supply = <&vreg_l3i_1p2>;
+	vdda-csi24-1p2-supply = <&vreg_l3i_1p2>;
+	vdda-csi35-1p2-supply = <&vreg_l3i_1p2>;
 
 	ports {
 #if 0
@@ -907,6 +921,25 @@
 				remote-endpoint = <&cam_6dof_ur>;
 			};
 		};
+
+		port@3 {
+			reg = <3>;
+			csiphy3_ep: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&cam_pt_left>;
+			};
+		};
+
+		port@5 {
+			reg = <5>;
+			csiphy5_ep: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&cam_pt_right>;
+			};
+		};
+
 #if 0
 		port@2 {
 			csiphy2_ep: endpoint {
@@ -1362,6 +1395,87 @@
 	gpio-line-names =
 		// GPIO01 - GPIO08
 		"",  "",  "",  "",  "qpd_fpga_crst",  "",  "qpd_fpga_rst",  "";
+};
+
+&cci0_i2c0 { // "CCI_0"
+	// pinctrl-names = "default";
+	// pinctrl-0 = <&cam_sensor_mclk7_active>;
+	clock-frequency = <400000>;
+
+	eeprom@50 {
+		compatible = "atmel,24c64";
+		reg = <0x50>;
+		pagesize = <32>;
+		size = <8192>;
+		address-width = <16>;
+		status = "okay";
+		vcc-supply = <&RGBCAM_DOVDD_3V3>;
+		label = "passthrough_cams_eeprom";
+    };
+	cam3@1a {
+		compatible = "arcimx616";
+
+		id = "passthrough_right";
+
+		reg = <0x1a>;
+
+		// reset-gpios = <&tlmm 126 GPIO_ACTIVE_HIGH>;
+		// pinctrl-names = "default";
+		// pinctrl-0 = <&cam_sensor_mclk6_active>,<&cam_sensor_mclk7_active>;
+
+		// clocks = <&camcc CAM_CC_MCLK7_CLK>,<&camcc CAM_CC_MCLK6_CLK>;
+		// clock-names = "xclk","xclk2";
+
+		// frame sync is gpio 110
+		// stobe is gpio 111
+		// ulpm gpio 13
+
+		DOVDD-supply = <&RGBCAM_DOVDD_3V3>;
+		// AVDD-supply = <&camera_2p8>;
+		// DVDD-supply = <&camera_1p2>;
+
+		port {
+			cam_pt_left: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&csiphy3_ep>;
+			};
+		};
+	};
+	cam4@10 {
+		compatible = "arcimx616";
+
+		id = "passthrough_left";
+
+		reg = <0x10>;
+
+		//reset-gpios = <&tlmm 110 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&tlmm 126 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam6_default>,<&cam7_default>;
+
+		clocks = <&camcc CAM_CC_MCLK7_CLK>,<&camcc CAM_CC_MCLK6_CLK>;
+		clock-names = "xclk","xclk2";
+
+		// clocks = <&camcc CAM_CC_MCLK6_CLK>;
+		// clock-names = "xclk";
+
+		// frame sync is gpio 110
+		// stobe is gpio 111
+		// ulpm gpio 13
+
+		DOVDD-supply = <&RGBCAM_DOVDD_3V3>;
+		// AVDD-supply = <&camera_2p8>;
+		// DVDD-supply = <&camera_1p2>;
+
+		port {
+			cam_pt_right: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&csiphy5_ep>;
+			};
+		};
+	};
 };
 
 &pmk8550_rtc {
