@@ -1298,10 +1298,10 @@
 			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
 
 		//Bias supplies enabled via GPIO
-		left-pos-supply = <&vpos_l>;
-		left-neg-supply = <&vneg_l>;
-		right-pos-supply = <&vpos_r>;
-		right-neg-supply = <&vneg_r>;
+		left-pos-supply = <&vpos_left>;
+		left-neg-supply = <&vneg_left>;
+		right-pos-supply = <&vpos_right>;
+		right-neg-supply = <&vneg_right>;
 
 		preboost-supply = <&BACKLIGHT_PREBOOST>;
 		backlight-left-supply = <&backlight_left>;
@@ -1735,13 +1735,13 @@
 		enn-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 		regulators {
-			vpos_r: vpos{
-				regulator-name = "lcdr_vpos";
+			vpos_right: vpos{
+				regulator-name = "lcd_right_vpos";
 				regulator-min-microvolt = <5700000>;
 				regulator-max-microvolt = <5800000>;
 			};
-			vneg_r: vneg{
-				regulator-name = "lcdr_vneg";
+			vneg_right: vneg{
+				regulator-name = "lcd_right_vneg";
 				regulator-min-microvolt = <5700000>;
 				regulator-max-microvolt = <5800000>;
 			};
@@ -1776,13 +1776,13 @@
 		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 		regulators {
-			vpos_l: vpos{
-				regulator-name = "lcdl_vpos";
+			vpos_left: vpos{
+				regulator-name = "lcd_left_vpos";
 				regulator-min-microvolt = <5700000>;
 				regulator-max-microvolt = <5800000>;
 			};
-			vneg_l: vneg{
-				regulator-name = "lcdl_vneg";
+			vneg_left: vneg{
+				regulator-name = "lcd_left_vneg";
 				regulator-min-microvolt = <5700000>;
 				regulator-max-microvolt = <5800000>;
 			};

@@ -1127,36 +1127,46 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 
 	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->power_supplies),
 				      ctx->power_supplies);
-	if (ret < 0)
+	if (ret < 0) {
+		DRM_DEV_ERROR(ctx->dev, "Failed to get power supplies\n");
 		return ret;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(ctx->preboost_drivers); i++)
 						ctx->preboost_drivers[i].supply = preboost_driver_names[i];
 
 	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->preboost_drivers),
 						ctx->preboost_drivers);
-	if (ret < 0)
+	if (ret < 0){
+		DRM_DEV_ERROR(ctx->dev, "Failed to get preboost supplies\n");
 		return ret;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(ctx->backlight_drivers); i++)
 		ctx->backlight_drivers[i].supply = backlight_driver_names[i];
 
 	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->backlight_drivers),
 				      ctx->backlight_drivers);
-	if (ret < 0)
+	if (ret < 0){
+		DRM_DEV_ERROR(ctx->dev, "Failed to get backlight supplies\n");
 		return ret;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++)
 		ctx->lcd_bias_regulators[i].supply = lcd_bias_names[i];
 
 	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->lcd_bias_regulators),
 		ctx->lcd_bias_regulators);
-	if (ret < 0)
+	if (ret < 0){
+		DRM_DEV_ERROR(ctx->dev, "Failed to get lcd bias supplies\n");
 		return ret;
+	}
 
 	ctx->reset_gpios = devm_gpiod_get_array(dev, "reset", GPIOD_OUT_LOW);
-	if (IS_ERR(ctx->reset_gpios))
+	if (IS_ERR(ctx->reset_gpios)){
+		DRM_DEV_ERROR(ctx->dev, "Failed to get reset gpio\n");
 		return PTR_ERR(ctx->reset_gpios);
+	}
 
 	memset(&bl_props, 0, sizeof(bl_props));
 	bl_props.type = BACKLIGHT_RAW;
@@ -1252,7 +1262,7 @@ skip_panel2:
 
 	ret = lpm026m648c_panel_add(ctx);
 	if (ret) {
-		DRM_DEV_ERROR(dev, "failed to add panel\n");
+		DRM_DEV_ERROR(dev, "failed to add panel %d\n", ret);
 		goto err_panel_add;
 	}
 
@@ -1279,7 +1289,7 @@ err_dsi_attach:
 	drm_panel_remove(&ctx->panel);
 err_panel_add:
 	mipi_dsi_device_unregister(dsi1_device);
-	return ret;
+	return -EPROBE_DEFER;;
 }
 
 static void lpm026m648c_remove(struct mipi_dsi_device *dsi)
