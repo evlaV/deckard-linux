@@ -1568,7 +1568,7 @@
 
 &pon_resin {
 	linux,code = <KEY_VOLUMEDOWN>;
-
+	disable-wake-source;
 	status = "okay";
 };
 
