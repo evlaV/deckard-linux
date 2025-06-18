@@ -403,7 +403,13 @@ static int pm8941_pwrkey_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, pwrkey);
-	device_init_wakeup(&pdev->dev, 1);
+
+	if(of_property_read_bool(pdev->dev.of_node,"disable-wake-source")) {
+		dev_info(&pdev->dev, "skipping set as wakeup source\n");
+	}
+	else {
+		device_init_wakeup(&pdev->dev, 1);
+	}
 
 	return 0;
 }
