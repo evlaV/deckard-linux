@@ -310,7 +310,7 @@ static int nex10000ub_probe(struct i2c_client *client)
 	struct regulator_config config = { };
 	unsigned int id;
 
-	static struct of_regulator_match nex10000ub_matches[] = {
+	struct of_regulator_match nex10000ub_matches[] = {
 		{ .name = "vpos",     .driver_data = (void *)NEX10000UB_LDO_POS},
 		{ .name = "vneg",     .driver_data = (void *)NEX10000UB_LDO_NEG},
 	};
@@ -326,16 +326,18 @@ static int nex10000ub_probe(struct i2c_client *client)
 		return PTR_ERR(nex10000ub->regmap);
 	}
 
-	nex10000ub->enp_gpio = devm_gpiod_get_optional(dev, "enp", GPIOD_OUT_LOW);
+	nex10000ub->enp_gpio = devm_gpiod_get(dev, "enp", GPIOD_OUT_LOW);
 	if (IS_ERR(nex10000ub->enp_gpio)) {
 		dev_err(dev, "cannot get enp gpio %ld\n",
 			PTR_ERR(nex10000ub->enp_gpio));
+		return PTR_ERR(nex10000ub->enp_gpio);
 	}
 
-	nex10000ub->enn_gpio = devm_gpiod_get_optional(dev, "enn", GPIOD_OUT_LOW);
+	nex10000ub->enn_gpio = devm_gpiod_get(dev, "enn", GPIOD_OUT_LOW);
 	if (IS_ERR(nex10000ub->enn_gpio)) {
 		dev_err(dev, "cannot get enn gpio %ld\n",
 			PTR_ERR(nex10000ub->enn_gpio));
+		return PTR_ERR(nex10000ub->enn_gpio);
 	}
 
 	for (id = 0; id < NEX10000UB_NUM_REGULATORS; ++id) {
