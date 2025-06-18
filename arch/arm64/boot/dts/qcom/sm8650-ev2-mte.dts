@@ -226,7 +226,7 @@
 			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
 			debounce-interval = <15>;
 			linux,can-disable;
-			wakeup-source;
+			//wakeup-source;
 		};
 
 		key-select {
@@ -235,7 +235,7 @@
 			gpios = <&pm8550b_gpios 5 GPIO_ACTIVE_LOW>;
 			debounce-interval = <15>;
 			linux,can-disable;
-			wakeup-source;
+			//wakeup-source;
 		};
 	};
 
