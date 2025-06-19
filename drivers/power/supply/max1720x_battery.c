@@ -413,8 +413,7 @@
 #define MAX17332_NTPRTTH_PERMFAIL_MIN 500 /* 50 */
 #define MAX17332_NTPRTTH_PERMFAIL_STEP 50 /* 5 */
 
-/* Slave Addresses */
-#define MODELGAUGE_DATA_I2C_ADDR 0x36
+/* Default Slave Addresses */
 #define NONVOLATILE_DATA_I2C_ADDR 0x0B
 
 struct max1720x_platform_data {
@@ -438,6 +437,8 @@ struct max1720x_priv {
 	struct i2c_client *client;
 	struct device *dev;
 	struct regmap *regmap;
+	u8 nonvolatile_address;
+	u8 modelgauge_address;
 	struct power_supply *battery;
 	struct max1720x_platform_data *pdata;
 	struct work_struct init_worker;
@@ -2066,9 +2067,9 @@ static ssize_t register_store_store(struct device *dev,
 	regmap_write(priv->regmap, priv->regs[COMMSTAT_REG], commstat_val & 0xFF06);
 
 	if ((register_val & 0x100) == 0x100) {
-		priv->client->addr = NONVOLATILE_DATA_I2C_ADDR;
+		priv->client->addr = priv->nonvolatile_address;
 		ret = regmap_write(priv->regmap, (register_val & 0xFF), data_val);
-		priv->client->addr = MODELGAUGE_DATA_I2C_ADDR;
+		priv->client->addr = priv->modelgauge_address;
 	} else {
 		ret = regmap_write(priv->regmap, register_val, data_val);
 	}
@@ -4427,7 +4428,7 @@ nvm_block_copy:
 	}
 	try_counter++;
 
-	priv->client->addr = NONVOLATILE_DATA_I2C_ADDR;
+	priv->client->addr = priv->nonvolatile_address;
 	for (i = 0; i < size; i++) {
 		if (base_addr + i == (priv->regs[NROMID0_REG] & 0xFF)) {
 			i = (priv->regs[NROMID3_REG] - base_addr) + 3;
@@ -4448,7 +4449,7 @@ nvm_block_copy:
 		if (data != memory_data)
 			goto nvm_block_copy;
 	}
-	priv->client->addr = MODELGAUGE_DATA_I2C_ADDR;
+	priv->client->addr = priv->modelgauge_address;
 
 	// Clear CommStat.NVError
 	ret = regmap_read(priv->regmap, priv->regs[COMMSTAT_REG], &data);
@@ -4483,7 +4484,7 @@ nvm_block_copy:
 	// Wait 10ms for IC to Rest
 	mdelay(10);
 
-	priv->client->addr = NONVOLATILE_DATA_I2C_ADDR;
+	priv->client->addr = priv->nonvolatile_address;
 	// Verify All Nonvolatile Memory Locations Recalled Correctly
 	for (i = 0; i < size; i++) {
 		if (base_addr + i == (priv->regs[NROMID0_REG] & 0xFF)) {
@@ -4498,7 +4499,7 @@ nvm_block_copy:
 			goto error;
 		}
 	}
-	priv->client->addr = MODELGAUGE_DATA_I2C_ADDR;
+	priv->client->addr = priv->modelgauge_address;
 
 	// Clear CommStat.NVError
 	regmap_write(priv->regmap, priv->regs[COMMSTAT_REG], (data & ~(MAX17330_COMMSTAT_NVERROR)));
@@ -4832,9 +4833,9 @@ static int max1720x_regmap_read(struct max1720x_priv *priv, unsigned int reg, un
 
 	mutex_lock(&priv->lock);
 	if ((reg & 0x100) == 0x100) {
-		priv->client->addr = NONVOLATILE_DATA_I2C_ADDR;
+		priv->client->addr = priv->nonvolatile_address;
 		ret = regmap_read(map, (reg & 0xFF), val);
-		priv->client->addr = MODELGAUGE_DATA_I2C_ADDR;
+		priv->client->addr = priv->modelgauge_address;
 	} else {
 		ret = regmap_read(map, reg, val);
 	}
@@ -4860,9 +4861,9 @@ static int max1720x_regmap_write(struct max1720x_priv *priv, unsigned int reg, u
 			regmap_write(map, priv->regs[COMMSTAT_REG], data & 0xFF06);
 
 			if ((reg & 0x100) == 0x100) {
-				priv->client->addr = NONVOLATILE_DATA_I2C_ADDR;
+				priv->client->addr = priv->nonvolatile_address;
 				ret = regmap_write(map, (reg & 0xFF), val);
-				priv->client->addr = MODELGAUGE_DATA_I2C_ADDR;
+				priv->client->addr = priv->modelgauge_address;
 			} else {
 				ret = regmap_write(map, reg, val);
 			}
@@ -4873,9 +4874,9 @@ static int max1720x_regmap_write(struct max1720x_priv *priv, unsigned int reg, u
 		}
 	} else {
 		if ((reg & 0x100) == 0x100) {
-			priv->client->addr = NONVOLATILE_DATA_I2C_ADDR;
-			ret = regmap_write(map, reg, val);
-			priv->client->addr = MODELGAUGE_DATA_I2C_ADDR;
+			priv->client->addr = priv->nonvolatile_address;
+			ret = regmap_write(map, (reg & 0xFF), val);
+			priv->client->addr = priv->modelgauge_address;
 		} else {
 			ret = regmap_write(map, reg, val);
 		}
@@ -5803,7 +5804,7 @@ static int max1720x_init(struct max1720x_priv *priv)
 			regmap_write(priv->regmap, priv->regs[COMMSTAT_REG], data & 0xFF06);
 			regmap_write(priv->regmap, priv->regs[COMMSTAT_REG], data & 0xFF06);
 
-			priv->client->addr = NONVOLATILE_DATA_I2C_ADDR;
+			priv->client->addr = priv->nonvolatile_address;
 			if (priv->driver_data == ID_MAX17330) {
 				for (reg_ctr = 0; reg_ctr < ARRAY_SIZE(max17330_nvm_defaults); reg_ctr++)
 					regmap_write(priv->regmap, (max17330_nvm_defaults[reg_ctr][0] & 0xFF), max17330_nvm_defaults[reg_ctr][1]);
@@ -5814,7 +5815,7 @@ static int max1720x_init(struct max1720x_priv *priv)
 				for (reg_ctr = 0; reg_ctr < ARRAY_SIZE(max17335_nvm_defaults); reg_ctr++)
 					regmap_write(priv->regmap, (max17335_nvm_defaults[reg_ctr][0] & 0xFF), max17335_nvm_defaults[reg_ctr][1]);
 			}
-			priv->client->addr = MODELGAUGE_DATA_I2C_ADDR;
+			priv->client->addr = priv->modelgauge_address;
 
 			regmap_update_bits(priv->regmap, priv->regs[CONFIG2_REG],
 								MAX1720X_CONFIG2_POR_CMD,
@@ -5919,9 +5920,6 @@ static const struct power_supply_desc max1720x_fg_desc = {
 static const struct i2c_device_id max1720x_id[];
 
 static int max1720x_probe(struct i2c_client *client)
-// TGOYEN
-// static int max1720x_probe(struct i2c_client *client,
-// 						  const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
 	struct max1720x_priv *priv;
@@ -5944,11 +5942,20 @@ static int max1720x_probe(struct i2c_client *client)
 	priv->get_battery_health = get_battery_health_handlers[id->driver_data];
 	register_to_read = 0x180; /* First register of nvm */
 	priv->driver_data = id->driver_data;
+	priv->modelgauge_address = client->addr;
 
-	if (client->dev.of_node)
+	if (client->dev.of_node) {
 		priv->pdata = max1720x_parse_dt(&client->dev);
-	else
+
+		/* Get the nonvolatile address */
+		ret = of_property_read_u8(client->dev.of_node, "nvm_reg", &priv->nonvolatile_address);
+		if (ret)
+			return ret;
+
+	} else {
 		priv->pdata = client->dev.platform_data;
+		priv->nonvolatile_address = NONVOLATILE_DATA_I2C_ADDR;
+	}
 
 	priv->dev = &client->dev;
 
