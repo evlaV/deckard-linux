@@ -2036,19 +2036,23 @@
 // Custom Connector I2C ( Paddle Card )
 &i2c2 {
 	status = "okay";
-	max17320@36 {
+
+	// Southgate/Northgate Primary Built In Battery
+	max17320_primary@36 {
 		compatible  = "maxim,max17320";
-		status				= "okay";
+		status		= "okay";
 		reg         = <0x36>;
+		nvm_reg     = /bits/ 8 <0x0b>;
 		rsense      = <25>;      /* 100's of microOhms */
-		// talrt-min   = <0>;       /* DegreeC */
-		// talrt-max   = <50>;      /* DegreeC */
-		// valrt-min   = <3000>;    /* mV */
-		// valrt-max   = <4500>;    /* mV */
-		// salrt-min   = <1>;       /* Percent */
-		// salrt-max   = <99>;      /* Percent */
-		// ialrt-min   = <(-5000)>; /* mA */
-		// ialrt-max   = <5000>;    /* mA */
+	};
+
+	// Southgate/Northgate Secondary Hotswap Battery
+	max17320_hotswap@76 {
+		compatible  = "maxim,max17320";
+		status		= "okay";
+		reg         = <0x76>;
+		nvm_reg     = /bits/ 8 <0x4b>;
+		rsense      = <25>;      /* 100's of microOhms */
 	};
 
     // PADDLE EEPROM
