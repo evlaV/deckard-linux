@@ -920,6 +920,15 @@
 
 &i2c2 {
 	status = "okay";
+
+	// Southgate/Northgate Primary Built In Battery
+	max17320_primary@36 {
+		compatible  = "maxim,max17320";
+		status		= "okay";
+		reg         = <0x36>;
+		nvm_reg     = /bits/ 8 <0x0b>;
+		rsense      = <25>;      /* 100's of microOhms */
+	};
 	
 	// PADDLE EEPROM
 	eeprom@50 {
