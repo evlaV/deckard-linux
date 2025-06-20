@@ -902,6 +902,28 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 	return devm_snd_soc_register_card(dev, &lpass->card);
 }
 
+static int snd_sm8250_resume(struct device *dev)
+{
+	struct snd_soc_card *card = dev_get_drvdata(dev);
+	struct lpass *lp = snd_soc_card_get_drvdata(card);
+
+	return clk_bulk_prepare_enable(ARRAY_SIZE(lp->clks), lp->clks);
+}
+
+static int snd_sm8250_suspend(struct device *dev)
+{
+	struct snd_soc_card *card = dev_get_drvdata(dev);
+	struct lpass *lp = snd_soc_card_get_drvdata(card);
+
+	clk_bulk_disable_unprepare(ARRAY_SIZE(lp->clks), lp->clks);
+
+	return 0;
+}
+
+static const struct dev_pm_ops snd_sm8250_pm_ops = {
+	SYSTEM_SLEEP_PM_OPS(snd_sm8250_suspend, snd_sm8250_resume)
+};
+
 static const struct of_device_id snd_sm8250_dt_match[] = {
 	{.compatible = "qcom,sm8650-lpass"},
 	{}
@@ -914,6 +936,7 @@ static struct platform_driver snd_sm8250_driver = {
 	.driver = {
 		.name = "snd-sm8250",
 		.of_match_table = snd_sm8250_dt_match,
+		.pm = pm_ptr(&snd_sm8250_pm_ops),
 	},
 };
 module_platform_driver(snd_sm8250_driver);
