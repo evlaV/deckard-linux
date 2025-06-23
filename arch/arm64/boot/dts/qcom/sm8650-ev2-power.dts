@@ -1,0 +1,322 @@
+/dts-v1/;
+
+#include "sm8650-ev2.dts"
+
+//fw_setenv DTB_QCOM sm8650-ev2-power.dtb
+
+//try numbers 0 thru 11 to test different levels of turning things off in the dts
+//note: things like wifi once turned off will mean you'll need to switch back 
+// to a different dtb to get wifi working again
+
+#define POWERTEST 10
+
+#define TO_STR2(x) #x
+#define TO_STR(x) TO_STR2(x)
+
+//to check what powertest you are using:
+//cat /sys/firmware/devicetree/base/chosen/powertest
+
+/ {
+	chosen { 
+		powertest = TO_STR(POWERTEST) ;
+	};
+};
+
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+#if POWERTEST > 0
+// test 0: 2.0564 W
+/ {
+	/delete-node/ vdd-nsp;
+	/delete-node/ vdd-nsp2;
+	/delete-node/ eyetck_dovdd_1v8;
+};
+#endif
+
+
+#if POWERTEST > 1
+// test 1: 1.6013 W
+&cci1 {
+	status = "disabled";
+};
+#endif
+
+
+#if POWERTEST > 2
+// test 2: 1.3934 W
+&mdss {
+	status = "disabled";
+};
+
+&dispcc {
+	status = "disabled";
+};
+
+&mdss_dsi0 {
+	status = "disabled";
+};
+
+&mdss_dsi0_phy {
+	status = "disabled";
+};
+
+&mdss_dsi1 {
+	status = "disabled";
+};
+
+&mdss_dsi1_phy {
+	status = "disabled";
+};
+#endif
+
+
+#if POWERTEST > 3
+// test 3: 0.9273 W
+&pcie0 {
+	status = "disabled";
+};
+
+&pcie0_phy {
+	status = "disabled";
+};
+
+&WCN7850_PMU {
+	status = "disabled";
+};
+
+&pcie1 {
+	status = "disabled";
+};
+
+&pcie1_phy {
+	status = "disabled";
+};
+#endif
+
+
+#if POWERTEST > 4
+// test 4: 0.8578 W
+&lpass_tlmm {
+	status = "disabled";
+};
+
+&i2c2 {
+	status = "disabled";
+};
+
+//&eud {
+	//status = "disabled";
+//};
+
+&usb_dp_qmpphy {
+	status = "disabled";
+};
+
+&usb_1_hsphy {
+	status = "disabled";
+};
+
+&usb_1 {
+	status = "disabled";
+};
+#endif
+
+
+#if POWERTEST > 5
+// test 5: 0.7680 W
+&videocc {
+	status = "disabled";
+};
+
+&gpu {
+	status = "disabled";
+};
+
+&gmu {
+	status = "disabled";
+};
+#endif
+
+
+#if POWERTEST > 6
+// test 6: 0.7379 W
+
+&adsp {
+	status = "disabled";
+};
+
+&camcc {
+	status = "disabled";
+};
+
+&cci2 {
+	status = "disabled";
+};
+
+&cci1 {
+	status = "disabled";
+};
+
+&cci0 {
+	status = "disabled";
+};
+
+&cci2_i2c0 {
+	sensor@60 {
+		status = "disabled";
+	};
+
+	sensor@36 {
+		status = "disabled";
+	};
+};
+
+&cci2_i2c1 {
+	sensor@60 {
+		status = "disabled";
+	};
+	sensor@3e {
+		status = "disabled";
+	};
+};
+
+&camss {
+	status = "disabled";
+};
+#endif
+
+
+#if POWERTEST > 7
+// test 7: 0.7128 W
+&BACKLIGHT_PREBOOST {
+	status = "disabled";
+};
+
+&LCD_BIAS {
+	status = "disabled";
+};
+
+&i2c4 {
+	// right backlight
+	mpq3367_right@38 {
+		status = "disabled";
+	};
+};
+
+&i2c5 {
+	// left backlight
+	mpq3367_left@38 {
+		status = "disabled";
+	};
+};
+
+
+&FPGA_clk {
+	status = "disabled";
+};
+
+&fpga {
+	status = "disabled";
+};
+
+
+&gpi_dma1 {
+	status = "disabled";
+};
+
+&sdhc_2 {
+	status = "disabled";
+};
+
+#endif
+
+
+#if POWERTEST > 8
+// test 8: 0.7380 W
+&cvp {
+	status = "disabled";
+};
+#endif
+
+
+#if POWERTEST > 9
+// test 9: 0.6490 W
+
+&audiocc {
+	status = "disabled";
+};
+
+&aoncc {
+	status = "disabled";
+};
+
+&lpasscc {
+	status = "disabled";
+};
+
+&lpass_hm {
+	status = "disabled";
+};
+
+&sound {
+	status = "disabled";
+};
+
+&iris {
+	status = "disabled";
+};
+
+&pm8550b_vbus {
+	status = "disabled";
+};
+
+&pm8550b_typec {
+	status = "disabled";
+};
+
+&pm8550b_eusb2_repeater {
+	status = "disabled";
+};
+
+&i2c4 {
+	slg4ax46073v@8 {
+		status = "disabled";
+	};
+};
+
+&i2c4 {
+	/* 3D Hall Sensor I2C */
+	als31300@6c {
+		status = "disabled";
+	};
+};
+
+// Prox Sensor I2C
+&i2c_hub_8 {
+	light-sensor@60 {
+		status = "disabled";
+	};
+};
+
+&i2c4 {
+	mp3317@28{
+		status = "disabled";
+	};
+};
+#endif
+
+
+#if POWERTEST > 10
+//test 10: xxx
+// initrd
+
+&ufs_mem_hc {
+	status = "disabled";
+};
+
+&ufs_mem_phy {
+	status = "disabled";
+};
+#endif
+
