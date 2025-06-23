@@ -368,7 +368,7 @@
 		vin-supply = <&vph_pwr>;
 	};
 
-	wcn7850-pmu {
+	WCN7850_PMU: wcn7850-pmu {
 		compatible = "qcom,wcn7850-pmu";
 
 		pinctrl-names = "default";
