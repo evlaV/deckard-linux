@@ -889,7 +889,7 @@ static void max98390_init_regs(struct snd_soc_component *component)
 
 	regmap_write(max98390->regmap, MAX98390_CLK_MON, 0x6f);
 	regmap_write(max98390->regmap, MAX98390_DAT_MON, 0x00);
-	regmap_write(max98390->regmap, MAX98390_PWR_GATE_CTL, 0x00);
+	regmap_write(max98390->regmap, MAX98390_PWR_GATE_CTL, 0x2f);
 	regmap_write(max98390->regmap, MAX98390_PCM_RX_EN_A, 0x03);
 	regmap_write(max98390->regmap, MAX98390_ENV_TRACK_VOUT_HEADROOM, 0x0e);
 	regmap_write(max98390->regmap, MAX98390_BOOST_BYPASS1, 0x46);
