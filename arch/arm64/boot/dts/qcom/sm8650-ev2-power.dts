@@ -8,7 +8,7 @@
 //note: things like wifi once turned off will mean you'll need to switch back 
 // to a different dtb to get wifi working again
 
-#define POWERTEST 10
+#define POWERTEST 12
 
 #define TO_STR2(x) #x
 #define TO_STR(x) TO_STR2(x)
@@ -22,6 +22,7 @@
 	};
 };
 
+#if POWERTEST < 12
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
@@ -320,3 +321,95 @@
 };
 #endif
 
+#endif
+
+
+
+#if POWERTEST == 12
+
+#if 1
+//350mW
+&WCN7850_PMU {
+	status = "disabled";
+};
+
+&pcie0 {
+	status = "disabled";
+};
+
+&pcie0_phy {
+	status = "disabled";
+};
+
+&pcie1 {
+	status = "disabled";
+};
+
+&pcie1_phy {
+	status = "disabled";
+};
+#endif
+
+
+#if 1
+//about 150-200mW
+&FPGA_clk {
+	status = "disabled";
+};
+
+&fpga {
+	status = "disabled";
+};
+#endif
+
+
+#if 1
+//120mW
+&aoncc {
+	status = "disabled";
+};
+
+&cvp {
+	status = "disabled";
+};
+
+&iris {
+	status = "disabled";
+};
+#endif
+
+
+#if 1
+//~100mW
+/ {
+	/delete-node/ vdd-nsp;
+	/delete-node/ vdd-nsp2;
+};
+#endif
+
+#if 1
+//100mW
+&adsp {
+	status = "disabled";
+};
+
+&camcc {
+	status = "disabled";
+};
+
+&camss {
+	status = "disabled";
+};
+#endif
+
+#if 1
+//30mW
+&videocc {
+	status = "disabled";
+};
+#endif
+
+
+
+
+#endif
