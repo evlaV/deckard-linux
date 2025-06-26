@@ -464,39 +464,56 @@ static int max98390_dai_set_sysclk(struct snd_soc_dai *dai,
 	return 0;
 }
 
-static const struct snd_soc_dai_ops max98390_dai_ops = {
-	.set_sysclk = max98390_dai_set_sysclk,
-	.set_fmt = max98390_dai_set_fmt,
-	.hw_params = max98390_dai_hw_params,
-	.set_tdm_slot = max98390_dai_tdm_slot,
-};
-
-static int max98390_dac_event(struct snd_soc_dapm_widget *w,
-		struct snd_kcontrol *kcontrol, int event)
+static void max98390_mute_work(struct work_struct *work)
 {
-	struct snd_soc_component *component =
-		snd_soc_dapm_to_component(w->dapm);
 	struct max98390_priv *max98390 =
-		snd_soc_component_get_drvdata(component);
+		container_of(work, struct max98390_priv, mute_work);
 
-	switch (event) {
-	case SND_SOC_DAPM_POST_PMU:
+	if (max98390->mute) {
+		regmap_update_bits(max98390->regmap,
+			MAX98390_R23FF_GLOBAL_EN,
+			MAX98390_GLOBAL_EN_MASK, 0);
+		msleep(50);
+		regmap_update_bits(max98390->regmap,
+			MAX98390_R203A_AMP_EN,
+			MAX98390_AMP_EN_MASK, 0);
+	} else {
 		regmap_update_bits(max98390->regmap,
 			MAX98390_R203A_AMP_EN,
 			MAX98390_AMP_EN_MASK, 1);
 		regmap_update_bits(max98390->regmap,
 			MAX98390_R23FF_GLOBAL_EN,
 			MAX98390_GLOBAL_EN_MASK, 1);
-		break;
-	case SND_SOC_DAPM_POST_PMD:
-		regmap_update_bits(max98390->regmap,
-			MAX98390_R23FF_GLOBAL_EN,
-			MAX98390_GLOBAL_EN_MASK, 0);
-		regmap_update_bits(max98390->regmap,
-			MAX98390_R203A_AMP_EN,
-			MAX98390_AMP_EN_MASK, 0);
-		break;
+		msleep(10);
 	}
+}
+
+static int max98390_dac_mute(struct snd_soc_dai *dai, int mute, int stream)
+{
+	struct snd_soc_component *component = dai->component;
+	struct max98390_priv *max98390 =
+		snd_soc_component_get_drvdata(component);
+
+	if (max98390->mute != mute) {
+		max98390->mute = mute;
+		schedule_work(&max98390->mute_work);
+	}
+
+	return 0;
+}
+
+static const struct snd_soc_dai_ops max98390_dai_ops = {
+	.set_sysclk = max98390_dai_set_sysclk,
+	.set_fmt = max98390_dai_set_fmt,
+	.hw_params = max98390_dai_hw_params,
+	.set_tdm_slot = max98390_dai_tdm_slot,
+	.mute_stream = max98390_dac_mute,
+	.mute_unmute_on_trigger = true,
+};
+
+static int max98390_dac_event(struct snd_soc_dapm_widget *w,
+		struct snd_kcontrol *kcontrol, int event)
+{
 	return 0;
 }
 
@@ -1128,6 +1145,9 @@ static int max98390_i2c_probe(struct i2c_client *i2c)
 				       &max98390->dsm_param_name);
 	if (ret)
 		max98390->dsm_param_name = "default";
+
+	max98390->mute = 1;
+	INIT_WORK(&max98390->mute_work, max98390_mute_work);
 
 	/* voltage/current slot configuration */
 	max98390_slot_config(i2c, max98390);
