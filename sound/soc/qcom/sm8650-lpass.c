@@ -389,6 +389,7 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 					 int cmd)
 {
 	TRACE_BEGIN_CTX();
+	struct lpass *lpass = snd_soc_component_get_drvdata(component);
 	struct lpaif *aif = find_aif(component, substream);
 	u32 codec_intf = DMA_CODEC_INTF_NUM_ACTIVE_CHANNEL(3) |
 		DMA_CODEC_INTF_CODEC_INTF((aif->id == AIF_WSA2 ? 2 : 1)) |
@@ -419,6 +420,7 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 			aif_write(REG_DMA_CTL(aif, 0), DMA_CTL_ENABLE | DMA_CTL_FIFO_WATERMARK(0x7) |
 				DMA_CTL_AUDIO_INTF(1) | RDDMA_CTL_WPSCNT(0) | RDDMA_CTL_BURST_EN |
 				RDDMA_CTL_DYNAMIC_CLOCK);
+			clk_enable(lpass->clks[5].clk);
 			break;
 		case AIF_WSA2:
 			aif_write(REG_DMA_CTL(aif, 0), DMA_CTL_ENABLE | DMA_CTL_FIFO_WATERMARK(0x7) |
@@ -509,6 +511,8 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 		}
 		if (aif->id == AIF_VA)
 			writel(0, REG_IRQ_EN(aif));
+		if (aif->id == AIF_SPKR_I2S)
+			clk_disable(lpass->clks[5].clk);
 		break;
 	}
 	return 0;
@@ -667,11 +671,14 @@ static int sm8250_platform_probe(struct platform_device *pdev)
 	clk_set_rate(lpass->clks[4].clk, 24576000);
 	clk_set_rate(lpass->clks[5].clk, 48000*32);
 
-	ret = clk_bulk_prepare_enable(ARRAY_SIZE(lpass->clks), lpass->clks);
+	// Do not enable the I2S BIT clock
+	ret = clk_bulk_prepare_enable(5, lpass->clks);
 	if (ret) {
 		dev_err(dev, "Failed to enable clocks %d\n", ret);
 		return ret;
 	}
+	// Prepare the I2S BIT clock and enable later
+	clk_prepare(lpass->clks[5].clk);
 	/* XXX: unprepare clocks on cleanup */
 
 	for (i = 0; i < 4; i++) {
@@ -907,7 +914,8 @@ static int snd_sm8250_resume(struct device *dev)
 	struct snd_soc_card *card = dev_get_drvdata(dev);
 	struct lpass *lp = snd_soc_card_get_drvdata(card);
 
-	return clk_bulk_prepare_enable(ARRAY_SIZE(lp->clks), lp->clks);
+	// Do not touch the I2S BIT CLOCK
+	return clk_bulk_prepare_enable(5, lp->clks);
 }
 
 static int snd_sm8250_suspend(struct device *dev)
@@ -915,7 +923,8 @@ static int snd_sm8250_suspend(struct device *dev)
 	struct snd_soc_card *card = dev_get_drvdata(dev);
 	struct lpass *lp = snd_soc_card_get_drvdata(card);
 
-	clk_bulk_disable_unprepare(ARRAY_SIZE(lp->clks), lp->clks);
+	// Do not touch the I2S BIT CLOCK
+	clk_bulk_disable_unprepare(5, lp->clks);
 
 	return 0;
 }
