@@ -914,7 +914,8 @@ static int snd_sm8250_resume(struct device *dev)
 	struct snd_soc_card *card = dev_get_drvdata(dev);
 	struct lpass *lp = snd_soc_card_get_drvdata(card);
 
-	return clk_bulk_prepare_enable(ARRAY_SIZE(lp->clks), lp->clks);
+	// Do not touch the I2S BIT CLOCK
+	return clk_bulk_prepare_enable(5, lp->clks);
 }
 
 static int snd_sm8250_suspend(struct device *dev)
@@ -922,7 +923,8 @@ static int snd_sm8250_suspend(struct device *dev)
 	struct snd_soc_card *card = dev_get_drvdata(dev);
 	struct lpass *lp = snd_soc_card_get_drvdata(card);
 
-	clk_bulk_disable_unprepare(ARRAY_SIZE(lp->clks), lp->clks);
+	// Do not touch the I2S BIT CLOCK
+	clk_bulk_disable_unprepare(5, lp->clks);
 
 	return 0;
 }
