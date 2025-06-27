@@ -349,8 +349,7 @@ static int context_init(struct drm_device *dev, struct drm_file *file)
 	rwlock_init(&ctx->queuelock);
 
 	kref_init(&ctx->ref);
-	//TODO only skip creation for KGSL
-	//msm_submitqueue_init(dev, ctx);
+	msm_submitqueue_init(dev, ctx);
 
 	ctx->aspace = msm_gpu_create_private_address_space(priv->gpu, current);
 	file->driver_priv = ctx;
