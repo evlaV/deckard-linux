@@ -796,7 +796,7 @@ static void em_check_capacity_update(void)
 
 		policy = cpufreq_cpu_get(cpu);
 		if (!policy) {
-			pr_debug("Accessing cpu%d policy failed\n", cpu);
+			pr_warn_once("Accessing cpu%d policy failed\n", cpu);
 			schedule_delayed_work(&em_update_work,
 					      msecs_to_jiffies(1000));
 			break;
