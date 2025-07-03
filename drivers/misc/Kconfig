@@ -609,6 +609,16 @@ config MARVELL_CN10K_DPI
 
 	  To compile this driver as a module, choose M here: the module
 	  will be called mrvl_cn10k_dpi.
+      
+
+config RENESAS_NORTHGATE
+	tristate "Renesas Northgate Paddle and Hotswap I2C Controllers"
+	select REGMAP_I2C
+	help
+	  GPIO driver for Deckard Silego Northgate Paddle Controllers
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called renesas-northgate-paddle.
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"

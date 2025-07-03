@@ -14,7 +14,7 @@
 #include "sm8650-el2.dtsi"
 
 / {
-	model = "SM8650 EV3 rev1 4slam 2et";
+	model = "SM8650 EV3 rev1 4slam 2et enthusiast";
 	compatible = "qcom,sm8650-ev3", "qcom,sm8650";
 
 	aliases {
@@ -2070,11 +2070,31 @@
 
 		status = "ok";
 	};
+    
+	// Northgate/Enthusiast Paddle Card MCU
+	r7fa2e1a9@61 {
+		compatible = "renesas,northgate_paddle";
+		reg = <0x61>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		status = "ok";
+	};
 
 	// Northgate/Enthusiast Hotswap Card Silego
 	slg4ad48669m@18 {
 		compatible = "silego,northgate_hotswap";
 		reg = <0x18>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		status = "ok";
+	};
+
+	// Northgate/Enthusiast Hotswap Card MCU
+	r7fa2e1a9@3A {
+		compatible = "renesas,northgate_hotswap";
+		reg = <0x3A>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 
