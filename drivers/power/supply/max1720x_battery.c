@@ -437,6 +437,7 @@ struct max1720x_priv {
 	struct i2c_client *client;
 	struct device *dev;
 	struct regmap *regmap;
+	struct power_supply_desc battery_desc;
 	u8 nonvolatile_address;
 	u8 modelgauge_address;
 	struct power_supply *battery;
@@ -5907,16 +5908,6 @@ static const struct regmap_config max1720x_regmap = {
 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
 };
 
-static const struct power_supply_desc max1720x_fg_desc = {
-	.name = "max1720x_battery",
-	.type = POWER_SUPPLY_TYPE_BATTERY,
-	.properties = max1720x_battery_props,
-	.num_properties = ARRAY_SIZE(max1720x_battery_props),
-	.get_property = max1720x_get_property,
-	.set_property = max1720x_set_property,
-	.property_is_writeable = max1720x_property_is_writeable,
-};
-
 static const struct i2c_device_id max1720x_id[];
 
 static int max1720x_probe(struct i2c_client *client)
@@ -5957,6 +5948,16 @@ static int max1720x_probe(struct i2c_client *client)
 		priv->nonvolatile_address = NONVOLATILE_DATA_I2C_ADDR;
 	}
 
+	/* Setup Battery Description */
+	priv->battery_desc.name = devm_kasprintf(&client->dev, GFP_KERNEL,
+					"max1720x_bat_%0d-%02x", client->adapter->nr, priv->modelgauge_address);
+	priv->battery_desc.type = POWER_SUPPLY_TYPE_BATTERY;
+	priv->battery_desc.properties = max1720x_battery_props;
+	priv->battery_desc.num_properties = ARRAY_SIZE(max1720x_battery_props);
+	priv->battery_desc.get_property = max1720x_get_property;
+	priv->battery_desc.set_property = max1720x_set_property;
+	priv->battery_desc.property_is_writeable = max1720x_property_is_writeable;	
+
 	priv->dev = &client->dev;
 
 	mutex_init(&priv->lock);
@@ -5977,8 +5978,8 @@ static int max1720x_probe(struct i2c_client *client)
 	schedule_work(&priv->init_worker);
 
 	psy_cfg.drv_data = priv;
-	priv->battery = power_supply_register(&client->dev,
-										  &max1720x_fg_desc, &psy_cfg);
+	priv->battery = devm_power_supply_register(&client->dev,
+										  &priv->battery_desc, &psy_cfg);
 	if (IS_ERR(priv->battery)) {
 		ret = PTR_ERR(priv->battery);
 		dev_err(&client->dev, "failed to register battery: %d\n", ret);
@@ -6034,12 +6035,12 @@ static int max1720x_probe(struct i2c_client *client)
 
 	return 0;
 
-err_irq:
-	power_supply_unregister(priv->battery);
-err_supply:
-	cancel_work_sync(&priv->init_worker);
 err_attr:
 	sysfs_remove_group(&priv->dev->kobj, priv->attr_grp);
+err_irq:
+err_supply:
+	cancel_work_sync(&priv->init_worker);
+
 	return ret;
 }
 
@@ -6049,7 +6050,6 @@ static void max1720x_remove(struct i2c_client *client)
 
 	cancel_work_sync(&priv->init_worker);
 	sysfs_remove_group(&priv->dev->kobj, priv->attr_grp);
-	power_supply_unregister(priv->battery);
 }
 
 #ifdef CONFIG_PM_SLEEP
