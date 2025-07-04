@@ -1027,8 +1027,14 @@ static int __maybe_unused geni_i2c_suspend_noirq(struct device *dev)
 {
 	struct geni_i2c_dev *gi2c = dev_get_drvdata(dev);
 
-	if (!strcmp(dev_name(dev), "a94000.i2c")) {
-		dev_warn(dev, "skipping noirq suspend");
+	if (!strcmp(dev_name(dev), "a94000.i2c") ||
+		!strcmp(dev_name(dev), "a88000.i2c")) {
+		dev_warn(dev, "skipping noirq suspend\n");
+
+		geni_i2c_runtime_resume(dev);
+		pm_runtime_disable(dev);
+		pm_runtime_set_active(dev);
+
 		return 0;
 	}
 
@@ -1047,8 +1053,12 @@ static int __maybe_unused geni_i2c_resume_noirq(struct device *dev)
 {
 	struct geni_i2c_dev *gi2c = dev_get_drvdata(dev);
 
-	if (!strcmp(dev_name(dev), "a94000.i2c")) {
-		dev_warn(dev, "skipping noirq resume");
+	if (!strcmp(dev_name(dev), "a94000.i2c") ||
+		!strcmp(dev_name(dev), "a88000.i2c")) {
+		dev_warn(dev, "skipping noirq resume\n");
+
+		pm_runtime_enable(dev);
+
 		return 0;
 	}
 
