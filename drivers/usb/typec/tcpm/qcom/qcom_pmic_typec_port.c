@@ -620,5 +620,7 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 			return ret;
 	}
 
+	qcom_pmic_typec_port_legacy_cable_reset(pmic_typec_port);
+
 	return 0;
 }
