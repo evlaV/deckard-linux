@@ -5040,11 +5040,12 @@ static void run_state_machine(struct tcpm_port *port)
 		 * were already in a stable contract before this boot.
 		 * Do this only once.
 		 */
+		if ( port->tcpc->qcom_legacy_reset ) {
+			tcpm_log(port, "Vbus never low, attempting legacy cable reset");
+			port->tcpc->qcom_legacy_reset(port->tcpc);
+		}
+
 		if (port->vbus_never_low) {
-			if ( port->tcpc->qcom_legacy_reset ) {
-				tcpm_log(port, "Vbus never low, attempting legacy cable reset");
-				port->tcpc->qcom_legacy_reset(port->tcpc);
-			}
 			port->vbus_never_low = false;
 			tcpm_set_state(port, SNK_SOFT_RESET,
 				       PD_T_SINK_WAIT_CAP);
