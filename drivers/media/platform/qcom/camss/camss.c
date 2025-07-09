@@ -4282,6 +4282,17 @@ void camss_report_hw_error(struct camss *camss, int hw_id, int port_id, struct c
        }
 }
 
+void camss_trigger_delayed_csid_vfe_register_update(struct camss *camss, int hw_id, int port_id)
+{
+	struct csid_device *csid;
+
+	if (hw_id < camss->res->csid_num) {
+		csid = &(camss->csid[hw_id]);
+
+		csid->res->hw_ops->trigger_delayed_csid_vfe_register_update(csid, port_id);
+	}
+}
+
 /*
  * camss_register_entities - Register subdev nodes and create links
  * @camss: CAMSS device
