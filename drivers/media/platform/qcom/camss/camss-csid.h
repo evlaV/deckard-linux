@@ -100,6 +100,8 @@ struct camss_buf_done_info {
 	u64 sof_kernel_ts;
 	void* sensor_metadata_buffer_addr;
 	size_t sensor_metadata_buffer_size;
+	u64 last_delayed_regs_update_start_ts;
+	u64 last_delayed_regs_update_end_ts;
 };
 
 struct csid_device;
@@ -168,9 +170,12 @@ struct csid_hw_ops {
 	 */
 	void (*reg_update)(struct csid_device *csid, int port_id, bool is_clear);
 
+	void (*trigger_delayed_csid_vfe_register_update)(struct csid_device *csid, int port_id);
+
 	// Allow CSID and VFE registers read/write from userspace using ioctls
 	int (*set_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
 	int (*get_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
+	int (*set_csid_vfe_registers_delayed)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
 	// Configure which of the additional ISP output (frameheader, statistics) is streamed and provided with the metadata buffers
 	long (*set_statistics_config)(struct csid_device *csid, u32 stats_cfg);
 };
@@ -217,6 +222,25 @@ struct csid_device {
 	// additional vc config
 	u32 multi_vcdt_en;
 	u32 multi_vcdt_vc;
+
+	// Delayed CSID/VFE register update date
+#define CSID_VFE_UPDATE_BUFFER_COUNT (2)
+#define CSID_VFE_UPDATE_BUFFER_MAX_NUM_REGISTERS (32 * 1024) // 32K registers seems resonnable, we can easily reach 5K when updating LUTs
+#define CSID_VFE_UPDATE_BUFFER_SIZE	(sizeof(struct csid_vfe_private_register) * CSID_VFE_UPDATE_BUFFER_MAX_NUM_REGISTERS)
+#define CSID_VFE_UPDATE_BUFFER_STATUS_AVAILABLE 			0 // new registers can be added through ioctl calls
+#define CSID_VFE_UPDATE_BUFFER_STATUS_READY 				1 // ready to be flushed to hardware on next frame completion
+#define CSID_VFE_UPDATE_BUFFER_STATUS_IN_USE 				2 // buffer is being flushed to hw registers
+	bool csid_vfe_regs_delayed_update_supported;
+	struct workqueue_struct *csid_vfe_regs_update_wq;
+	struct work_struct csid_vfe_regs_update_work;
+	atomic_t csid_vfe_regs_update_in_progress;
+	// Add buffers and status
+	void* csid_vfe_regs_update_buffers[CSID_VFE_UPDATE_BUFFER_COUNT];
+	u32 csid_vfe_regs_update_buffers_regs_count[CSID_VFE_UPDATE_BUFFER_COUNT];
+	atomic_t csid_vfe_regs_update_buffers_status[CSID_VFE_UPDATE_BUFFER_COUNT];
+	// Need atomic reg update timestamp read/write
+	atomic64_t last_csid_vfe_regs_update_start_ts;
+	atomic64_t last_csid_vfe_regs_update_end_ts;
 
 #define CSID_RX_DEBUG 1
 #if CSID_RX_DEBUG
