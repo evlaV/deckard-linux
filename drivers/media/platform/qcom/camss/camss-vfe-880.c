@@ -179,6 +179,18 @@ static u32 vfe_get_extra_output_type_packer_format(struct vfe_device *vfe, enum 
 	return format;
 }
 
+static bool vfe_is_sw_extra_output_type(enum camss_extra_output_type type)
+{
+	switch(type)
+	{
+		case CAMSS_EXTRA_OUTPUT_TYPE_META:
+		case CAMSS_EXTRA_OUTPUT_TYPE_META_2:
+			return true;
+		default:
+			return false;
+	}
+}
+
 static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 {
 	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
@@ -211,7 +223,7 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 				u32 comp_group = 0;
 				u32 packer_format = 0;
 				u32 mode = 0;
-				if(!ext_cfg->extra_output_en[type] || (type == CAMSS_EXTRA_OUTPUT_TYPE_META))
+				if(!ext_cfg->extra_output_en[type] || vfe_is_sw_extra_output_type(type))
 					continue;
 
 				wm = vfe_get_extra_output_type_wm(vfe, type);
@@ -361,7 +373,7 @@ static void vfe_update_buffer_status(struct vfe_device *vfe, struct vfe_line *li
 				u32 wm = 0;
 				u32 comp_group = 0;
 				u32 plane_offset = 0;
-				if(!ext_cfg->extra_output_en[type] || (type == CAMSS_EXTRA_OUTPUT_TYPE_META))
+				if(!ext_cfg->extra_output_en[type] || vfe_is_sw_extra_output_type(type))
 					continue;
 
 				wm = vfe_get_extra_output_type_wm(vfe, type);
@@ -464,6 +476,10 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 		goto out_unlock;
 	}
 
+	// Buffer is complete and CSID/IFE delayed regs update can be safely applied until a new frames start being received
+	// This is done through an async work triggered by the CSID
+	camss_trigger_delayed_csid_vfe_register_update(vfe->camss, vfe->id, line->id);
+
 	ready_buf = output->buf[0];
 	ready_buf->vb.vb2_buf.timestamp = ts_monotonic_raw;
 	ready_buf->vb.sequence = output->sequence++;
@@ -485,7 +501,7 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 
 	if(line->video_out.has_extra_output_plane_cfg)
 	{
-		// Only the META output needs to be pushed by the kernel side, everything else is directly streamed by the hardware
+		// Only some extra output types like META/META_2 need to be pushed by the kernel side, everything else is directly streamed by the hardware
 		if(line->video_out.extra_output_plane_cfg.extra_output_en[CAMSS_EXTRA_OUTPUT_TYPE_META])
 		{
 			// When using the extended configuration to output metadata we copy directly the metadata info the configured
@@ -507,7 +523,23 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 			u32 plane_offset = line->video_out.extra_output_plane_cfg.extra_output_offset[CAMSS_EXTRA_OUTPUT_TYPE_META];
 			nb_copied = sg_pcopy_from_buffer(ready_buf->extra_output_plane_sgt->sgl, ready_buf->extra_output_plane_sgt->nents, &meta, sizeof(meta), plane_offset);
 			if(nb_copied != sizeof(meta)) {
-				dev_err(vfe->camss->dev, "Failed to copy metadata");
+				dev_err(vfe->camss->dev, "Failed to copy camss_metadata");
+			}
+		}
+		if(line->video_out.extra_output_plane_cfg.extra_output_en[CAMSS_EXTRA_OUTPUT_TYPE_META_2])
+		{
+			size_t nb_copied;
+			struct camss_metadata_2 meta_2 = {0};
+			meta_2.version = CAMSS_EXTRA_OUTPUT_METADATA_2_VERSION;
+			meta_2.size = sizeof(struct camss_metadata_2);
+			// -----
+			meta_2.last_delayed_regs_update_start_ts = buf_done_info->last_delayed_regs_update_start_ts;
+			meta_2.last_delayed_regs_update_end_ts = buf_done_info->last_delayed_regs_update_end_ts;
+
+			u32 plane_offset = line->video_out.extra_output_plane_cfg.extra_output_offset[CAMSS_EXTRA_OUTPUT_TYPE_META_2];
+			nb_copied = sg_pcopy_from_buffer(ready_buf->extra_output_plane_sgt->sgl, ready_buf->extra_output_plane_sgt->nents, &meta_2, sizeof(meta_2), plane_offset);
+			if(nb_copied != sizeof(meta_2)) {
+				dev_err(vfe->camss->dev, "Failed to copy camss_metadata_2");
 			}
 		}
 	}
@@ -597,7 +629,7 @@ static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *bu
 				u32 fh_plane_offset = line->video_out.extra_output_plane_cfg.extra_output_frameheader_offset[type];
 
 				// Ignore meta output since it's written by the driver itself
-				if(!line->video_out.extra_output_plane_cfg.extra_output_en[type] || type == CAMSS_EXTRA_OUTPUT_TYPE_META)
+				if(!line->video_out.extra_output_plane_cfg.extra_output_en[type] || vfe_is_sw_extra_output_type(type))
 					continue;
 
 				wm = vfe_get_extra_output_type_wm(vfe, type);
