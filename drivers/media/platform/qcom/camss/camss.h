@@ -176,5 +176,6 @@ void camss_buf_done(struct camss *camss, int hw_id, int port_id, struct camss_bu
 void camss_reg_update(struct camss *camss, int hw_id,
 		      int port_id, bool is_clear);
 void camss_report_hw_error(struct camss *camss, int hw_id, int port_id, struct camss_hw_error_info *error_info);
+void camss_trigger_delayed_csid_vfe_register_update(struct camss *camss, int hw_id, int port_id);
 
 #endif /* QC_MSM_CAMSS_H */

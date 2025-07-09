@@ -28,6 +28,12 @@
 #define VIDIOC_PRIV_S_MULTI_VCDT_CFG _IO('V', BASE_VIDIOC_PRIVATE + 4) // takes the second vc enabled as parameter
 // TODO: add layout config ioctl (to set plane stride and offsets)
 
+// S_REGS_DELAYED can be used to queue CSID/VFE register updates into buffers that are flused to hardware registers
+// after the next frame completion. This is used to help avoiding ISP updates during the frame readout, which can lead
+// to visual artifacts. ISP update timing infos are provided as part of CAMSS_EXTRA_OUTPUT_TYPE_META_2 and can 
+// be used to compare against frame SOF/EOF timings to make sure no ISP update happened during the readout.
+#define VIDIOC_PRIV_S_REGS_DELAYED _IOW('V', BASE_VIDIOC_PRIVATE + 5, struct csid_vfe_private_registers_config)
+
 // Private events
 #define V4L2_EVENT_CAMSS_HW_ERROR   (V4L2_EVENT_PRIVATE_START + 1)
 
@@ -48,6 +54,8 @@ enum camss_extra_output_type
 	CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BHIST,
 	CAMSS_EXTRA_OUTPUT_TYPE_STATS_AWB_BG,
 	CAMSS_EXTRA_OUTPUT_TYPE_STATS_TINTLESS_BG,
+
+	CAMSS_EXTRA_OUTPUT_TYPE_META_2,
 
 	CAMSS_EXTRA_OUTPUT_TYPE_END,
 	CAMSS_EXTRA_OUTPUT_TYPE_MAX = 32 // Reserve some additional types for future additions
@@ -87,6 +95,21 @@ struct camss_metadata {
 	s64 isp_to_kernel_raw_ts_offset;
 	uint8_t sensorMetaDataBuffer[1208];
 };
+
+// A few rules to help ensuring backward compatibility on that structure
+// Never remove any of the structure members here or change the order
+// New members can be added at the end of the structure but the version must be changed accordingly
+// so that userspace application can detect if the structure/driver supports the members needed.
+#define CAMSS_EXTRA_OUTPUT_METADATA_2_MAX_BUFFER_SIZE (4096)
+#define CAMSS_EXTRA_OUTPUT_METADATA_2_VERSION (1)
+struct camss_metadata_2 {
+	u32 version;
+	u32 size;
+	// ----------
+	u64 last_delayed_regs_update_start_ts;
+	u64 last_delayed_regs_update_end_ts;
+};
+static_assert(sizeof(struct camss_metadata_2) <= CAMSS_EXTRA_OUTPUT_METADATA_2_MAX_BUFFER_SIZE);
 
 struct camss_buffer {
 	struct vb2_v4l2_buffer vb;
