@@ -926,6 +926,15 @@ static long video_ioctl(struct file *file, void *fh, bool valid_prio, unsigned i
 				return -EINVAL;
 			}
 			break;
+		case VIDIOC_PRIV_S_REGS_DELAYED:
+			if(csid->res->hw_ops->set_csid_vfe_registers_delayed) {
+				ret = csid->res->hw_ops->set_csid_vfe_registers_delayed(csid, arg);
+			}
+			else {
+				// Operation not supported
+				return -EINVAL;
+			}
+			break;
 		case VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY:
 			ret = video_set_extra_output_plane_config(video, arg, true);
 			break;
