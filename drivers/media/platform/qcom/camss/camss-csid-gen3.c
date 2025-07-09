@@ -11,6 +11,7 @@
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/of.h>
+#include <linux/workqueue.h>
 
 #include "camss.h"
 #include "camss-csid.h"
@@ -238,9 +239,9 @@ static void update_isp_to_kernel_raw_ts_offset_estimate(struct csid_device *csid
 		// 	s64 diff = isp_to_kernel_raw_ts_offset_floor[j] - isp_to_kernel_raw_ts_offset_floor[0];
 		// 	dev_info(csid->camss->dev, "Estimator %d diff from 0: %lld ns\n", j, diff);
 		// }
-		u64 check_start = ktime_get_raw_ns();
+		//u64 check_start = ktime_get_raw_ns();
 		check_and_switch_estimators(csid);
-		u64 check_end = ktime_get_raw_ns();
+		//u64 check_end = ktime_get_raw_ns();
 		//dev_info(csid->camss->dev, "Estimator check took %lld ns\n", check_end - check_start);
 	}
 }
@@ -402,6 +403,12 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 		memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
 		camss_buf_done(csid->camss, csid->id, 0, &buf_done_info);
 		usleep_range(10000, 20000);
+
+		// Reset regs update buffers and status to make sure no pending buffer gets flushed in a new streaming session
+		for(int buff_idx=0; buff_idx<CSID_VFE_UPDATE_BUFFER_COUNT; buff_idx++) {
+			csid->csid_vfe_regs_update_buffers_regs_count[buff_idx] = 0;
+			atomic_set(&csid->csid_vfe_regs_update_buffers_status[buff_idx], CSID_VFE_UPDATE_BUFFER_STATUS_AVAILABLE);
+		}	
 	}
 
 	/* Loop through all enabled VCs and configure stream for each */
@@ -437,7 +444,7 @@ static void csid_subdev_reg_update(struct csid_device *csid, int port_id, bool c
 	}
 }
 
-u32 get_virtual_channel(struct csid_device *csid, u32 path, u32 csid_ts_lower)
+static u32 get_virtual_channel(struct csid_device *csid, u32 path, u32 csid_ts_lower)
 {
 	if(path == VFE_LINE_PIX || csid->multi_vcdt_en) {
 		// If using the ISP path or MULTI_VCDT is configured we can know if the secondary VC was received 
@@ -664,6 +671,10 @@ static irqreturn_t csid_isr(int irq, void *dev)
 				buf_done_info.eof_isp_ts_conv = cur_eof_isp_timestamp_converted;
 				buf_done_info.isp_to_kernel_raw_ts_offset = isp_to_kernel_raw_ts_offset_floor[current_active_estimator];
 				buf_done_info.sof_kernel_ts = csid->path_last_sof_kernel_ts[i];
+				if(csid->csid_vfe_regs_delayed_update_supported) {
+					buf_done_info.last_delayed_regs_update_start_ts = atomic_long_read(&csid->last_csid_vfe_regs_update_start_ts);
+					buf_done_info.last_delayed_regs_update_end_ts = atomic_long_read(&csid->last_csid_vfe_regs_update_end_ts);
+				}
 				// Provide sensor metadata if available
 				if(csid->get_metadata != NULL)
 				{
@@ -818,6 +829,153 @@ static ssize_t rx_dbg_stats_show(struct device *dev, struct device_attribute *at
 }
 #endif
 
+static void csid_trigger_delayed_register_update(struct csid_device *csid, int port_id)
+{
+	if(csid->csid_vfe_regs_delayed_update_supported) {
+		// Only queue if the csid has a pending buffer to update and if there's no work already in progress
+		// to help avoid issues since we can get multiple EOF per frame when streaming statistics
+		if(!atomic_read(&csid->csid_vfe_regs_update_in_progress))
+		{
+			// csid_vfe_regs_update_in_progress is only reset once the work completes, there's no need for atomic_cmpxchg
+			// and its state won't change while in this code segment
+			int buff_idx = 0;
+			for(buff_idx=0; buff_idx<CSID_VFE_UPDATE_BUFFER_COUNT; buff_idx++) {
+				int expected_val = CSID_VFE_UPDATE_BUFFER_STATUS_READY;
+				if(csid->csid_vfe_regs_update_buffers_regs_count[buff_idx] && atomic_try_cmpxchg(&csid->csid_vfe_regs_update_buffers_status[buff_idx], &expected_val, CSID_VFE_UPDATE_BUFFER_STATUS_IN_USE))
+				{
+					// Acquired a non-empty READY buffer by moving it to IN_USE, schedule the update work
+					atomic_set(&csid->csid_vfe_regs_update_in_progress, 1);
+					queue_work(csid->csid_vfe_regs_update_wq,  &csid->csid_vfe_regs_update_work);
+					break;
+				}
+			}
+		}
+	}
+}
+
+static void csid_vfe_regs_update_work_fn(struct work_struct *Wq)
+{
+	struct csid_device *csid = container_of(Wq, struct csid_device, csid_vfe_regs_update_work);
+
+	// write the ISP update start time to the csid struct
+	atomic_long_set(&csid->last_csid_vfe_regs_update_start_ts, ktime_get_raw_ns());
+
+	// UPDATE registers
+	// Find the buffer with the IN_USE status that will be used to update the hw registers
+	int buff_idx = 0;
+	bool buff_found = false;
+	for(buff_idx=0; buff_idx<CSID_VFE_UPDATE_BUFFER_COUNT; buff_idx++) {
+		if(atomic_read(&csid->csid_vfe_regs_update_buffers_status[buff_idx]) == CSID_VFE_UPDATE_BUFFER_STATUS_IN_USE) {
+			buff_found = true;
+			break;
+		}
+	}
+	// Early return if there's no buffer IN_USE (should not possibly happen)
+	if(!buff_found) {
+		dev_err(csid->camss->dev, "delayed reg update work failed to find a buffer to flush\n");
+		atomic_set(&csid->csid_vfe_regs_update_in_progress, 0);
+		goto cleanup_without_buffer;
+	}
+
+	// Go over all registers in the buffer and write then to the CSID/VFE registers
+	void* ife_base = csid->res->parent_dev_ops->get_base_address(csid->camss, csid->id);
+	if(!ife_base) {
+		dev_err(csid->camss->dev, "delayed reg update work failed to get the vfe register base\n");
+		goto cleanup;
+	}
+
+	u32 max_csid_offset = 0x1000;
+	u32 max_vfe_offset = 0xf000;
+	struct csid_vfe_private_register reg;
+
+	for(u32 i=0; i<csid->csid_vfe_regs_update_buffers_regs_count[buff_idx]; i++)
+	{
+		void* base;
+		u32 max_offset;
+
+		reg = ((struct csid_vfe_private_register*)csid->csid_vfe_regs_update_buffers[buff_idx])[i];
+
+		if(reg.type == CSID_VFE_PRV_REG_TYPE_CSID) {
+			base = csid->base;
+			max_offset = max_csid_offset;
+		}
+		else if(reg.type == CSID_VFE_PRV_REG_TYPE_VFE) {
+			base = ife_base;
+			max_offset = max_vfe_offset;
+		}
+		else {
+			dev_warn(csid->camss->dev, "csid%d skipping invalid register in the delayed reg update work (type:%d offset:0x%x)\n", csid->id, reg.type, reg.offset);
+			continue;
+		}
+
+		if(reg.offset < max_offset) {
+			writel_relaxed(reg.value, base + reg.offset);
+		}
+		else {
+			dev_warn(csid->camss->dev, "csid%d skipping invalid register in the delayed reg update work (type:%d offset:0x%x)\n", csid->id, reg.type, reg.offset);
+			continue;
+		}
+	}
+
+cleanup:
+	// Reset the buffer register count and mark it as AVAILABLE so that ioctl call can fill it with new registers
+	csid->csid_vfe_regs_update_buffers_regs_count[buff_idx] = 0;
+	atomic_set(&csid->csid_vfe_regs_update_buffers_status[buff_idx], CSID_VFE_UPDATE_BUFFER_STATUS_AVAILABLE);
+
+cleanup_without_buffer:
+	// Write the ISP update end time to the csid struct
+	atomic_long_set(&csid->last_csid_vfe_regs_update_end_ts, ktime_get_raw_ns());
+	// Reset csid_vfe_regs_update_in_progress so that new work can be pushed if there's new updates
+	atomic_set(&csid->csid_vfe_regs_update_in_progress, 0);
+}
+
+static int csid_init_regs_update_buffers_and_workqueue(struct csid_device *csid)
+{
+	// Setup CSID/VFE register update workqueue
+	csid->csid_vfe_regs_update_wq = alloc_workqueue("csid%d_regs_update_wq", WQ_UNBOUND | WQ_HIGHPRI | WQ_SYSFS, 1, csid->id);
+	if(!csid->csid_vfe_regs_update_wq)
+	{
+		dev_err(csid->camss->dev, "regs update workqueue alloc failed\n");
+		return -ENOMEM;
+	}
+
+	// Configure the workqueue to run on CPU 2/3
+	struct workqueue_attrs *attrs;
+	attrs = alloc_workqueue_attrs();
+	if (!attrs) {
+		dev_err(csid->camss->dev, "regs update workqueue attibutes alloc failed\n");
+		return -ENOMEM;
+	}
+
+	// Set CPU affinity to CPU 2 and 3
+	cpumask_set_cpu(2, attrs->cpumask);
+	cpumask_set_cpu(3, attrs->cpumask);
+
+	// Apply workqueue attributes
+	if (apply_workqueue_attrs(csid->csid_vfe_regs_update_wq, attrs)) {
+		// Handle attribute application failure
+		free_workqueue_attrs(attrs);
+		dev_err(csid->camss->dev, "regs update workqueue attibutes application failed\n");
+		return -EINVAL;
+	}
+	free_workqueue_attrs(attrs);
+
+	INIT_WORK(&csid->csid_vfe_regs_update_work, csid_vfe_regs_update_work_fn);
+
+	// Allocate the buffers storing the registers and init the buffer status and regs count
+	for(int buff_idx=0; buff_idx<CSID_VFE_UPDATE_BUFFER_COUNT; buff_idx++) {
+		csid->csid_vfe_regs_update_buffers[buff_idx] = devm_kzalloc(csid->camss->dev, CSID_VFE_UPDATE_BUFFER_SIZE, GFP_KERNEL);
+		if(!csid->csid_vfe_regs_update_buffers[buff_idx]) {
+			dev_err(csid->camss->dev, "regs update buffer allocation failed (size: %lu)\n", CSID_VFE_UPDATE_BUFFER_SIZE);
+			return -ENOMEM;
+		}
+		csid->csid_vfe_regs_update_buffers_regs_count[buff_idx] = 0;
+		atomic_set(&csid->csid_vfe_regs_update_buffers_status[buff_idx], CSID_VFE_UPDATE_BUFFER_STATUS_AVAILABLE);
+	}	
+
+	return 0;
+}
+
 static void csid_subdev_init(struct csid_device *csid)
 {
 	csid->testgen.nmodes = CSID_PAYLOAD_MODE_DISABLED;
@@ -837,6 +995,14 @@ static void csid_subdev_init(struct csid_device *csid)
 		dev_err(csid->camss->dev, "Failed to setup CSI2 RX debug attributes");
 	}
 #endif
+
+	// Setup the workqueue and buffers used to flush CSID/VFE registers update upon frame completion
+	ret = csid_init_regs_update_buffers_and_workqueue(csid);
+	if(ret)
+	{
+		dev_err(csid->camss->dev, "Failed to setup the register update workqueue for csid%d\n", csid->id);
+	}
+	csid->csid_vfe_regs_delayed_update_supported = !ret;
 }
 
 static int csid_vfe_set_registers(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config)
@@ -852,6 +1018,11 @@ static int csid_vfe_set_registers(struct csid_device *csid, struct csid_vfe_priv
 	// CSID must be powered to access the registers
 	if(!csid->power_on || regs_config->regs == NULL)
 		return -EINVAL;
+
+
+	void* ife_base = csid->res->parent_dev_ops->get_base_address(csid->camss, csid->id);
+	if(!ife_base)
+		return -EFAULT;
 
 	u32 max_csid_offset = 0x1000;
 	u32 max_vfe_offset = 0xf000;
@@ -873,10 +1044,7 @@ static int csid_vfe_set_registers(struct csid_device *csid, struct csid_vfe_priv
 			max_offset = max_csid_offset;
 		}
 		else if(reg.type == CSID_VFE_PRV_REG_TYPE_VFE) {
-			// base = csid->ife_base;
-			base = csid->res->parent_dev_ops->get_base_address(csid->camss, csid->id);
-			if(!base)
-				return -EFAULT;
+			base = ife_base;
 			max_offset = max_vfe_offset;
 		}
 		else {
@@ -909,6 +1077,10 @@ static int csid_vfe_get_registers(struct csid_device *csid, struct csid_vfe_priv
 	if(!csid->power_on || regs_config->regs == NULL)
 		return -EINVAL;
 
+	void* ife_base = csid->res->parent_dev_ops->get_base_address(csid->camss, csid->id);
+	if(!ife_base)
+		return -EFAULT;
+
 	u32 max_csid_offset = 0x1000;
 	u32 max_vfe_offset = 0xf000;
 	struct csid_vfe_private_register reg;
@@ -929,10 +1101,7 @@ static int csid_vfe_get_registers(struct csid_device *csid, struct csid_vfe_priv
 			max_offset = max_csid_offset;
 		}
 		else if(reg.type == CSID_VFE_PRV_REG_TYPE_VFE) {
-			// base = csid->ife_base;
-			base = csid->res->parent_dev_ops->get_base_address(csid->camss, csid->id);
-			if(!base)
-				return -EFAULT;
+			base = ife_base;
 			max_offset = max_vfe_offset;
 		}
 		else {
@@ -956,6 +1125,73 @@ static int csid_vfe_get_registers(struct csid_device *csid, struct csid_vfe_priv
 	return 0;
 }
 
+static int csid_vfe_set_registers_delayed(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config)
+{
+	// Register access only supported for main CSID/VFEs
+	if(csid->res->is_lite)
+		return -EINVAL;
+
+	// No register specified, return 0 (this can be used to test if the feature is supported)
+	if(regs_config->count == 0)
+		return 0;
+
+	// CSID must be powered to access the registers
+	if(!csid->power_on || regs_config->regs == NULL)
+		return -EINVAL;
+
+	if(!csid->csid_vfe_regs_delayed_update_supported)
+		return -EINVAL;
+
+	bool buff_found = false;
+	int buff_idx = 0;
+	// If possible try to re-use a buffer in the READY state by appending additional registers
+	// (the buffer needs to be safely moved to READY state to prevent it from being flushed to hardware at the same time)
+	for(buff_idx=0; buff_idx<CSID_VFE_UPDATE_BUFFER_COUNT; buff_idx++) {
+		int expected_val = CSID_VFE_UPDATE_BUFFER_STATUS_READY;
+		if(atomic_try_cmpxchg(&csid->csid_vfe_regs_update_buffers_status[buff_idx], &expected_val, CSID_VFE_UPDATE_BUFFER_STATUS_AVAILABLE)) {
+			buff_found = true;
+			break;
+		}
+	}
+	// Otherwise pick any AVAILABLE buffer
+	if(!buff_found)
+	{
+		for(buff_idx=0; buff_idx<CSID_VFE_UPDATE_BUFFER_COUNT; buff_idx++) {
+			if(atomic_read(&csid->csid_vfe_regs_update_buffers_status[buff_idx]) == CSID_VFE_UPDATE_BUFFER_STATUS_AVAILABLE) {
+				buff_found = true;
+				break;
+			}
+		}
+
+		if(!buff_found)
+		{
+			dev_err(csid->camss->dev, "Failed to find a free buffer for delayed register updates for csid%d (buffer status[%d %d]\n",
+				csid->id, atomic_read(&csid->csid_vfe_regs_update_buffers_status[0]), atomic_read(&csid->csid_vfe_regs_update_buffers_status[1]));
+			return -EBUSY;
+		}
+	}
+
+	if((csid->csid_vfe_regs_update_buffers_regs_count[buff_idx] + regs_config->count) > CSID_VFE_UPDATE_BUFFER_MAX_NUM_REGISTERS)
+	{
+		dev_err(csid->camss->dev, "Provided delayed register updates data doesn't fit in the target buffer in csid%d\n", csid->id);
+		return -ENOMEM;
+	}
+
+	// Copy the register configuration from userspace memory
+	u64 buffer_offset = csid->csid_vfe_regs_update_buffers_regs_count[buff_idx]*sizeof(struct csid_vfe_private_register);
+	if(copy_from_user(csid->csid_vfe_regs_update_buffers[buff_idx] + buffer_offset, regs_config->regs, regs_config->count*sizeof(struct csid_vfe_private_register)) != 0)
+	{
+		dev_err(csid->camss->dev, "csid%d failed to copy delayed register update data from user buffer\n", csid->id);
+		return -EFAULT;
+	}
+
+	// Update the register count and set the buffer as ready to use for hw update
+	csid->csid_vfe_regs_update_buffers_regs_count[buff_idx] += regs_config->count;
+	atomic_set(&csid->csid_vfe_regs_update_buffers_status[buff_idx], CSID_VFE_UPDATE_BUFFER_STATUS_READY);
+
+	return 0;
+}
+
 const struct csid_hw_ops csid_ops_gen3 = {
 	.configure_stream = csid_configure_stream,
 	.configure_testgen_pattern = csid_configure_testgen_pattern,
@@ -965,6 +1201,8 @@ const struct csid_hw_ops csid_ops_gen3 = {
 	.src_pad_code = csid_src_pad_code,
 	.subdev_init = csid_subdev_init,
 	.reg_update = csid_subdev_reg_update,
+	.trigger_delayed_csid_vfe_register_update = csid_trigger_delayed_register_update,
 	.set_csid_vfe_registers = csid_vfe_set_registers,
 	.get_csid_vfe_registers = csid_vfe_get_registers,
+	.set_csid_vfe_registers_delayed = csid_vfe_set_registers_delayed,
 };
