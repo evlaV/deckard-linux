@@ -391,6 +391,7 @@ struct tcpm_port {
 	 */
 	bool vbus_vsafe0v;
 
+	bool do_legacy_reset;
 	bool vbus_never_low;
 	bool vbus_source;
 	bool vbus_charge;
@@ -5215,18 +5216,25 @@ static void run_state_machine(struct tcpm_port *port)
 			tcpm_set_state(port, SNK_READY, 0);
 			break;
 		}
+		/* Port can be left in bad state from previous boot if not
+		 * reset properly.  Execute a reset on first PD round to clear
+		 * bad states */
+		if ( port->do_legacy_reset ) {
+			tcpm_log(port, "Reset port on first PD negotiation");
+			port->tcpc->qcom_legacy_reset(port->tcpc);
+			port->do_legacy_reset = false;
+		}
 		/*
 		 * If VBUS has never been low, and we time out waiting
 		 * for source cap, try a soft reset first, in case we
 		 * were already in a stable contract before this boot.
 		 * Do this only once.
 		 */
-		if ( port->tcpc->qcom_legacy_reset ) {
-			tcpm_log(port, "Vbus never low, attempting legacy cable reset");
-			port->tcpc->qcom_legacy_reset(port->tcpc);
-		}
-
 		if (port->vbus_never_low) {
+			if ( port->tcpc->qcom_legacy_reset ) {
+				tcpm_log(port, "Vbus never low, attempting legacy cable reset");
+				port->tcpc->qcom_legacy_reset(port->tcpc);
+			}
 			port->vbus_never_low = false;
 			upcoming_state = SNK_SOFT_RESET;
 		} else {
@@ -7011,6 +7019,8 @@ static void tcpm_init(struct tcpm_port *port)
 	port->vbus_present = port->tcpc->get_vbus(port->tcpc);
 	if (port->vbus_present)
 		port->vbus_never_low = true;
+	else
+		port->do_legacy_reset = true;
 
 	/*
 	 * 1. When vbus_present is true, voltage on VBUS is already at VSAFE5V.
