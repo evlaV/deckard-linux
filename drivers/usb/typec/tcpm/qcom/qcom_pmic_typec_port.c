@@ -164,7 +164,7 @@ bool qcom_pmic_typec_port_is_vbus_vsafe0v(struct pmic_typec_port *pmic_typec_por
 		safe = (sensor_status & TYPEC_SM_VBUS_VSAFE0V);
 	}
 
-	pr_warn("qcom_pmic_typec_is_vbus_vsafe0v reading 0x%08X - safe %d\n", sensor_status, safe);
+	//pr_warn("qcom_pmic_typec_is_vbus_vsafe0v reading 0x%08X - safe %d\n", sensor_status, safe);
 
 	return (safe);
 }
