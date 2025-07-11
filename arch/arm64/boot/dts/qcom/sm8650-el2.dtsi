@@ -35,6 +35,16 @@
 			reg = <0x0 0x81c00000 0x0 0x60000>;
 		};
 
+		ramoops: ramoops@84a00000 {
+			compatible = "ramoops";
+			reg = <0 0x84a00000 0 0x100000>;
+			record-size = <0x40000>;
+			console-size = <0x40000>;
+			pmsg-size = <0x1000>;
+			max_reason = <5>;
+			ecc-size = <16>;
+		};
+
 		aop_cmd_db_mem: aop-cmd-db@81c60000 {
 			compatible = "qcom,cmd-db";
 			reg = <0x0 0x81c60000 0x0 0x20000>;
