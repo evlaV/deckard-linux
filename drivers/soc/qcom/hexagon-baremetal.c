@@ -813,7 +813,20 @@ static int dsp_probe(struct platform_device *pdev)
 		return ret;
 
 	if (dsp->is_xtensa)
-		clk_set_rate(dsp->clks[1].clk, 355200000); //max_rate);
+    {
+        // Uses VIDEO_CC_MVS1C_CLK which looks like it's video_cc_mvs1c_div2_div_clk_src
+        // which scales the input rate by 2 to match what is in the freq_tbl??
+        // So try to map those allowed rates from the ftbl_video_cc_mvs1_clk_src_sm8650 ->
+        // 420000000 -> 840000000
+        // 555000000 -> 1110000000
+        // 675000000 -> 1350000000
+        // 750000000 -> 1500000000
+        // 825000000 -> 1650000000
+        u32 rate_to_set = 825000000;
+        clk_set_rate(dsp->clks[1].clk, rate_to_set);
+        //u32 applied_rate = clk_get_rate(dsp->clks[1].clk);
+        //printk("cvp clock rate: %d (called with set_rate: %d)", applied_rate, rate_to_set);
+    }
 
 	// XXX
 	ret = clk_bulk_prepare_enable(dsp->num_clks, dsp->clks);
