@@ -495,7 +495,6 @@ static int og0ve10_restore_mode(struct og0ve10_dev *sensor)
 
 	ret = og0ve10_read_reg(sensor, 0x3662, &val);
 
-	struct i2c_client *client = sensor->i2c_client;
 	return 0;
 }
 
@@ -783,7 +782,7 @@ static int og0ve10_init_controls(struct og0ve10_dev *sensor)
 	return 0;
 }
 
-void reset_groups_og0VE10(struct og0ve10_dev *sensor)
+static void reset_groups_og0VE10(struct og0ve10_dev *sensor)
 {
 	sensor->active_group_registers.pre_group_write_timestamp = 0;
 	sensor->active_group_registers.post_group_write_timestamp = 0;
@@ -822,7 +821,6 @@ static int og0ve10_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
 	int ret = 0;
-	static char *gpionames[] = { "ira", "irb" };
 	
 	mutex_lock(&sensor->lock);
 	reset_groups_og0VE10(sensor);
@@ -853,7 +851,6 @@ static int og0ve10_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	last_time_in_sync_og0VE10 = 0;
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
-	struct i2c_client *client = sensor->i2c_client;
 
 	sensor->updateGroupRegisters = true;
 
@@ -875,10 +872,8 @@ static long og0ve10_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 				  void *arg)
 {
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
-	struct i2c_client *client = sensor->i2c_client;
 	u32 ret = 0;
 	u32 *a = arg;
-	unsigned long flags;
 	switch (cmd) {
 	case VIDIOC_OG01A1B_PRV_G_METADATA_VERSION: {
 		*a = ((METADATA_MAJOR_VERSION << 16) & 0xffff0000) |
@@ -1015,7 +1010,6 @@ static int og0ve10_set_fmt(struct v4l2_subdev *sd,
 	sensor->fmt.width = fmt->format.width;
 	sensor->fmt.height = fmt->format.height;
 
-set_fmt_cleanup:
 	mutex_unlock(&sensor->lock);
 	return ret;
 }
@@ -1103,7 +1097,7 @@ power_off:
 	return ret;
 }
 
-int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int group, bool use_dual_i2c)
+static int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int group, bool use_dual_i2c)
 {
 	int ret;
 
@@ -1248,7 +1242,7 @@ int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int group, boo
 
 int last_set_group_og0VE10 = 0;
 
-void update_groups_og0VE10(struct og0ve10_dev *sensor)
+static void update_groups_og0VE10(struct og0ve10_dev *sensor)
 {
 	u64 last_group_pre_write_timestamp = 0;
 	u64 lastGroupPostWriteTimestamp = 0;
