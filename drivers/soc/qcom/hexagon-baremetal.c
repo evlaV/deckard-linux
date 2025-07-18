@@ -824,8 +824,8 @@ static int dsp_probe(struct platform_device *pdev)
         // 825000000 -> 1650000000
         u32 rate_to_set = 825000000;
         clk_set_rate(dsp->clks[1].clk, rate_to_set);
-        //u32 applied_rate = clk_get_rate(dsp->clks[1].clk);
-        //printk("cvp clock rate: %d (called with set_rate: %d)", applied_rate, rate_to_set);
+        u32 applied_rate = clk_get_rate(dsp->clks[1].clk);
+        printk("cvp clock rate: %d (called with set_rate: %d)", applied_rate, rate_to_set);
     }
 
 	// XXX
