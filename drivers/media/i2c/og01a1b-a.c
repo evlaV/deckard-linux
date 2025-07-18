@@ -813,46 +813,6 @@ static int og01a1b_write_reg_dual(struct og01a1b_dev *sensor, u16 reg, u8 val)
 	return 0;
 }
 
-int og01a1b_write_map(struct og01a1b_dev *sensor, struct reg_value *regs, int num_regs)
-{
-    int i;
-    int ret;
-    struct i2c_client *client = sensor->i2c_client;
-    struct i2c_msg msg;
-    static u8 buf[10000]; // Static buffer allocation as per the new requirement
-    int max_regs_per_transfer = 3;
-    int regs_written = 0;
-
-    if (num_regs * 3 > sizeof(buf)) {
-        dev_err(&client->dev, "Buffer size exceeded\n");
-        return -EINVAL;
-    }
-
-    while (regs_written < num_regs) {
-        int chunk_size = (num_regs - regs_written > max_regs_per_transfer) ? max_regs_per_transfer : num_regs - regs_written;
-        for (i = 0; i < chunk_size; i++) {
-            buf[i * 3] = regs[regs_written + i].reg_addr >> 8;
-            buf[i * 3 + 1] = regs[regs_written + i].reg_addr & 0xff;
-            buf[i * 3 + 2] = regs[regs_written + i].val;
-        }
-
-        msg.addr = client->addr;
-        msg.flags = 0;
-        msg.buf = buf;
-        msg.len = chunk_size * 3;
-
-        ret = i2c_transfer(client->adapter, &msg, 1);
-        if (ret < 0) {
-            dev_err(&client->dev, "%s: i2c_transfer failed\n", __func__);
-            return ret;
-        }
-
-        regs_written += chunk_size;
-    }
-
-    return 0;
-}
-
 
 
 static int og01a1b_read_reg(struct og01a1b_dev *sensor, u16 reg, u8 *val)
@@ -1021,7 +981,7 @@ static int og01a1b_add_or_set_group_reg_from_ctrlval(struct og01a1b_dev *sensor,
 	return og01a1b_add_or_set_group_reg(sensor, address, val, group);
 }
 
-bool emitter_enabled_for_group(struct og01a1b_dev *sensor, int group) {
+static bool emitter_enabled_for_group(struct og01a1b_dev *sensor, int group) {
 	//printk("sensor->ir_emitter_mode:%d group:%d",sensor->ir_emitter_mode,group);
 	if(sensor->ir_emitter_mode == IR_EMITTER_MODE_ALL_FRAMES) {
 		return true;
@@ -1035,7 +995,7 @@ bool emitter_enabled_for_group(struct og01a1b_dev *sensor, int group) {
 	return false;
 }
 
-int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, bool use_dual_i2c)
+static int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, bool use_dual_i2c)
 {
 	int ret;
 
@@ -1524,7 +1484,7 @@ static int og01a1b_init_controls(struct og01a1b_dev *sensor)
 	return 0;
 }
 
-void reset_groups(struct og01a1b_dev *sensor) 
+static void reset_groups(struct og01a1b_dev *sensor) 
 {
 	sensor->active_group_registers.pre_group_write_timestamp = 0;
 	sensor->active_group_registers.post_group_write_timestamp = 0;
@@ -1550,13 +1510,12 @@ static int og01a1b_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
 	int ret = 0;
-	static char *gpionames[] = {"ira", "irb"};
 
 	mutex_lock(&sensor->lock);
 	reset_groups(sensor);
 	if(sensor->is_sync_sensor) {
 		struct i2c_client *client = sensor->i2c_client;
-		sensor->ir_emitter_mode = false;
+		sensor->ir_emitter_mode = IR_EMITTER_MODE_OFF;
 		unsigned long flags;
 		spin_lock_irqsave(&ir_spinlock, flags);
 		if(!!on) {
@@ -1612,7 +1571,6 @@ static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
     // Reset the sync state
     last_time_in_sync = 0;
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
-	struct i2c_client *client = sensor->i2c_client;
 	for(int i = 0; i < NUM_REGISTER_GROUPS; i++) {
 		sensor->updateGroupRegisters[i] = true;
 	}
@@ -1631,10 +1589,8 @@ static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
 static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
-	struct i2c_client *client = sensor->i2c_client;
     u32 ret = 0;
 	u32 *a = arg;
-	unsigned long flags;
     switch (cmd)
     {
         case VIDIOC_OG01A1B_PRV_G_METADATA_VERSION:
@@ -1874,7 +1830,7 @@ power_off:
 
 int last_set_group = 0;
 
-void update_groups(struct og01a1b_dev *sensor)
+static void update_groups(struct og01a1b_dev *sensor)
 {
     u64 last_group_pre_write_timestamp = 0;
     u64 lastGroupPostWriteTimestamp = 0;
