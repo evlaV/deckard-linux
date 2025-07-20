@@ -295,6 +295,7 @@ int a6xx_gpu_state_put(struct msm_gpu_state *state);
 
 void a6xx_bus_clear_pending_transactions(struct adreno_gpu *adreno_gpu, bool gx_off);
 void a6xx_gpu_sw_reset(struct msm_gpu *gpu, bool assert);
+int a6xx_fenced_write(struct a6xx_gpu *gpu, u32 offset, u64 value, u32 mask, bool is_64b);
 
 #define KGSL_MEMSTORE_SIZE SZ_32K
 #define KGLS_MEMSTORE_CTX_SIZE (40*768) // size reserved for per-context memstore
