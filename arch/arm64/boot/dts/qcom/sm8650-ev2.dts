@@ -2065,6 +2065,15 @@
         vcc-supply  = <&vreg_l15b_1p8>;
     };
 
+	// PADDLE EEPROM - 256 Bytes on 0x51 added in EV3.3
+	eeprom@51 {
+		compatible  = "atmel,24c04";
+		status      = "okay";
+		label       = "strap_v2_eeprom";
+		reg         = <0x51>;
+		vcc-supply  = <&vreg_l15b_1p8>;
+	};
+
 	// Northgate/Enthusiast Paddle Card Silego
 	slg46534v@48 {
 		compatible = "silego,northgate_paddle";
