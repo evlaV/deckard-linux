@@ -14,6 +14,8 @@
 #include <dt-bindings/mailbox/qcom-ipcc.h>
 #include <linux/iommu.h>
 #include <linux/mailbox_client.h>
+#include <linux/pm_domain.h>
+#include <linux/pm_opp.h>
 
 #define QDSP6SS_VERSION 0x00
 
@@ -51,6 +53,8 @@ struct dsp {
 	bool is_xtensa;
 	u32 mem_phys;
 	u32 mem_size;
+	struct device *pds[2];
+	int perf[2];
 };
 
 struct dma_map {
@@ -306,6 +310,9 @@ xtensa_boot(struct dsp *dsp)
 	writel_relaxed(1, dsp->base + CPU_CS_A2HSOFTINTCLR);
 	writel_relaxed(1, dsp->base + CPU_CS_H2ASOFTINTCLR);
 
+	dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
+	dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
+
 #define WRAPPER_CPA_START_ADDR 		0xc1020
 #define WRAPPER_CPA_END_ADDR 		0xc1024
 #define WRAPPER_FW_START_ADDR 		0xc1028
@@ -447,6 +454,9 @@ static int dsp_shutdown(struct dsp *dsp)
 
 		// disable CPU watchdog while off
 		writel(0, dsp->base + 0x90008); // CPU_WD_WDOGCONTROL
+
+		dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
+		dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
 	} else {
 		writel(~0u, dsp->base +  QDSP6SS_RESET_CFG);
 		writel(1, dsp->base +  QDSP6SS_RESET_CMD);
@@ -811,6 +821,23 @@ static int dsp_probe(struct platform_device *pdev)
 	ret = misc_register(&dsp->miscdev);
 	if (ret)
 		return ret;
+
+	/* Get power domains and corresponding power levels */
+	if (!strcmp(dev->of_node->name, "cvp")) {
+		dsp->pds[0] = dev_pm_domain_attach_by_id(dev, 0);
+		if (IS_ERR_OR_NULL(dsp->pds[0]))
+			return PTR_ERR(dsp->pds[0]) ? : -ENODATA;
+		dsp->pds[1] = dev_pm_domain_attach_by_id(dev, 1);
+		if (IS_ERR_OR_NULL(dsp->pds[1]))
+			return PTR_ERR(dsp->pds[1]) ? : -ENODATA;
+
+		dsp->perf[0] = of_get_required_opp_performance_state(dev->of_node, 0);
+		if (dsp->perf[0] < 0)
+			return dsp->perf[0];
+		dsp->perf[1] = of_get_required_opp_performance_state(dev->of_node, 1);
+		if (dsp->perf[1] < 0)
+			return dsp->perf[1];
+	}
 
 	if (dsp->is_xtensa)
     {
