@@ -8157,7 +8157,9 @@
 			iommus = <&apps_smmu 0x1920 0>, // nonpix? (firmware)
 				 <&apps_smmu 0x1922 0>; // firmware
 
-			// missing: power domains
+			power-domains = <&rpmhpd RPMHPD_MXC>,
+					<&rpmhpd RPMHPD_MMCX>;
+			required-opps = <&rpmhpd_opp_nom>, <&rpmhpd_opp_nom>;
 		};
 	};
 
