@@ -15,10 +15,8 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
-static const struct i2c_device_id slg_northgate_id[] = {
-	{ "slg-northgate-paddle", 0 },
-	{}
-};
+static const struct i2c_device_id slg_northgate_id[] = { { "slg-paddle", 0 },
+							 {} };
 MODULE_DEVICE_TABLE(i2c, slg_northgate_id);
 
 static const struct of_device_id slg_northgate_of_table[] = {
