@@ -360,7 +360,7 @@
 		regulator-name = "exp_rgb_3v0_vout";
 		regulator-min-microvolt = <3000000>;
 		regulator-max-microvolt = <3000000>;
-		enable-gpio = <&tlmm 38 GPIO_ACTIVE_HIGH>;
+		gpio = <&tlmm 38 GPIO_ACTIVE_HIGH>;
 		detect-gpio = <&pm8550b_gpios 6 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&detect_n>;
