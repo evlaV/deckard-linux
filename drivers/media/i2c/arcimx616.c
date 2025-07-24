@@ -229,6 +229,12 @@ static int arcimx616_ensure_eeprom_client(struct arcimx616_dev *sensor)
 static struct arcimx616_dev *g_arcimx616_sensors[ARCIMX616_MAX_SENSORS];
 static int g_arcimx616_sensor_count = 0;
 
+/* Global i2c_client for dual writes */
+static struct i2c_client *g_dual_i2c_client = NULL;
+
+/* Global i2c_client for AW9106 LED controller */
+static struct i2c_client *g_aw9106_i2c_client = NULL;
+
 static int arcimx616_set_power(struct arcimx616_dev *sensor, bool on);
 
 /* Work struct for powering off all sensors */
@@ -532,31 +538,31 @@ static const s64 link_freq_menu_items[] = {
 
 static int arcimx616_write_reg_dual(struct arcimx616_dev *sensor, u16 reg, u8 val)
 {
-	struct i2c_client *client = sensor->i2c_client;
-	unsigned short old_addr = client->addr;
-	client->addr = 0x36;  // Set dual write address
 	struct i2c_msg msg;
 	u8 buf[3];
 	int ret;
+
+	if (!g_dual_i2c_client) {
+		dev_err(&sensor->i2c_client->dev, "%s: dual i2c client not initialized\n", __func__);
+		return -ENODEV;
+	}
 
 	buf[0] = reg >> 8;
 	buf[1] = reg & 0xff;
 	buf[2] = val;
 
-	msg.addr = client->addr;
-	msg.flags = client->flags;
+	msg.addr = g_dual_i2c_client->addr;
+	msg.flags = g_dual_i2c_client->flags;
 	msg.buf = buf;
 	msg.len = sizeof(buf);
 
-	ret = i2c_transfer(client->adapter, &msg, 1);
+	ret = i2c_transfer(g_dual_i2c_client->adapter, &msg, 1);
 	if (ret < 0) {
-		dev_err(&client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
+		dev_err(&sensor->i2c_client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
 			__func__, reg, val, ret);
-		client->addr = old_addr;
 		return ret;
 	}
 
-	client->addr = old_addr;
 	return 0;
 }
 
@@ -765,32 +771,29 @@ out_power:
  */
 static int arcimx616_aw9106_write_reg(struct arcimx616_dev *sensor, u8 reg, u8 val)
 {
-    struct i2c_client *client = sensor->i2c_client;
-	unsigned short old_addr = client->addr;
-	client->addr = AW9106C_ADDR;
     struct i2c_msg msg;
     u8 buf[2];
     int ret;
 
-    if (!client)
+    if (!g_aw9106_i2c_client) {
+        dev_err(&sensor->i2c_client->dev, "%s: AW9106 i2c client not initialized\n", __func__);
         return -ENODEV;
+    }
 
     buf[0] = reg;
     buf[1] = val;
 
-    msg.addr  = client->addr;
+    msg.addr  = g_aw9106_i2c_client->addr;
     msg.flags = 0;  /* Write */
     msg.len   = 2;
     msg.buf   = buf;
 
-    ret = i2c_transfer(client->adapter, &msg, 1);
+    ret = i2c_transfer(g_aw9106_i2c_client->adapter, &msg, 1);
     if (ret < 0) {
-        dev_err(&client->dev, "AW9106 reg=0x%02x val=0x%02x write failed: %d\n",
+        dev_err(&sensor->i2c_client->dev, "AW9106 reg=0x%02x val=0x%02x write failed: %d\n",
                 reg, val, ret);
-		client->addr = old_addr;
         return ret;
     }
-	client->addr = old_addr;
     return 0;
 }
 
@@ -1659,6 +1662,33 @@ static int arcimx616_probe(struct i2c_client *client)
 			g_arcimx616_sensors[idx] = sensor;
 			g_arcimx616_sensor_count++;
 			added_global = true;
+
+			/* Initialize dual and aw9106 i2c clients on first probe */
+			if (g_arcimx616_sensor_count == 1 && !g_dual_i2c_client) {
+				struct i2c_board_info dual_info = {
+					I2C_BOARD_INFO("arcimx616-dual", 0x36)
+				};
+				g_dual_i2c_client = i2c_new_client_device(client->adapter, &dual_info);
+				if (IS_ERR(g_dual_i2c_client)) {
+					dev_err(&client->dev, "Failed to create dual i2c client: %ld\n", 
+						PTR_ERR(g_dual_i2c_client));
+					g_dual_i2c_client = NULL;
+				} else {
+					dev_info(&client->dev, "Created dual i2c client at address 0x36\n");
+				}
+
+				struct i2c_board_info aw9106_info = {
+					I2C_BOARD_INFO("aw9106", AW9106C_ADDR)
+				};
+				g_aw9106_i2c_client = i2c_new_client_device(client->adapter, &aw9106_info);
+				if (IS_ERR(g_aw9106_i2c_client)) {
+					dev_err(&client->dev, "Failed to create AW9106 i2c client: %ld\n", 
+						PTR_ERR(g_aw9106_i2c_client));
+					g_aw9106_i2c_client = NULL;
+				} else {
+					dev_info(&client->dev, "Created AW9106 i2c client at address 0x%02x\n", AW9106C_ADDR);
+				}
+			}
 		} else {
 			dev_warn(&client->dev, "arcimx616: Reached max sensor count!\n");
 		}
@@ -1672,6 +1702,21 @@ static int arcimx616_probe(struct i2c_client *client)
 
 free_ctrls:
 entity_cleanup:
+	/* Clean up global tracking if we added this sensor */
+	if (added_global) {
+		g_arcimx616_sensor_count--;
+		/* Clean up i2c clients if this was the only sensor */
+		if (g_arcimx616_sensor_count == 0) {
+			if (g_dual_i2c_client) {
+				i2c_unregister_device(g_dual_i2c_client);
+				g_dual_i2c_client = NULL;
+			}
+			if (g_aw9106_i2c_client) {
+				i2c_unregister_device(g_aw9106_i2c_client);
+				g_aw9106_i2c_client = NULL;
+			}
+		}
+	}
 	mutex_destroy(&sensor->lock);
 	media_entity_cleanup(&sensor->sd.entity);
 	dev_err(&client->dev, "Returning %d from arcimx616_probe",ret);
@@ -1689,6 +1734,35 @@ static void arcimx616_remove(struct i2c_client *client)
                i2c_unregister_device(sensor->eeprom_client);
                sensor->eeprom_client = NULL;
        }
+
+	/* Remove from global array and cleanup dual client if last sensor */
+	{
+		int i;
+		for (i = 0; i < g_arcimx616_sensor_count; i++) {
+			if (g_arcimx616_sensors[i] == sensor) {
+				/* Shift remaining sensors down */
+				for (int j = i; j < g_arcimx616_sensor_count - 1; j++) {
+					g_arcimx616_sensors[j] = g_arcimx616_sensors[j + 1];
+				}
+				g_arcimx616_sensor_count--;
+				break;
+			}
+		}
+
+		/* Clean up dual i2c client if this was the last sensor */
+		if (g_arcimx616_sensor_count == 0) {
+			if (g_dual_i2c_client) {
+				i2c_unregister_device(g_dual_i2c_client);
+				g_dual_i2c_client = NULL;
+				dev_info(&client->dev, "Cleaned up dual i2c client\n");
+			}
+			if (g_aw9106_i2c_client) {
+				i2c_unregister_device(g_aw9106_i2c_client);
+				g_aw9106_i2c_client = NULL;
+				dev_info(&client->dev, "Cleaned up AW9106 i2c client\n");
+			}
+		}
+	}
 
 	v4l2_async_unregister_subdev(&sensor->sd);
 	mutex_destroy(&sensor->lock);
