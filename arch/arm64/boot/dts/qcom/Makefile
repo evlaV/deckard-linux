@@ -284,6 +284,7 @@ dtb-$(CONFIG_ARCH_QCOM) += sm8650-ev2-power.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev2-mte.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev3d.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev3.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-dv.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-asus-vivobook-s15.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-crd.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-lenovo-yoga-slim7x.dtb
