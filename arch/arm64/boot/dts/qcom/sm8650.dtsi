@@ -4102,7 +4102,12 @@
 
 		ufs_mem_hc: ufshc@1d84000 {
 			compatible = "qcom,sm8650-ufshc", "qcom,ufshc", "jedec,ufs-2.0";
-			reg = <0 0x01d84000 0 0x3000>;
+			reg = <0 0x01d84000 0 0x3000>,
+			      <0 0x01da5000 0 0x2000>,
+			      <0 0x01da4000 0 0x0010>;
+			reg-names = "ufs_mem",
+				    "mcq_sqd",
+				    "mcq_vs";
 
 			interrupts = <GIC_SPI 265 IRQ_TYPE_LEVEL_HIGH 0>;
 
@@ -4139,6 +4144,8 @@
 			operating-points-v2 = <&ufs_opp_table>;
 
 			iommus = <&apps_smmu 0x60 0>;
+
+			msi-parent = <&gic_its 0x60>;
 
 			lanes-per-direction = <2>;
 			qcom,ice = <&ice>;
