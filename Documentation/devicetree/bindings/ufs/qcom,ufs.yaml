@@ -86,12 +86,17 @@ properties:
 
   reg:
     minItems: 1
-    maxItems: 2
+    maxItems: 3
 
   reg-names:
-    items:
-      - const: std
-      - const: ice
+    oneOf:
+      - items:
+          - const: std
+          - const: ice
+      - items:
+          - const: ufs_mem
+          - const: mcq_sqd
+          - const: mcq_vs
 
   required-opps:
     maxItems: 1
@@ -177,9 +182,9 @@ allOf:
             - const: rx_lane1_sync_clk
         reg:
           minItems: 1
-          maxItems: 1
+          maxItems: 3
         reg-names:
-          maxItems: 1
+          maxItems: 3
 
   - if:
       properties:
@@ -280,7 +285,7 @@ allOf:
     then:
       properties:
         reg:
-          maxItems: 1
+          maxItems: 3
         clocks:
           minItems: 7
           maxItems: 8
@@ -288,7 +293,7 @@ allOf:
       properties:
         reg:
           minItems: 1
-          maxItems: 2
+          maxItems: 3
         clocks:
           minItems: 7
           maxItems: 9
