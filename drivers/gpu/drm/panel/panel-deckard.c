@@ -42,25 +42,26 @@
 #define LPM02648C_PPS_SET			0xe6
 #define LPM02648C_MFG_INFO			0xbf
 #define 	VENDOR_OFFSET			27
+#define 	VCOM120_OFFSET			13
+#define 	VCOM90_OFFSET			15
 
 // Brightness settings
 #define BRIGHTNESS_DEFAULT 256
-#define BRIGHTNESS_MAX_120 380
+#define BRIGHTNESS_MAX_120 367
 
 // Panel settings
 #define VFP		700
 #define VID_VS_DELAY	1112
-#define VBP		100
-#define GPO1_TES1	4000
-#define GPO1_TEW1	0
+#define VBP		23
+#define GPO1_TES1_144_SHARP	150
+#define GPO1_TES1_120_SHARP	100
+#define GPO1_TES1_144_BOE	3435
+#define GPO1_TES1_120_BOE	4068
+#define GPO1_TES1_144_JDI	GPO1_TES1_144_BOE
+#define GPO1_TES1_120_JDI	GPO1_TES1_120_BOE
+#define GPO1_TES1_90		5446
+#define GPO1_TEW1			0
 #define RTN 59
-
-// BOE VBP(reg) functions differently
-#define VBP_BOE_DPHY		23
-
-// Workaround for sharp ghosting issue
-#define VBP_SHARP		800
-#define GPO1_TES1_SHARP	233
 
 // Panel Vendor types
 #define VENDOR_SHARP	'S'
@@ -109,6 +110,7 @@ typedef enum
 	MODE_120 = 0,
 	MODE_90,
 	MODE_80,
+	MODE_144,
 } lpm026m648c_modes_t;
 
 struct lpm026m648c_ctx {
@@ -138,6 +140,9 @@ struct lpm026m648c_ctx {
 
 	char panel_vendor;
 
+	uint16_t vcom120[2];
+	uint16_t vcom90[2];
+
 	lpm026m648c_modes_t current_mode;
 };
 
@@ -146,7 +151,7 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 	return container_of(panel, struct lpm026m648c_ctx, panel);
 }
 
-static const struct drm_display_mode modes[3] = {
+static const struct drm_display_mode modes[4] = {
 	{
 		.name = "  2160x2160_120",
 		.clock = (2160 + 24 + 20 + 20) * (2160 + 404 + 1 + 20) * 120 / 1000,
@@ -189,6 +194,21 @@ static const struct drm_display_mode modes[3] = {
 		.vtotal = 2160 + 1697 + 1 + 20,
 		.width_mm = 50,
 		.height_mm = 50,
+	},
+	{
+		.name = "  2160x2160_144",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 9 + 1 + 20) * 144 / 1000,
+		.hdisplay = 2160,
+		.hsync_start = (2160 + 24),
+		.hsync_end = (2160 + 24 + 20),
+		.htotal = (2160 + 24 + 20 + 20),
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 9,
+		.vsync_end = 2160 + 9 + 1,
+		.vtotal = 2160 + 9 + 1 + 20,
+		.width_mm = 50,
+		.height_mm = 50,
+
 	},
 };
 
@@ -258,6 +278,38 @@ static int lpm026m648c_init_dsc_config(struct lpm026m648c_ctx *ctx)
 	return dsi_populate_dsc_params(ctx);
 }
 
+// should be called after get_panel_info
+static int update_vcom(struct lpm026m648c_ctx *ctx)
+{
+	u16 vcom_left, vcom_right;
+	u8 payload[3] = {0xd5, 0, 0};
+	int ret = 0;
+	// TODO interpolate for other modes?
+	if ( ctx->current_mode == MODE_120 ) {
+		vcom_left = ctx->vcom120[0];
+		vcom_right = ctx->vcom120[1];
+	} else {
+		// 90/80/72 use same settings
+		vcom_left = ctx->vcom90[0];
+		vcom_right = ctx->vcom90[1];
+	}
+
+	if ( vcom_left ) {
+		payload[1] = ( vcom_left & 0xFF00 ) >> 8;
+		payload[2] = vcom_left & 0x00FF;
+		ret |= mipi_dsi_generic_write(ctx->dsi[0], payload, 3);
+	}
+	if ( vcom_right ) {
+		payload[1] = ( vcom_right & 0xFF00 ) >> 8;
+		payload[2] = vcom_right & 0x00FF;
+		ret |= mipi_dsi_generic_write(ctx->dsi[1], payload, 3);
+	}
+	if ( ret < 0 ) {
+		DRM_DEV_ERROR(ctx->dev, "Failed to set vcom ( %d )\n", ret);
+	}
+	return ret;
+}
+
 static void dsi_write_panel_on_jdi(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
@@ -275,9 +327,9 @@ static void dsi_write_panel_on_jdi(struct drm_panel *panel)
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 				  0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-				  BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00,
+				  BE16(GPO1_TES1_120_JDI), BE16(GPO1_TEW1), 0x00, 0x00,
 				  0x00, 0x00,
-				  BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
+				  BE16(GPO1_TES1_120_JDI-CAMERA_TRIGGER_OFFSET),
 				  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET2, 0x1e);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3, 0x70, 0x08, 0xd0,
@@ -317,15 +369,17 @@ static void dsi_write_panel_on_sharp(struct drm_panel *panel)
 
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x00);
+	// update vcom per starting mode
+	update_vcom(ctx);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DSI_CTL,
 				  0x20, 0x6b, 0x80, 0x06, 0x33, 0x9a, 0x00,
 				  0x1a, 0x7a);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 				  0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-				  BE16(GPO1_TES1_SHARP), BE16(GPO1_TEW1), 0x00, 0x00,
+				  BE16(GPO1_TES1_120_SHARP), BE16(GPO1_TEW1), 0x00, 0x00,
 				  0x00, 0x00,
-				  BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
+				  BE16(GPO1_TES1_120_SHARP-CAMERA_TRIGGER_OFFSET),
 				  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3, 0x08, 0x70, 0x28,
 				  0x48, 0x00, 0x00, 0x13, 0x21, 0xff, 0x00, 0x0f, 0x01,
@@ -334,7 +388,7 @@ static void dsi_write_panel_on_sharp(struct drm_panel *panel)
 				  0xD0, 0x02, 0x21, 0x6F, 0x08, 0x5A, 0x00, 0x00, 0x00, 0x00,
 				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				  0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP_SHARP), 0x08, 0x70,
+	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP), 0x08, 0x70,
 				  BE16(VFP), 0x00, 0x00, 0x08, 0x3B, 0x00, 0x00, 0x19, 0x01, 0x22);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
@@ -380,9 +434,9 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 					  0x00);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-					  BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00,
+					  BE16(GPO1_TES1_120_BOE), BE16(GPO1_TEW1), 0x00, 0x00,
 					  0x00, 0x00,
-					  BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
+					  BE16(GPO1_TES1_120_BOE-CAMERA_TRIGGER_OFFSET),
 					  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3, 0x0B, 0x70, 0x08,
 					  0x48, 0x00, 0x00, 0x13, 0x01, 0xFF, 0x00, 0x01, 0x09,
@@ -391,7 +445,7 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 					  0x70, 0x08, 0xD0, 0x02, 0x21, 0x6F, 0x08, 0x5A, 0x00,
 					  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 					  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP_BOE_DPHY),
+		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP),
 					  0x08, 0x70, BE16(VFP), 0x00, 0x00, 0x08, 0x3A, 0x00, 0x00,
 					  0x17, 0x00, 0x17);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
@@ -409,17 +463,19 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 	} else {
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x04);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x00);
+		// update vcom per starting mode
+		update_vcom(ctx);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DSI_CTL,
 					0x30, 0x6b, 0x00, 0x06, 0x33, 0x8E, 0x00,
 					0x1a, 0x7a);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 					0x00);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-					BE16(GPO1_TES1), BE16(GPO1_TEW1), 0x00, 0x00,
+					BE16(GPO1_TES1_120_BOE), BE16(GPO1_TEW1), 0x00, 0x00,
 					0x00, 0x00,
-					BE16(GPO1_TES1-CAMERA_TRIGGER_OFFSET),
+					BE16(GPO1_TES1_120_BOE-CAMERA_TRIGGER_OFFSET),
 					BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP_BOE_DPHY),
+		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP),
 					0x08, 0x70, BE16(VFP), 0x00, 0x00, 0x08, 0x3A, 0x00, 0x00,
 					0x17, 0x00, 0x17);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET2, 0x00);
@@ -458,6 +514,12 @@ static int get_panel_info(struct drm_panel *panel)
 			DRM_DEV_ERROR(ctx->dev, "failed to read panel%d info\n", id);
         }
 	}
+	// save left vcom values
+	ctx->vcom120[0] = ctx->panel_mfg_info[VCOM120_OFFSET] << 8 | ctx->panel_mfg_info[VCOM120_OFFSET + 1];
+	ctx->vcom90[0] = ctx->panel_mfg_info[VCOM90_OFFSET] << 8 | ctx->panel_mfg_info[VCOM90_OFFSET + 1];
+	// save right vcom values
+	ctx->vcom120[1] = ctx->panel_mfg_info[VCOM120_OFFSET + PANEL_MFG_INFO_NUM_BYTES] << 8 | ctx->panel_mfg_info[VCOM120_OFFSET + PANEL_MFG_INFO_NUM_BYTES + 1];
+	ctx->vcom90[1] = ctx->panel_mfg_info[VCOM90_OFFSET + PANEL_MFG_INFO_NUM_BYTES] << 8 | ctx->panel_mfg_info[VCOM90_OFFSET + PANEL_MFG_INFO_NUM_BYTES + 1];
     return 0;
 }
 
@@ -542,6 +604,15 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 		    BRIGHTNESS_MAX_120 : brightness;
 	// Scale brightness based on current mode
 	gpo1_tew1 = gpo1_tew1 * modes[ctx->current_mode].vtotal / modes[MODE_120].vtotal;
+
+	// set offset based on frame rate to optimize settling time vs latency
+	if ( modes[ctx->current_mode].vtotal == modes[MODE_144].vtotal ) {
+		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_144_SHARP : GPO1_TES1_144_BOE;
+	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_120].vtotal ) {
+		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
+	} else {
+		gpo1_tes1 = GPO1_TES1_90;
+	}
 
 	if (!ctx->dphy) {
 		ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
@@ -767,11 +838,8 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 	msleep(20);
 	dsi_write_panel_on(panel);
 
-	if ( ctx->panel_vendor == VENDOR_SHARP) {
-		ctx->backlight->props.pulse_offset_rows = GPO1_TES1_SHARP;
-	} else {
-		ctx->backlight->props.pulse_offset_rows = GPO1_TES1;
-	}
+	// default to 120, but we will change this based on frame rate
+	ctx->backlight->props.pulse_offset_rows = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
 
 	if ( ctx->panel_vendor == VENDOR_SHARP || ctx->panel_vendor == VENDOR_BOE ) {
 		for ( i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++ ) {
@@ -836,8 +904,8 @@ static int lpm026m648c_mode_set(struct drm_panel *panel,
 			       const struct drm_display_mode *adjusted_mode)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-
 	lpm026m648c_modes_t new_mode;
+
 	// use the vtotal to determine the mode
 	if (mode->vtotal == modes[MODE_120].vtotal){
 			new_mode = MODE_120;
@@ -845,6 +913,8 @@ static int lpm026m648c_mode_set(struct drm_panel *panel,
 			new_mode = MODE_90;
 	}else if (mode->vtotal == modes[MODE_80].vtotal){
 			new_mode = MODE_80;
+	}else if (mode->vtotal == modes[MODE_144].vtotal){
+			new_mode = MODE_144;
 	}else{
 			DRM_DEV_ERROR(ctx->dev, "Invalid vtotal in mode set %d", mode->vtotal);
 			return -EINVAL;
@@ -857,6 +927,8 @@ static int lpm026m648c_mode_set(struct drm_panel *panel,
 		// only reset the panel parematers if we already initialized the panels
 		if (ctx->enabled)
 		{
+			// update vcom
+			update_vcom(ctx);
 			// update brightness
 			set_brightness(ctx, ctx->backlight->props.brightness, ctx->backlight->props.pulse_offset_rows);
 		}
@@ -888,8 +960,10 @@ static int panel_info_show(struct seq_file *s, void *data)
 		seq_printf(s, " contrast  %x\n",  info[8+offset]);
 		seq_printf(s, " gamma  %x\n",  info[9+offset]);
 		seq_printf(s, " brightnessDataW32  %x\n",  info[12+offset]);
-		seq_printf(s, " vcom1  %x\n",  info[13+offset]);
-		seq_printf(s, " vcom2  %x\n",  info[14+offset]);
+		seq_printf(s, " 120 vcom1  %x\n",  info[13+offset]);
+		seq_printf(s, " 120 vcom2  %x\n",  info[14+offset]);
+		seq_printf(s, " 90 vcom1  %x\n",  info[15+offset]);
+		seq_printf(s, " 90 vcom2  %x\n",  info[16+offset]);
 		seq_printf(s, " colorPointofRedX  %x\n",  info[21+offset]);
 		seq_printf(s, " colorPointofRedY  %x\n",  info[22+offset]);
 		seq_printf(s, " colorPointofGreenX  %x\n",  info[23+offset]);
@@ -1057,33 +1131,40 @@ static int panel_available_show(struct seq_file *s, void *data)
 // RCLK = 32.5 MHz
 #define RCLK_PERIOD_NSEC ( 1000000/32500 )
 #define INTERNAL_LINE_TIME_NSEC  ( RTN * RCLK_PERIOD_NSEC )
-#define EXTERNAL_LINE_TIME_NSEC ( ( 1000000 * (uint32_t)modes[0].htotal ) / ( (uint32_t)modes[0].clock ) )
+#define EXTERNAL_LINE_TIME_NSEC ( ( 1000000 * (uint32_t)modes[ctx->current_mode].htotal ) / ( (uint32_t)modes[ctx->current_mode].clock ) )
 
 static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 {
 	struct drm_panel *panel = s->private;
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-	uint32_t vsync_to_photons_nsec, frame_period_nsec;
+	uint32_t vsync_to_photons_nsec, gpo1_tes1, frame_period_nsec;
 
-	switch ( ctx->current_mode ) {
-		case MODE_120:
-			frame_period_nsec = 1000000000 / 120;
-			break;
-		case MODE_90:
-			frame_period_nsec = 1000000000 / 90;
-			break;
-		case MODE_80:
-			frame_period_nsec = 1000000000 / 80;
-			break;
-		default:
-			frame_period_nsec = 1000000000 / 120;
-	}
-	if ( ctx->panel_vendor == VENDOR_SHARP ) {
-		// 1/FPS + VID_VS_DELAY + TES
-		vsync_to_photons_nsec = frame_period_nsec + VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + GPO1_TES1_SHARP * INTERNAL_LINE_TIME_NSEC;
+	// set offset based on frame rate to optimize settling time vs latency
+	if ( modes[ctx->current_mode].vtotal == modes[MODE_144].vtotal ) {
+		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_144_SHARP : GPO1_TES1_144_BOE;
+	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_120].vtotal ) {
+		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
 	} else {
+		gpo1_tes1 = GPO1_TES1_90;
+	}
+
+	if ( ctx->panel_vendor == VENDOR_JDI || ctx->panel_vendor == VENDOR_BOE || ctx->current_mode == MODE_90 ) {
 		// VID_VS_DELAY + TES
-		vsync_to_photons_nsec = VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + GPO1_TES1 * INTERNAL_LINE_TIME_NSEC;
+		vsync_to_photons_nsec = VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + gpo1_tes1 * INTERNAL_LINE_TIME_NSEC;
+	} else { // SHARP 120/144
+		switch ( ctx->current_mode )
+		{
+			case MODE_144:
+				frame_period_nsec = 1000000000 / 144;
+				break;
+			case MODE_120:
+				frame_period_nsec = 1000000000 / 120;
+				break;
+			default:
+				frame_period_nsec = 1000000000 / 120;
+		}
+		// 1/FPS + TES
+		vsync_to_photons_nsec = VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + frame_period_nsec + gpo1_tes1 * INTERNAL_LINE_TIME_NSEC;
 	}
 	seq_printf(s, "%u\n", vsync_to_photons_nsec / 1000);
 	return 0;
