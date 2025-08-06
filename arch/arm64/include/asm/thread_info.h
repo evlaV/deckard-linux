@@ -86,6 +86,9 @@ void arch_setup_new_exec(void);
 #define TIF_TSC_SIGSEGV		30	/* SIGSEGV on counter-timer access */
 #define TIF_LAZY_MMU		31	/* Task in lazy mmu mode */
 #define TIF_LAZY_MMU_PENDING	32	/* Ops pending for lazy mmu mode exit */
+#define TIF_UNALIGN_ATOMIC_EMULATE	33
+#define TIF_UNALIGN_ATOMIC_BACKPATCH	34
+#define TIF_UNALIGN_ATOMIC_STRICT_SPLIT_LOCKS	35
 
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
 #define _TIF_NEED_RESCHED	(1 << TIF_NEED_RESCHED)
