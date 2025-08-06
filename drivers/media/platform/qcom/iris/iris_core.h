@@ -117,6 +117,14 @@ struct iris_core {
 	/* encoder and decoder have overlapping caps, so two different arrays are required */
 	struct platform_inst_fw_cap		inst_fw_caps_dec[INST_FW_CAP_MAX];
 	struct platform_inst_fw_cap		inst_fw_caps_enc[INST_FW_CAP_MAX];
+	bool					use_tz;
+	struct video_firmware {
+		struct device			*dev;
+		struct iommu_domain		*iommu_domain;
+		size_t				mapped_mem_size;
+		phys_addr_t			mem_phys;
+		size_t				mem_size;
+	} fw;
 };
 
 int iris_core_init(struct iris_core *core);
