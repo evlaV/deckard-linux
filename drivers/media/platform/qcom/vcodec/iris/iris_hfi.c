@@ -635,13 +635,6 @@ unlock:
 	return ret;
 }
 
-irqreturn_t iris_hfi_isr(int irq, void *data)
-{
-	disable_irq_nosync(irq);
-
-	return IRQ_WAKE_THREAD;
-}
-
 irqreturn_t iris_hfi_isr_handler(int irq, void *data)
 {
 	struct iris_core *core = data;
@@ -663,8 +656,7 @@ irqreturn_t iris_hfi_isr_handler(int irq, void *data)
 	iris_pm_put(core, true);
 
 exit:
-	if (!call_vpu_op(core, watchdog, core, core->intr_status))
-		enable_irq(irq);
+	call_vpu_op(core, watchdog, core, core->intr_status);
 
 	return IRQ_HANDLED;
 }
