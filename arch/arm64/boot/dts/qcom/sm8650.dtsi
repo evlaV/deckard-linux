@@ -5159,8 +5159,12 @@
 			/* FW load region */
 			memory-region = <&video_mem>;
 
-			resets = <&gcc GCC_VIDEO_AXI0_CLK_ARES>;
-			reset-names = "bus";
+			resets = <&gcc GCC_VIDEO_AXI0_CLK_ARES>,
+				 <&videocc VIDEO_CC_XO_CLK_ARES>,
+				 <&videocc VIDEO_CC_MVS0C_CLK_ARES>;
+			reset-names = "bus",
+				      "xo",
+				      "core";
 
 			iommus = <&apps_smmu 0x1940 0x0000>,
 				 <&apps_smmu 0x1947 0x0000>;
