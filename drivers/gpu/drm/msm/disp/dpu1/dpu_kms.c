@@ -890,7 +890,7 @@ static int _dpu_kms_drm_obj_init(struct dpu_kms *dpu_kms)
 				DPU_ERROR("Fail to create drm cac property");
 		}
 
-		priv->num_crtcs++;
+		//priv->num_crtcs++;
 	}
 
 	/* All CRTCs are compatible with all encoders */
