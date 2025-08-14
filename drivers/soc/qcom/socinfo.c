@@ -177,6 +177,7 @@ struct qcom_socinfo {
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *dbg_root;
 	struct socinfo_params info;
+	struct dentry *dram_root;
 #endif /* CONFIG_DEBUG_FS */
 };
 
@@ -774,6 +775,7 @@ static void socinfo_debugfs_init(struct qcom_socinfo *qcom_socinfo,
 static void socinfo_debugfs_exit(struct qcom_socinfo *qcom_socinfo)
 {
 	debugfs_remove_recursive(qcom_socinfo->dbg_root);
+	debugfs_remove_recursive(qcom_socinfo->dram_root);
 }
 #else
 static void socinfo_debugfs_init(struct qcom_socinfo *qcom_socinfo,
@@ -824,6 +826,10 @@ static int qcom_socinfo_probe(struct platform_device *pdev)
 		return PTR_ERR(qs->soc_dev);
 
 	socinfo_debugfs_init(qs, info, item_size);
+
+#ifdef CONFIG_DEBUG_FS
+	qs->dram_root = smem_dram_parse(&pdev->dev);
+#endif
 
 	/* Feed the soc specific unique data into entropy pool */
 	add_device_randomness(info, item_size);
