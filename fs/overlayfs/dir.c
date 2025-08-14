@@ -162,6 +162,13 @@ struct dentry *ovl_create_real(struct ovl_fs *ofs, struct inode *dir,
 			/* mkdir is special... */
 			newdentry =  ovl_do_mkdir(ofs, dir, newdentry, attr->mode);
 			err = PTR_ERR_OR_ZERO(newdentry);
+			/* expect to inherit casefolding from workdir/upperdir */
+			if (!err && ofs->casefold != ovl_dentry_casefolded(newdentry)) {
+				pr_warn_ratelimited("wrong inherited casefold (%pd2)\n",
+						    newdentry);
+				dput(newdentry);
+				err = -EINVAL;
+			}
 			break;
 
 		case S_IFCHR:
