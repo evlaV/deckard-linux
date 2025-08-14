@@ -42,6 +42,9 @@ enum ddr_info_version {
 };
 
 struct smem_dram {
+	u8 manufacturer_id;
+	u8 device_type;
+	struct ddr_part_details ddr_params[MAX_CHAN_NUM];
 	unsigned long frequencies[MAX_DDR_FREQ_NUM_V5];
 	u32 num_frequencies;
 	u8 hbb;
@@ -214,6 +217,9 @@ static void smem_dram_parse_v3_data(struct smem_dram *dram, void *data)
 {
 	struct ddr_details_v3 *details = data;
 
+	dram->manufacturer_id = details->manufacturer_id;
+	dram->device_type = details->device_type;
+
 	for (int i = 0; i < MAX_DDR_FREQ_NUM_V3; i++) {
 		struct ddr_freq_table *freq_entry = &details->ddr_freq_tbl.ddr_freq[i];
 
@@ -240,6 +246,11 @@ static void smem_dram_parse_v4_data(struct smem_dram *dram, void *data)
 {
 	struct ddr_details_v4 *details = data;
 
+	dram->manufacturer_id = details->manufacturer_id;
+	dram->device_type = details->device_type;
+
+	memcpy(dram->ddr_params, details->ddr_params, sizeof(struct ddr_part_details) * MAX_CHAN_NUM);
+
 	/* Rank 0 channel 0 entry holds the correct value */
 	dram->hbb = details->highest_bank_addr_bit[0][0];
 
@@ -258,6 +269,11 @@ static void smem_dram_parse_v5_data(struct smem_dram *dram, void *data)
 	struct ddr_details_v5 *details = data;
 	struct ddr_regions_v5 *region = &details->ddr_regions;
 
+	dram->manufacturer_id = details->manufacturer_id;
+	dram->device_type = details->device_type;
+
+	memcpy(dram->ddr_params, details->ddr_params, sizeof(struct ddr_part_details) * MAX_CHAN_NUM);
+
 	dram->hbb = le32_to_cpu(region[0].highest_bank_addr_bit);
 
 	for (int i = 0; i < MAX_DDR_FREQ_NUM_V5; i++) {
@@ -274,6 +290,11 @@ static void smem_dram_parse_v7_data(struct smem_dram *dram, void *data)
 {
 	struct ddr_details_v7 *details = data;
 	struct ddr_regions_v5 *region = &details->ddr_regions;
+
+	dram->manufacturer_id = details->manufacturer_id;
+	dram->device_type = details->device_type;
+
+	memcpy(dram->ddr_params, details->ddr_params, sizeof(struct ddr_part_details) * MAX_CHAN_NUM);
 
 	dram->hbb = le32_to_cpu(region[0].highest_bank_addr_bit);
 
@@ -343,6 +364,41 @@ static int smem_dram_infer_struct_version(size_t size)
 
 	return INFO_UNKNOWN;
 }
+
+static int smem_dram_manufacturer_id_show(struct seq_file *s, void *unused)
+{
+	struct smem_dram *dram = s->private;
+
+	seq_printf(s, "%u\n", dram->manufacturer_id);
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(smem_dram_manufacturer_id);
+
+static int smem_dram_device_type_show(struct seq_file *s, void *unused)
+{
+	struct smem_dram *dram = s->private;
+
+	seq_printf(s, "%u\n", dram->device_type);
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(smem_dram_device_type);
+
+static int smem_dram_ddr_params_show(struct seq_file *s, void *unused)
+{
+	struct smem_dram *dram = s->private;
+
+	for (int i = 0; i < MAX_CHAN_NUM; i++)
+		seq_printf(s, "%d: revid1 %d revid2 %d width %d density %d\n", i,
+				dram->ddr_params[i].revision_id1,
+				dram->ddr_params[i].revision_id2,
+				dram->ddr_params[i].width,
+				dram->ddr_params[i].density);
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(smem_dram_ddr_params);
 
 static int smem_dram_frequencies_show(struct seq_file *s, void *unused)
 {
@@ -423,6 +479,12 @@ struct dentry *smem_dram_parse(struct qcom_smem *smem, struct device *dev)
 	debugfs_create_file("dram_frequencies", 0444, debugfs_dir, dram,
 			    &smem_dram_frequencies_fops);
 	debugfs_create_file("hbb", 0444, debugfs_dir, dram, &smem_hbb_fops);
+	debugfs_create_file("manufacturer_id", 0444, debugfs_dir,
+			    dram, &smem_dram_manufacturer_id_fops);
+	debugfs_create_file("device_type", 0444, debugfs_dir,
+			    dram, &smem_dram_device_type_fops);
+	debugfs_create_file("ddr_params", 0444, debugfs_dir,
+			    dram, &smem_dram_ddr_params_fops);
 
 	__dram = dram;
 
