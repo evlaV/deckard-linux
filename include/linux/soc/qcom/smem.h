@@ -19,6 +19,8 @@ int qcom_smem_get_feature_code(u32 *code);
 
 int qcom_smem_bust_hwspin_lock_by_host(unsigned int host);
 
+struct dentry *smem_dram_parse(struct device *dev);
+
 int qcom_smem_dram_get_hbb(void);
 
 #endif
