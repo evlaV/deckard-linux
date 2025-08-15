@@ -1773,6 +1773,18 @@
 		reg = <0x28>;
 		en-gpios = <&tlmm 58 GPIO_ACTIVE_HIGH>;
 
+		mp3317,vout = <9500>; // 9.5V
+		mp3317,ovp-max = <0x0f>;
+		mp3317,tpwm = <0x0A>; // 5 msec
+		mp3317,iledl = <0x4ff>; // 100 mA
+		mp3317,iledr = <0x4ff>; // 100 mA
+		mp3317,hr = <0x4b>;
+		mp3317,step-hr = <0x41>;
+		mp3317,mode-ctl = <0x9E>;
+		mp3317,en-ctl = <0x9B>;
+
+		mp3317,label = "mp3317-scene-illum-ir";
+
 		status = "okay";
 	};
 };
