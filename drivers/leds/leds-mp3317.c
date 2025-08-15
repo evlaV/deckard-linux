@@ -53,13 +53,13 @@
 
 #define MAX_BRIGHTNESS 4095
 
-// MODE_CL (0x00) - b1000 1001
+// MODE_CTL (0x00) - b1000 1001
 //    BLMOD - (b1)   - Adaptive control enabled
 //    PWMLR - (b0)   - L for CH1-3, R for CH4-6
 //    CBCL  - (b001) - 0.5A cycle-by-cycle limit
 //    INCL  - (b001) - 0.8A input current limit
 // #define CONFIG_MODE_CL_DEFAULT          0x89
-#define CONFIG_MODE_CL_DEFAULT          0x8E // INCL = (b110) 3A. 0.8A INCL causes regular input limit faults
+#define CONFIG_MODE_CTL_DEFAULT          0x8E // INCL = (b110) 3A. 0.8A INCL causes regular input limit faults
 
 // EN_CTRL (0x01)
 //    EN - Chip Enable
@@ -76,7 +76,7 @@
 // #define CONFIG_OVP_MAX_DEFAULT          0x57 // OVP = 010 (25V)
 // #define CONFIG_OVP_MAX_DEFAULT          0x5F // OVP = 011 (30V)
 // #define CONFIG_OVP_MAX_DEFAULT          0x7F // OVP = 111 (34V)
- 
+
 // TPWM (0x03) - bxxxx 1010
 //   TPWM    - (b1010) - 5ms max PWM on time
 #define CONFIG_TPWM_DEFAULT             0x0A
@@ -113,7 +113,7 @@
 
 const uint8_t MP3317_DEFAULT_MAP[] = 
 {
-	CONFIG_MODE_CL_DEFAULT,
+	CONFIG_MODE_CTL_DEFAULT,
 	CONFIG_EN_CTRL_DEFAULT,
 	CONFIG_OVP_MAX_DEFAULT,
 	CONFIG_TPWM_DEFAULT,
@@ -163,25 +163,25 @@ static int deckard_config_mp3317(struct mp3317 *led)
 	}
 
 	// VOUT
-	uint vout = CONFIG_VOUT_MV;
-	#ifdef CONFIG_VOUT_MV
-		if(vout < 7000){
-			vout = 0;
-			// ret = regmap_write(led->regmap, MP3317_VOUT, 0);
-		}else if(vout > 34030){
-			vout = 0xFF;
-			// ret = regmap_write(led->regmap, MP3317_VOUT, 0xff);
-		}else{
-			vout = (vout - 7000 + 106 / 2) / 106;
-			// ret = regmap_write(led->regmap, MP3317_VOUT, vout);
-		}
-	#else
-		// Just use the defined VOUT register directly
+	uint vout;
+	if ( device_property_read_u32(dev, "mp3317,vout",
+				 &vout) ) {
 		vout = CONFIG_VOUT_DEFAULT;
-	#endif
+	}
+
+	if(vout < 7000){
+		vout = 0;
+		// ret = regmap_write(led->regmap, MP3317_VOUT, 0);
+	}else if(vout > 34030){
+		vout = 0xFF;
+		// ret = regmap_write(led->regmap, MP3317_VOUT, 0xff);
+	}else{
+		vout = (vout - 7000 + 106 / 2) / 106;
+		// ret = regmap_write(led->regmap, MP3317_VOUT, vout);
+	}
+
 	// Apply VOUT
 	ret = regmap_write(led->regmap, MP3317_VOUT, vout);
-
 	if(ret)
 	{
 		dev_err(dev, "MP3317_VOUT write error\n");
@@ -189,7 +189,12 @@ static int deckard_config_mp3317(struct mp3317 *led)
 	}
 
 	// OVP_MAX
-	ret = regmap_write(led->regmap, MP3317_OVP_IMAX, CONFIG_OVP_MAX_DEFAULT);
+	uint ovp_max;
+	if ( device_property_read_u32(dev, "mp3317,ovp-max",
+				 &ovp_max) ) {
+		ovp_max = CONFIG_OVP_MAX_DEFAULT;
+	}
+	ret = regmap_write(led->regmap, MP3317_OVP_IMAX, ovp_max);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_OVP_IMAX update error\n");
@@ -197,7 +202,12 @@ static int deckard_config_mp3317(struct mp3317 *led)
 	}
 
 	// TPWM
-	ret = regmap_write(led->regmap, MP3317_TPWM, CONFIG_TPWM_DEFAULT);
+	uint tpwm;
+	if ( device_property_read_u32(dev, "mp3317,tpwm",
+				 &tpwm) ) {
+		tpwm = CONFIG_TPWM_DEFAULT;
+	}
+	ret = regmap_write(led->regmap, MP3317_TPWM, tpwm);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_TPWM update error\n");
@@ -205,7 +215,12 @@ static int deckard_config_mp3317(struct mp3317 *led)
 	}
 
 	// ILEDL_L - Write LSB (L) before MSB (H)
-	ret = regmap_write(led->regmap, MP3317_ILEDL_L, CONFIG_ILEDL_L_DEFAULT);
+	uint iledl;
+	if ( device_property_read_u32(dev, "mp3317,iledl",
+				 &iledl) ) {
+		iledl = CONFIG_ILEDL_H_DEFAULT << 8 | CONFIG_ILEDL_L_DEFAULT;
+	}
+	ret = regmap_write(led->regmap, MP3317_ILEDL_L, iledl & 0x00FF);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDL_L update error\n");
@@ -213,23 +228,28 @@ static int deckard_config_mp3317(struct mp3317 *led)
 	}
 
 	// ILEDL_H
-	ret = regmap_write(led->regmap, MP3317_ILEDL_H, CONFIG_ILEDL_H_DEFAULT);
+	ret = regmap_write(led->regmap, MP3317_ILEDL_H, ( iledl & 0xFF00 ) >> 8);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDL_H update error\n");
 		return ret;
 	}
 
-	// ILEDR_L - Write LSB (L) before MSB (H)
-	ret = regmap_write(led->regmap, MP3317_ILEDR_L, CONFIG_ILEDR_L_DEFAULT);
+	// ILEDL_R - Write LSB (L) before MSB (H)
+	uint iledr;
+	if ( device_property_read_u32(dev, "mp3317,iledr",
+				 &iledr) ) {
+		iledr = CONFIG_ILEDR_H_DEFAULT << 8 | CONFIG_ILEDR_L_DEFAULT;
+	}
+	ret = regmap_write(led->regmap, MP3317_ILEDR_L, iledr & 0x00FF);
 	if(ret)
 	{
-		dev_err(dev, "MP3317_ILEDR_L update error\n");
+		dev_err(dev, "MP3317_ILEDL_R update error\n");
 		return ret;
 	}
-	
+
 	// ILEDR_H
-	ret = regmap_write(led->regmap, MP3317_ILEDR_H, CONFIG_ILEDR_H_DEFAULT);
+	ret = regmap_write(led->regmap, MP3317_ILEDR_H, ( iledr & 0xFF00 ) >> 8);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDR_H update error\n");
@@ -237,7 +257,12 @@ static int deckard_config_mp3317(struct mp3317 *led)
 	}
 
 	// HR_TH
-	ret = regmap_write(led->regmap, MP3317_HR_TH, CONFIG_HR_TH_DEFAULT);
+	uint hr;
+	if ( device_property_read_u32(dev, "mp3317,hr",
+				 &hr) ) {
+		hr = CONFIG_HR_TH_DEFAULT;
+	}
+	ret = regmap_write(led->regmap, MP3317_HR_TH, hr);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_HR_TH update error\n");
@@ -245,7 +270,12 @@ static int deckard_config_mp3317(struct mp3317 *led)
 	}
 
 	// STEP_HR
-	ret = regmap_write(led->regmap, MP3317_HR_STEP, CONFIG_STEP_HR_DEFAULT);
+	uint step_hr;
+	if ( device_property_read_u32(dev, "mp3317,step-hr",
+				 &step_hr) ) {
+		step_hr = CONFIG_STEP_HR_DEFAULT;
+	}
+	ret = regmap_write(led->regmap, MP3317_HR_STEP, step_hr);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_HR_STEP update error\n");
@@ -253,15 +283,26 @@ static int deckard_config_mp3317(struct mp3317 *led)
 	}
 
 	// Re-enable MP3317 with our desired mode control and enable fields LAST
-	// MODE_CL
-	ret = regmap_write(led->regmap, MP3317_MODE_CTL, CONFIG_MODE_CL_DEFAULT);
+	// MODE_CTL
+	uint mode_ctl;
+	if ( device_property_read_u32(dev, "mp3317,mode-ctl",
+				 &mode_ctl) ) {
+		mode_ctl = CONFIG_MODE_CTL_DEFAULT;
+	}
+	ret = regmap_write(led->regmap, MP3317_MODE_CTL, mode_ctl);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_MODE_CTL update error\n");
 		return ret;
 	}
+
 	// EN_CTL
-	ret = regmap_write(led->regmap, MP3317_EN_CTL, CONFIG_EN_CTRL_DEFAULT);
+	uint en_ctl;
+	if ( device_property_read_u32(dev, "mp3317,en-ctl",
+				 &en_ctl) ) {
+		en_ctl = CONFIG_EN_CTRL_DEFAULT;
+	}
+	ret = regmap_write(led->regmap, MP3317_EN_CTL, en_ctl);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_EN_CTL update error\n");
@@ -1002,6 +1043,7 @@ static ssize_t led_config_show(struct device *dev,
 		}
 		if(rval != MP3317_DEFAULT_MAP[reg])
 		{
+			dev_err(dev, "config failed on %d ( %x != %x )\n", reg, rval, MP3317_DEFAULT_MAP[reg]);
 			break;
 		}
 	}
@@ -1825,8 +1867,9 @@ static int mp3317_leds_probe(struct i2c_client *client)
 	}
 
 	led->rst = 60000;
-
-	led->wled.name = "mp3317_led";
+	if ( device_property_read_string(&client->dev, "mp3317,label", &led->wled.name) ) {
+		led->wled.name = "mp3317_led";
+	}
 	led->wled.max_brightness = MAX_BRIGHTNESS;
 	led->wled.brightness_set_blocking = led_brightness_set;
 	led->wled.brightness_get = mp3317_led_get;
