@@ -22,6 +22,12 @@
 #include <linux/gpio/consumer.h>
 #include <linux/suspend.h>
 
+#include <linux/regulator/driver.h>
+#include <linux/regulator/consumer.h>
+#include <linux/regulator/of_regulator.h>
+
+#include <linux/regulator/machine.h>
+
 #define MP3317_MODE_CTL 0
 #define MP3317_EN_CTL 1
 #define MP3317_OVP_IMAX 0x02
@@ -111,7 +117,7 @@
 //   HeadR_L - (b0001) - 375mV comparison threshold
 #define CONFIG_STEP_HR_DEFAULT          0x41
 
-const uint8_t MP3317_DEFAULT_MAP[] = 
+uint8_t MP3317_DEFAULT_MAP[] = 
 {
 	CONFIG_MODE_CTL_DEFAULT,
 	CONFIG_EN_CTRL_DEFAULT,
@@ -131,7 +137,7 @@ struct mp3317 {
 	struct led_classdev wled;
 	struct regmap *regmap;
 	struct gpio_desc *en_gpio;
-	bool isenable;
+	struct regulator_desc desc;
 	unsigned long rst;
 };
 
@@ -167,18 +173,20 @@ static int deckard_config_mp3317(struct mp3317 *led)
 	if ( device_property_read_u32(dev, "mp3317,vout",
 				 &vout) ) {
 		vout = CONFIG_VOUT_DEFAULT;
+	} else {
+		if(vout < 7000){
+			vout = 0;
+			// ret = regmap_write(led->regmap, MP3317_VOUT, 0);
+		}else if(vout > 34030){
+			vout = 0xFF;
+			// ret = regmap_write(led->regmap, MP3317_VOUT, 0xff);
+		}else{
+			vout = (vout - 7000 + 106 / 2) / 106;
+			// ret = regmap_write(led->regmap, MP3317_VOUT, vout);
+		}
 	}
 
-	if(vout < 7000){
-		vout = 0;
-		// ret = regmap_write(led->regmap, MP3317_VOUT, 0);
-	}else if(vout > 34030){
-		vout = 0xFF;
-		// ret = regmap_write(led->regmap, MP3317_VOUT, 0xff);
-	}else{
-		vout = (vout - 7000 + 106 / 2) / 106;
-		// ret = regmap_write(led->regmap, MP3317_VOUT, vout);
-	}
+	MP3317_DEFAULT_MAP[MP3317_VOUT] = vout;
 
 	// Apply VOUT
 	ret = regmap_write(led->regmap, MP3317_VOUT, vout);
@@ -195,6 +203,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		ovp_max = CONFIG_OVP_MAX_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_OVP_IMAX, ovp_max);
+	MP3317_DEFAULT_MAP[MP3317_OVP_IMAX] = ovp_max;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_OVP_IMAX update error\n");
@@ -208,6 +217,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		tpwm = CONFIG_TPWM_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_TPWM, tpwm);
+	MP3317_DEFAULT_MAP[MP3317_TPWM] = tpwm;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_TPWM update error\n");
@@ -221,6 +231,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		iledl = CONFIG_ILEDL_H_DEFAULT << 8 | CONFIG_ILEDL_L_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_ILEDL_L, iledl & 0x00FF);
+	MP3317_DEFAULT_MAP[MP3317_ILEDL_L] = iledl & 0x00FF;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDL_L update error\n");
@@ -229,6 +240,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 
 	// ILEDL_H
 	ret = regmap_write(led->regmap, MP3317_ILEDL_H, ( iledl & 0xFF00 ) >> 8);
+	MP3317_DEFAULT_MAP[MP3317_ILEDL_H] = (( iledl & 0xFF00 ) >> 8);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDL_H update error\n");
@@ -242,6 +254,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		iledr = CONFIG_ILEDR_H_DEFAULT << 8 | CONFIG_ILEDR_L_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_ILEDR_L, iledr & 0x00FF);
+	MP3317_DEFAULT_MAP[MP3317_ILEDR_L] = iledr & 0x00FF;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDL_R update error\n");
@@ -250,6 +263,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 
 	// ILEDR_H
 	ret = regmap_write(led->regmap, MP3317_ILEDR_H, ( iledr & 0xFF00 ) >> 8);
+	MP3317_DEFAULT_MAP[MP3317_ILEDR_H] = (( iledr & 0xFF00 ) >> 8);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDR_H update error\n");
@@ -263,6 +277,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		hr = CONFIG_HR_TH_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_HR_TH, hr);
+	MP3317_DEFAULT_MAP[MP3317_HR_TH] = hr;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_HR_TH update error\n");
@@ -276,6 +291,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		step_hr = CONFIG_STEP_HR_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_HR_STEP, step_hr);
+	MP3317_DEFAULT_MAP[MP3317_HR_STEP] = step_hr;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_HR_STEP update error\n");
@@ -290,6 +306,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		mode_ctl = CONFIG_MODE_CTL_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_MODE_CTL, mode_ctl);
+	MP3317_DEFAULT_MAP[MP3317_MODE_CTL] = mode_ctl;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_MODE_CTL update error\n");
@@ -303,6 +320,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		en_ctl = CONFIG_EN_CTRL_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_EN_CTL, en_ctl);
+	MP3317_DEFAULT_MAP[MP3317_EN_CTL] = en_ctl;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_EN_CTL update error\n");
@@ -1037,14 +1055,16 @@ static ssize_t led_config_show(struct device *dev,
 	for(reg = 0; reg < sizeof(MP3317_DEFAULT_MAP); reg++)
 	{
 		ret = regmap_read(led->regmap, reg, &rval);
+		dev_err(dev, "setting %d == %x\n", reg, rval );
 		if(ret)
 		{
+			dev_err(dev, "could not read %d ( %d )\n", reg, ret);
 			return ret;
 		}
 		if(rval != MP3317_DEFAULT_MAP[reg])
 		{
 			dev_err(dev, "config failed on %d ( %x != %x )\n", reg, rval, MP3317_DEFAULT_MAP[reg]);
-			break;
+			//break;
 		}
 	}
 
@@ -1095,8 +1115,7 @@ static ssize_t led_state_show(struct device *dev,
 	int ret;
 	uint rval;
 
-	if (!gpiod_get_value(led->en_gpio))
-	{
+	if ( !gpiod_get_value(led->en_gpio) ) {
 		return sysfs_emit(buf, "Disable\n");
 	}
 
@@ -1828,11 +1847,77 @@ static int mp3317_leds_resume(struct device *dev)
 
 static DEFINE_SIMPLE_DEV_PM_OPS(mp3317_leds_pm, mp3317_leds_suspend, mp3317_leds_resume);
 
+static int mp3317_reg_enable(struct regulator_dev *rdev)
+{
+	struct mp3317 *led = rdev_get_drvdata(rdev);
+
+	if ( led == NULL ) {
+		dev_err(&rdev->dev, "could not get led device");
+		return 0;
+	}
+
+	gpiod_set_value(led->en_gpio, 1);
+	usleep_range(10000,20000);
+	deckard_config_mp3317(led);
+
+	return 0;
+}
+
+static int mp3317_reg_disable(struct regulator_dev *rdev)
+{
+	struct mp3317 *led = rdev_get_drvdata(rdev);
+
+	if ( led == NULL ) {
+		dev_err(&rdev->dev, "could not get led device");
+		return 0;
+	}
+
+	regmap_update_bits(led->regmap, MP3317_EN_CTL, EN_MASK, 0);
+	gpiod_set_value(led->en_gpio, 0);
+
+	return 0;
+}
+
+static int mp3317_reg_is_enabled(struct regulator_dev *rdev)
+{
+	struct mp3317 *led = rdev_get_drvdata(rdev);
+
+	int ret;
+	uint rval;
+
+	if ( led == NULL ) {
+		dev_err(&rdev->dev, "could not get led device");
+		return 0;
+	}
+
+	if (!gpiod_get_value(led->en_gpio))
+		return 0;
+
+	ret = regmap_read(led->regmap, MP3317_EN_CTL, &rval);
+	if(ret)
+		return ret;
+	rval &= EN_MASK;
+
+	return rval ? 1 : 0;
+}
+
+static const struct regulator_ops reg_ops = {
+	.enable = mp3317_reg_enable,
+	.disable = mp3317_reg_disable,
+	.is_enabled = mp3317_reg_is_enabled,
+};
+
+static struct of_regulator_match match = { .name = "backlight" };
+
 static int mp3317_leds_probe(struct i2c_client *client)
 {
 	struct mp3317 *led;
 	int ret;
 	unsigned int rval;
+	struct regulator_config cfg = { };
+	struct regulator_dev *rdev;
+	struct device *dev = &client->dev;
+	struct device_node *regulator_node;
 
 	led = devm_kzalloc(&client->dev, sizeof(*led), GFP_KERNEL);
 	if(!led)
@@ -1866,6 +1951,7 @@ static int mp3317_leds_probe(struct i2c_client *client)
 		return ret;
 	}
 
+	// setup led platform device
 	led->rst = 60000;
 	if ( device_property_read_string(&client->dev, "mp3317,label", &led->wled.name) ) {
 		led->wled.name = "mp3317_led";
@@ -1884,6 +1970,40 @@ static int mp3317_leds_probe(struct i2c_client *client)
 
 	// set default config led
 	deckard_config_mp3317(led);
+
+	regulator_node = of_get_child_by_name(dev->of_node, "regulator");
+	if (!regulator_node) {
+		dev_err(dev, "regulator node not found\n");
+	} else {
+		ret = of_regulator_match(dev, regulator_node, &match, 1);
+		if (ret == 1) {
+			// setup regulator if included
+			cfg.dev = dev;
+			cfg.init_data = match.init_data;
+			if (!cfg.init_data) {
+				dev_err(dev, "did NOT find mp3317 init data\n");
+			} else {
+				dev_err(dev, "found mp3317 init data %s\n", cfg.init_data->constraints.name );
+			}
+			cfg.driver_data = led;
+			cfg.of_node = match.of_node;
+
+			if ( of_property_read_string(match.of_node, "regulator-name", &led->desc.name) ) {
+				dev_err(dev, "Could not get name of regulator\n");
+			}
+			led->desc.ops = &reg_ops;
+			led->desc.type = REGULATOR_VOLTAGE;
+
+			rdev = devm_regulator_register(dev, &led->desc, &cfg);
+			if (IS_ERR(rdev)) {
+				dev_err(dev, "Failed to register regulator: %d\n", (int) PTR_ERR(rdev));
+			}
+			// start with regulator disabled
+			mp3317_reg_disable(rdev);
+		} else {
+			dev_err(dev, "Regulator match failed, %d\n", ret);
+		}
+	}
 
 	return 0;
 }
