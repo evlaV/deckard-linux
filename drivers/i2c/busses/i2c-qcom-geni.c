@@ -1031,7 +1031,8 @@ static int __maybe_unused geni_i2c_suspend_noirq(struct device *dev)
 		!strcmp(dev_name(dev), "a88000.i2c")) {
 		dev_warn(dev, "skipping noirq suspend\n");
 
-		geni_i2c_runtime_resume(dev);
+		if (gi2c->suspended)
+			geni_i2c_runtime_resume(dev);
 		pm_runtime_disable(dev);
 		pm_runtime_set_active(dev);
 
