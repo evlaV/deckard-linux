@@ -1752,11 +1752,11 @@
 		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
 
 		mp3317,vout = <18000>; // 18V
-		mp3317,ovp-max = <0xdf>;
+		mp3317,ovp-max = <0x9f>;
 		mp3317,tpwm = <0x00>; // direct pwm
 		mp3317,iledl = <0x9ff>; // 100 mA
 		mp3317,iledr = <0x9ff>; // 100 mA
-		mp3317,hr = <0xf6>;
+		mp3317,hr = <0xfa>;
 		mp3317,step-hr = <0x41>;
 		mp3317,mode-ctl = <0xF7>;
 		mp3317,en-ctl = <0xBF>;
@@ -1830,11 +1830,11 @@
 		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
 
 		mp3317,vout = <18000>; // 18V
-		mp3317,ovp-max = <0xdf>;
+		mp3317,ovp-max = <0x9f>;
 		mp3317,tpwm = <0x00>; // direct pwm
 		mp3317,iledl = <0x9ff>; // 100 mA
 		mp3317,iledr = <0x9ff>; // 100 mA
-		mp3317,hr = <0xf6>;
+		mp3317,hr = <0xfa>;
 		mp3317,step-hr = <0x41>;
 		mp3317,mode-ctl = <0xF7>;
 		mp3317,en-ctl = <0xBF>;
