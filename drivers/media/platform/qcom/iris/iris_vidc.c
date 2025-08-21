@@ -407,7 +407,7 @@ static int iris_enum_frameintervals(struct file *filp, void *fh,
 				    struct v4l2_frmivalenum *fival)
 
 {
-	struct iris_inst *inst = iris_get_inst(filp);
+	struct iris_inst *inst = iris_get_inst(filp, NULL);
 	struct iris_core *core = inst->core;
 	struct platform_inst_caps *caps;
 	u32 fps, mbpf;
@@ -450,7 +450,7 @@ static int iris_enum_frameintervals(struct file *filp, void *fh,
 
 static int iris_querycap(struct file *filp, void *fh, struct v4l2_capability *cap)
 {
-	struct iris_inst *inst = iris_get_inst(filp);
+	struct iris_inst *inst = iris_get_inst(filp, NULL);
 
 	strscpy(cap->driver, IRIS_DRV_NAME, sizeof(cap->driver));
 
@@ -514,7 +514,7 @@ static int iris_g_selection(struct file *filp, void *fh, struct v4l2_selection *
 
 static int iris_s_selection(struct file *filp, void *fh, struct v4l2_selection *s)
 {
-	struct iris_inst *inst = iris_get_inst(filp);
+	struct iris_inst *inst = iris_get_inst(filp, NULL);
 
 	if (inst->domain == DECODER)
 		return -EINVAL;
@@ -600,7 +600,7 @@ unlock:
 static int iris_enc_cmd(struct file *filp, void *fh,
 			struct v4l2_encoder_cmd *enc)
 {
-	struct iris_inst *inst = iris_get_inst(filp);
+	struct iris_inst *inst = iris_get_inst(filp, NULL);
 	int ret = 0;
 
 	mutex_lock(&inst->lock);
