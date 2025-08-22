@@ -2903,6 +2903,21 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 			return -EINVAL;
 		error = arch_lock_indir_br_lp_status(me, arg2);
 		break;
+	case PR_GET_COMPAT_INPUT:
+		if (arg2 || arg3 || arg4 || arg5)
+			return -EINVAL;
+		error = current->compat_input;
+		break;
+	case PR_SET_COMPAT_INPUT:
+		if (arg3 || arg4 || arg5)
+			return -EINVAL;
+		if (arg2 == PR_SET_COMPAT_INPUT_DISABLE)
+			current->compat_input = false;
+		else if (arg2 == PR_SET_COMPAT_INPUT_ENABLE)
+			current->compat_input = true;
+		else
+			return -EINVAL;
+		break;		
 	default:
 		trace_task_prctl_unknown(option, arg2, arg3, arg4, arg5);
 		error = -EINVAL;
