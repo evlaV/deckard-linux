@@ -177,6 +177,13 @@ struct msm_drm_private {
 	 */
 	unsigned int hangcheck_period;
 
+	/**
+	 * hangcheck_period_ticks: For hang detection, in ticks
+	 *
+	 * Same as hangcheck_period but expresed in CP_ALWAYS_ON_* ticks
+	 */
+	unsigned int hangcheck_period_ticks;
+
 	/** gpu_devfreq_config: Devfreq tuning config for the GPU. */
 	struct devfreq_simple_ondemand_data gpu_devfreq_config;
 

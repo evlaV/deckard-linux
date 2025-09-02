@@ -290,6 +290,7 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 	bool do_devcoredump = info && (info->fsr & ARM_SMMU_FSR_SS) &&
 		!READ_ONCE(gpu->crashstate);
 	unsigned long irq_flags;
+	int i;
 
 	/*
 	 * In case there is a subsequent storm of pagefaults, disable
@@ -334,7 +335,8 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 		struct msm_gpu_fault_info fault_info = {};
 
 		/* Turn off the hangcheck timer to keep it from bothering us */
-		timer_delete(&gpu->hangcheck_timer);
+		for (i = 0; i < gpu->nr_rings; i++)
+			timer_delete(&gpu->rb[i]->hangcheck_timer);
 
 		fault_info.ttbr0 = info->ttbr0;
 		fault_info.iova  = iova;
