@@ -467,6 +467,9 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	get_stats_counter(ring, REG_A6XX_CP_ALWAYS_ON_COUNTER,
 		rbmemptr_stats(ring, index, alwayson_start));
 
+	get_stats_counter(ring, REG_A6XX_CP_ALWAYS_ON_CONTEXT,
+		rbmemptr(ring, last_job_start_ctx));
+
 	OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
 	OUT_RING(ring, CP_SET_THREAD_BOTH);
 
@@ -1857,6 +1860,7 @@ static void a6xx_cp_hw_err_irq(struct msm_gpu *gpu)
 static void a6xx_fault_detect_irq(struct msm_gpu *gpu)
 {
 	struct msm_ringbuffer *ring = gpu->funcs->active_ring(gpu);
+	int i;
 
 	/*
 	 * If stalled on SMMU fault, we could trip the GPU's hang detection,
@@ -1879,7 +1883,8 @@ static void a6xx_fault_detect_irq(struct msm_gpu *gpu)
 		gpu_read(gpu, REG_A6XX_CP_IB2_REM_SIZE));
 
 	/* Turn off the hangcheck timer to keep it from bothering us */
-	timer_delete(&gpu->hangcheck_timer);
+	for (i = 0; i < gpu->nr_rings; i++)
+		timer_delete(&gpu->rb[i]->hangcheck_timer);
 
 	/* Turn off interrupts to avoid triggering recovery again */
 	gpu_write(gpu, REG_A6XX_RBBM_INT_0_MASK, 0);
@@ -1890,6 +1895,7 @@ static void a6xx_fault_detect_irq(struct msm_gpu *gpu)
 static void a7xx_sw_fuse_violation_irq(struct msm_gpu *gpu)
 {
 	u32 status;
+	int i;
 
 	status = gpu_read(gpu, REG_A7XX_RBBM_SW_FUSE_INT_STATUS);
 	gpu_write(gpu, REG_A7XX_RBBM_SW_FUSE_INT_MASK, 0);
@@ -1902,7 +1908,8 @@ static void a7xx_sw_fuse_violation_irq(struct msm_gpu *gpu)
 	 */
 	if (status & (A7XX_CX_MISC_SW_FUSE_VALUE_RAYTRACING |
 		      A7XX_CX_MISC_SW_FUSE_VALUE_LPAC)) {
-		timer_delete(&gpu->hangcheck_timer);
+		for (i = 0; i < gpu->nr_rings; i++)
+			timer_delete(&gpu->rb[i]->hangcheck_timer);
 
 		kthread_queue_work(gpu->worker, &gpu->recover_work);
 	}
@@ -2397,6 +2404,22 @@ static int a6xx_get_timestamp(struct msm_gpu *gpu, uint64_t *value)
 	return 0;
 }
 
+static int a6xx_get_ctx_timestamp(struct msm_ringbuffer *ring, uint64_t *value)
+{
+	struct msm_gpu *gpu = ring->gpu;
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
+
+	guard(spinlock_irqsave)(&a6xx_gpu->eval_lock);
+
+	if (a6xx_in_preempt(a6xx_gpu) || ring != a6xx_gpu->cur_ring)
+		return -EBUSY;
+
+	*value = gpu_read64(gpu, REG_A6XX_CP_ALWAYS_ON_CONTEXT);
+
+	return 0;
+}
+
 static struct msm_ringbuffer *a6xx_active_ring(struct msm_gpu *gpu)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
@@ -2625,6 +2648,7 @@ static const struct adreno_gpu_funcs funcs = {
 		.get_rptr = a6xx_get_rptr,
 		.progress = a6xx_progress,
 		.sysprof_setup = a6xx_gmu_sysprof_setup,
+		.get_ctx_timestamp = a6xx_get_ctx_timestamp,
 	},
 	.get_timestamp = a6xx_gmu_get_timestamp,
 };
@@ -2654,6 +2678,7 @@ static const struct adreno_gpu_funcs funcs_gmuwrapper = {
 		.create_private_vm = a6xx_create_private_vm,
 		.get_rptr = a6xx_get_rptr,
 		.progress = a6xx_progress,
+		.get_ctx_timestamp = a6xx_get_ctx_timestamp,
 	},
 	.get_timestamp = a6xx_get_timestamp,
 };
@@ -2686,6 +2711,7 @@ static const struct adreno_gpu_funcs funcs_a7xx = {
 		.get_rptr = a6xx_get_rptr,
 		.progress = a6xx_progress,
 		.sysprof_setup = a6xx_gmu_sysprof_setup,
+		.get_ctx_timestamp = a6xx_get_ctx_timestamp,
 	},
 	.get_timestamp = a6xx_gmu_get_timestamp,
 };
