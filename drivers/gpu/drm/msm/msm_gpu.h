@@ -93,6 +93,7 @@ struct msm_gpu_funcs {
 	 */
 	bool (*progress)(struct msm_gpu *gpu, struct msm_ringbuffer *ring);
 	void (*sysprof_setup)(struct msm_gpu *gpu);
+	int (*get_ctx_timestamp)(struct msm_ringbuffer *ring, uint64_t *value);
 };
 
 /* Additional state for iommu faults: */
@@ -259,6 +260,8 @@ struct msm_gpu {
 
 	/* work for handling GPU recovery: */
 	struct kthread_work recover_work;
+
+	struct msm_ringbuffer *hung_ring;
 
 	/** retire_event: notified when submits are retired: */
 	wait_queue_head_t retire_event;
