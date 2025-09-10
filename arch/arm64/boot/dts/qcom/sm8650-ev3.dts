@@ -1523,9 +1523,9 @@
 	vdd-pdphy-supply = <&vreg_l5b_3p1>;
 
 	connector {
-		power-role = "dual";
+		power-role = "source";
 		data-role = "dual";
-		try-power-role = "sink";
+		try-power-role = "source";
 		
 		source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)>;
 		
