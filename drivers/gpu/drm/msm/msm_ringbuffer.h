@@ -39,6 +39,8 @@ struct msm_rbmemptrs {
 	volatile u32 context_idr;
 
 	volatile u32 perfcntr_fence;
+	volatile u64 last_job_start_ctx;
+	volatile u64 last_active_ctxcycles;
 };
 
 struct msm_cp_state {
@@ -74,6 +76,10 @@ struct msm_ringbuffer {
 	struct msm_rbmemptrs *memptrs;
 	uint64_t memptrs_iova;
 	struct msm_fence_context *fctx;
+
+	/* Hang and Inactivity Detection:
+	 */
+	struct timer_list hangcheck_timer;
 
 	/**
 	 * hangcheck_progress_retries:
