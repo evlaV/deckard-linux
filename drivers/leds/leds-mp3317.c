@@ -62,10 +62,10 @@
 // MODE_CTL (0x00) - b1000 1001
 //    BLMOD - (b1)   - Adaptive control enabled
 //    PWMLR - (b0)   - L for CH1-3, R for CH4-6
-//    CBCL  - (b001) - 0.5A cycle-by-cycle limit
+//    CBCL  - (b011) - 0.9A cycle-by-cycle limit
 //    INCL  - (b001) - 0.8A input current limit
 // #define CONFIG_MODE_CL_DEFAULT          0x89
-#define CONFIG_MODE_CTL_DEFAULT          0x8E // INCL = (b110) 3A. 0.8A INCL causes regular input limit faults
+#define CONFIG_MODE_CTL_DEFAULT          0x9E
 
 // EN_CTRL (0x01)
 //    EN - Chip Enable
@@ -75,10 +75,10 @@
 
 // OVP_MAX (0x02) - b0100 1111
 //   DMSL    - (b0)    - Constant voltage mode
-//   SBY_PWM - (b1)    - Standby when PWM low for >65ms
+//   SBY_PWM - (b0)    - Disable standby
 //   OVP     - (b001)  - 21V
 //   IMAX    - (b111)  - 160mA max current
-#define CONFIG_OVP_MAX_DEFAULT          0x4F
+#define CONFIG_OVP_MAX_DEFAULT          0x0F
 // #define CONFIG_OVP_MAX_DEFAULT          0x57 // OVP = 010 (25V)
 // #define CONFIG_OVP_MAX_DEFAULT          0x5F // OVP = 011 (30V)
 // #define CONFIG_OVP_MAX_DEFAULT          0x7F // OVP = 111 (34V)
@@ -103,13 +103,13 @@
 // Can set VOUT with this voltage define. Comment this to use CONFIG_VOUT_DEFAULT directly
 #define CONFIG_VOUT_MV                  9500
 
-// HR_TH (0x09) - b1111 1001
-//   CPYHyst - (b11)   - 250mV headroom
+// HR_TH (0x09) - b0100 1001
+//   CPYHyst - (b00)   - 750mV headroom
 //   EN_INUV - (b1)    - UVLO enabled
-//   TCOMP   - (b1)    - 40msec Short-circuit comparator
+//   TCOMP   - (b0)    - 20msec Short-circuit comparator
 //   FSW     - (b10)   - 1.25MHz switch frequency
 //   LEDS    - (b01)   - 5V short-circuit
-#define CONFIG_HR_TH_DEFAULT            0x4F
+#define CONFIG_HR_TH_DEFAULT            0x49
 
 // STEP_HR (0x0A) - b0100 0001
 //   Step_UP - (b01)   - 210mV Step-up size
