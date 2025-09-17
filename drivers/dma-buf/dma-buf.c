@@ -215,10 +215,12 @@ static int dma_buf_mmap_internal(struct file *file, struct vm_area_struct *vma)
 	if (!dmabuf->ops->mmap)
 		return -EINVAL;
 
+#ifdef pgprot_dmacoherent
 	if (vma->vm_pgoff >= (0x80000000u >> PAGE_SHIFT)) {
 		vma->vm_pgoff -= (0x80000000u >> PAGE_SHIFT);
 		vma->vm_page_prot = pgprot_dmacoherent(vma->vm_page_prot);
 	}
+#endif
 
 	/* check for overflowing the buffer's size */
 	if (vma->vm_pgoff + vma_pages(vma) >
