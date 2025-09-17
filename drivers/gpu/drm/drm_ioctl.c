@@ -834,8 +834,10 @@ long drm_ioctl(struct file *filp,
 		return -ENODEV;
 
 	if (DRM_IOCTL_TYPE(cmd) != DRM_IOCTL_BASE) {
+#ifdef CONFIG_DRM_MSM
 		if (DRM_IOCTL_TYPE(cmd) == KGSL_IOC_TYPE)
 			return kgsl_ioctl(filp, cmd, arg);
+#endif
 		return -ENOTTY;
 	}
 
