@@ -284,6 +284,7 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 			 struct adreno_smmu_fault_info *info, const char *block,
 			 u32 scratch[4])
 {
+	struct adreno_gpu *adreno_gpu = container_of(gpu, struct adreno_gpu, base);
 	struct msm_drm_private *priv = gpu->dev->dev_private;
 	struct msm_mmu *mmu = to_msm_vm(gpu->vm)->mmu;
 	const char *type = "UNKNOWN";
@@ -338,6 +339,11 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 		for (i = 0; i < gpu->nr_rings; i++)
 			timer_delete(&gpu->rb[i]->hangcheck_timer);
 
+		/* Let any concurrent GMU transactions know that the MMU may be
+		 * blocked for a while and they should wait on us.
+		 */
+		reinit_completion(&adreno_gpu->fault_coredump_done);
+
 		fault_info.ttbr0 = info->ttbr0;
 		fault_info.iova  = iova;
 		fault_info.flags = flags;
@@ -345,6 +351,8 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 		fault_info.block = block;
 
 		msm_gpu_fault_crashstate_capture(gpu, &fault_info);
+
+		complete_all(&adreno_gpu->fault_coredump_done);
 	}
 
 	return 0;
@@ -1231,6 +1239,9 @@ int adreno_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 	ret = adreno_get_pwrlevels(dev, gpu);
 	if (ret)
 		return ret;
+
+	init_completion(&adreno_gpu->fault_coredump_done);
+	complete_all(&adreno_gpu->fault_coredump_done);
 
 	pm_runtime_set_autosuspend_delay(dev,
 		adreno_gpu->info->inactive_period);
