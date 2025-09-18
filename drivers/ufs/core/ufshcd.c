@@ -38,6 +38,8 @@
 #include "ufshcd-crypto.h"
 #include <linux/unaligned.h>
 
+#include <trace/gpuvis.h>
+
 #define CREATE_TRACE_POINTS
 #include "ufs_trace.h"
 
@@ -5520,6 +5522,7 @@ static bool ufshcd_is_auto_hibern8_error(struct ufs_hba *hba,
  */
 static irqreturn_t ufshcd_uic_cmd_compl(struct ufs_hba *hba, u32 intr_status)
 {
+	TRACE_BEGIN_CTX();
 	irqreturn_t retval = IRQ_NONE;
 	struct uic_command *cmd;
 
@@ -5731,6 +5734,7 @@ static void ufshcd_mcq_compl_pending_transfer(struct ufs_hba *hba,
  */
 static irqreturn_t ufshcd_transfer_req_compl(struct ufs_hba *hba)
 {
+	TRACE_BEGIN_CTX();
 	/* Resetting interrupt aggregation counters first and reading the
 	 * DOOR_BELL afterward allows us to handle all the completed requests.
 	 * In order to prevent other interrupts starvation the DB is read once
@@ -6788,6 +6792,7 @@ skip_err_handling:
  */
 static irqreturn_t ufshcd_update_uic_error(struct ufs_hba *hba)
 {
+	TRACE_BEGIN_CTX();
 	u32 reg;
 	irqreturn_t retval = IRQ_NONE;
 
@@ -6867,6 +6872,7 @@ static irqreturn_t ufshcd_update_uic_error(struct ufs_hba *hba)
 
 	dev_dbg(hba->dev, "%s: UIC error flags = 0x%08x\n",
 			__func__, hba->uic_error);
+
 	return retval;
 }
 
@@ -6881,6 +6887,7 @@ static irqreturn_t ufshcd_update_uic_error(struct ufs_hba *hba)
  */
 static irqreturn_t ufshcd_check_errors(struct ufs_hba *hba, u32 intr_status)
 {
+	TRACE_BEGIN_CTX();
 	bool queue_eh_work = false;
 	irqreturn_t retval = IRQ_NONE;
 
@@ -6957,6 +6964,7 @@ static irqreturn_t ufshcd_check_errors(struct ufs_hba *hba, u32 intr_status)
  */
 static irqreturn_t ufshcd_tmc_handler(struct ufs_hba *hba)
 {
+	TRACE_BEGIN_CTX();
 	unsigned long flags, pending, issued;
 	irqreturn_t ret = IRQ_NONE;
 	int tag;
@@ -6990,6 +6998,7 @@ static irqreturn_t ufshcd_handle_mcq_cq_events(struct ufs_hba *hba)
 	int i, ret;
 	u32 events;
 
+	TRACE_BEGIN_CTX();
 	ret = ufshcd_vops_get_outstanding_cqs(hba, &outstanding_cqs);
 	if (ret)
 		outstanding_cqs = (1U << hba->nr_hw_queues) - 1;
@@ -7022,6 +7031,8 @@ static irqreturn_t ufshcd_handle_mcq_cq_events(struct ufs_hba *hba)
 static irqreturn_t ufshcd_sl_intr(struct ufs_hba *hba, u32 intr_status)
 {
 	irqreturn_t retval = IRQ_NONE;
+
+	TRACE_BEGIN_CTX();
 
 	if (intr_status & UFSHCD_UIC_MASK)
 		retval |= ufshcd_uic_cmd_compl(hba, intr_status);
@@ -7057,6 +7068,7 @@ static irqreturn_t ufshcd_threaded_intr(int irq, void *__hba)
 	struct ufs_hba *hba = __hba;
 	int retries = hba->nutrs;
 
+	TRACE_BEGIN_CTX();
 	last_intr_status = intr_status = ufshcd_readl(hba, REG_INTERRUPT_STATUS);
 
 	/*
@@ -7101,6 +7113,8 @@ static irqreturn_t ufshcd_threaded_intr(int irq, void *__hba)
  */
 static irqreturn_t ufshcd_intr(int irq, void *__hba)
 {
+
+	TRACE_BEGIN_CTX();
 	struct ufs_hba *hba = __hba;
 	u32 intr_status, enabled_intr_status;
 

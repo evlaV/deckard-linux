@@ -28,6 +28,8 @@
 #include "ufshcd-pltfrm.h"
 #include "ufs-qcom.h"
 
+#include <trace/gpuvis.h>
+
 #define MCQ_QCFGPTR_MASK	GENMASK(7, 0)
 #define MCQ_QCFGPTR_UNIT	0x200
 #define MCQ_SQATTR_OFFSET(c) \
@@ -2047,6 +2049,7 @@ static irqreturn_t ufs_qcom_mcq_esi_handler(int irq, void *data)
 	struct ufs_hba *hba = qi->hba;
 	struct ufs_hw_queue *hwq = &hba->uhq[qi->idx];
 
+	TRACE_BEGIN_CTX();
 	ufshcd_mcq_write_cqis(hba, 0x1, qi->idx);
 	ufshcd_mcq_poll_cqe_lock(hba, hwq);
 
