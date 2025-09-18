@@ -2437,8 +2437,8 @@ static int ufs_qcom_config_esi(struct ufs_hba *hba)
 		qi[idx].idx = idx;
 		qi[idx].hba = hba;
 
-		ret = devm_request_irq(hba->dev, qi[idx].irq, ufs_qcom_mcq_esi_handler,
-				       IRQF_SHARED, "qcom-mcq-esi", qi + idx);
+		ret = devm_request_threaded_irq(hba->dev, qi[idx].irq, NULL, ufs_qcom_mcq_esi_handler,
+				       IRQF_ONESHOT | IRQF_SHARED, "qcom-mcq-esi", qi + idx);
 		if (ret) {
 			/* Free previously allocated IRQs */
 			for (int j = 0; j < idx; j++)
