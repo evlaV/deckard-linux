@@ -4286,7 +4286,8 @@ CONFIG_DRM_SCHED=y
 #
 # Drivers for system framebuffers
 #
-# CONFIG_DRM_SIMPLEDRM is not set
+CONFIG_DRM_SYSFB_HELPER=y
+CONFIG_DRM_SIMPLEDRM=y
 # end of Drivers for system framebuffers
 
 #

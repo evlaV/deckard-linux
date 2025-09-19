@@ -25,7 +25,35 @@
 
 	chosen {
 		stdout-path = "serial0:115200n8";
+
+		framebuffer0: framebuffer {
+			compatible = "simple-framebuffer";
+			memory-region = <&framebuffer_mem>;
+			width = <4320>;
+			height = <2160>;
+			stride = <(4320 * 4)>;
+			format = "a8r8g8b8";
+
+			clocks = <&gcc GCC_DISP_HF_AXI_CLK>,
+				 <&dispcc DISP_CC_MDSS_MDP_CLK>,
+				 <&dispcc DISP_CC_MDSS_BYTE0_CLK>,
+				 <&dispcc DISP_CC_MDSS_BYTE0_INTF_CLK>,
+				 <&dispcc DISP_CC_MDSS_PCLK0_CLK>,
+				 <&dispcc DISP_CC_MDSS_VSYNC_CLK>,
+				 <&dispcc DISP_CC_MDSS_MDP_CLK>,
+				 <&dispcc DISP_CC_MDSS_BYTE1_CLK>,
+				 <&dispcc DISP_CC_MDSS_BYTE1_INTF_CLK>,
+				 <&dispcc DISP_CC_MDSS_PCLK1_CLK>;
+			power-domains = <&dispcc MDSS_GDSC>;
+		};
 	};	
+
+	reserved-memory {
+		framebuffer_mem: framebuffer@af400000 {
+			no-map;
+			reg = <0x0 0xaf400000 0x0 0x03000000>;
+		};
+	};
 
 	cpus {
 
