@@ -53,15 +53,27 @@
 #define VFP		700
 #define VID_VS_DELAY	1112
 #define VBP		23
-#define GPO1_TES1_144_SHARP	150
-#define GPO1_TES1_120_SHARP	100
-#define GPO1_TES1_144_BOE	3435
-#define GPO1_TES1_120_BOE	4068
-#define GPO1_TES1_144_JDI	GPO1_TES1_144_BOE
-#define GPO1_TES1_120_JDI	GPO1_TES1_120_BOE
-#define GPO1_TES1_90		5446
-#define GPO1_TEW1			0
 #define RTN 59
+
+#define GPO1_TES1_144		3126
+#define GPO1_TES1_120		4068
+#define GPO1_TES1_90		5446
+#define GPO1_TES1_80		6123
+#define GPO1_TES1_72		6800
+
+#define GPO1_TES1_144_JDI	GPO1_TES1_144
+#define GPO1_TES1_120_JDI	GPO1_TES1_120
+#define GPO1_TES1_144_SHARP	GPO1_TES1_144
+#define GPO1_TES1_120_SHARP	GPO1_TES1_120
+#define GPO1_TES1_144_BOE	GPO1_TES1_144
+#define GPO1_TES1_120_BOE	GPO1_TES1_120
+
+#define GPO1_TEW1			0
+#define GPO1_TEW1_144		310
+#define GPO1_TEW1_120		367
+#define GPO1_TEW1_90		490
+#define GPO1_TEW1_80		551
+#define GPO1_TEW1_72		612
 
 // Panel Vendor types
 #define VENDOR_SHARP	'S'
@@ -600,18 +612,23 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 	u16 gpo1_tew1;
 	u16 cam_trig_start = 0, cam_trig_width = 0;
 
-	gpo1_tew1 = brightness > BRIGHTNESS_MAX_120 ?
-		    BRIGHTNESS_MAX_120 : brightness;
-	// Scale brightness based on current mode
-	gpo1_tew1 = gpo1_tew1 * modes[ctx->current_mode].vtotal / modes[MODE_120].vtotal;
-
-	// set offset based on frame rate to optimize settling time vs latency
+	// Scale brightness and offset based on mode
+	// TODO 72 Hz not supported until dv2
 	if ( modes[ctx->current_mode].vtotal == modes[MODE_144].vtotal ) {
-		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_144_SHARP : GPO1_TES1_144_BOE;
-	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_120].vtotal ) {
-		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
-	} else {
+		gpo1_tew1 = GPO1_TEW1_144;
+		gpo1_tes1 = GPO1_TES1_144;
+	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_120].vtotal) {
+		gpo1_tew1 = GPO1_TEW1_120;
+		gpo1_tes1 = GPO1_TES1_120;
+	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_90].vtotal) {
+		gpo1_tew1 = GPO1_TEW1_90;
 		gpo1_tes1 = GPO1_TES1_90;
+	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_80].vtotal) {
+		gpo1_tew1 = GPO1_TEW1_80;
+		gpo1_tes1 = GPO1_TES1_80;
+	} else {
+		gpo1_tew1 = GPO1_TEW1_120;
+		gpo1_tes1 = GPO1_TES1_120;
 	}
 
 	if (!ctx->dphy) {
