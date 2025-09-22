@@ -34,6 +34,8 @@
 #include <linux/vmalloc.h>
 #include <trace/events/swiotlb.h>
 
+#include <trace/gpuvis.h>
+
 #include "dma-iommu.h"
 #include "iommu-pages.h"
 
@@ -804,6 +806,38 @@ static void iommu_dma_free_iova(struct iommu_domain *domain, dma_addr_t iova,
 				size >> iova_shift(iovad));
 }
 
+static void __iommu_dma_unmap2(struct device *dev, dma_addr_t dma_addr, size_t size)
+{
+	//gabe
+	struct iommu_domain *domain = iommu_get_dma_domain(dev);
+	struct iommu_dma_cookie *cookie = domain->iova_cookie;
+	struct iova_domain *iovad = &cookie->iovad;
+	size_t iova_off = iova_offset(iovad, dma_addr);
+	struct iommu_iotlb_gather iotlb_gather;
+	size_t unmapped;
+
+	dma_addr -= iova_off;
+	size = iova_align(iovad, size + iova_off);
+	iommu_iotlb_gather_init(&iotlb_gather);
+	iotlb_gather.queued = READ_ONCE(cookie->fq_domain);
+
+	{
+		TRACE_BEGIN_CTX("[%s] iommu_unmap_fast a=0x%0x sz=%lu",dev->init_name, dma_addr, size);
+		unmapped = iommu_unmap_fast(domain, dma_addr, size, &iotlb_gather);
+		WARN_ON(unmapped != size);
+	}
+
+	if (!iotlb_gather.queued)
+	{
+		//TRACE_BEGIN_CTX("iommu_iotlb_sync");
+		iommu_iotlb_sync(domain, &iotlb_gather);
+	}
+	{
+		//TRACE_BEGIN_CTX("iommu_dma_free_iova");
+		iommu_dma_free_iova(domain, dma_addr, size, &iotlb_gather);
+	}
+}
+
 static void __iommu_dma_unmap(struct device *dev, dma_addr_t dma_addr,
 		size_t size)
 {
@@ -1543,7 +1577,11 @@ void iommu_dma_unmap_sg(struct device *dev, struct scatterlist *sg, int nents,
 	}
 
 	if (end)
-		__iommu_dma_unmap(dev, start, end - start);
+	{
+		//gabe
+		//TRACE_BEGIN_CTX("unmap");
+		__iommu_dma_unmap2(dev, start, end - start);
+	}
 }
 
 dma_addr_t iommu_dma_map_resource(struct device *dev, phys_addr_t phys,

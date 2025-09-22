@@ -5563,8 +5563,12 @@ void ufshcd_release_scsi_cmd(struct ufs_hba *hba,
 			     struct ufshcd_lrb *lrbp)
 {
 	struct scsi_cmnd *cmd = lrbp->cmd;
-
-	scsi_dma_unmap(cmd);
+	int nents = -1;
+	if(cmd) { nents = cmd->sdb.table.nents; }
+	{
+		TRACE_BEGIN_CTX("scsi_dma_unmap [%d]",nents);
+		scsi_dma_unmap(cmd);
+	}
 	ufshcd_crypto_clear_prdt(hba, lrbp);
 	ufshcd_release(hba);
 	ufshcd_clk_scaling_update_busy(hba);
@@ -5582,6 +5586,8 @@ void ufshcd_compl_one_cqe(struct ufs_hba *hba, int task_tag,
 	struct ufshcd_lrb *lrbp;
 	struct scsi_cmnd *cmd;
 	enum utp_ocs ocs;
+	
+	TRACE_BEGIN_CTX();
 
 	lrbp = &hba->lrb[task_tag];
 	lrbp->compl_time_stamp = ktime_get();

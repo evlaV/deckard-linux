@@ -17,6 +17,8 @@
 #include <linux/bitfield.h>
 #include <linux/iopoll.h>
 
+#include <trace/gpuvis.h>
+
 #define MAX_QUEUE_SUP GENMASK(7, 0)
 #define QCFGPTR GENMASK(23, 16)
 #define UFS_MCQ_MIN_RW_QUEUES 2
@@ -317,6 +319,7 @@ void ufshcd_mcq_compl_all_cqes_lock(struct ufs_hba *hba,
 {
 	unsigned long flags;
 	u32 entries = hwq->max_entries;
+	//TRACE_BEGIN_CTX("entries=%d",entries);
 
 	spin_lock_irqsave(&hwq->cq_lock, flags);
 	while (entries > 0) {
@@ -337,17 +340,22 @@ unsigned long ufshcd_mcq_poll_cqe_lock(struct ufs_hba *hba,
 	unsigned long flags;
 
 	spin_lock_irqsave(&hwq->cq_lock, flags);
-	ufshcd_mcq_update_cq_tail_slot(hwq);
-	while (!ufshcd_mcq_is_cq_empty(hwq)) {
-		ufshcd_mcq_process_cqe(hba, hwq);
-		ufshcd_mcq_inc_cq_head_slot(hwq);
-		completed_reqs++;
+	{
+		//TRACE_BEGIN_CTX();
+		ufshcd_mcq_update_cq_tail_slot(hwq);
+		while (!ufshcd_mcq_is_cq_empty(hwq)) {
+			ufshcd_mcq_process_cqe(hba, hwq);
+			ufshcd_mcq_inc_cq_head_slot(hwq);
+			completed_reqs++;
+		}
+		
+		if (completed_reqs)
+			ufshcd_mcq_update_cq_head(hwq);
 	}
-
-	if (completed_reqs)
-		ufshcd_mcq_update_cq_head(hwq);
-	spin_unlock_irqrestore(&hwq->cq_lock, flags);
-
+	{
+		//TRACE_BEGIN_CTX("cr=%d",completed_reqs);
+		spin_unlock_irqrestore(&hwq->cq_lock, flags);
+	}
 	return completed_reqs;
 }
 EXPORT_SYMBOL_GPL(ufshcd_mcq_poll_cqe_lock);
