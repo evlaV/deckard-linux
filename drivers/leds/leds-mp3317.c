@@ -139,6 +139,7 @@ struct mp3317 {
 	struct gpio_desc *en_gpio;
 	struct regulator_desc desc;
 	unsigned long rst;
+    u8 default_map[sizeof(MP3317_DEFAULT_MAP)];
 };
 
 static ssize_t reg_dump_show(struct device *dev, struct device_attribute *attr, char *buf);
@@ -150,6 +151,10 @@ static int deckard_config_mp3317(struct mp3317 *led)
 {
 	struct device *dev = &led->client->dev;
 	int ret;
+	uint rval;
+
+	// get driver defaults
+	memcpy(led->default_map, MP3317_DEFAULT_MAP, sizeof(MP3317_DEFAULT_MAP));
 
 	// Disable MP3317 before setting config, just disable all EN bits for config
 	// ret = regmap_update_bits(led->regmap, MP3317_EN_CTL,EN_MASK, 0);
@@ -186,7 +191,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		}
 	}
 
-	MP3317_DEFAULT_MAP[MP3317_VOUT] = vout;
+	led->default_map[MP3317_VOUT] = vout;
 
 	// Apply VOUT
 	ret = regmap_write(led->regmap, MP3317_VOUT, vout);
@@ -203,7 +208,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		ovp_max = CONFIG_OVP_MAX_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_OVP_IMAX, ovp_max);
-	MP3317_DEFAULT_MAP[MP3317_OVP_IMAX] = ovp_max;
+	led->default_map[MP3317_OVP_IMAX] = ovp_max;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_OVP_IMAX update error\n");
@@ -217,7 +222,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		tpwm = CONFIG_TPWM_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_TPWM, tpwm);
-	MP3317_DEFAULT_MAP[MP3317_TPWM] = tpwm;
+	led->default_map[MP3317_TPWM] = tpwm;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_TPWM update error\n");
@@ -231,7 +236,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		iledl = CONFIG_ILEDL_H_DEFAULT << 8 | CONFIG_ILEDL_L_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_ILEDL_L, iledl & 0x00FF);
-	MP3317_DEFAULT_MAP[MP3317_ILEDL_L] = iledl & 0x00FF;
+	led->default_map[MP3317_ILEDL_L] = iledl & 0x00FF;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDL_L update error\n");
@@ -240,7 +245,8 @@ static int deckard_config_mp3317(struct mp3317 *led)
 
 	// ILEDL_H
 	ret = regmap_write(led->regmap, MP3317_ILEDL_H, ( iledl & 0xFF00 ) >> 8);
-	MP3317_DEFAULT_MAP[MP3317_ILEDL_H] = (( iledl & 0xFF00 ) >> 8);
+    regmap_read(led->regmap, MP3317_ILEDL_H, &rval);
+	led->default_map[MP3317_ILEDL_H] = (( iledl & 0xFF00 ) >> 8);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDL_H update error\n");
@@ -254,7 +260,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		iledr = CONFIG_ILEDR_H_DEFAULT << 8 | CONFIG_ILEDR_L_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_ILEDR_L, iledr & 0x00FF);
-	MP3317_DEFAULT_MAP[MP3317_ILEDR_L] = iledr & 0x00FF;
+	led->default_map[MP3317_ILEDR_L] = iledr & 0x00FF;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDL_R update error\n");
@@ -263,7 +269,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 
 	// ILEDR_H
 	ret = regmap_write(led->regmap, MP3317_ILEDR_H, ( iledr & 0xFF00 ) >> 8);
-	MP3317_DEFAULT_MAP[MP3317_ILEDR_H] = (( iledr & 0xFF00 ) >> 8);
+	led->default_map[MP3317_ILEDR_H] = (( iledr & 0xFF00 ) >> 8);
 	if(ret)
 	{
 		dev_err(dev, "MP3317_ILEDR_H update error\n");
@@ -277,7 +283,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		hr = CONFIG_HR_TH_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_HR_TH, hr);
-	MP3317_DEFAULT_MAP[MP3317_HR_TH] = hr;
+	led->default_map[MP3317_HR_TH] = hr;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_HR_TH update error\n");
@@ -291,7 +297,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		step_hr = CONFIG_STEP_HR_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_HR_STEP, step_hr);
-	MP3317_DEFAULT_MAP[MP3317_HR_STEP] = step_hr;
+	led->default_map[MP3317_HR_STEP] = step_hr;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_HR_STEP update error\n");
@@ -306,7 +312,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		mode_ctl = CONFIG_MODE_CTL_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_MODE_CTL, mode_ctl);
-	MP3317_DEFAULT_MAP[MP3317_MODE_CTL] = mode_ctl;
+	led->default_map[MP3317_MODE_CTL] = mode_ctl;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_MODE_CTL update error\n");
@@ -320,7 +326,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		en_ctl = CONFIG_EN_CTRL_DEFAULT;
 	}
 	ret = regmap_write(led->regmap, MP3317_EN_CTL, en_ctl);
-	MP3317_DEFAULT_MAP[MP3317_EN_CTL] = en_ctl;
+	led->default_map[MP3317_EN_CTL] = en_ctl;
 	if(ret)
 	{
 		dev_err(dev, "MP3317_EN_CTL update error\n");
@@ -1049,6 +1055,7 @@ static ssize_t led_config_show(struct device *dev,
 	struct mp3317 *led = container_of(lcdev, struct mp3317, wled);
 	int ret;
 	uint rval;
+	bool config = true;
 
 	// Verify all registers are configured to desired defaults
 	u8 reg;
@@ -1061,14 +1068,14 @@ static ssize_t led_config_show(struct device *dev,
 			dev_err(dev, "could not read %d ( %d )\n", reg, ret);
 			return ret;
 		}
-		if(rval != MP3317_DEFAULT_MAP[reg])
+		if(rval != led->default_map[reg])
 		{
-			dev_err(dev, "config failed on %d ( %x != %x )\n", reg, rval, MP3317_DEFAULT_MAP[reg]);
-			//break;
+			dev_err(dev, "config failed on %d ( %x != %x )\n", reg, rval, led->default_map[reg]);
+			config = false;
 		}
 	}
 
-	if(reg < sizeof(MP3317_DEFAULT_MAP))
+	if(!config)
 	{
 		return sysfs_emit(buf, "Config not applied\n");
 	}
@@ -1782,24 +1789,8 @@ static const struct regmap_config MP3317_regmap_config = {
 static int led_brightness_set(struct led_classdev *cdev,
 				  enum led_brightness brightness)
 {
-	struct mp3317 *led = container_of(cdev, struct mp3317, wled);
-	int ret;
-
-	ret = regmap_write(led->regmap, MP3317_ILEDL_L, brightness & 0xff);
-	if(ret)
-			return ret;
-	ret = regmap_write(led->regmap, MP3317_ILEDL_H, (brightness & 0xf00) >> 8);
-	if(ret)
-			return ret;
-
-	ret = regmap_write(led->regmap, MP3317_ILEDR_L, brightness & 0xff);
-	if(ret)
-			return ret;
-	ret = regmap_write(led->regmap, MP3317_ILEDR_H, (brightness & 0xf00) >> 8);
-	if(ret)
-			return ret;
-
-	led_update_brightness(cdev);
+    // TODO
+    // Convert linux 0-255 brightness range to current setting
 	return 0;
 }
 
