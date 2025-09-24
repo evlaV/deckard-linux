@@ -145,6 +145,8 @@ static void venus_sys_error_handler(struct work_struct *work)
 	if (ret)
 		fwpath = core->res->fwname;
 
+	dev_err(core->dev, "gabe: venus_sys_error_handler calling load_fw\n");
+
 	ret = load_fw(core->dev, fwpath, &core->fw.mem_phys, &core->fw.mem_size,
 		      VENUS_PAS_ID, core->use_tz);
 	if (ret && !failed) {
@@ -505,6 +507,8 @@ static int venus_probe(struct platform_device *pdev)
 					    &fwpath);
 	if (ret)
 		fwpath = core->res->fwname;
+
+	dev_err(core->dev, "gabe: venus_probe() calling load_fw\n");
 
 	ret = load_fw(core->dev, fwpath, &core->fw.mem_phys, &core->fw.mem_size,
 		      VENUS_PAS_ID, core->use_tz);

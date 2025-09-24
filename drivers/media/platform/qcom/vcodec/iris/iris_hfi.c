@@ -139,6 +139,8 @@ int iris_hfi_core_init(struct iris_core *core)
 	u32 pas_id;
 	int ret;
 
+	dev_err(core->dev, "gabe: iris_hfi_core_init()\n");
+
 	ret = check_core_lock(core);
 	if (ret)
 		return ret;

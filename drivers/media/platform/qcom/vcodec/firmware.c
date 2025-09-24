@@ -65,6 +65,8 @@ int load_fw(struct device *dev, const char *fw_name, phys_addr_t *mem_phys,
 	ssize_t fw_size = 0;
 	int ret;
 
+	dev_err(dev, "gabe: iris: load_fw()\n");
+
 	if (!IS_ENABLED(CONFIG_QCOM_MDT_LOADER))
 		return -EPROBE_DEFER;
 

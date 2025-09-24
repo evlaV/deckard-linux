@@ -262,16 +262,23 @@ static int power_off_iris3_hardware(struct iris_core *core)
 	if (is_iris3_hw_power_collapsed(core))
 		goto disable_power;
 
+	dev_err(core->dev, "gabe: power_off_iris3_hardware()\n");
 	dev_err(core->dev, "Video hw is power ON\n");
 
 	ret = read_register(core, WRAPPER_CORE_CLOCK_CONFIG_IRIS3, &value);
 	if (ret)
+	{
+		dev_err(core->dev, "gabe: power_off_iris3_hardware() x1\n");
 		goto disable_power;
+	}
 
 	if (value) {
 		ret = write_register(core, WRAPPER_CORE_CLOCK_CONFIG_IRIS3, 0);
 		if (ret)
+		{
+			dev_err(core->dev, "gabe: power_off_iris3_hardware() x2\n");
 			goto disable_power;
+		}
 	}
 
 	for (i = 0; i < core->cap[NUM_VPP_PIPE].value; i++) {
@@ -286,6 +293,7 @@ static int power_off_iris3_hardware(struct iris_core *core)
 					      0x1, 0x1, 200, 2000);
 	if (ret) {
 		pr_debug("%s:%d timeout\n", __func__, __LINE__);
+		dev_err(core->dev, "gabe: power_off_iris3_hardware() x3\n");
 		goto disable_power;
 	}
 
@@ -328,6 +336,7 @@ static int power_off_iris3_controller(struct iris_core *core)
 {
 	int ret;
 
+	dev_err(core->dev, "gabe: power_off_iris3_controller() x1\n");
 	ret = write_register(core, CPU_CS_X2RPMH_IRIS3, 0x3);
 	if (ret)
 		goto disable_power;
@@ -436,6 +445,7 @@ static int power_off_iris3(struct iris_core *core)
 	if (!core->power_enabled)
 		return 0;
 
+	dev_err(core->dev, "gabe: power_off_iris3() x1\n");
 	opp_set_rate(core, 0, false);
 	power_off_iris3_hardware(core);
 	power_off_iris3_controller(core);
@@ -452,6 +462,8 @@ static int power_off_iris3(struct iris_core *core)
 static int power_on_iris3_controller(struct iris_core *core)
 {
 	int ret;
+
+	dev_err(core->dev, "power_on_iris3_controller() x1\n");
 
 	ret = enable_power_domains(core, IRIS_CTRL_POWER_DOMAIN);
 	if (ret)
@@ -483,6 +495,8 @@ static int power_on_iris3_hardware(struct iris_core *core)
 {
 	int ret;
 
+	dev_err(core->dev, "gabe:power_on_iris3_hardware() x1\n");
+
 	ret = enable_power_domains(core, IRIS_HW_POWER_DOMAIN);
 	if (ret)
 		return ret;
@@ -507,6 +521,8 @@ static int power_on_iris3(struct iris_core *core)
 {
 	u32 freq = 0;
 	int ret;
+
+	dev_err(core->dev, "gabe: power_on_iris3() x1\n");
 
 	if (core->power_enabled)
 		return 0;
@@ -556,6 +572,8 @@ static int prepare_pc_iris3(struct iris_core *core)
 	u32 wfi_status = 0, idle_status = 0, pc_ready = 0;
 	u32 ctrl_status = 0;
 	int ret;
+
+	dev_err(core->dev, "gabe: prepare_pc_iris3() x1\n");
 
 	ret = read_register(core, CTRL_STATUS_IRIS3, &ctrl_status);
 	if (ret)
