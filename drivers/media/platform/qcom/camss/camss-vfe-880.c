@@ -200,7 +200,16 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 		for(wm = 0; wm < 2; wm++) {
 			writel((pix->height >> wm) << 16 | pix->width, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
 			writel(0, vfe->base + VFE_BUS_WM_IMAGE_CFG_1(wm)); // X_INIT = 0
-			writel(pix->plane_fmt[0].bytesperline, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm)); // stride
+			if(line->video_out.has_custom_plane_layout)
+			{
+				int custom_plane_type = (wm == 0) ? CAMSS_CUSTOM_PLANE_LAYOUT_PLANE_Y : CAMSS_CUSTOM_PLANE_LAYOUT_PLANE_CBCR;
+				writel(line->video_out.custom_plane_layout.stride[custom_plane_type], vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm)); // stride
+			}
+			else
+			{
+				// Without the custom layout configuration CbCr plane stride is assumed to be the same as the Y plane
+				writel(pix->plane_fmt[0].bytesperline, vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm)); // stride
+			}
 			writel(0x3, vfe->base + VFE_BUS_WM_PACKER_CFG(wm));
 			writel(WM_CFG_EN, vfe->base + VFE_BUS_WM_CFG(wm)); // EN=1 (+ all other settings to 0)
 		}
