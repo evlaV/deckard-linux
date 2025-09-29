@@ -10,6 +10,7 @@
 
 struct gpuvis_trace_context_t {
     // Automatically-collected information
+    pid_t tgid;
     uint64_t id;
     const char * func;
     const char * file_line;
