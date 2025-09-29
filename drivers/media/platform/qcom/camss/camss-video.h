@@ -34,6 +34,9 @@
 // be used to compare against frame SOF/EOF timings to make sure no ISP update happened during the readout.
 #define VIDIOC_PRIV_S_REGS_DELAYED _IOW('V', BASE_VIDIOC_PRIVATE + 5, struct csid_vfe_private_registers_config)
 
+// Allow setting multiplanar format plane strides and offsets
+#define VIDIOC_PRIV_S_CUSTOM_PLANE_LAYOUT _IOW('V', BASE_VIDIOC_PRIVATE + 6, struct camss_custom_plane_layout)
+
 // Private events
 #define V4L2_EVENT_CAMSS_HW_ERROR   (V4L2_EVENT_PRIVATE_START + 1)
 
@@ -111,6 +114,18 @@ struct camss_metadata_2 {
 };
 static_assert(sizeof(struct camss_metadata_2) <= CAMSS_EXTRA_OUTPUT_METADATA_2_MAX_BUFFER_SIZE);
 
+// 4 planes reserved to support additional metadata planes infos for UBWC
+#define CAMSS_CUSTOM_PLANE_LAYOUT_NUM_PLANES (4)
+#define CAMSS_CUSTOM_PLANE_LAYOUT_PLANE_Y (0)
+#define CAMSS_CUSTOM_PLANE_LAYOUT_PLANE_CBCR (1)
+
+struct camss_custom_plane_layout
+{
+	u32 offset[CAMSS_CUSTOM_PLANE_LAYOUT_NUM_PLANES];
+	u32 stride[CAMSS_CUSTOM_PLANE_LAYOUT_NUM_PLANES];
+	u32 size[CAMSS_CUSTOM_PLANE_LAYOUT_NUM_PLANES];
+};
+
 struct camss_buffer {
 	struct vb2_v4l2_buffer vb;
 	dma_addr_t addr[3];
@@ -159,6 +174,10 @@ struct camss_video {
 	bool has_extra_output_plane_cfg;
 	struct camss_extra_output_plane_cfg extra_output_plane_cfg;
 	u32 extra_output_addr_idx;
+
+	// Optional custom plane configuration for multiplanar formats
+	bool has_custom_plane_layout;
+	struct camss_custom_plane_layout custom_plane_layout;
 };
 
 int msm_video_register(struct camss_video *video, struct v4l2_device *v4l2_dev,

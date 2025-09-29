@@ -250,9 +250,19 @@ static int video_buf_init(struct vb2_buffer *vb)
 			format->pixelformat == V4L2_PIX_FMT_NV21 ||
 			format->pixelformat == V4L2_PIX_FMT_NV16 ||
 			format->pixelformat == V4L2_PIX_FMT_NV61)
-		buffer->addr[1] = buffer->addr[0] +
+	{
+		if(video->has_custom_plane_layout) {
+			// If using a custom plane layout override the planes start address
+			dma_addr_t buffer_addr = buffer->addr[0]; // dma address of the entire buffer
+			buffer->addr[0] = buffer_addr + video->custom_plane_layout.offset[CAMSS_CUSTOM_PLANE_LAYOUT_PLANE_Y];
+			buffer->addr[1] = buffer_addr + video->custom_plane_layout.offset[CAMSS_CUSTOM_PLANE_LAYOUT_PLANE_CBCR];
+		}
+		else {
+			buffer->addr[1] = buffer->addr[0] +
 				format->plane_fmt[0].bytesperline *
 				format->height;
+		}
+	}
 
 	return 0;
 }
@@ -699,6 +709,8 @@ static int video_s_fmt(struct file *file, void *fh, struct v4l2_format *f)
 	// (extra output config act as an extension of the format so should be used after the format has been set)
 	video->has_extra_output_plane_cfg = false;
 	memset(&video->extra_output_plane_cfg, 0, sizeof(video->extra_output_plane_cfg));
+	video->has_custom_plane_layout = false;
+	memset(&video->custom_plane_layout, 0, sizeof(video->custom_plane_layout));
 
 	ret = __video_try_fmt(video, f);
 	if (ret < 0)
@@ -850,6 +862,34 @@ static int video_set_extra_output_plane_config(struct camss_video *video, void* 
 	return 0;
 }
 
+static int video_set_custom_plane_layout(struct camss_video *video, void* arg)
+{
+	struct camss_custom_plane_layout *layout = arg;
+	u64 sizeimage = 0;
+
+	if(video->active_fmt.fmt.pix_mp.pixelformat != V4L2_PIX_FMT_NV12)
+	{
+		dev_warn(video->camss->dev, "camss-video: custom plane layout only supported on multiplane format\n");
+		return -EINVAL;
+	}
+
+	video->has_custom_plane_layout = true;
+	video->custom_plane_layout = *layout;
+
+	for(int i=0; i<CAMSS_CUSTOM_PLANE_LAYOUT_NUM_PLANES; i++)
+	{
+		sizeimage += video->custom_plane_layout.size[i];
+		dev_warn(video->camss->dev, "camss-video: plane layout %d stride=%u offset=%u size=%u\n", i,
+			video->custom_plane_layout.stride[i], video->custom_plane_layout.offset[i], video->custom_plane_layout.size[i]);
+	}
+
+	// No need to update video->active_fmt.fmt.pix_mp.plane_fmt[0].bytesperline as this isn't used when 
+	// has_custom_plane_layout is set. sizeimage should be set to create buffers with the right size requirement
+	video->active_fmt.fmt.pix_mp.plane_fmt[0].sizeimage = sizeimage;
+
+	return 0;
+}
+
 static int video_subscribe_event(struct v4l2_fh *fh, const struct v4l2_event_subscription *sub)
 {
 	if (sub->type != V4L2_EVENT_CAMSS_HW_ERROR)
@@ -920,6 +960,9 @@ static long video_ioctl(struct file *file, void *fh, bool valid_prio, unsigned i
 			// request the csid multi-vcdt feature to be enabled with the vc passed as parameter
 			csid->multi_vcdt_en = 1;
 			csid->multi_vcdt_vc = (uintptr_t)arg;
+			break;
+		case VIDIOC_PRIV_S_CUSTOM_PLANE_LAYOUT:
+			ret = video_set_custom_plane_layout(video, arg);
 			break;
 		default:
 			ret = -ENOTTY;
