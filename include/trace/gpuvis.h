@@ -15,6 +15,10 @@
 #define PRIu64 "llu"
 #define PRId64 "lld"
 
+// Workaround for https://github.com/torvalds/linux/commit/2c92ca849fcc6ee7d0c358e9959abc9f58661aea
+// which makes our lives much harder when trying to replicate this in userspace.
+#define __assign_str_workaround(name, source) __assign_str(name)
+
 // Include the meat of the implementation, which is stored in `uapi`
 #include <uapi/linux/trace_gpuvis.h>
 
