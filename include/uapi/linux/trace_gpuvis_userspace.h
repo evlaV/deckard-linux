@@ -26,6 +26,9 @@
 #define __stringify(x...)	__stringify_1(x)
 #define FILE_LINE	__FILE__ ":" __stringify(__LINE__)
 
+// Support `task_tgid_nr()` in userspace, assuming you always pass in 'current' ;)
+#define task_tgid_nr(args...) getpid()
+
 // While not required, you may wish to run this at the start of your program to reduce
 // first-trace latency where we have to open this file lazily; It could increase the
 // time of your first operation a bit.
