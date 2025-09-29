@@ -97,12 +97,6 @@ int main()
  */
 
 
-// Workaround for https://github.com/torvalds/linux/commit/2c92ca849fcc6ee7d0c358e9959abc9f58661aea
-// which makes our lives much harder when trying to replicate this in userspace.
-#ifndef __assign_str_workaround
-#define __assign_str_workaround(name, source) __assign_str(name)
-#endif
-
 // Begin gpuvis_print tracepoint implementation
 #if !defined(_UAPI_TRACE_GPUVIS_H) || defined(TRACE_HEADER_MULTI_READ)
 
@@ -114,6 +108,7 @@ TRACE_EVENT(gpuvis_print_begin_dtime,
 	TP_PROTO(struct gpuvis_trace_context_t *begin_ctx, struct gpuvis_trace_context_t *end_ctx),
 	TP_ARGS(begin_ctx, end_ctx),
 	TP_STRUCT__entry(
+        __field(pid_t, tgid)
         __field(const char *, func)
         __field(const char *, file_line)
         __string(payload, begin_ctx->payload)
@@ -121,6 +116,7 @@ TRACE_EVENT(gpuvis_print_begin_dtime,
         __field(int64_t, dtime)
 	),
 	TP_fast_assign(
+        __entry->tgid = begin_ctx->tgid;
         __entry->func = begin_ctx->func;
         __entry->file_line = begin_ctx->file_line;
         __assign_str_workaround(payload, begin_ctx->payload);
@@ -129,11 +125,12 @@ TRACE_EVENT(gpuvis_print_begin_dtime,
 	),
 
     // Expected output looks something like the following:
-    //   [kern] [func_name] begin_ctx=1337 dtime=-43110 sound/pcm_native.c:356 buffer_size=1024 navail=37
-	TP_printk(KERN_PREFIX "[%s] begin_ctx=%" PRIu64 " dtime=%" PRId64 "%s%s",
+    //   [kern] [func_name] begin_ctx=1337 dtime=-43110 tgid=3141 sound/pcm_native.c:356 buffer_size=1024 navail=37
+	TP_printk(KERN_PREFIX "[%s] begin_ctx=%" PRIu64 " dtime=%" PRId64 " tgid=%" PRIu64 "%s%s",
         __entry->func,
         __entry->id,
         __entry->dtime,
+        (uint64_t)__entry->tgid,
         __entry->file_line,
         __get_str(payload))
 );
@@ -142,6 +139,7 @@ TRACE_EVENT(gpuvis_print,
 	TP_PROTO(struct gpuvis_trace_context_t *ctx, const char * ctx_op),
 	TP_ARGS(ctx, ctx_op),
 	TP_STRUCT__entry(
+        __field(pid_t, tgid)
         __field(const char *, func)
         __field(const char *, file_line)
         __field(const char *, ctx_op)
@@ -149,6 +147,7 @@ TRACE_EVENT(gpuvis_print,
         __field(uint64_t, id)
 	),
 	TP_fast_assign(
+        __entry->tgid = ctx->tgid;
         __entry->func = ctx->func;
         __entry->ctx_op = ctx_op,
         __entry->file_line = ctx->file_line;
@@ -157,11 +156,12 @@ TRACE_EVENT(gpuvis_print,
 	),
 
     // Expected output looks something like the following:
-    //   [kern] [func_name] begin_ctx=1337 sound/pcm_native.c:356 buffer_size=1024 navail=37
-	TP_printk(KERN_PREFIX "[%s] %s=%" PRIu64 "%s%s",
+    //   [kern] [func_name] begin_ctx=1337 tgid=3141 sound/pcm_native.c:356 buffer_size=1024 navail=37
+	TP_printk(KERN_PREFIX "[%s] %s=%" PRIu64 " tgid=%" PRIu64 "%s%s",
         __entry->func,
         __entry->ctx_op,
         __entry->id,
+        (uint64_t)__entry->tgid,
         __entry->file_line,
         __get_str(payload))
 );
@@ -181,6 +181,9 @@ void gpuvis_trace_init(struct gpuvis_trace_context_t *ctx, uint64_t ctx_id,
     // Record our start time, using the same clock as configured in the trace system.
     // We do this first for maximum precision.
     ctx->time = trace_clock_gettime_top();
+
+    // Collect the TGID of the current task
+    ctx->tgid = task_tgid_nr(current);
 
     ctx->id = ctx_id;
     ctx->func = func;
