@@ -97,12 +97,6 @@ int main()
  */
 
 
-// Workaround for https://github.com/torvalds/linux/commit/2c92ca849fcc6ee7d0c358e9959abc9f58661aea
-// which makes our lives much harder when trying to replicate this in userspace.
-#ifndef __assign_str_workaround
-#define __assign_str_workaround(name, source) __assign_str(name)
-#endif
-
 // Begin gpuvis_print tracepoint implementation
 #if !defined(_UAPI_TRACE_GPUVIS_H) || defined(TRACE_HEADER_MULTI_READ)
 
