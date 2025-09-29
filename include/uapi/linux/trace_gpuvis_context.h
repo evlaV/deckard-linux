@@ -13,6 +13,7 @@ struct gpuvis_trace_context_t {
     pid_t tgid;
     uint64_t id;
     const char * func;
+    const char * sub_func;
     const char * file_line;
     ktime_t time;
 
