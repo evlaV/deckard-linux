@@ -547,7 +547,7 @@ static int lpass_platform_pcmops_mmap(struct snd_soc_component *component,
 
 	if (vma->vm_pgoff >= count || user_count > count - vma->vm_pgoff)
 		return -ENXIO;
-	printk(KERN_INFO "lpass_platform_pcmops_mmap(vma, 0x%lx, %ld (0x%lx), %ld, prot)", vma->vm_start, pfn + vma->vm_pgoff, (pfn + vma->vm_pgoff) << PAGE_SHIFT, user_count << PAGE_SHIFT);
+
 	return remap_pfn_range(vma, vma->vm_start, pfn + vma->vm_pgoff,
 			user_count << PAGE_SHIFT, vma->vm_page_prot);
 }
