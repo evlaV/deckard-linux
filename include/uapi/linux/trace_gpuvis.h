@@ -137,7 +137,7 @@ TRACE_EVENT(gpuvis_print_begin_dtime,
 	TP_fast_assign(
         __entry->tgid = begin_ctx->tgid;
         __entry->func = begin_ctx->func;
-        __entry->sub_func = begin_ctx->sub_func;
+        __entry->sub_func = (begin_ctx->sub_func && begin_ctx->sub_func[0] != '\0') ? begin_ctx->sub_func : NULL;
         __entry->file_line = begin_ctx->file_line;
         __assign_str_workaround(payload, begin_ctx->payload);
         __entry->id = begin_ctx->id;
@@ -148,8 +148,7 @@ TRACE_EVENT(gpuvis_print_begin_dtime,
     //   [kern] [func_name] begin_ctx=1337 dtime=-43110 tgid=3141 sound/pcm_native.c:356 buffer_size=1024 navail=37
 	TP_printk(KERN_PREFIX "[%s%s%s] begin_ctx=%" PRIu64 " dtime=%" PRId64 " tgid=%" PRIu64 "%s%s",
         __entry->func,
-        __entry->sub_func[0] == '\0' ? "" : ".",
-        __entry->sub_func[0] == '\0' ? "" : __entry->sub_func,
+        __entry->sub_func ? "." : "", __entry->sub_func ? __entry->sub_func : "",
         __entry->id,
         __entry->dtime,
         (uint64_t)__entry->tgid,
@@ -172,7 +171,7 @@ TRACE_EVENT(gpuvis_print,
 	TP_fast_assign(
         __entry->tgid = ctx->tgid;
         __entry->func = ctx->func;
-        __entry->sub_func = ctx->sub_func;
+        __entry->sub_func = (ctx->sub_func && ctx->sub_func[0] != '\0') ? ctx->sub_func : NULL;
         __entry->ctx_op = ctx_op,
         __entry->file_line = ctx->file_line;
         __assign_str_workaround(payload, ctx->payload);
@@ -183,8 +182,7 @@ TRACE_EVENT(gpuvis_print,
     //   [kern] [func_name] begin_ctx=1337 tgid=3141 sound/pcm_native.c:356 buffer_size=1024 navail=37
 	TP_printk(KERN_PREFIX "[%s%s%s] %s=%" PRIu64 " tgid=%" PRIu64 "%s%s",
         __entry->func,
-        __entry->sub_func[0] == '\0' ? "" : ".",
-        __entry->sub_func[0] == '\0' ? "" : __entry->sub_func,
+        __entry->sub_func ? "." : "", __entry->sub_func ? __entry->sub_func : "",
         __entry->ctx_op,
         __entry->id,
         (uint64_t)__entry->tgid,
