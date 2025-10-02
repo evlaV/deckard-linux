@@ -464,12 +464,26 @@ static int qcom_smmu_cfg_probe(struct arm_smmu_device *smmu)
 		arm_smmu_gr1_write(smmu, ARM_SMMU_GR1_CBAR(qsmmu->bypass_cbndx), reg);
 	}
 
+	// create a 0x1c00 bypass like the android bootloader would
+	i = 0; // just use the first one
+
+	reg = FIELD_PREP(ARM_SMMU_SMR_ID, 0x1c00) |
+	      FIELD_PREP(ARM_SMMU_SMR_MASK, 0) |
+	      ARM_SMMU_SMR_VALID;
+	arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_SMR(i), reg);
+
+	reg = FIELD_PREP(ARM_SMMU_S2CR_TYPE, S2CR_TYPE_BYPASS) |
+	      FIELD_PREP(ARM_SMMU_S2CR_CBNDX, 0xff) |
+	      FIELD_PREP(ARM_SMMU_S2CR_PRIVCFG, S2CR_PRIVCFG_DEFAULT);
+	arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_S2CR(i), reg);
+
 	for (i = 0; i < smmu->num_mapping_groups; i++) {
 		smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(i));
 
 		if (FIELD_GET(ARM_SMMU_SMR_VALID, smr)) {
 			/* Ignore valid bit for SMR mask extraction. */
 			smr &= ~ARM_SMMU_SMR_VALID;
+
 			smmu->smrs[i].id = FIELD_GET(ARM_SMMU_SMR_ID, smr);
 			smmu->smrs[i].mask = FIELD_GET(ARM_SMMU_SMR_MASK, smr);
 			smmu->smrs[i].valid = true;
