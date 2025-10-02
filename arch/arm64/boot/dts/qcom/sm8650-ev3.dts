@@ -14,7 +14,7 @@
 #include "sm8650-el2.dtsi"
 
 / {
-	model = "SM8650 EV3 rev1 4slam 2et";
+	model = "SM8650 EV3 rev1 4slam 2et gabex1";
 	compatible = "qcom,sm8650-ev3", "qcom,sm8650";
 
 	aliases {
@@ -438,6 +438,7 @@
 		compatible = "ti,tps61377";
 		en-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
 		pgood-gpio = <&tlmm 69 GPIO_ACTIVE_HIGH>;
+		status = "disabled";
 	};
 
 	FPGA_clk: FPGA_clk {
@@ -1004,7 +1005,7 @@
 };
 
 &dispcc {
-	status = "okay";
+	status = "disabled";
 };
 
 &gpi_dma1 {
@@ -1300,16 +1301,16 @@
 };
 
 &mdss {
-	status = "okay";
+	status = "disabled";
 };
 
 &mdss_mdp {
-	status = "okay";
+	status = "disabled";
 };
 
 &mdss_dsi0 {
 	vdda-supply = <&vreg_l3i_1p2>;
-	status = "okay";
+	status = "disabled";
 
 	qcom,dual-dsi-mode;
 	qcom,master-dsi;
@@ -1733,7 +1734,7 @@
 	mpq3367_right@38 {
 		compatible = "mps,mpq3367";
 		reg = <0x38>;
-		status = "okay";
+		status = "disabled";
 		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
 		mode = "pwm";
 		regulator {
@@ -1774,7 +1775,7 @@
 		pinctrl-names = "default";
 		enp-gpios = <&pm8550_gpios 8 GPIO_ACTIVE_HIGH>;
 		enn-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
-		status = "okay";
+		status = "disabled";
 		regulators {
 			vpos_right: vpos{
 				regulator-name = "lcd_right_vpos";
@@ -1796,7 +1797,7 @@
 	mpq3367_left@38 {
 		compatible = "mps,mpq3367";
 		reg = <0x38>;
-		status = "okay";
+		status = "disabled";
 		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
 		mode = "pwm";
 		regulator {
@@ -1815,7 +1816,7 @@
 		pinctrl-names = "default";
 		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
 		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
-		status = "okay";
+		status = "disabled";
 		regulators {
 			vpos_left: vpos{
 				regulator-name = "lcd_left_vpos";
