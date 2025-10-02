@@ -1292,7 +1292,7 @@ static void update_groups_og0VE10(struct og0ve10_dev *sensor)
 	//for(int i = 0; i < numSensors_og0VE10; i++)
 	{
 		if (sensor->power_count < 1) {
-			goto update_groups_og0VE10_cleanup;
+			goto update_groups_og0VE10_cleanup_spin_unlock;
 		}
 		memcpy(&sensor->sensorMetaData.group_and_reg[4],
 		       &sensor->sensorMetaData.group_and_reg[3],
@@ -1310,9 +1310,9 @@ static void update_groups_og0VE10(struct og0ve10_dev *sensor)
 		       &sensor->active_group_registers,
 		       sizeof(struct group_and_registers));
 	}
-update_groups_og0VE10_cleanup:
+update_groups_og0VE10_cleanup_spin_unlock:
 	spin_unlock_irqrestore(&metadata_spinlock_og0VE10, flags);
-
+update_groups_og0VE10_cleanup:
 	mutex_unlock(&sensor->lock);
 }
 
