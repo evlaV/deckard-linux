@@ -122,11 +122,13 @@ static int nex10000ub_regulator_is_enabled(struct regulator_dev *rdev) {
 	enum nex10000ub_regulator_id id = rdev_get_id(rdev);
 	switch(id) {
 		case NEX10000UB_LDO_POS:
-			return nex10000ub->pos_enabled;
-			break;
+			if (gpiod_get_value(nex10000ub->enp_gpio))
+				return REGULATOR_STATUS_ON;
+			return REGULATOR_STATUS_OFF;
 		case NEX10000UB_LDO_NEG:
-			return nex10000ub->neg_enabled;
-			break;
+			if (gpiod_get_value(nex10000ub->enn_gpio))
+				return REGULATOR_STATUS_ON;
+			return REGULATOR_STATUS_OFF;
 		default:
 			return -EINVAL;
 			break;
@@ -176,10 +178,22 @@ static int nex10000ub_set_voltage_sel(struct regulator_dev *rdev, unsigned sel) 
 static int nex10000ub_get_voltage_sel(struct regulator_dev *rdev) {
 	struct nex10000ub_data *nex10000ub = rdev_get_drvdata(rdev);
 	enum nex10000ub_regulator_id id = rdev_get_id(rdev);
-	if ( id < NEX10000UB_NUM_REGULATORS ) {
-		return nex10000ub->voltage_sel[id];
-	} else {
+	u32 reg;
+
+	switch(id) {
+	case NEX10000UB_LDO_POS:
+		if (!gpiod_get_value(nex10000ub->enp_gpio))
+			return -EINVAL;
+		regmap_read(nex10000ub->regmap, NEX10000UB_REG_VOUT_POS, &reg);
+		return reg;
+	case NEX10000UB_LDO_NEG:
+		if (!gpiod_get_value(nex10000ub->enn_gpio))
+			return -EINVAL;
+		regmap_read(nex10000ub->regmap, NEX10000UB_REG_VOUT_NEG, &reg);
+		return reg;
+	default:
 		return -EINVAL;
+		break;
 	}
 }
 
@@ -326,14 +340,14 @@ static int nex10000ub_probe(struct i2c_client *client)
 		return PTR_ERR(nex10000ub->regmap);
 	}
 
-	nex10000ub->enp_gpio = devm_gpiod_get(dev, "enp", GPIOD_OUT_LOW);
+	nex10000ub->enp_gpio = devm_gpiod_get(dev, "enp", GPIOD_ASIS);
 	if (IS_ERR(nex10000ub->enp_gpio)) {
 		dev_err(dev, "cannot get enp gpio %ld\n",
 			PTR_ERR(nex10000ub->enp_gpio));
 		return PTR_ERR(nex10000ub->enp_gpio);
 	}
 
-	nex10000ub->enn_gpio = devm_gpiod_get(dev, "enn", GPIOD_OUT_LOW);
+	nex10000ub->enn_gpio = devm_gpiod_get(dev, "enn", GPIOD_ASIS);
 	if (IS_ERR(nex10000ub->enn_gpio)) {
 		dev_err(dev, "cannot get enn gpio %ld\n",
 			PTR_ERR(nex10000ub->enn_gpio));

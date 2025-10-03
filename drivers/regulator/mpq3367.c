@@ -141,7 +141,10 @@ static int reg_is_enabled(struct regulator_dev *rdev)
 {
 	struct mpq3367_data *mpq = rdev_get_drvdata(rdev);
 
-	return mpq->is_enabled;
+	if (gpiod_get_value(mpq->en_gpio))
+		return REGULATOR_STATUS_ON;
+
+	return REGULATOR_STATUS_OFF;
 }
 
 static const struct regulator_ops mpq3367_ops = {
@@ -250,7 +253,7 @@ static int mpq3367_probe(struct i2c_client *client)
 	if (!mpq)
 		return -ENOMEM;
 
-	mpq->en_gpio = devm_gpiod_get(dev, "en", GPIOD_OUT_LOW);
+	mpq->en_gpio = devm_gpiod_get(dev, "en", GPIOD_ASIS);
 	if (IS_ERR(mpq->en_gpio)) {
 		dev_err(dev, "cannot get en gpio %ld\n",
 			PTR_ERR(mpq->en_gpio));

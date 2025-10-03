@@ -90,7 +90,7 @@ static int tps61377_probe(struct platform_device *pdev)
 	if (!tps61377)
 		return -ENOMEM;
 
-	tps61377->en_gpio = devm_gpiod_get(dev, "en", GPIOD_OUT_LOW);
+	tps61377->en_gpio = devm_gpiod_get(dev, "en", GPIOD_ASIS);
 	if (IS_ERR(tps61377->en_gpio))
 		return PTR_ERR(tps61377->en_gpio);
 
