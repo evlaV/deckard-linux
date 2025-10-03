@@ -1214,6 +1214,7 @@ err_free_points:
 
 	return timeout;
 }
+EXPORT_SYMBOL_GPL(drm_syncobj_array_wait_timeout);
 
 /**
  * drm_timeout_abs_to_jiffies - calculate jiffies timeout from absolute value
