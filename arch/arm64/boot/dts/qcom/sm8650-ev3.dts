@@ -27,6 +27,26 @@
 		stdout-path = "serial0:115200n8";
 	};	
 
+	framebuffer@af400000 {
+		compatible = "simple-framebuffer";
+		reg = <0 0xaf400000 0 0x2399000>;
+		width = <4320>;
+		height = <2160>;
+		stride = <(4320 * 4)>;
+		format = "a8b8g8r8";
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		memory@af400000 {
+			reg = <0 0xaf400000 0 0x2399000>;
+			no-map;
+		};
+	};
+
 	cpus {
 
 		CPU0: cpu@0 {
