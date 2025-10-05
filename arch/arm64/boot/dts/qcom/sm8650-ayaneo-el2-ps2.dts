@@ -1,5 +1,6 @@
 /dts-v1/;
 
+#include <dt-bindings/leds/common.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/phy/phy.h>
 #include "dt-bindings/usb/pd.h"
@@ -20,13 +21,26 @@
 	aliases {
 		serial0 = &uart15;
 		serial1 = &uart14;
-		serial2 = &uart3;
+		hsuart0 = &uart13;
 	};
 
 	chosen {
 		stdout-path = "serial0:115200n8";
 	};	
 
+	fan0: pwm-fan {
+		status = "okay";
+		compatible = "pwm-fan";
+		#cooling-cells = <2>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <14 IRQ_TYPE_EDGE_FALLING>;
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&fan0_pwr_active>, <&pwm_fan_ctrl_default>, <&fan0_int_active>;
+		pinctrl-1 = <&fan0_pwr_sleep>;
+		pwms = <&pm8550_pwm 3 50000>;
+		cooling-levels = <0 16 32 45 60 80 105 130 155 180 205 230 255>;
+	};
+	
 	cpus {
 
 		CPU0: cpu@0 {
@@ -218,22 +232,13 @@
 	gpio-keys {
 		compatible = "gpio-keys";
 
-		pinctrl-0 = <&volume_up_n>, <&select_n>;
+		pinctrl-0 = <&volume_up_n>;
 		pinctrl-names = "default";
 
 		key-volume-up {
 			label = "Volume Up";
 			linux,code = <KEY_VOLUMEUP>;
 			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
-			debounce-interval = <15>;
-			linux,can-disable;
-			//wakeup-source;
-		};
-
-		key-select {
-			label = "Select";
-			linux,code = <KEY_SELECT>;
-			gpios = <&pm8550b_gpios 5 GPIO_ACTIVE_LOW>;
 			debounce-interval = <15>;
 			linux,can-disable;
 			//wakeup-source;
@@ -337,11 +342,6 @@
 
 };
 
-&uart3 {
-	status = "okay";
-};
-
-
 
 &apps_rsc {
     regulators-6 {
@@ -378,7 +378,9 @@
 		vdd-l2-l13-l14-supply = <&vreg_bob1>;
 		vdd-l3-supply = <&vreg_s1c_1p2>;
 		vdd-l5-l16-supply = <&vreg_bob1>;
+		vdd-l6-l7-supply = <&vreg_bob1>;
 		vdd-l8-l9-supply = <&vreg_bob1>;
+		vdd-l11-supply = <&vreg_s1c_1p2>;
 		vdd-l12-supply = <&vreg_s6c_1p8>;
 		vdd-l15-supply = <&vreg_s6c_1p8>;
 		vdd-l17-supply = <&vreg_bob2>;
@@ -401,22 +403,14 @@
 			regulator-always-on; // XXX USB HS, SBU MUX
 		};
 
-		vreg_l1b_1p8: ldo1 {
-			regulator-name = "vreg_l1b_1p8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // XXX sensors
-		};
-
 		vreg_l2b_3p0: ldo2 {
 			regulator-name = "vreg_l2b_3p0";
 			regulator-min-microvolt = <3008000>;
 			regulator-max-microvolt = <3008000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // XXX sensors
+			regulator-allow-set-load;
+			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
+						   RPMH_REGULATOR_MODE_HPM>;
 		};
 
 		vreg_l5b_3p1: ldo5 {
@@ -430,10 +424,27 @@
 			regulator-always-on; // XXX SBU MUX
 		};
 
+		vreg_l6b_1p8: ldo6 {
+			regulator-name = "vreg_l6b_1p8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <3008000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-allow-set-load;
+			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
+						   RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		vreg_l7b_1p8: ldo7 {
+			regulator-name = "vreg_l7b_1p8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <3008000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+		
 		vreg_l8b_1p8: ldo8 {
 			regulator-name = "vreg_l8b_1p8";
 			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
+			regulator-max-microvolt = <3008000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 			regulator-allow-set-load;
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
@@ -443,21 +454,13 @@
 		vreg_l9b_2p9: ldo9 {
 			regulator-name = "vreg_l9b_2p9";
 			regulator-min-microvolt = <2960000>;
-			regulator-max-microvolt = <2960000>;
+			regulator-max-microvolt = <3008000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 			regulator-allow-set-load;
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
 		};
 
-		vreg_l10b_1p8: ldo10 {
-			regulator-name = "vreg_l10b_1p8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // XXX DMIC
-		};
 
 		vreg_l11b_1p2: ldo11 {
 			regulator-name = "vreg_l11b_1p2";
@@ -488,7 +491,17 @@
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
 		};
-		
+	
+		vreg_l14b_3p2: ldo14 {
+			regulator-name = "vreg_l14b_3p2";
+			regulator-min-microvolt = <3200000>;
+			regulator-max-microvolt = <3200000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-allow-set-load;
+			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
+						   RPMH_REGULATOR_MODE_HPM>;
+		};
+	
 		vreg_l15b_1p8: ldo15 {
 			regulator-name = "vreg_l15b_1p8";
 			regulator-min-microvolt = <1800000>;
@@ -497,9 +510,18 @@
 			regulator-allow-set-load;
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
-			regulator-always-on; // XXX: 1.8V pull ups
 		};
 
+		vreg_l16b_2p8: ldo16 {
+			regulator-name = "vreg_l16b_2p8";
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-allow-set-load;
+			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
+						   RPMH_REGULATOR_MODE_HPM>;
+		};
+		
 		vreg_l17b_2p5: ldo17 {
 			regulator-name = "vreg_l17b_2p5";
 			regulator-min-microvolt = <2504000>;
@@ -515,6 +537,7 @@
 		compatible = "qcom,pm8550vs-rpmh-regulators";
 
 		vdd-l1-supply = <&vreg_s1c_1p2>;
+		vdd-l2-supply = <&vreg_s1c_1p2>;
 		vdd-l3-supply = <&vreg_s1c_1p2>;
 		vdd-s1-supply = <&vph_pwr>;
 		vdd-s2-supply = <&vph_pwr>;
@@ -537,7 +560,7 @@
 
 		vreg_s2c_0p8: smps2 {
 			regulator-name = "vreg_s2c_0p8";
-			regulator-min-microvolt = <500000>;
+			regulator-min-microvolt = <852000>;
 			regulator-max-microvolt = <1036000>;
 			// init 852000
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
@@ -561,7 +584,7 @@
 
 		vreg_s5c_0p7: smps5 {
 			regulator-name = "vreg_s5c_0p7";
-			regulator-min-microvolt = <300000>;
+			regulator-min-microvolt = <752000>;
 			regulator-max-microvolt = <900000>;
 			// init 752000
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
@@ -580,6 +603,9 @@
 			regulator-min-microvolt = <1200000>; // note: min 1100000
 			regulator-max-microvolt = <1200000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-allow-set-load;
+			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
+						   RPMH_REGULATOR_MODE_HPM>;
 		};
 
 		vreg_l3c_1p2: ldo3 {
@@ -590,7 +616,6 @@
 			regulator-allow-set-load;
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
-			regulator-always-on; // XXX: 1.2V pull ups
 		};
 	};
 
@@ -633,24 +658,18 @@
 		compatible = "qcom,pm8550vs-rpmh-regulators";
 
 		vdd-l1-supply = <&vreg_s3c_0p9>;
-		vdd-l2-supply = <&vreg_s1c_1p2>;
 		vdd-l3-supply = <&vreg_s3c_0p9>;
 
 		qcom,pmic-id = "g";
 
-		vreg_l1g_0p9: ldo1 {
-			regulator-name = "vreg_l1g_0p9";
+		vreg_l1g_0p91: ldo1 {
+			regulator-name = "vreg_l1g_0p91";
 			regulator-min-microvolt = <912000>;
 			regulator-max-microvolt = <920000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-			// QLINK ?
-		};
-
-		vreg_l2g_1p1: ldo2 {
-			regulator-name = "vreg_l2g_1p1";
-			regulator-min-microvolt = <1104000>;
-			regulator-max-microvolt = <1104000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-allow-set-load;
+			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
+						   RPMH_REGULATOR_MODE_HPM>;
 		};
 
 		vreg_l3g_0p91: ldo3 {
@@ -658,9 +677,12 @@
 			regulator-min-microvolt = <880000>;
 			regulator-max-microvolt = <912000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-allow-set-load;
+			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
+						   RPMH_REGULATOR_MODE_HPM>;
 		};
 	};
-
+	
 	regulators-5 {
 		compatible = "qcom,pm8550ve-rpmh-regulators";
 
@@ -697,45 +719,10 @@
 			regulator-allow-set-load;
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
-
-			//regulator-always-on; // CSI PHY
 		};
 
 		vreg_l3i_1p2: ldo3 {
-			regulator-name = "vreg_l3i_1p2";
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <1200000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-			regulator-allow-set-load;
-			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
-						   RPMH_REGULATOR_MODE_HPM>;
-
-			//regulator-always-on; // CSI PHY
-		};
-	};
-
-	regulators-6 {
-		compatible = "qcom,pm8010-rpmh-regulators";
-		qcom,pmic-id = "m";
-
-		vdd-l1-l2-supply = <&vreg_s1c_1p2>;
-		vdd-l3-l4-supply = <&vreg_bob2>;
-		vdd-l5-supply = <&vreg_s6c_1p8>;
-		vdd-l6-supply = <&vreg_bob1>;
-		vdd-l7-supply = <&vreg_bob1>;
-
-		vreg_l1m_1p1: ldo1 {
-			regulator-name = "vreg_l1m_1p1";
-			regulator-min-microvolt = <1104000>;
-			regulator-max-microvolt = <1104000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-			regulator-allow-set-load;
-			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
-						   RPMH_REGULATOR_MODE_HPM>;
-		};
-
-		vreg_l2m_1p2: ldo2 {
-			regulator-name = "vreg_l2m_1p2";
+			regulator-name = "vreg_l3i_0p91";
 			regulator-min-microvolt = <1200000>;
 			regulator-max-microvolt = <1200000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
@@ -743,103 +730,10 @@
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
 		};
-
-		vreg_l3m_2p8: ldo3 {
-			regulator-name = "vreg_l3m_2p8";
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-		};
-
-		vreg_l4m_2p8: ldo4 {
-			regulator-name = "vreg_l4m_2p8";
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-		};
-
-		vreg_l5m_1p8: ldo5 {
-			regulator-name = "vreg_l5m_1p8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-		};
-
-		vreg_l6m_2p8: ldo6 {
-			regulator-name = "vreg_l6m_2p8";
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-		};
-
-		vreg_l7m_3p3: ldo7 {
-			regulator-name = "vreg_l7m_3p3";
-			regulator-min-microvolt = <3304000>;
-			regulator-max-microvolt = <3304000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on;
-		};
 	};
 
-	regulators-7 {
-		compatible = "qcom,pm8010-rpmh-regulators";
-		qcom,pmic-id = "n";
-
-		vdd-l1-l2-supply = <&vreg_s1c_1p2>;
-		vdd-l3-l4-supply = <&vreg_bob2>;
-		vdd-l5-supply = <&vreg_s6c_1p8>;
-		vdd-l6-supply = <&vreg_bob1>;
-
-		vreg_l1n_1p1: ldo1 {
-			regulator-name = "vreg_l1n_1p1";
-			regulator-min-microvolt = <1104000>;
-			regulator-max-microvolt = <1104000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-			regulator-allow-set-load;
-			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
-						   RPMH_REGULATOR_MODE_HPM>;
-		};
-
-		vreg_l2n_1p2: ldo2 {
-			regulator-name = "vreg_l2n_1p2";
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <1200000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-			regulator-allow-set-load;
-			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
-						   RPMH_REGULATOR_MODE_HPM>;
-		};
-
-		vreg_l3n_2p8: ldo3 {
-			regulator-name = "vreg_l3n_2p8";
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-		};
-
-		vreg_l4n_2p8: ldo4 {
-			regulator-name = "vreg_l4n_2p8";
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-		};
-
-		vreg_l5n_1p8: ldo5 {
-			regulator-name = "vreg_l5n_1p8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-		};
-
-		vreg_l6n_2p8: ldo6 {
-			regulator-name = "vreg_l6n_2p8";
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-		};
-	};
 };
+
 
 &dispcc {
 	status = "okay";
@@ -915,9 +809,7 @@
 	};
 };
 
-&mdss_mdp {
-	status = "okay";
-};
+
 
 &mdss_dsi0 {
 	status = "okay";
@@ -1039,10 +931,15 @@
 	status = "okay";
 };
 
-// For 1.8V operation on PM8550
-// VIN0 ( 0 ) for GPIO_01 to GPIO_04
-// VIN1 ( 1 ) for GPIO_05 to GPIO_12 ( except 7 )
 &pm8550_gpios {
+	volume_up_n: volume-up-n-state {
+		pins = "gpio6";
+		function = "normal";
+		bias-pull-up;
+		input-enable;
+		power-source = <1>;
+	};
+
 	pwm_fan_ctrl_default: pwm-fan-ctrl-default {
 		pins = "gpio9";
 		function = "func1";
@@ -1070,36 +967,33 @@
 		power-source = <1>; /* 1.8 V */
 	};
 
-	volume_up_n: volume-up-n-state {
-		pins = "gpio6";
-		function = "normal";
-		bias-pull-up;
-		input-enable;
-		power-source = <1>;
-	};
+
 };
 
-&pm8550b_gpios {
-	select_n: select-n-state {
-		pins = "gpio5";
-		function = "normal";
-		power-source = <1>;
-		bias-pull-up;
-		input-enable;
-	};
+&pm8550_pwm {
+	status = "okay";
 
-	detect_n: detect-n-state {
-		pins = "gpio6";
-		function = "normal";
-		power-source = <1>;
-		bias-pull-up;
-		input-enable;
-	};
+	multi-led {
+		color = <LED_COLOR_ID_RGB>;
+		function = LED_FUNCTION_STATUS;
 
-	uart_detect: uart_detect-state {
-		pins = "gpio6";
-		function = "normal";
-		power-source = <1>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@1 {
+			reg = <1>;
+			color = <LED_COLOR_ID_RED>;
+		};
+
+		led@2 {
+			reg = <2>;
+			color = <LED_COLOR_ID_GREEN>;
+		};
+
+		led@3 {
+			reg = <3>;
+			color = <LED_COLOR_ID_BLUE>;
+		};
 	};
 };
 
@@ -1156,6 +1050,39 @@
 		};
 	};
 
+};
+
+&qup_i2c3_data_clk {
+	/* Use internal I2C pull-up */
+	bias-pull-up = <2200>;
+};
+
+&qupv3_id_0 {
+	status = "okay";
+};
+
+&qupv3_id_1 {
+	status = "okay";
+	
+	/* AYANEO Controller serial interface */
+	uart13: serial@894000 {
+		compatible = "qcom,geni-uart";
+		reg = <0 0x00894000 0 0x4000>;
+		interrupts = <GIC_SPI 587 IRQ_TYPE_LEVEL_HIGH 0>;
+		clocks = <&gcc GCC_QUPV3_WRAP2_S5_CLK>;
+		clock-names = "se";
+		interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
+					&clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
+					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
+					&config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>;
+		interconnect-names = "qup-core",
+						"qup-config";
+		power-domains = <&rpmhpd RPMHPD_CX>;
+		operating-points-v2 = <&qup_opp_table_100mhz>;
+		pinctrl-0 = <&qup_uart13_default>;
+		pinctrl-names = "default";
+		status = "okay";
+	};
 };
 
 &pm8550b_charger {
@@ -1243,13 +1170,6 @@
 	status = "okay";
 };
 
-&lpass_vamacro {
-	pinctrl-0 = <&dmic01_default>;
-	pinctrl-names = "default";
-	vdd-micb-supply = <&vreg_l10b_1p8>;
-	qcom,dmic-sample-rate = <2400000>; /* or 3200000 */
-};
-
 // Disable Soundwire
 &wsa_swr_active {
 	status = "disabled";
@@ -1325,6 +1245,46 @@
 		drive-strength = <2>;
 		bias-pull-down;
 	};
+
+	fan0_pwr_active: fan0-pwr-active-state {
+		pins = "gpio124","gpio125";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-high;
+	};
+
+	fan0_int_active: fan0-int-active-state {
+		pins = "gpio14";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-pull;
+		input-enable;
+	};
+
+	fan0_pwr_sleep: fan0-pwr-sleep-state {
+		pins = "gpio124", "gpio125";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-low;
+	};
+	
+	qup_uart13_default: qup-uart13-default-state {
+		/* TX, RX */
+		pins = "gpio22", "gpio23";
+		function = "qup2_se5";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	qup_uart13_sleep: qup-uart13-sleep-state {
+		/* TX, RX */
+		pins = "gpio22", "gpio23";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
 };
 
 
@@ -1385,13 +1345,6 @@
 			function = "gpio";
 			bias-pull-down;
 		};
-	};
-
-	i2c4_default: i2c4-default-state {
-		pins = "gpio48", "gpio49";
-		function = "gpio";
-		drive-strength = <2>;
-		bias-pull-up;
 	};
 
 	i2c5_default: i2c5-default-state {
