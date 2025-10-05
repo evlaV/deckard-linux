@@ -251,8 +251,21 @@
 		regulator-boot-on;
 	};
 
+	vreg_bl1_en: regulator-bl1-en {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_bl1_en";
+		gpio = <&tlmm 163 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on;
+	};
 
-
+	vreg_bl2_en: regulator-bl2-en {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_bl2_en";
+		gpio = <&tlmm 164 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on;
+	};
 
 	dummy_reg: regulator-dummy {
 		compatible = "regulator-fixed";
@@ -1277,7 +1290,8 @@
 	status = "okay";
 	
 	panel_pwr_active: panel-pwr-active-state {
-		pins = "gpio58", "gpio59", "gpio164", "gpio163";
+		pins = "gpio58", "gpio59", "gpio164", "gpio163"; 
+		   //vreg_bl1_en and vreg_bl2_en added to enable panel power
 		function = "gpio";
 		drive-strength = <8>;
 		bias-pull-up;
