@@ -1246,6 +1246,22 @@
 		bias-pull-down;
 	};
 
+	upd720201_active: upd720201-active-state {
+		pins = "gpio121",  "gpio122", "gpio123";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+		output-high;
+	};
+
+	gamepad_pwr_en: gamepad-pwr-en-active-state {
+		pins = "gpio28";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-high;
+	};
+
 	fan0_pwr_active: fan0-pwr-active-state {
 		pins = "gpio124","gpio125";
 		function = "gpio";
@@ -1295,7 +1311,7 @@
 	wake-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
 	perst-gpios = <&tlmm 97 GPIO_ACTIVE_LOW>;
 
-	pinctrl-0 = <&pcie1_default_state>;
+	pinctrl-0 = <&pcie1_default_state>,<&upd720201_active>, <&gamepad_pwr_en>;
 	pinctrl-names = "default";
 
 	status = "okay";
