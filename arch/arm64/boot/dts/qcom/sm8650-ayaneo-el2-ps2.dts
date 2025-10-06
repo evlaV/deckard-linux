@@ -770,6 +770,29 @@
 };
 
 
+&i2c4 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	touchscreen@5d {
+		reg = <0x5d>;
+		status = "okay";
+		compatible = "goodix,gt911";
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <162 IRQ_TYPE_EDGE_FALLING>;
+
+		reset-gpios = <&tlmm 161 GPIO_ACTIVE_HIGH>;
+		VDDIO-supply = <&vreg_l14b_3p2>;
+		AVDD28-supply = <&vreg_l14b_3p2>;
+
+		touchscreen-size-x = <1440>;
+		touchscreen-size-y = <2560>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&ts_reset_default>, <&ts_irq_default>, <&usb_typec_pwr_en>;
+	};
+};
 
 &gpu {
 	status = "okay";
@@ -1262,6 +1285,54 @@
 		output-high;
 	};
 
+	spkr_2_sd_n_active: spkr-2-sd-n-active-state {
+		pins = "gpio77";
+		function = "gpio";
+		drive-strength = <16>;
+		bias-disable;
+		output-low;
+	};
+
+	ts_irq_default: ts-irq-active-state {
+		pins = "gpio162";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+		input-enable;
+	};
+
+	ts_reset_default: ts-reset-active-state {
+		pins = "gpio161";
+		function = "gpio";
+		drive-strength = <8>;
+		input-enable;
+		bias-pull-down;
+	};
+
+	turbo_key_default: turbo-key-default-state {
+		pins = "gpio78", "gpio79", "gpio82";
+		function = "gpio";
+		drive-strength = <2>;
+		input-enable;
+		bias-pull-up;
+	};
+
+	tlmm_key_default: tlmm-key-default-state {
+		pins = "gpio2", "gpio126", "gpio128", "gpio129", "gpio127";
+		function = "gpio";
+		drive-strength = <2>;
+		input-enable;
+		bias-pull-up;
+	};
+
+	wcd_default: wcd-reset-n-active-state {
+		pins = "gpio107";
+		function = "gpio";
+		drive-strength = <16>;
+		bias-disable;
+		output-low;
+	};
+	
 	fan0_pwr_active: fan0-pwr-active-state {
 		pins = "gpio124","gpio125";
 		function = "gpio";
@@ -1285,7 +1356,15 @@
 		bias-disable;
 		output-low;
 	};
-	
+
+	usb_typec_pwr_en: usb-typec-vbus-en-state {
+		pins = "gpio108", "gpio109";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-high;
+	};
+
 	qup_uart13_default: qup-uart13-default-state {
 		/* TX, RX */
 		pins = "gpio22", "gpio23";
@@ -1346,7 +1425,6 @@
 	};
 };
 
-// nRF Pins
 &tlmm {
 	bt_default: bt-default-state {
 		bt-en-pins {
