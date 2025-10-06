@@ -4092,6 +4092,8 @@
 				      "rx_lane0_sync_clk",
 				      "rx_lane1_sync_clk";
 
+			
+			
 			resets = <&gcc GCC_UFS_PHY_BCR>;
 			reset-names = "rst";
 
@@ -4108,7 +4110,7 @@
 			operating-points-v2 = <&ufs_opp_table>;
 
 			iommus = <&apps_smmu 0x60 0>;
-
+			
 			msi-parent = <&gic_its 0x60>;
 
 			lanes-per-direction = <2>;
