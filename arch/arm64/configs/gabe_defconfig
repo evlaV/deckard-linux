@@ -5178,7 +5178,10 @@ CONFIG_STEAM_FF=y
 CONFIG_HID_BPF=y
 # end of HID-BPF support
 
-# CONFIG_I2C_HID is not set
+CONFIG_I2C_HID=y
+# CONFIG_I2C_HID_OF is not set
+# CONFIG_I2C_HID_OF_ELAN is not set
+# CONFIG_I2C_HID_OF_GOODIX is not set
 
 #
 # SPI HID support
