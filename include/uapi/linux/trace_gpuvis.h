@@ -146,7 +146,7 @@ TRACE_EVENT(gpuvis_print_begin_dtime,
 
     // Expected output looks something like the following:
     //   [kern] [func_name] begin_ctx=1337 dtime=-43110 tgid=3141 sound/pcm_native.c:356 buffer_size=1024 navail=37
-	TP_printk(KERN_PREFIX "[%s%s%s] begin_ctx=%" PRIu64 " dtime=%" PRId64 " tgid=%" PRIu64 "%s%s",
+	TP_printk(KERN_PREFIX "[%s%s%s] begin_ctx=%" PRIu64 " dtime=%" PRId64 " tgid=%" PRIu64 " file=%s%s",
         __entry->func,
         __entry->sub_func ? "." : "", __entry->sub_func ? __entry->sub_func : "",
         __entry->id,
@@ -180,7 +180,7 @@ TRACE_EVENT(gpuvis_print,
 
     // Expected output looks something like the following:
     //   [kern] [func_name] begin_ctx=1337 tgid=3141 sound/pcm_native.c:356 buffer_size=1024 navail=37
-	TP_printk(KERN_PREFIX "[%s%s%s] %s=%" PRIu64 " tgid=%" PRIu64 "%s%s",
+	TP_printk(KERN_PREFIX "[%s%s%s] %s=%" PRIu64 " tgid=%" PRIu64 " file=%s%s",
         __entry->func,
         __entry->sub_func ? "." : "", __entry->sub_func ? __entry->sub_func : "",
         __entry->ctx_op,
@@ -341,7 +341,7 @@ void gpuvis_trace_cleanup(struct gpuvis_trace_context_t *begin_ctx) {
     struct gpuvis_trace_context_t BEGIN_CTX_NAME(name) __attribute__((cleanup(gpuvis_trace_cleanup))); \
     struct gpuvis_trace_context_t END_CTX_NAME(name); \
     gpuvis_trace_uninit(&END_CTX_NAME(name)); \
-    gpuvis_trace_init(&BEGIN_CTX_NAME(name), trace_ctx_id(), tracepoint_string(__func__), tracepoint_string(#name), tracepoint_string(" file=" FILE_LINE), &END_CTX_NAME(name)); \
+    gpuvis_trace_init(&BEGIN_CTX_NAME(name), trace_ctx_id(), tracepoint_string(__func__), tracepoint_string(#name), tracepoint_string(FILE_LINE), &END_CTX_NAME(name)); \
     char _begin_payload_storage##name[128]; \
     gpuvis_trace_add_payload(&BEGIN_CTX_NAME(name), NULL, _begin_payload_storage##name, sizeof(_begin_payload_storage##name), "" __VA_ARGS__); \
     if (gpuvis_trace_unconditional(&BEGIN_CTX_NAME(name))) { \
@@ -362,7 +362,7 @@ void gpuvis_trace_cleanup(struct gpuvis_trace_context_t *begin_ctx) {
 // This macro first creates a scope block to evaluate `condition` inside of, then uses the result
 // of that condition to determine whether it should emit the begin and end events.
 #define TRACE_END_CTX_IMPL(condition, name, ...) \
-    gpuvis_trace_init(&END_CTX_NAME(name), BEGIN_CTX_NAME(name).id, tracepoint_string(__func__), tracepoint_string(#name), tracepoint_string(" file=" FILE_LINE), NULL); \
+    gpuvis_trace_init(&END_CTX_NAME(name), BEGIN_CTX_NAME(name).id, tracepoint_string(__func__), tracepoint_string(#name), tracepoint_string(FILE_LINE), NULL); \
     { \
         bool _ctx_print_cond = false; \
         { \
