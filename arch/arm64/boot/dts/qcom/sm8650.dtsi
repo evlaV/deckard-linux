@@ -4144,6 +4144,7 @@
 			operating-points-v2 = <&ufs_opp_table>;
 
 			iommus = <&apps_smmu 0x60 0>;
+			dma-coherent;
 
 			msi-parent = <&gic_its 0x60>;
 
