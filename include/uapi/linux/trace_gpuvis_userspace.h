@@ -9,6 +9,8 @@
  * userspace as well.
  */
 
+#ifndef UAPI_TRACE_GPUVIS_USERSPACE_H
+#define UAPI_TRACE_GPUVIS_USERSPACE_H
 
 #include <stdio.h>
 #include <stdint.h>
@@ -32,8 +34,8 @@
 // While not required, you may wish to run this at the start of your program to reduce
 // first-trace latency where we have to open this file lazily; It could increase the
 // time of your first operation a bit.
-int trace_fd = 0;
-void init_trace_fd(void) {
+static int trace_fd = 0;
+static void init_trace_fd(void) {
 	if (trace_fd != 0) {
 		return;
 	}
@@ -43,7 +45,7 @@ void init_trace_fd(void) {
 
 // Convert trace clock names to the clock IDs we can actually use.
 // Note that I've only ever tested `mono_raw` because that's all we use.
-clockid_t word_to_clock_id(const char * word) {
+static clockid_t word_to_clock_id(const char * word) {
     if (strcmp(word, "mono_raw") == 0) {
         return CLOCK_MONOTONIC_RAW;
     }
@@ -62,8 +64,8 @@ clockid_t word_to_clock_id(const char * word) {
 }
 
 // Figure out which clock to use based on what the tracing system is using.
-clockid_t clock_id = -1;
-void get_trace_clock() {
+static clockid_t clock_id = -1;
+static void get_trace_clock() {
     if (clock_id != -1) {
         return;
     }
@@ -113,8 +115,8 @@ ktime_t trace_clock_gettime_top()
 
 // Read `/sys/kernel/tracing/trace_ctx_id` to get a unique context ID for whatever event we're about to do.
 // If we fail to do that, we'll just increment an ID locally.
-uint64_t local_counter = 0;
-uint64_t trace_ctx_id(void) {
+static uint64_t local_counter = 0;
+static uint64_t trace_ctx_id(void) {
 	char ctx_buff[22];
 
 	// Open and read the number, converting it to a uint64_t
@@ -129,7 +131,7 @@ uint64_t trace_ctx_id(void) {
 }
 
 // Write to `/sys/kernel/tracing/trace_marker` as the userspace implementation of tracing fprintf.
-void trace_marker_printf(const char * format, ...) {
+static void trace_marker_printf(const char * format, ...) {
     va_list args;
     va_start(args, format);
 
@@ -173,3 +175,6 @@ static inline void trace_##event_name(proto) \
     assign_block; \
     trace_marker_printf(printf_args); \
 }
+
+
+#endif // UAPI_TRACE_GPUVIS_USERSPACE_H
