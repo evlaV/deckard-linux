@@ -2222,7 +2222,7 @@
 		address-width = <16>;
 		status = "okay";
 		vcc-supply = <&rgb_3v0_vout>;
-		label = "passthrough_cams_eeprom_left";
+		label = "passthrough_cams_eeprom_right";
     };
 	eeprom@53 {
 		compatible = "atmel,24c64";
@@ -2232,16 +2232,26 @@
 		address-width = <16>;
 		status = "okay";
 		vcc-supply = <&rgb_3v0_vout>;
-		label = "passthrough_cams_eeprom_right";
+		label = "passthrough_cams_eeprom_left";
     };
 	cam3@1a {
 		compatible = "arcimx616";
 
-		id = "passthrough_right";
+		id = "passthrough_left";
 
 		reg = <0x1a>;
 
-		DOVDD-supply = <&dummy_reg>;
+
+		reset-gpios = <&tlmm 126 GPIO_ACTIVE_HIGH>;
+		detect-gpios = <&pm8550b_gpios 6 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam6_default>,<&cam7_default>;
+
+		clocks = <&camcc CAM_CC_MCLK7_CLK>,<&camcc CAM_CC_MCLK6_CLK>;
+		clock-names = "xclk","xclk2";
+
+		DOVDD-supply = <&rgb_3v0_vout>;
+		
 		// AVDD-supply = <&camera_2p8>;
 		// DVDD-supply = <&camera_1p2>;
 
@@ -2256,21 +2266,11 @@
 	cam4@10 {
 		compatible = "arcimx616";
 
-		id = "passthrough_left";
+		id = "passthrough_right";
 
 		reg = <0x10>;
 
-		reset-gpios = <&tlmm 126 GPIO_ACTIVE_HIGH>;
-		detect-gpios = <&pm8550b_gpios 6 GPIO_ACTIVE_HIGH>;
-		mux-enable-gpios = <&tlmm 14 GPIO_ACTIVE_HIGH>;
-		mux-select-gpios = <&tlmm 111 GPIO_ACTIVE_HIGH>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&cam6_default>,<&cam7_default>;
-
-		clocks = <&camcc CAM_CC_MCLK7_CLK>,<&camcc CAM_CC_MCLK6_CLK>;
-		clock-names = "xclk","xclk2";
-
-		DOVDD-supply = <&rgb_3v0_vout>;
+		DOVDD-supply = <&dummy_reg>;
 
 		port {
 			cam_pt_right: endpoint {

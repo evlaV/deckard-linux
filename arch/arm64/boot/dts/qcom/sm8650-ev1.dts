@@ -1874,7 +1874,7 @@
 	cam3@1a {
 		compatible = "arcimx616";
 
-		id = "passthrough_right";
+		id = "passthrough_left";
 
 		reg = <0x1a>;
 
