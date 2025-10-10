@@ -102,7 +102,7 @@ int main()
 
  * Place that code in `tracing_test.c` in the kernel root directory then run:
  *
- *     cc -g -o /tmp/tracing_test -DTRACE_STDOUT_OVERRIDE -I./include tracing_test.c && /tmp/tracing_test
+ *     cc -g -o /tmp/tracing_test -DTRACE_STDOUT_OVERRIDE -I./include/uapi tracing_test.c && /tmp/tracing_test
  *
  * And you should see output such as:
  *
