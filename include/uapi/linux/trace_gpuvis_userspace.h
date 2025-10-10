@@ -83,13 +83,16 @@ void get_trace_clock() {
         while (*word == ' ')
             word++;
         // This is the selected word, trim it then convert it:
-        if (word[0] == '[') {
+        if (*word == '[') {
             int idx = 1;
             while (word[idx] != ']' && word[idx] != '\0')
                 idx++;
             word[idx] = '\0';
             clock_id = word_to_clock_id(word+1);
             return;
+        } else {
+            // This is some other word
+            word++;
         }
     }
 
