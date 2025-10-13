@@ -236,6 +236,9 @@ struct og01a1b_dev* sensors[4];
 int numSensors = 0;
 int sync_sensor_index = -1;
 
+/* Global i2c_client for dual writes */
+static struct i2c_client *g_dual_i2c_client = NULL;
+
 // This is used to determine whether or not we can use dual i2c mode. If this is non zero and more than 30 ms ago we can
 // Because that means we do not have a danger of missing an update to one sensor
 u64 last_time_in_sync = 0;
@@ -785,31 +788,31 @@ static int og01a1b_write_reg(struct og01a1b_dev *sensor, u16 reg, u8 val)
 
 static int og01a1b_write_reg_dual(struct og01a1b_dev *sensor, u16 reg, u8 val)
 {
-	struct i2c_client *client = sensor->i2c_client;
-	unsigned short old_addr = client->addr;
-	client->addr = 0x70;
 	struct i2c_msg msg;
 	u8 buf[3];
 	int ret;
+
+	if (!g_dual_i2c_client) {
+		dev_err(&sensor->i2c_client->dev, "%s: dual i2c client not initialized\n", __func__);
+		return -ENODEV;
+	}
 
 	buf[0] = reg >> 8;
 	buf[1] = reg & 0xff;
 	buf[2] = val;
 
-	msg.addr = client->addr;
-	msg.flags = client->flags;
+	msg.addr = g_dual_i2c_client->addr;
+	msg.flags = g_dual_i2c_client->flags;
 	msg.buf = buf;
 	msg.len = sizeof(buf);
 
-	ret = i2c_transfer(client->adapter, &msg, 1);
+	ret = i2c_transfer(g_dual_i2c_client->adapter, &msg, 1);
 	if (ret < 0) {
-		dev_err(&client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
+		dev_err(&sensor->i2c_client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
 			__func__, reg, val, ret);
-		client->addr = old_addr;
 		return ret;
 	}
 
-	client->addr = old_addr;
 	return 0;
 }
 
@@ -906,31 +909,31 @@ static int og01a1b_write_reg16(struct og01a1b_dev *sensor, u16 reg, u16 val)
 static int og01a1b_write_reg16_dual(struct og01a1b_dev *sensor, u16 reg, u16 val)
 {
 	// Use the og01a1b sequential write feature to use a single i2c transfer
-	struct i2c_client *client = sensor->i2c_client;
-	unsigned short old_addr = client->addr;
-	client->addr = 0x70;
 	struct i2c_msg msg;
 	u8 buf[4];
 	int ret;
+
+	if (!g_dual_i2c_client) {
+		dev_err(&sensor->i2c_client->dev, "%s: dual i2c client not initialized\n", __func__);
+		return -ENODEV;
+	}
 
 	buf[0] = reg >> 8;
 	buf[1] = reg & 0xff;
 	buf[2] = val >> 8; // written at reg
 	buf[3] = val & 0xff; // written at reg+1
 
-	msg.addr = client->addr;
-	msg.flags = client->flags;
+	msg.addr = g_dual_i2c_client->addr;
+	msg.flags = g_dual_i2c_client->flags;
 	msg.buf = buf;
 	msg.len = sizeof(buf);
 
-	ret = i2c_transfer(client->adapter, &msg, 1);
+	ret = i2c_transfer(g_dual_i2c_client->adapter, &msg, 1);
 	if (ret < 0) {
-		dev_err(&client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
+		dev_err(&sensor->i2c_client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
 			__func__, reg, val, ret);
-		client->addr = old_addr;
 		return ret;
 	}
-	client->addr = old_addr;
 	return 0;
 }
 
@@ -2244,6 +2247,21 @@ static int og01a1b_probe(struct i2c_client *client)
 		sensor->dual_i2c_main = (dual_i2c_main_val != 0);
 	}
 
+	/* Initialize dual i2c client on first probe */
+	if (!g_dual_i2c_client) {
+		struct i2c_board_info dual_info = {
+			I2C_BOARD_INFO("og01a1b-dual", 0x70)
+		};
+		g_dual_i2c_client = i2c_new_client_device(client->adapter, &dual_info);
+		if (IS_ERR(g_dual_i2c_client)) {
+			dev_err(&client->dev, "Failed to create dual i2c client: %ld\n", 
+				PTR_ERR(g_dual_i2c_client));
+			g_dual_i2c_client = NULL;
+		} else {
+			dev_info(&client->dev, "Created dual i2c client at address 0x70\n");
+		}
+	}
+
 	last_time_in_sync = 0;
 
 	return 0;
@@ -2259,6 +2277,25 @@ static void og01a1b_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
+
+	/* Remove from sensors array */
+	for (int i = 0; i < numSensors; i++) {
+		if (sensors[i] == sensor) {
+			/* Shift remaining sensors down */
+			for (int j = i; j < numSensors - 1; j++) {
+				sensors[j] = sensors[j + 1];
+			}
+			numSensors--;
+			break;
+		}
+	}
+
+	/* Clean up dual i2c client when last sensor is removed */
+	if (numSensors == 0 && g_dual_i2c_client) {
+		i2c_unregister_device(g_dual_i2c_client);
+		g_dual_i2c_client = NULL;
+		dev_info(&client->dev, "Cleaned up dual i2c client\n");
+	}
 
 	v4l2_async_unregister_subdev(&sensor->sd);
 	mutex_destroy(&sensor->lock);
