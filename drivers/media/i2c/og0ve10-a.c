@@ -225,6 +225,9 @@ struct og0ve10_dev *sensors_og0VE10[4];
 int numSensors_og0VE10 = 0;
 int left_sensor_idx = -1;
 int right_sensor_idx = -1;
+
+/* Global i2c_client for dual writes */
+static struct i2c_client *g_dual_i2c_client_og0ve10 = NULL;
 int sync_sensor_index_og0VE10 = -1;
 
 extern struct workqueue_struct *sensor_workqueues[2];
@@ -437,22 +440,63 @@ static int og0ve10_write_reg16(struct og0ve10_dev *sensor, u16 reg, u16 val)
 
 static int og0ve10_write_reg_dual(struct og0ve10_dev *sensor, u16 reg, u8 val)
 {
-    struct i2c_client *client = sensor->i2c_client;
-    unsigned short old_addr = client->addr;
-    client->addr = 0x70;
-    int ret = og0ve10_write_reg(sensor, reg, val);
-    client->addr = old_addr;
-    return ret;
+	struct i2c_msg msg;
+	u8 buf[3];
+	int ret;
+
+	if (!g_dual_i2c_client_og0ve10) {
+		dev_err(&sensor->i2c_client->dev, "%s: dual i2c client not initialized\n", __func__);
+		return -ENODEV;
+	}
+
+	buf[0] = reg >> 8;
+	buf[1] = reg & 0xff;
+	buf[2] = val;
+
+	msg.addr = g_dual_i2c_client_og0ve10->addr;
+	msg.flags = g_dual_i2c_client_og0ve10->flags;
+	msg.buf = buf;
+	msg.len = sizeof(buf);
+
+	ret = i2c_transfer(g_dual_i2c_client_og0ve10->adapter, &msg, 1);
+	if (ret < 0) {
+		dev_err(&sensor->i2c_client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
+			__func__, reg, val, ret);
+		return ret;
+	}
+
+	return 0;
 }
 
 static int og0ve10_write_reg16_dual(struct og0ve10_dev *sensor, u16 reg, u16 val)
 {
-    struct i2c_client *client = sensor->i2c_client;
-    unsigned short old_addr = client->addr;
-    client->addr = 0x70;
-    int ret = og0ve10_write_reg16(sensor, reg, val);
-    client->addr = old_addr;
-    return ret;
+	// Use the og0ve10 sequential write feature to use a single i2c transfer
+	struct i2c_msg msg;
+	u8 buf[4];
+	int ret;
+
+	if (!g_dual_i2c_client_og0ve10) {
+		dev_err(&sensor->i2c_client->dev, "%s: dual i2c client not initialized\n", __func__);
+		return -ENODEV;
+	}
+
+	buf[0] = reg >> 8;
+	buf[1] = reg & 0xff;
+	buf[2] = val >> 8; // written at reg
+	buf[3] = val & 0xff; // written at reg+1
+
+	msg.addr = g_dual_i2c_client_og0ve10->addr;
+	msg.flags = g_dual_i2c_client_og0ve10->flags;
+	msg.buf = buf;
+	msg.len = sizeof(buf);
+
+	ret = i2c_transfer(g_dual_i2c_client_og0ve10->adapter, &msg, 1);
+	if (ret < 0) {
+		dev_err(&sensor->i2c_client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
+			__func__, reg, val, ret);
+		return ret;
+	}
+	return 0;
 }
 
 static int og0ve10_load_regs(struct og0ve10_dev *sensor,
@@ -1637,6 +1681,21 @@ static int og0ve10_probe(struct i2c_client *client)
 		sensor->dual_i2c_main = (dual_i2c_main_val != 0);
 	}
 
+	/* Initialize dual i2c client on first probe */
+	if (!g_dual_i2c_client_og0ve10) {
+		struct i2c_board_info dual_info = {
+			I2C_BOARD_INFO("og0ve10-dual", 0x70)
+		};
+		g_dual_i2c_client_og0ve10 = i2c_new_client_device(client->adapter, &dual_info);
+		if (IS_ERR(g_dual_i2c_client_og0ve10)) {
+			dev_err(&client->dev, "Failed to create dual i2c client: %ld\n", 
+				PTR_ERR(g_dual_i2c_client_og0ve10));
+			g_dual_i2c_client_og0ve10 = NULL;
+		} else {
+			dev_info(&client->dev, "Created dual i2c client at address 0x70\n");
+		}
+	}
+
 	last_time_in_sync_og0VE10 = 0;
 
 	// TODO: remove that, this is handled by og01a1b-a as a shared workqueue
@@ -1676,6 +1735,25 @@ static void og0ve10_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct og0ve10_dev *sensor = to_og0ve10_dev(sd);
+
+	/* Remove from sensors array */
+	for (int i = 0; i < numSensors_og0VE10; i++) {
+		if (sensors_og0VE10[i] == sensor) {
+			/* Shift remaining sensors down */
+			for (int j = i; j < numSensors_og0VE10 - 1; j++) {
+				sensors_og0VE10[j] = sensors_og0VE10[j + 1];
+			}
+			numSensors_og0VE10--;
+			break;
+		}
+	}
+
+	/* Clean up dual i2c client when last sensor is removed */
+	if (numSensors_og0VE10 == 0 && g_dual_i2c_client_og0ve10) {
+		i2c_unregister_device(g_dual_i2c_client_og0ve10);
+		g_dual_i2c_client_og0ve10 = NULL;
+		dev_info(&client->dev, "Cleaned up dual i2c client\n");
+	}
 
 	v4l2_async_unregister_subdev(&sensor->sd);
 	mutex_destroy(&sensor->lock);
