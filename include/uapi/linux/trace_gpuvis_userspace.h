@@ -34,11 +34,11 @@
 // While not required, you may wish to run this at the start of your program to reduce
 // first-trace latency where we have to open this file lazily; It could increase the
 // time of your first operation a bit.
-static int trace_fd = 0;
+static int trace_fd = -1;
 static void init_trace_fd(void) {
-	if (trace_fd != 0) {
-		return;
-	}
+    if (trace_fd != -1) {
+        return;
+    }
 
     trace_fd = open("/sys/kernel/tracing/trace_marker", O_WRONLY);
 }
@@ -117,17 +117,17 @@ ktime_t trace_clock_gettime_top()
 // If we fail to do that, we'll just increment an ID locally.
 static uint64_t local_counter = 0;
 static uint64_t trace_ctx_id(void) {
-	char ctx_buff[22];
+    char ctx_buff[22];
 
-	// Open and read the number, converting it to a uint64_t
-	int ctx_fd = open("/sys/kernel/tracing/trace_ctx_id", O_RDONLY);
-	int nread = read(ctx_fd, ctx_buff, 22);
+    // Open and read the number, converting it to a uint64_t
+    int ctx_fd = open("/sys/kernel/tracing/trace_ctx_id", O_RDONLY);
+    int nread = read(ctx_fd, ctx_buff, 22);
     if (nread < 0)
         local_counter += 1;
     else
         local_counter = strtoull(ctx_buff, NULL, 10);
-	close(ctx_fd);
-	return local_counter;
+    close(ctx_fd);
+    return local_counter;
 }
 
 // Write to `/sys/kernel/tracing/trace_marker` as the userspace implementation of tracing fprintf.
@@ -135,19 +135,19 @@ static void trace_marker_printf(const char * format, ...) {
     va_list args;
     va_start(args, format);
 
-    // Open `trace_fd`, if needed, then `vprintf()` straight to that fd.
-	init_trace_fd();
 #ifdef TRACE_STDOUT_OVERRIDE
-    int ret = vdprintf(0, format, args);
+    vdprintf(0, format, args);
 #else
-    int ret = vdprintf(trace_fd, format, args);
-#endif
+    // Open `trace_fd`, if needed, then `vprintf()` straight to that fd.
+    init_trace_fd();
 
+    int ret = vdprintf(trace_fd, format, args);
     // If we failed to write, try to reopen the fd for next time.
     if (ret < 0) {
         close(trace_fd);
-        trace_fd = 0;
+        trace_fd = -1;
     }
+#endif
     va_end(args);
 }
 
