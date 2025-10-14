@@ -529,6 +529,32 @@ static int qcom_smmu_cfg_probe(struct arm_smmu_device *smmu)
 		}
 	}
 
+	/* look for display entry */
+	for (i = 0; i < smmu->num_mapping_groups; i++) {
+		if (smmu->smrs[i].id == 0x1c00)
+			break;
+	}
+
+	/* add a display entry if missing */
+	if (i == smmu->num_mapping_groups) {
+		for (i = 0; i < smmu->num_mapping_groups; i++) {
+			if (!smmu->smrs[i].valid)
+				break;
+		}
+
+		if (i == smmu->num_mapping_groups) {
+			dev_notice(smmu->dev, "Unable to install Display IOMMU bypass\n");
+		} else {
+			smmu->smrs[i].id = 0x1c00;
+			smmu->smrs[i].mask = 0x2;
+			smmu->smrs[i].valid = true;
+
+			smmu->s2crs[i].type = S2CR_TYPE_BYPASS;
+			smmu->s2crs[i].privcfg = S2CR_PRIVCFG_DEFAULT;
+			smmu->s2crs[i].cbndx = 0xff;
+		}
+	}
+
 	return 0;
 }
 
