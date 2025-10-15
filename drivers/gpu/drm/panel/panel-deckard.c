@@ -1272,7 +1272,7 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 		return ret;
 	}
 
-	ctx->reset_gpios = devm_gpiod_get_array(dev, "reset", GPIOD_OUT_LOW);
+	ctx->reset_gpios = devm_gpiod_get_array(dev, "reset", GPIOD_ASIS);
 	if (IS_ERR(ctx->reset_gpios)){
 		DRM_DEV_ERROR(ctx->dev, "Failed to get reset gpio\n");
 		return PTR_ERR(ctx->reset_gpios);
