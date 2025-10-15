@@ -1499,6 +1499,9 @@
 };
 
 &pm8550_pwm {
+	nvmem = <&pmk8550_sdam_21>, <&pmk8550_sdam_22>;
+	nvmem-names = "lpg_chan_sdam", "lut_sdam";
+
 	status = "okay";
 
 	multi-led {
