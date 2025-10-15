@@ -26,6 +26,16 @@
 
 	chosen {
 		stdout-path = "serial0:115200n8";
+
+		simple-framebuffer {
+			compatible = "simple-framebuffer";
+			width = <4320>;
+			height = <2160>;
+			stride = <(4320 * 4)>;
+			format = "a8r8g8b8";
+			memory-region = <&framebuffer_mem>;
+			status = "disabled";
+		};
 	};	
 
 	cpus {
@@ -372,6 +382,15 @@
 		compatible = "regulator-fixed";
 		regulator-name = "dummy-supply";
 	};
+
+	reserved-memory {
+                ranges;
+
+                framebuffer_mem: memory@af400000 {
+			reg = <0 0xaf400000 0 0x03000000>;
+                        no-map;
+                };
+        };
 
 	WCN7850_PMU: wcn7850-pmu {
 		compatible = "qcom,wcn7850-pmu";
@@ -1301,6 +1320,7 @@
 };
 
 &mdss {
+	iommu-defer-attach;
 	status = "okay";
 };
 
