@@ -351,84 +351,6 @@ static int vcnl4200_set_power_state(struct vcnl4000_data *data, bool on)
 	return 0;
 }
 
-static int vcnl4200_init(struct vcnl4000_data *data)
-{
-	int ret, id;
-	u16 regval;
-
-	ret = i2c_smbus_read_word_data(data->client, VCNL4200_DEV_ID);
-	if (ret < 0)
-		return ret;
-
-	id = ret & 0xff;
-
-	if (id != VCNL4200_PROD_ID) {
-		ret = i2c_smbus_read_word_data(data->client, VCNL4040_DEV_ID);
-		if (ret < 0)
-			return ret;
-
-		id = ret & 0xff;
-
-		if (id != VCNL4040_PROD_ID)
-			return -ENODEV;
-	}
-
-	dev_dbg(&data->client->dev, "device id 0x%x", id);
-
-	data->rev = (ret >> 8) & 0xf;
-	data->ps_int = 0;
-	data->als_int = 0;
-
-	data->vcnl4200_al.reg = VCNL4200_AL_DATA;
-	data->vcnl4200_ps.reg = VCNL4200_PS_DATA;
-	switch (id) {
-	case VCNL4200_PROD_ID:
-		/* Default wait time is 50ms, add 20% tolerance. */
-		data->vcnl4200_al.sampling_rate = ktime_set(0, 60000 * 1000);
-		/* Default wait time is 4.8ms, add 20% tolerance. */
-		data->vcnl4200_ps.sampling_rate = ktime_set(0, 5760 * 1000);
-		break;
-	case VCNL4040_PROD_ID:
-		/* Default wait time is 80ms, add 20% tolerance. */
-		data->vcnl4200_al.sampling_rate = ktime_set(0, 96000 * 1000);
-		/* Default wait time is 5ms, add 20% tolerance. */
-		data->vcnl4200_ps.sampling_rate = ktime_set(0, 6000 * 1000);
-		break;
-	}
-	data->al_scale = data->chip_spec->ulux_step;
-	data->ps_scale = 16;
-	mutex_init(&data->vcnl4200_al.lock);
-	mutex_init(&data->vcnl4200_ps.lock);
-
-	/* Use 16 bits proximity sensor readings */
-	ret = i2c_smbus_read_word_data(data->client, VCNL4200_PS_CONF1);
-	if (ret < 0)
-		return ret;
-
-	regval = ret | VCNL4040_PS_CONF2_PS_HD;
-	ret = i2c_smbus_write_word_data(data->client, VCNL4200_PS_CONF1,
-					regval);
-	if (ret < 0)
-		return ret;
-
-	/* Align proximity sensor sample rate to 16 bits data width */
-	ret = i2c_smbus_read_word_data(data->client, VCNL4200_PS_CONF3);
-	if (ret < 0)
-		return ret;
-
-	regval = ret | VCNL4040_CONF3_PS_SAMPLE_16BITS;
-	ret = i2c_smbus_write_word_data(data->client, VCNL4200_PS_CONF3,
-					regval);
-	if (ret < 0)
-		return ret;
-
-	ret = data->chip_spec->set_power_state(data, true);
-	if (ret < 0)
-		return ret;
-
-	return 0;
-};
-
 static int vcnl4000_read_data(struct vcnl4000_data *data, u8 data_reg, int *val)
 {
 	s32 ret;
@@ -1550,6 +1472,98 @@ out:
 
 	return ret;
 }
+
+static int vcnl4200_init(struct vcnl4000_data *data)
+{
+	int ret, id;
+	u16 regval;
+	int val;
+
+	ret = i2c_smbus_read_word_data(data->client, VCNL4200_DEV_ID);
+	if (ret < 0)
+		return ret;
+
+	id = ret & 0xff;
+
+	if (id != VCNL4200_PROD_ID) {
+		ret = i2c_smbus_read_word_data(data->client, VCNL4040_DEV_ID);
+		if (ret < 0)
+			return ret;
+
+		id = ret & 0xff;
+
+		if (id != VCNL4040_PROD_ID)
+			return -ENODEV;
+	}
+
+	dev_dbg(&data->client->dev, "device id 0x%x", id);
+
+	data->rev = (ret >> 8) & 0xf;
+	data->ps_int = 0;
+	data->als_int = 0;
+
+	data->vcnl4200_al.reg = VCNL4200_AL_DATA;
+	data->vcnl4200_ps.reg = VCNL4200_PS_DATA;
+	switch (id) {
+	case VCNL4200_PROD_ID:
+		/* Default wait time is 50ms, add 20% tolerance. */
+		data->vcnl4200_al.sampling_rate = ktime_set(0, 60000 * 1000);
+		/* Default wait time is 4.8ms, add 20% tolerance. */
+		data->vcnl4200_ps.sampling_rate = ktime_set(0, 5760 * 1000);
+		break;
+	case VCNL4040_PROD_ID:
+		/* Default wait time is 80ms, add 20% tolerance. */
+		data->vcnl4200_al.sampling_rate = ktime_set(0, 96000 * 1000);
+		/* Default wait time is 5ms, add 20% tolerance. */
+		data->vcnl4200_ps.sampling_rate = ktime_set(0, 6000 * 1000);
+		break;
+	}
+	data->al_scale = data->chip_spec->ulux_step;
+	data->ps_scale = 16;
+	mutex_init(&data->vcnl4200_al.lock);
+	mutex_init(&data->vcnl4200_ps.lock);
+
+	/* Use 16 bits proximity sensor readings */
+	ret = i2c_smbus_read_word_data(data->client, VCNL4200_PS_CONF1);
+	if (ret < 0)
+		return ret;
+
+	regval = ret | VCNL4040_PS_CONF2_PS_HD;
+	ret = i2c_smbus_write_word_data(data->client, VCNL4200_PS_CONF1,
+					regval);
+	if (ret < 0)
+		return ret;
+
+	/* Align proximity sensor sample rate to 16 bits data width */
+	ret = i2c_smbus_read_word_data(data->client, VCNL4200_PS_CONF3);
+	if (ret < 0)
+		return ret;
+
+	regval = ret | VCNL4040_CONF3_PS_SAMPLE_16BITS;
+	ret = i2c_smbus_write_word_data(data->client, VCNL4200_PS_CONF3,
+					regval);
+	if (ret < 0)
+		return ret;
+
+	// Set custom values if available
+	if (!device_property_read_u32(&data->client->dev, "proximity-integration-time",
+				     &val)) {
+		if (vcnl4040_write_ps_it(data, val))
+			dev_err(&data->client->dev,"failed to set ps_it: %d\n", val);
+	}
+
+	if (!device_property_read_u32(&data->client->dev, "proximity-multi-pulse",
+				     &val)) {
+		if (vcnl4040_write_ps_oversampling_ratio(data, val))
+			dev_err(&data->client->dev,"failed to set ps_oversampling_ratio: %d\n", val);
+	}
+
+	ret = data->chip_spec->set_power_state(data, true);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+};
 
 static irqreturn_t vcnl4040_irq_thread(int irq, void *p)
 {
