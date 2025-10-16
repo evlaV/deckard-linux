@@ -326,6 +326,9 @@ static int vcnl4200_set_power_state(struct vcnl4000_data *data, bool on)
 	return 0;
 }
 
+static ssize_t vcnl4040_write_ps_it(struct vcnl4000_data *data, int val);
+static ssize_t vcnl4040_write_ps_oversampling_ratio(struct vcnl4000_data *data, int val);
+
 static int vcnl4200_init(struct vcnl4000_data *data)
 {
 	struct i2c_client *client = data->client;
@@ -400,6 +403,23 @@ static int vcnl4200_init(struct vcnl4000_data *data)
 
 	regval = ret | VCNL4040_CONF3_PS_SAMPLE_16BITS;
 	ret = i2c_smbus_write_word_data(client, VCNL4200_PS_CONF3, regval);
+	if (ret < 0)
+		return ret;
+
+	// Set custom values if available
+	if (!device_property_read_u32(&data->client->dev, "proximity-integration-time",
+				     &val)) {
+		if (vcnl4040_write_ps_it(data, val))
+			dev_err(&data->client->dev,"failed to set ps_it: %d\n", val);
+	}
+
+	if (!device_property_read_u32(&data->client->dev, "proximity-multi-pulse",
+				     &val)) {
+		if (vcnl4040_write_ps_oversampling_ratio(data, val))
+			dev_err(&data->client->dev,"failed to set ps_oversampling_ratio: %d\n", val);
+	}
+
+	ret = data->chip_spec->set_power_state(data, true);
 	if (ret < 0)
 		return ret;
 
