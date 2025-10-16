@@ -1920,6 +1920,9 @@
 		vin0-supply = <&vreg_l2b_3p0>; 
 		vin1-supply = <&vreg_l15b_1p8>; 
 
+		proximity-integration-time = <800>; // microseconds
+		proximity-multi-pulse = <1>;
+
 		status = "okay";
 	};
 };
