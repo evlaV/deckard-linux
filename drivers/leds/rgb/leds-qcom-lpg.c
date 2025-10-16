@@ -873,8 +873,22 @@ static int lpg_brightness_mc_set(struct led_classdev *cdev,
 {
 	struct led_classdev_mc *mc = lcdev_to_mccdev(cdev);
 	struct lpg_led *led = container_of(mc, struct lpg_led, mcdev);
+	struct lpg_channel *chan;
+	int i;
 
 	mutex_lock(&led->lpg->lock);
+
+	/*
+	 * if we have any chanenl ramp_enabled we may just want
+	 * to switch the led colors that are enabled in the pattern
+	 * and not the pattern itself, or forced to give the pattern
+	 * again
+	 */
+	for (i = 0; i < led->num_channels; i++) {
+		chan = led->channels[i];
+		if (chan->ramp_enabled)
+			value = LED_FULL;
+	}
 
 	led_mc_calc_color_components(mc, value);
 	lpg_brightness_set(led, cdev, mc->subled_info);
