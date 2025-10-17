@@ -850,7 +850,7 @@ struct iris_platform_data sm8650_data = {
 	.clk_tbl_size = ARRAY_SIZE(sm8550_clk_table),
 	/* Upper bound of DMA address range */
 	.dma_mask = 0xe0000000 - 1,
-	.fwname = "qcom/vpu/vpu33_p4.mbn",
+	.fwname = "qcom/vpu/vpu33_4v.mbn",
 	.pas_id = IRIS_PAS_ID,
 	.inst_caps = &platform_inst_cap_sm8550,
 	.inst_fw_caps_dec = inst_fw_cap_sm8550_dec,
