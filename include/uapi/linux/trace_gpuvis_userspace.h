@@ -31,18 +31,6 @@
 // Support `task_tgid_nr()` in userspace, assuming you always pass in 'current' ;)
 #define task_tgid_nr(args...) getpid()
 
-// While not required, you may wish to run this at the start of your program to reduce
-// first-trace latency where we have to open this file lazily; It could increase the
-// time of your first operation a bit.
-static int trace_fd = -1;
-static void init_trace_fd(void) {
-    if (trace_fd != -1) {
-        return;
-    }
-
-    trace_fd = open("/sys/kernel/tracing/trace_marker", O_WRONLY);
-}
-
 // Convert trace clock names to the clock IDs we can actually use.
 // Note that I've only ever tested `mono_raw` because that's all we use.
 static clockid_t word_to_clock_id(const char * word) {
@@ -113,6 +101,50 @@ ktime_t trace_clock_gettime_top()
     return ( ( uint64_t )ts.tv_sec * 1000000000LL) + ts.tv_nsec;
 }
 
+
+// This retry delay is 1 second
+#define FD_OPEN_RETRY_DELAY         (1000000000LL)
+
+// Helper to open an FD if it's not open already.
+// It keeps track of its last attempt and will only attempt to open the path
+// once every second, to avoid flooding the system with `open()` requests for
+// a path that is missing, for instance.  This allows us to start processes that
+// wish to log before `/sys/kernel/tracing` is mounted.
+static void open_fd(int *fd, ktime_t *last_attempt, const char *path, int flags)
+{
+    // If the fd is already open, nothing to do.
+    if (*fd != -1) {
+        return;
+    }
+    
+    // If it's not already open, check timestamp to see if we're going to ignore this request.
+    ktime_t curr_time = trace_clock_gettime_top();
+    if (curr_time - *last_attempt < FD_OPEN_RETRY_DELAY) {
+        return;
+    }
+
+    // Otherwise, try to open the path
+    *fd = open(path, flags);
+    *last_attempt = curr_time;
+}
+
+
+// While not required, you may wish to run this at the start of your program to reduce
+// first-trace latency where we have to open this file lazily; It could increase the
+// time of your first operation a bit.
+static int trace_fd = -1;
+static ktime_t trace_fd_last_attempt = 0;
+static void init_trace_fd(void) {
+    open_fd(&trace_fd, &trace_fd_last_attempt, "/sys/kernel/tracing/trace_marker", O_WRONLY);
+}
+
+static int trace_ctx_id_fd = -1;
+static ktime_t trace_ctx_id_fd_last_attempt = 0;
+static void init_trace_ctx_id_fd(void) {
+    open_fd(&trace_ctx_id_fd, &trace_ctx_id_fd_last_attempt, "/sys/kernel/tracing/trace_ctx_id", O_RDONLY);
+}
+
+
 // Read `/sys/kernel/tracing/trace_ctx_id` to get a unique context ID for whatever event we're about to do.
 // If we fail to do that, we'll just increment an ID locally.
 static uint64_t local_counter = 0;
@@ -120,13 +152,15 @@ static uint64_t trace_ctx_id(void) {
     char ctx_buff[22];
 
     // Open and read the number, converting it to a uint64_t
-    int ctx_fd = open("/sys/kernel/tracing/trace_ctx_id", O_RDONLY);
-    int nread = read(ctx_fd, ctx_buff, 22);
-    if (nread < 0)
+    init_trace_ctx_id_fd();
+    int nread = pread(trace_ctx_id_fd, ctx_buff, 22, 0);
+    if (nread < 0) {
         local_counter += 1;
-    else
+        close(trace_ctx_id_fd);
+        trace_ctx_id_fd = -1;
+    } else {
         local_counter = strtoull(ctx_buff, NULL, 10);
-    close(ctx_fd);
+    }
     return local_counter;
 }
 
