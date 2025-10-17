@@ -934,7 +934,7 @@ unlock:
 	return ret;
 }
 
-static int vidc_query_ext_ctrl(struct file *filp, void *fh, struct v4l2_query_ext_ctrl *q_ctrl)
+static int vidc_queryctrl(struct file *filp, void *fh, struct v4l2_queryctrl *q_ctrl)
 {
 	struct v4l2_ctrl *ctrl;
 	struct iris_inst *inst;
@@ -1427,7 +1427,7 @@ static const struct v4l2_ioctl_ops v4l2_ioctl_ops_dec = {
 	.vidioc_streamon                = vidc_streamon,
 	.vidioc_streamoff               = vidc_streamoff,
 	.vidioc_querycap                = vidc_querycap,
-	.vidioc_query_ext_ctrl          = vidc_query_ext_ctrl,
+	.vidioc_queryctrl               = vidc_queryctrl,
 	.vidioc_querymenu               = vidc_querymenu,
 	.vidioc_subscribe_event         = vidc_subscribe_event,
 	.vidioc_unsubscribe_event       = vidc_unsubscribe_event,
@@ -1457,7 +1457,7 @@ static const struct v4l2_ioctl_ops v4l2_ioctl_ops_enc = {
 	.vidioc_streamon                = vidc_streamon,
 	.vidioc_streamoff               = vidc_streamoff,
 	.vidioc_querycap                = vidc_querycap,
-	.vidioc_query_ext_ctrl          = vidc_query_ext_ctrl,
+	.vidioc_queryctrl               = vidc_queryctrl,
 	.vidioc_querymenu               = vidc_querymenu,
 	.vidioc_subscribe_event         = vidc_subscribe_event,
 	.vidioc_unsubscribe_event       = vidc_unsubscribe_event,

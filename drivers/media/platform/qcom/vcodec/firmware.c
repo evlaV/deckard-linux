@@ -8,7 +8,6 @@
 #include <linux/firmware.h>
 #include <linux/kernel.h>
 #include <linux/iommu.h>
-#include <linux/io.h>
 #include <linux/of_device.h>
 #include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/of_reserved_mem.h>
