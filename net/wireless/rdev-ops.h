@@ -8,9 +8,40 @@
 #define __CFG80211_RDEV_OPS
 
 #include <linux/rtnetlink.h>
+#include <linux/printk.h>
+#include <linux/workqueue.h>
 #include <net/cfg80211.h>
 #include "core.h"
 #include "trace.h"
+
+extern int cfg80211_block_scans; /* defined in core.c */
+
+static inline void __cfg80211_scan_drop_worker(struct work_struct *work)
+{
+	struct cfg80211_registered_device *rdev =
+		container_of(work, struct cfg80211_registered_device, block_scan_work);
+	struct cfg80211_scan_info info = { .aborted = false };
+
+	wiphy_lock(&rdev->wiphy);
+	struct cfg80211_scan_request_int *ireq = rdev->scan_req;
+	if (!ireq) {
+		pr_info_ratelimited("cfg80211: drop worker: no scan_req present (already completed or aborted)\n");
+	} else {
+		struct cfg80211_scan_request *pub = &ireq->req;
+		cfg80211_scan_done(pub, &info);
+	}
+	wiphy_unlock(&rdev->wiphy);
+}
+
+static inline void __cfg80211_sched_drop_worker(struct work_struct *work)
+{
+	struct cfg80211_registered_device *rdev =
+		container_of(work, struct cfg80211_registered_device, block_sched_work);
+
+	wiphy_lock(&rdev->wiphy);
+	cfg80211_sched_scan_stopped(&rdev->wiphy, rdev->block_sched_reqid);
+	wiphy_unlock(&rdev->wiphy);
+}
 
 static inline int rdev_suspend(struct cfg80211_registered_device *rdev,
 			       struct cfg80211_wowlan *wowlan)
@@ -463,6 +494,13 @@ static inline int rdev_scan(struct cfg80211_registered_device *rdev,
 	if (WARN_ON_ONCE(!request->req.n_ssids && request->req.ssids))
 		return -EINVAL;
 
+	if (cfg80211_block_scans) {
+		pr_info_ratelimited("cfg80211: dropping scan on %s (silent mode)\n",
+				    wiphy_name(&rdev->wiphy));
+		schedule_work(&rdev->block_scan_work);
+		return 0;
+	}
+
 	trace_rdev_scan(&rdev->wiphy, request);
 	ret = rdev->ops->scan(&rdev->wiphy, &request->req);
 	trace_rdev_return_int(&rdev->wiphy, ret);
@@ -891,6 +929,15 @@ rdev_sched_scan_start(struct cfg80211_registered_device *rdev,
 		      struct cfg80211_sched_scan_request *request)
 {
 	int ret;
+
+	if (cfg80211_block_scans) {
+		pr_info_ratelimited("cfg80211: dropping scheduled scan on %s (silent mode)\n",
+				    wiphy_name(&rdev->wiphy));
+		rdev->block_sched_reqid = request->reqid;
+		schedule_work(&rdev->block_sched_work);
+		return 0;
+	}
+
 	trace_rdev_sched_scan_start(&rdev->wiphy, dev, request->reqid);
 	ret = rdev->ops->sched_scan_start(&rdev->wiphy, dev, request);
 	trace_rdev_return_int(&rdev->wiphy, ret);
