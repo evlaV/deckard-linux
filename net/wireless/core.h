@@ -121,6 +121,10 @@ struct cfg80211_registered_device {
 	spinlock_t wiphy_work_lock;
 	bool suspended;
 
+	struct work_struct block_scan_work;
+	struct work_struct block_sched_work;
+	u64 block_sched_reqid;
+
 	/* must be last because of the way we do wiphy_priv(),
 	 * and it should at least be aligned to NETDEV_ALIGN */
 	struct wiphy wiphy __aligned(NETDEV_ALIGN);
