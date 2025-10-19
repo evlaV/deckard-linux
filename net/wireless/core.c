@@ -54,6 +54,10 @@ module_param(cfg80211_disable_40mhz_24ghz, bool, 0644);
 MODULE_PARM_DESC(cfg80211_disable_40mhz_24ghz,
 		 "Disable 40MHz support in the 2.4GHz band");
 
+int cfg80211_block_scans;
+module_param(cfg80211_block_scans, int, 0644);
+MODULE_PARM_DESC(cfg80211_block_scans, "Silently drop Wi‑Fi scans (0=off, 1=on)");
+
 struct cfg80211_registered_device *cfg80211_rdev_by_wiphy_idx(int wiphy_idx)
 {
 	struct cfg80211_registered_device *result = NULL, *rdev;
@@ -739,6 +743,10 @@ int wiphy_register(struct wiphy *wiphy)
 	bool have_band = false;
 	int i;
 	u16 ifmodes = wiphy->interface_modes;
+
+	INIT_WORK(&rdev->block_scan_work, __cfg80211_scan_drop_worker);
+	INIT_WORK(&rdev->block_sched_work, __cfg80211_sched_drop_worker);
+	rdev->block_sched_reqid = 0;
 
 #ifdef CONFIG_PM
 	if (WARN_ON(wiphy->wowlan &&
