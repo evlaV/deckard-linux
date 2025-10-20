@@ -935,7 +935,7 @@ static int va_macro_digital_mute(struct snd_soc_dai *dai, int mute, int stream)
 					CDC_VA_TX_PATH_PGA_MUTE_DISABLE);
 			/* short delay required to avoid pop */
 			if (!in_atomic())
-				usleep_range(6000, 6010);
+				usleep_range(20000, 20100);
 		}
 	}
 
