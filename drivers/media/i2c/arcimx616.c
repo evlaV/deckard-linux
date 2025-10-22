@@ -170,7 +170,7 @@ static int arcimx616_ensure_eeprom_client(struct arcimx616_dev *sensor)
 	struct i2c_client  *master = sensor->i2c_client;
 	struct i2c_adapter *adap   = master->adapter;
 	struct i2c_client  *cl;
-	bool is_left = (master->addr == 0x10) ? true : false;
+	bool is_left = (master->addr == 0x1a) ? true : false;
 	u8 addr = (is_left) ? 0x50 : 0x53;
 	struct i2c_board_info info = { I2C_BOARD_INFO("24c64", addr) };
 	/* already cached? */
@@ -669,6 +669,7 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 		//goto out_power;
 	}
 	ret = 0;
+
 
 	// Try to find an nvmem device with a name starting with this expected prefix
 	// TODO: consider making that an of property
