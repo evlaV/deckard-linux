@@ -25,6 +25,7 @@
 
 /delete-node/ &not_lpass_audiocc;
 /delete-node/ &not_lpasscc;
+/delete-node/ &sbsa_watchdog;
 
 &lpass_aoncc {
 	status = "okay";
@@ -84,8 +85,18 @@
 	clock-names = "mclk", "fsgen";
 };
 
+&pcie3 {
+	iommu-map = <0 &pcie_smmu 0x30000 0x10000>;
+	msi-map = <0 &gic_its 0xb0000 0x10000>;
+};
+
 &pcie4 {
 	iommu-map = <0 &pcie_smmu 0x40000 0x10000>;
+};
+
+&pcie5 {
+	iommu-map = <0 &pcie_smmu 0x50000 0x10000>;
+	msi-map = <0 &gic_its 0xd0000 0x10000>;
 };
 
 &pcie6a {
