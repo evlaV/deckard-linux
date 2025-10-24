@@ -1631,7 +1631,7 @@
 };
 
 &qup_spi10_cs {
-	pins = "gpio13", "gpio15";
+	pins = "gpio13";
 };
 
 &qupv3_id_0 {
@@ -2332,7 +2332,7 @@
 &tlmm {
 	// nRF CS
 	qup_spi10_cs_nrf: qup-spi10-cs-state-nrf {
-		pins = "gpio13", "gpio15";
+		pins = "gpio13";
 		function = "qup2_se2";
 		drive-strength = <6>;
 		bias-disable;
