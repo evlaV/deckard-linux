@@ -60,6 +60,7 @@
 #define SLG4AX46073V_REG_WDT_FREQ	0x9F
 #define SLG4AX46073V_WDT_FULL			0xCF
 #define SLG4AX46073V_WDT_HALF			0xCA
+#define SLG4AX46073V_REG_PGOOD          0xA4
 
 #define VERSION_7 0x07
 
@@ -68,6 +69,7 @@
 #define SLG4AX46073V_I2C_FAILURE	0x01
 #define SLG4AX46073V_RPM_FAILURE	0x02
 #define SLG4AX46073V_TACH_FAILURE	0x04
+#define SLG4AX46073V_POWER_GOOD		0x08
 
 #define SLG4AX46073V_MAX_RESET_ATTEMPTS	3
 
@@ -87,7 +89,6 @@ struct slg4ax46073v {
 	struct delayed_work wdt_work;
 	const struct attribute_group *attr_groups;
 	unsigned int version;
-	u32 pm_duty, pm_period, pm_enabled;
 };
 
 static bool slg4ax46073v_readable_reg(struct device *dev, unsigned int reg)
@@ -402,6 +403,15 @@ static void slg4ax46073v_delayed_work_handler(struct work_struct *work)
 			slg4ax46073v_reset_wdt(slg4ax46073v);
 		}
 		slg4ax46073v_pet_wdt(slg4ax46073v);
+
+		// check power good
+		regmap_read(slg4ax46073v->regmap, SLG4AX46073V_REG_PGOOD,
+			    &reg_val);
+		if (!reg_val) {
+			pr_warn_ratelimited(
+				"slg4ax46073v: fan power off\n");
+			alarm |= SLG4AX46073V_POWER_GOOD;
+		}
 
 		// get current pwm setting
 		ret = regmap_read(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC,
@@ -906,7 +916,7 @@ static void slg4ax46073v_remove(struct i2c_client *client)
 static int slg4ax46073v_suspend(struct device *dev)
 {
 	struct slg4ax46073v *slg4ax46073v = dev_get_drvdata(dev);
-	u32 duty, period, enabled;
+	u32 enabled;
 	int ret;
 
 	ret = regmap_read(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT,
@@ -925,13 +935,7 @@ static int slg4ax46073v_suspend(struct device *dev)
 
 		// turn off fan power supply
 		gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 0);
-		usleep_range(100000, 150000);
-
-		slg4ax46073v->pm_enabled = 1;
-		slg4ax46073v->pm_duty = duty;
-		slg4ax46073v->pm_period = period;
-	} else
-		slg4ax46073v->pm_enabled = 0;
+	}
 
 	return 0;
 }
@@ -940,19 +944,9 @@ static int slg4ax46073v_resume(struct device *dev)
 {
 	struct slg4ax46073v *slg4ax46073v = dev_get_drvdata(dev);
 
-	if (slg4ax46073v->pm_enabled) {
-		// turn fan power supply back on
-		gpiod_set_value_cansleep(slg4ax46073v->en_gpiod, 1);
-		usleep_range(100000, 150000);
-
-		slg4ax46073v_reset(slg4ax46073v);
-		slg4ax46073v_clear_alarm(slg4ax46073v);
-
-		regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_DC,
-			     slg4ax46073v->pm_duty);
-		regmap_write(slg4ax46073v->regmap, SLG4AX46073V_REG_PWM_PERIOD,
-			     slg4ax46073v->pm_period);
-	}
+	// Note: Fan power enabled in reset call
+	slg4ax46073v_reset(slg4ax46073v);
+	slg4ax46073v_clear_alarm(slg4ax46073v);
 
 	return 0;
 }
