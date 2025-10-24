@@ -151,6 +151,7 @@ int wcd939x_sdw_hw_params(struct wcd939x_sdw_priv *wcd,
 			wcd->sconfig.ch_count++;
 
 		port_config[wcd->active_ports] = wcd->port_config[i];
+		port_config[wcd->active_ports].ch_mask = 3;
 		wcd->active_ports++;
 	}
 
