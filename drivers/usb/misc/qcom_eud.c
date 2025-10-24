@@ -193,7 +193,8 @@ static int eud_probe(struct platform_device *pdev)
 
 	ret = devm_add_action_or_reset(chip->dev, eud_role_switch_release, chip);
 	if (ret)
-		return ret;
+		return dev_err_probe(chip->dev, ret,
+				"failed to add role switch release action\n");
 
 	chip->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(chip->base))
