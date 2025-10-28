@@ -10,6 +10,8 @@
 #include <linux/dmaengine.h>
 #include <linux/module.h>
 #include <linux/of_dma.h>
+#include <linux/iopoll.h>
+#include <linux/firmware.h>
 #include <linux/platform_device.h>
 #include <linux/dma/qcom-gpi-dma.h>
 #include <linux/scatterlist.h>
@@ -68,6 +70,20 @@
 #define TRE_DMA_IMMEDIATE_LEN	GENMASK(3, 0)
 
 /* Register offsets from gpi-top */
+#define GSI_CFG				0x4000
+
+#define GSI_CFG_DOUBLE_MCS_CLK_FREQ	BIT(2)
+#define GSI_CFG_ENABLE			BIT(0)
+
+#define GSI_MANAGER_MCS_CODE_VER	0x4008
+
+#define GSI_MCS_CFG			0xf000
+
+#define GSI_MCS_CFG_MCS_ENABLE		BIT(0)
+
+#define GSI_INST_RAM_ADDR		0x50000
+#define GSI_INST_RAM_ADDR_MAX		8192
+
 #define GPII_n_CH_k_CNTXT_0_OFFS(n, k)	(0x20000 + (0x4000 * (n)) + (0x80 * (k)))
 #define GPII_n_CH_k_CNTXT_0_EL_SIZE	GENMASK(31, 24)
 #define GPII_n_CH_k_CNTXT_0_CHSTATE	GENMASK(23, 20)
@@ -146,6 +162,8 @@ enum CNTXT_OFFS {
 #define GPII_n_EV_CH_CMD_ALLOCATE		(0x00)
 #define GPII_n_EV_CH_CMD_RESET			(0x09)
 #define GPII_n_EV_CH_CMD_DE_ALLOC		(0x0A)
+
+#define GPII_n_GSI_EE_GENERIC_CMD_OFFS(n)	(0x23018 + (0x4000 * (n)))
 
 #define GPII_n_CNTXT_TYPE_IRQ_OFFS(n)		(0x23080 + (0x4000 * (n)))
 
@@ -475,6 +493,7 @@ struct gpi_dev {
 	u32 max_gpii; /* maximum # of gpii instances available per gpi block */
 	u32 gpii_mask; /* gpii instances available for apps */
 	u32 ev_factor; /* ev ring length factor */
+	const struct firmware *fw;
 	struct gpii *gpiis;
 };
 
@@ -2149,6 +2168,90 @@ static struct dma_chan *gpi_of_dma_xlate(struct of_phandle_args *args,
 	return dma_get_slave_channel(&gchan->vc.chan);
 }
 
+static int gpi_find_firmware(struct gpi_dev *gpi_dev, const struct gpi_qsi_fw_hdr **gpi_fw)
+{
+	const struct elf32_phdr *phdrs;
+	const struct elf32_phdr *phdr;
+	const struct elf32_hdr *ehdr;
+	struct gpi_qsi_fw_hdr *fw;
+	const char *fw_name;
+	int i, ret;
+
+	ret = of_property_read_string(gpi_dev->dev->of_node, "firmware-name",
+				      &fw_name);
+	if (ret)
+		return ret;
+
+	ret = request_firmware(&gpi_dev->fw, fw_name, gpi_dev->dev);
+	if (ret) {
+		dev_err(gpi_dev->dev, "unable to load firmware\n");
+		return ret;
+	}
+
+	ehdr = (struct elf32_hdr *)gpi_dev->fw->data;
+	phdrs = (struct elf32_phdr *)(ehdr + 1);
+
+	for (i = 0; i < ehdr->e_phnum; i++) {
+		phdr = &phdrs[i];
+
+		if (phdr->p_type != PT_LOAD)
+			continue;
+
+		if (phdr->p_offset > gpi_dev->fw->size)
+			continue;
+
+		fw = (void *)(gpi_dev->fw->data + phdr->p_offset);
+		if (fw->magic != GSI_QSI_FW_MAGIC)
+			continue;
+
+		*gpi_fw = fw;
+
+		return 0;
+	}
+
+	dev_err(gpi_dev->dev, "Unable to find firmware entry\n");
+
+	return -EINVAL;
+}
+
+static int geni_load_firmware(struct gpi_dev *gpi_dev)
+{
+	const struct gpi_qsi_fw_hdr *fw;
+	struct gpi_qsi_fw_iram *fw_iram;
+	struct gpi_qsi_fw_iep *fw_iep;
+	int ret, i;
+	u32 reg;
+
+	ret = gpi_find_firmware(gpi_dev, &fw);
+	if (ret)
+		return ret;
+
+	fw_iram  = (void *)((u8 *)fw + fw->fw_offset);
+	fw_iep = (void *)((u8 *)fw + fw->iep_offset);
+
+	for (i = 0; i < fw->iep_size_in_items; i++)
+		writel(fw_iep[i].value, gpi_dev->regs + GSI_CFG + fw_iep[i].offset);
+
+	/* Program Firmware version */
+	writel(fw_iram[0].iram_dword0, gpi_dev->regs + GSI_MANAGER_MCS_CODE_VER);
+
+	memcpy_toio(gpi_dev->regs + GSI_INST_RAM_ADDR, (void *)fw_iram,
+		    min_t(u32, fw->fw_size_in_items, GSI_INST_RAM_ADDR_MAX) *
+		    	sizeof(struct gpi_qsi_fw_iram));
+
+	writel(readl(gpi_dev->regs + GSI_MCS_CFG) | GSI_MCS_CFG_MCS_ENABLE,
+	       gpi_dev->regs + GSI_MCS_CFG);
+
+	writel(GSI_CFG_DOUBLE_MCS_CLK_FREQ | GSI_CFG_ENABLE,
+	       gpi_dev->regs + GSI_CFG);
+	
+	writel(0, gpi_dev->ee_base + GPII_n_CNTXT_SCRATCH_0_OFFS(0));
+	writel(0x61, gpi_dev->ee_base + GPII_n_GSI_EE_GENERIC_CMD_OFFS(0));
+
+	return readl_poll_timeout(gpi_dev->ee_base + GPII_n_CNTXT_SCRATCH_0_OFFS(0),
+				  reg, reg, 10, 1000);
+}
+
 static int gpi_probe(struct platform_device *pdev)
 {
 	struct gpi_dev *gpi_dev;
@@ -2189,6 +2292,14 @@ static int gpi_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(gpi_dev->dev, "Error setting dma_mask to 64, ret:%d\n", ret);
 		return ret;
+	}
+
+	if (of_property_present(gpi_dev->dev->of_node, "firmware-name")) {
+		ret = geni_load_firmware(gpi_dev);
+		if (ret) {
+			dev_err(gpi_dev->dev, "Failed to load firmware, ret:%d\n", ret);
+			return ret;
+		}
 	}
 
 	gpi_dev->gpiis = devm_kzalloc(gpi_dev->dev, sizeof(*gpi_dev->gpiis) *
