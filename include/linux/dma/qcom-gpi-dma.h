@@ -80,4 +80,39 @@ struct gpi_i2c_config {
 	bool multi_msg;
 };
 
+#define GSI_QSI_FW_MAGIC       0x20495351UL
+
+/**
+ * struct gpi_qsi_fw_hdr - GPI firmware header
+ *
+ * @magic: magic value 'QSI '
+ * @version: Structure version number = 1
+ * @core_version: QUPV3_HW_VERSION
+ * @fw_version: from GSI FW
+ * @fw_size_in_items: Items count to load into IRAM
+ * @fw_offset: Bytes offset of IRAM Items
+ * @iep_size_in_items: Items count of IEP entries
+ * @iep_offset: Byte offset of IEP entries
+ */
+struct __packed gpi_qsi_fw_hdr {
+	u32 magic;
+	u32 version;
+	u32 core_version;
+	u32 fw_version;
+	u16 fw_size_in_items;
+	u16 fw_offset;
+	u16 iep_size_in_items;
+	u16 iep_offset;
+};
+
+struct gpi_qsi_fw_iram {
+	u32 iram_dword0;
+	u32 iram_dword1;
+};
+
+struct gpi_qsi_fw_iep {
+	u32 offset;
+	u32 value;
+};
+
 #endif /* QCOM_GPI_DMA_H */
