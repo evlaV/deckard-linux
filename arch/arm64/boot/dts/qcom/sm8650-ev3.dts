@@ -1732,6 +1732,8 @@
 
 &i2c4 {
 	status = "okay";
+
+	qcom,enable-gsi-dma;
 	
     /* FAN_I2C */
 	slg4ax46073v@8 {
@@ -1824,6 +1826,9 @@
 
 &i2c5 {
 	status = "okay";
+
+	qcom,enable-gsi-dma;
+
 	// left backlight
 	mpq3367_left@38 {
 		compatible = "mps,mpq3367";
