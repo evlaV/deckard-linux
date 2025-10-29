@@ -5796,8 +5796,45 @@ CONFIG_RTC_DRV_PM8XXX=y
 #
 # HID Sensor RTC drivers
 #
-# CONFIG_RTC_DRV_GOLDFISH is not set
-# CONFIG_DMADEVICES is not set
+CONFIG_DMADEVICES=y
+# CONFIG_DMADEVICES_DEBUG is not set
+
+#
+# DMA Devices
+#
+CONFIG_DMA_ENGINE=y
+CONFIG_DMA_VIRTUAL_CHANNELS=y
+CONFIG_DMA_OF=y
+# CONFIG_ALTERA_MSGDMA is not set
+# CONFIG_AMBA_PL08X is not set
+# CONFIG_ARM_DMA350 is not set
+# CONFIG_BCM_SBA_RAID is not set
+# CONFIG_DW_AXI_DMAC is not set
+# CONFIG_FSL_EDMA is not set
+# CONFIG_FSL_QDMA is not set
+# CONFIG_INTEL_IDMA64 is not set
+# CONFIG_MV_XOR_V2 is not set
+# CONFIG_PL330_DMA is not set
+# CONFIG_PLX_DMA is not set
+# CONFIG_XILINX_DMA is not set
+# CONFIG_XILINX_XDMA is not set
+# CONFIG_XILINX_ZYNQMP_DMA is not set
+# CONFIG_XILINX_ZYNQMP_DPDMA is not set
+# CONFIG_AMD_QDMA is not set
+# CONFIG_QCOM_BAM_DMA is not set
+CONFIG_QCOM_GPI_DMA=y
+# CONFIG_QCOM_HIDMA_MGMT is not set
+# CONFIG_QCOM_HIDMA is not set
+# CONFIG_DW_DMAC is not set
+# CONFIG_DW_DMAC_PCI is not set
+# CONFIG_DW_EDMA is not set
+# CONFIG_SF_PDMA is not set
+
+#
+# DMA Clients
+#
+# CONFIG_ASYNC_TX_DMA is not set
+# CONFIG_DMATEST is not set
 
 #
 # DMABUF options
