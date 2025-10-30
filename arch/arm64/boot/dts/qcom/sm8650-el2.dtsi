@@ -332,10 +332,12 @@
 
 &qupv3_id_0 {
 	firmware-name = "qcom/sm8650/qupv3fw.elf";
+	iommus = <&apps_smmu 0xa3 0>, <&apps_smmu 0xa0 0>;
 };
 
 &qupv3_id_1 {
 	firmware-name = "qcom/sm8650/qupv3fw.elf";
+	iommus = <&apps_smmu 0x423 0>, <&apps_smmu 0x420 0>;
 };
 
 &i2c_master_hub_0 {
