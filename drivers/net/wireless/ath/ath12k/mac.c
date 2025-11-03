@@ -24,8 +24,6 @@
 #include "dp.h"
 #include "dp_cmn.h"
 
-#define ENABLE_HBS_AND_DISABLE_RADAR
-
 #define CHAN2G(_channel, _freq, _flags) { \
 	.band                   = NL80211_BAND_2GHZ, \
 	.hw_value               = (_channel), \
@@ -14128,11 +14126,7 @@ ath12k_mac_setup_radio_iface_comb(struct ath12k *ar,
 	if (!limits)
 		return -ENOMEM;
 
-#ifndef ENABLE_HBS_AND_DISABLE_RADAR
 	limits[0].max = 1;
-#else
-	limits[0].max = 2;	// 2xSTA for dev testing, not strictly necessay as STA+AP already enabled
-#endif
 	limits[0].types |= BIT(NL80211_IFTYPE_STATION);
 
 	if (ap || mesh || p2p)
@@ -14154,7 +14148,6 @@ ath12k_mac_setup_radio_iface_comb(struct ath12k *ar,
 	comb[0].limits = limits;
 	comb[0].n_limits = n_limits;
 	comb[0].max_interfaces = max_interfaces;
-#ifndef ENABLE_HBS_AND_DISABLE_RADAR
 	comb[0].beacon_int_infra_match = true;
 	comb[0].beacon_int_min_gcd = 100;
 
@@ -14164,13 +14157,6 @@ ath12k_mac_setup_radio_iface_comb(struct ath12k *ar,
 				      BIT(NL80211_CHAN_WIDTH_40) |
 				      BIT(NL80211_CHAN_WIDTH_80) |
 				      BIT(NL80211_CHAN_WIDTH_160);
-#else 
-	// hack, disable beacon timing restrictions, should build out
-	// full table of combos instead
-	comb[0].num_different_channels = 2;
-	// hack, disable radar here as unpatched net/mac80211/main.c & net/wireless/core.c
-	// will have problems understanding radar on HBS
-#endif
 
 	return 0;
 }
