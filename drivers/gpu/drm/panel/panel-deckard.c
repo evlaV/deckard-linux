@@ -612,23 +612,26 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 	u16 gpo1_tew1;
 	u16 cam_trig_start = 0, cam_trig_width = 0;
 
-	// Scale brightness and offset based on mode
-	// TODO 72 Hz not supported until dv2
-	if ( modes[ctx->current_mode].vtotal == modes[MODE_144].vtotal ) {
-		gpo1_tew1 = GPO1_TEW1_144;
-		gpo1_tes1 = GPO1_TES1_144;
-	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_120].vtotal) {
-		gpo1_tew1 = GPO1_TEW1_120;
-		gpo1_tes1 = GPO1_TES1_120;
-	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_90].vtotal) {
-		gpo1_tew1 = GPO1_TEW1_90;
-		gpo1_tes1 = GPO1_TES1_90;
-	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_80].vtotal) {
-		gpo1_tew1 = GPO1_TEW1_80;
-		gpo1_tes1 = GPO1_TES1_80;
+	// unless we are turning off the backlight, force full brightness for panel tester
+	if ( brightness ) {
+		if ( modes[ctx->current_mode].vtotal == modes[MODE_144].vtotal ) {
+			gpo1_tew1 = GPO1_TEW1_144;
+			gpo1_tes1 = GPO1_TES1_144;
+		} else if ( modes[ctx->current_mode].vtotal == modes[MODE_120].vtotal) {
+			gpo1_tew1 = GPO1_TEW1_120;
+			gpo1_tes1 = GPO1_TES1_120;
+		} else if ( modes[ctx->current_mode].vtotal == modes[MODE_90].vtotal) {
+			gpo1_tew1 = GPO1_TEW1_90;
+			gpo1_tes1 = GPO1_TES1_90;
+		} else if ( modes[ctx->current_mode].vtotal == modes[MODE_80].vtotal) {
+			gpo1_tew1 = GPO1_TEW1_80;
+			gpo1_tes1 = GPO1_TES1_80;
+		} else {
+			gpo1_tew1 = GPO1_TEW1_120;
+			gpo1_tes1 = GPO1_TES1_120;
+		}
 	} else {
-		gpo1_tew1 = GPO1_TEW1_120;
-		gpo1_tes1 = GPO1_TES1_120;
+		gpo1_tew1 = 0;
 	}
 
 	if (!ctx->dphy) {
