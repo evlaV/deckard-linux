@@ -784,6 +784,40 @@ static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
 	ath12k_wifi7_dp_tx_update_txcompl(dp_pdev, ts);
 
 	peer = ath12k_dp_link_peer_find_by_peerid(dp_pdev, ts->peer_id);
+
+	// this will probably get fixed in upstream
+	// two problems:  the AP has a legit self/BSS as a non-STA peer, and
+	//                it shouldn't be bailing, it should just skip the rate enhancement
+	// so this is just a minimum short circuit that fixes our exact problem
+	// there other bug is still there (so I leave it as ath12k_err)
+	if (peer && !peer->sta) {
+		struct ath12k_link_vif *arvif;
+
+		ath12k_dbg(ab, ATH12K_DBG_DP_TX,
+			   "dp_tx: NON-STA failed to find the peer with peer_id %d\n",
+			   ts->peer_id);
+
+		arvif = ath12k_mac_get_arvif_by_vdev_id(ab, peer->vdev_id);
+		if (!arvif || !arvif->ahvif) {
+			ath12k_err(ab,
+			   "dp_tx: arvif lookup failed for peer_id %d\n", ts->peer_id);
+			spin_unlock_bh(&ab->base_lock);
+			ieee80211_free_txskb(ath12k_ar_to_hw(ar), msdu);
+			goto exit;
+		}
+
+		if (arvif->ahvif->vdev_type == WMI_VDEV_TYPE_AP &&
+		    ether_addr_equal(peer->addr, arvif->bssid)) {
+
+			ath12k_dbg(ab, ATH12K_DBG_DP_TX,
+			   "dp_tx: self peer skip worked peer_id %d\n",
+			   ts->peer_id);
+
+			spin_unlock_bh(&ab->base_lock);
+			goto update_and_exit;
+		}
+	}
+
 	if (!peer || !peer->sta) {
 		ath12k_err(ab,
 			   "dp_tx: failed to find the peer with peer_id %d\n",
@@ -802,6 +836,8 @@ static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
 
 	status.rates = &status_rate;
 	status.n_rates = 1;
+
+update_and_exit:
 	ieee80211_tx_status_ext(ath12k_pdev_dp_to_hw(dp_pdev), &status);
 
 exit:
