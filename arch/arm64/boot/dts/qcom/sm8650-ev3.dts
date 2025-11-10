@@ -3,8 +3,8 @@
 #include "sm8650-deckard.dtsi"
 
 / {
-	model = "SM8650 POC-F-v2 rev1 4slam 2et";
-	compatible = "qcom,sm8650-deckard-pocf", "qcom,sm8650";
+	model = "SM8650 EV3 rev1 4slam 2et";
+	compatible = "qcom,sm8650-deckard-ev3", "qcom,sm8650";
 };
 
 &i2c4 {
