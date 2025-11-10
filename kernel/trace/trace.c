@@ -1773,6 +1773,16 @@ bool trace_clock_in_ns(struct trace_array *tr)
 	return false;
 }
 
+ktime_t trace_clock_gettime(struct trace_array *tr)
+{
+	return trace_clocks[tr->clock_id].func();
+}
+
+ktime_t trace_clock_gettime_top(void)
+{
+	return trace_clock_gettime(top_trace_array());
+}
+
 /*
  * trace_parser_get_init - gets the buffer for trace parser
  */
@@ -7011,6 +7021,23 @@ tracing_total_entries_read(struct file *filp, char __user *ubuf,
 	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
 }
 
+// Start our tracing counter at some nice large number that is unlikely to conflict with others
+static atomic64_t trace_ctx_counter = ATOMIC64_INIT(1000000);
+
+uint64_t trace_ctx_id(void)
+{
+	return atomic64_inc_return(&trace_ctx_counter);
+}
+
+static ssize_t tracing_ctx_id_read(struct file *filp, char __user *ubuf,
+				size_t cnt, loff_t *ppos)
+{
+	// max length of uint64_t is 20 characters
+	char buf[22];
+	int r = snprintf(buf, sizeof(buf), "%llu\n", trace_ctx_id());
+	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+}
+
 #define LAST_BOOT_HEADER ((void *)1)
 
 static void *l_next(struct seq_file *m, void *v, loff_t *pos)
@@ -7941,6 +7968,12 @@ static const struct file_operations tracing_mark_fops = {
 	.open		= tracing_mark_open,
 	.write		= tracing_mark_write,
 	.release	= tracing_mark_release,
+};
+
+static const struct file_operations tracing_ctx_id_fops = {
+	.open		= tracing_open_generic_tr,
+	.read		= tracing_ctx_id_read,
+	.release	= tracing_release_generic_tr,
 };
 
 static const struct file_operations tracing_mark_raw_fops = {
@@ -10312,6 +10345,9 @@ init_tracer_tracefs(struct trace_array *tr, struct dentry *d_tracer)
 
 	trace_create_file("trace_marker", 0220, d_tracer,
 			  tr, &tracing_mark_fops);
+
+	trace_create_file("trace_ctx_id", TRACE_MODE_READ, d_tracer,
+	          tr, &tracing_ctx_id_fops);
 
 	tr->trace_marker_file = __find_event_file(tr, "ftrace", "print");
 
