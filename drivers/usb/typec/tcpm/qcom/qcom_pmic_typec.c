@@ -113,6 +113,22 @@ static int qcom_pmic_typec_start_toggling(struct tcpc_dev *tcpc,
 						   port_type, cc);
 }
 
+static int qcom_pmic_typec_legacy_cable_reset(struct tcpc_dev *tcpc)
+{
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+
+	return qcom_pmic_typec_port_legacy_cable_reset(tcpm->pmic_typec_port); 
+}
+
+static int qcom_pmic_typec_disable_pd(struct tcpc_dev *tcpc)
+{
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+
+	qcom_pmic_typec_port_disable_cc(tcpm->pmic_typec_port);
+	qcom_pmic_typec_pdphy_stop(tcpm->pmic_typec_pdphy);
+	return 0;
+}
+
 struct pmic_typec_port {
 	struct device			*dev;
 	struct tcpm_port		*tcpm_port;
@@ -191,6 +207,14 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	struct regmap *regmap;
 	u32 base[2];
 	int ret;
+	static int defer;
+	int defercount = 3;
+
+	if (++defer <= defercount)
+	{
+		dev_info(dev, "tcpm defer probe %d of %d\n", defer, defercount);
+		return -EPROBE_DEFER;
+	}
 
 	res = of_device_get_match_data(dev);
 	if (!res)
@@ -215,6 +239,8 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 	tcpm->tcpc.set_roles = qcom_pmic_typec_set_roles;
 	tcpm->tcpc.pd_transmit = qcom_pmic_typec_pd_transmit;
 	tcpm->tcpc.is_vbus_vsafe0v = qcom_pmic_typec_is_vbus_vsafe0v;
+	tcpm->tcpc.qcom_legacy_reset = qcom_pmic_typec_legacy_cable_reset;
+	tcpm->tcpc.disable_pd = qcom_pmic_typec_disable_pd;
 
 	regmap = dev_get_regmap(dev->parent, NULL);
 	if (!regmap) {

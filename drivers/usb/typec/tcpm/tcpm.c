@@ -34,6 +34,8 @@
 
 #include <uapi/linux/sched/types.h>
 
+#include <linux/reboot.h>
+
 #define FOREACH_STATE(S)			\
 	S(INVALID_STATE),			\
 	S(TOGGLING),			\
@@ -389,6 +391,7 @@ struct tcpm_port {
 	 */
 	bool vbus_vsafe0v;
 
+	bool do_legacy_reset;
 	bool vbus_never_low;
 	bool vbus_source;
 	bool vbus_charge;
@@ -5213,6 +5216,14 @@ static void run_state_machine(struct tcpm_port *port)
 			tcpm_set_state(port, SNK_READY, 0);
 			break;
 		}
+		/* Port can be left in bad state from previous boot if not
+		 * reset properly.  Execute a reset on first PD round to clear
+		 * bad states */
+		if ( port->do_legacy_reset ) {
+			tcpm_log(port, "Reset port on first PD negotiation");
+			port->tcpc->qcom_legacy_reset(port->tcpc);
+			port->do_legacy_reset = false;
+		}
 		/*
 		 * If VBUS has never been low, and we time out waiting
 		 * for source cap, try a soft reset first, in case we
@@ -5220,6 +5231,10 @@ static void run_state_machine(struct tcpm_port *port)
 		 * Do this only once.
 		 */
 		if (port->vbus_never_low) {
+			if ( port->tcpc->qcom_legacy_reset ) {
+				tcpm_log(port, "Vbus never low, attempting legacy cable reset");
+				port->tcpc->qcom_legacy_reset(port->tcpc);
+			}
 			port->vbus_never_low = false;
 			upcoming_state = SNK_SOFT_RESET;
 		} else {
@@ -7004,6 +7019,8 @@ static void tcpm_init(struct tcpm_port *port)
 	port->vbus_present = port->tcpc->get_vbus(port->tcpc);
 	if (port->vbus_present)
 		port->vbus_never_low = true;
+	else
+		port->do_legacy_reset = true;
 
 	/*
 	 * 1. When vbus_present is true, voltage on VBUS is already at VSAFE5V.
@@ -7802,6 +7819,17 @@ static enum hrtimer_restart send_discover_timer_handler(struct hrtimer *timer)
 	return HRTIMER_NORESTART;
 }
 
+static int tcpm_power_off_handler(struct sys_off_data *data)
+{
+	struct tcpm_port *port = data->cb_data;
+
+	tcpm_tcpc_reset(port);
+	port->tcpc->disable_pd(port->tcpc);
+
+	mdelay(100);
+	return notifier_from_errno(-ETIME);
+}
+
 struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 {
 	struct tcpm_port *port;
@@ -7912,6 +7940,24 @@ struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 	mutex_lock(&port->lock);
 	tcpm_init(port);
 	mutex_unlock(&port->lock);
+
+	err = devm_register_sys_off_handler(port->dev,
+				     SYS_OFF_MODE_POWER_OFF_PREPARE,
+				     SYS_OFF_PRIO_DEFAULT,
+				     &tcpm_power_off_handler,
+				     port);
+	if (err) {
+		dev_err(port->dev, "register power off prepare failed: %d\n", err);
+	}
+
+	err = devm_register_sys_off_handler(port->dev,
+				     SYS_OFF_MODE_RESTART_PREPARE,
+				     SYS_OFF_PRIO_DEFAULT,
+				     &tcpm_power_off_handler,
+				     port);
+	if (err) {
+		dev_err(port->dev, "register restart prepare failed: %d\n", err);
+	}
 
 	tcpm_log(port, "%s: registered", dev_name(dev));
 	return port;
