@@ -240,7 +240,8 @@ static int _dpu_rm_reserve_cwb_mux_and_pingpongs(struct dpu_rm *rm,
 						 uint32_t crtc_id,
 						 struct msm_display_topology *topology)
 {
-	int num_cwb_mux = topology->num_lm, cwb_mux_count = 0;
+	int cwb_mux_count = 0;
+	int num_cwb_mux = min(2, topology->num_lm);
 	int cwb_pp_start_idx = PINGPONG_CWB_0 - PINGPONG_0;
 	int cwb_pp_idx[MAX_BLOCKS];
 	int cwb_mux_idx[MAX_BLOCKS];
@@ -374,7 +375,11 @@ static int _dpu_rm_reserve_lms(struct dpu_rm *rm,
 		if (!rm->mixer_blks[i])
 			continue;
 
-		lm_count = 0;
+		/*
+		 * Reset lm_count to an even index. This will drop the previous
+		 * primary mixer if failed to find its peer.
+		 */
+		lm_count &= ~1;
 		lm_idx[lm_count] = i;
 
 		if (!_dpu_rm_check_lm_and_get_connected_blks(rm, global_state,
@@ -863,6 +868,39 @@ void dpu_rm_release_all_sspp(struct dpu_global_state *global_state,
 
 	_dpu_rm_clear_mapping(global_state->sspp_to_crtc_id,
 		ARRAY_SIZE(global_state->sspp_to_crtc_id), crtc_id);
+}
+
+/**
+ * dpu_rm_reserve_cac_sspp - Reserve fixed SSPPs for CAC mode
+ * @dpu_kms: DPU kms structure that contain hidden pipes array
+ */
+int dpu_rm_reserve_cac_sspp(struct dpu_kms *dpu_kms)
+{
+	struct dpu_global_state *global_state = dpu_kms_get_existing_global_state(dpu_kms);
+	const struct dpu_rm *rm = global_state->rm;
+	int i;
+
+	/*
+	 * RECT0/RECT1 are used for below hidden SSPPs in planar CAC mode.
+	 * RECT1 for blue in VIG0~4 are not blended due to content is combined with red.
+	 * VIG0/2 are for the lm0/1 and VIG1/3 are for lm2/3.
+	 * DMA2 are for the lm0/1 and DMA3 are for lm2/3.
+	 * DMA0/1 are added to the list but not reserved. So they can be allocated
+	 * by plane, but config to rect can be refered from the cac_pipe array.
+	 */
+	u32 csspp[] = {SSPP_VIG0, SSPP_VIG1, SSPP_VIG2, SSPP_VIG3, SSPP_DMA2, SSPP_DMA3, SSPP_DMA0, SSPP_DMA1};
+
+	for (i = 0; i < PLANAR_CAC_SSPP; i++) {
+		global_state->sspp_to_crtc_id[csspp[i] - SSPP_NONE] = HIDEN_CAC_SSPP_CRTC;
+		dpu_kms->cac_pipes[i * 2].sspp = rm->hw_sspp[csspp[i] - SSPP_NONE];
+		dpu_kms->cac_pipes[i * 2 + 1].sspp = rm->hw_sspp[csspp[i] - SSPP_NONE];
+	}
+	for (i = PLANAR_CAC_SSPP; i < PLANAR_CAC_SSPP_WITH_FETCH; i++) {
+		dpu_kms->cac_pipes[i * 2].sspp = rm->hw_sspp[csspp[i] - SSPP_NONE];
+		dpu_kms->cac_pipes[i * 2 + 1].sspp = rm->hw_sspp[csspp[i] - SSPP_NONE];
+	}
+
+	return 0;
 }
 
 static char *dpu_hw_blk_type_name[] = {

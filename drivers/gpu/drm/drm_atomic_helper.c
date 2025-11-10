@@ -777,6 +777,7 @@ drm_atomic_helper_check_modeset(struct drm_device *dev,
 		ret = drm_atomic_check_valid_clones(state, crtc);
 		if (ret != 0)
 			return ret;
+
 	}
 
 	/*
@@ -818,6 +819,25 @@ drm_atomic_helper_check_modeset(struct drm_device *dev,
 		if (ret)
 			return ret;
 	}
+
+	for_each_new_crtc_in_state(state, crtc, new_crtc_state, i) {
+		const struct drm_crtc_helper_funcs *funcs;
+
+		funcs = crtc->helper_private;
+
+		if (!funcs || !funcs->atomic_check)
+			continue;
+
+		ret = funcs->atomic_check(crtc, state);
+		if (ret) {
+			drm_dbg_atomic(crtc->dev,
+				       "[CRTC:%d:%s] atomic driver check failed\n",
+				       crtc->base.id, crtc->name);
+			return ret;
+		}
+	}
+
+
 
 	ret = mode_valid(state);
 	if (ret)
@@ -2228,7 +2248,8 @@ int drm_atomic_helper_commit(struct drm_device *dev,
 
 	drm_atomic_state_get(state);
 	if (nonblock)
-		queue_work(system_unbound_wq, &state->commit_work);
+		//gabe -- this is needed to handle some bad hitches -- previously the system_unbound_wq was getting assigned to a 20 priority task and was super bad
+		queue_work(system_superhighpri_wq, &state->commit_work);
 	else
 		commit_tail(state);
 

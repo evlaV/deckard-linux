@@ -125,6 +125,23 @@ static int dpu_hw_lm_collect_misr(struct dpu_hw_mixer *ctx, u32 *misr_value)
 	return dpu_hw_collect_misr(&ctx->hw, LM_MISR_CTRL, LM_MISR_SIGNATURE, misr_value);
 }
 
+static void dpu_hw_lm_clear_blend_config_combined_alpha(struct dpu_hw_mixer *ctx,
+							u32 stage)
+{
+	struct dpu_hw_blk_reg_map *c = &ctx->hw;
+	int stage_off;
+
+	if (stage == DPU_STAGE_BASE)
+		return;
+
+	stage_off = _stage_offset(ctx, stage);
+	if (WARN_ON(stage_off < 0))
+		return;
+
+	DPU_REG_WRITE(c, LM_BLEND0_CONST_ALPHA + stage_off, 0);
+	DPU_REG_WRITE(c, LM_BLEND0_OP + stage_off, 0);
+}
+
 static void dpu_hw_lm_setup_blend_config_combined_alpha(struct dpu_hw_mixer *ctx,
 	u32 stage, u32 fg_alpha, u32 bg_alpha, u32 blend_op)
 {
@@ -163,6 +180,43 @@ dpu_hw_lm_setup_blend_config_combined_alpha_v12(struct dpu_hw_mixer *ctx,
 	const_alpha = (bg_alpha & 0x3ff) | ((fg_alpha & 0x3ff) << 16);
 	DPU_REG_WRITE(c, LM_BLEND0_CONST_ALPHA_V12 + stage_off, const_alpha);
 	DPU_REG_WRITE(c, LM_BLEND0_OP + stage_off, blend_op);
+}
+
+static void dpu_hw_lm_setup_blend_config_cac(struct dpu_hw_mixer *ctx,
+	u32 stage, u32 fg_alpha, u32 bg_alpha, u32 blend_op)
+{
+	struct dpu_hw_blk_reg_map *c = &ctx->hw;
+	int stage_off;
+	u32 blend_alpha;
+
+	if (stage == DPU_STAGE_BASE)
+		return;
+
+	stage_off = _stage_offset(ctx, stage);
+	if (WARN_ON(stage_off < 0))
+		return;
+
+	blend_alpha = (bg_alpha & 0xFF) | ((fg_alpha & 0xFF) << 16);
+	DPU_REG_WRITE(c, LM_BLEND0_FG_ALPHA + stage_off, blend_alpha);
+	DPU_REG_WRITE(c, LM_BLEND0_OP + stage_off, blend_op);
+}
+
+static void dpu_hw_lm_clear_blend_config(struct dpu_hw_mixer *ctx,
+					 u32 stage)
+{
+	struct dpu_hw_blk_reg_map *c = &ctx->hw;
+	int stage_off;
+
+	if (stage == DPU_STAGE_BASE)
+		return;
+
+	stage_off = _stage_offset(ctx, stage);
+	if (WARN_ON(stage_off < 0))
+		return;
+
+	DPU_REG_WRITE(c, LM_BLEND0_FG_ALPHA + stage_off, 0);
+	DPU_REG_WRITE(c, LM_BLEND0_BG_ALPHA + stage_off, 0);
+	DPU_REG_WRITE(c, LM_BLEND0_OP + stage_off, 0);
 }
 
 static void dpu_hw_lm_setup_blend_config(struct dpu_hw_mixer *ctx,
@@ -370,12 +424,16 @@ struct dpu_hw_mixer *dpu_hw_lm_init(struct drm_device *dev,
 	c->idx = cfg->id;
 	c->cap = cfg;
 	c->ops.setup_mixer_out = dpu_hw_lm_setup_out;
-	if (mdss_ver->core_major_ver >= 12)
+	if (mdss_ver->core_major_ver >= 12) {
 		c->ops.setup_blend_config = dpu_hw_lm_setup_blend_config_combined_alpha_v12;
-	else if (mdss_ver->core_major_ver >= 4)
+	} else if (mdss_ver->core_major_ver >= 4) {
 		c->ops.setup_blend_config = dpu_hw_lm_setup_blend_config_combined_alpha;
-	else
+		c->ops.clear_blend_config = dpu_hw_lm_clear_blend_config_combined_alpha;
+		c->ops.setup_blend_config_cac = dpu_hw_lm_setup_blend_config_cac;
+	} else {
 		c->ops.setup_blend_config = dpu_hw_lm_setup_blend_config;
+		c->ops.clear_blend_config = dpu_hw_lm_clear_blend_config;
+	}
 	if (mdss_ver->core_major_ver < 12) {
 		c->ops.setup_alpha_out = dpu_hw_lm_setup_color3;
 		c->ops.setup_border_color = dpu_hw_lm_setup_border_color;

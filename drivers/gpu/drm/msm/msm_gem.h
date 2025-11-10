@@ -23,6 +23,7 @@
 /* Additional internal-use only BO flags: */
 #define MSM_BO_STOLEN        0x10000000    /* try to use stolen/splash memory */
 #define MSM_BO_MAP_PRIV      0x20000000    /* use IOMMU_PRIV when mapping */
+#define MSM_VBO_NO_MAP_ZERO  0x40000000    /* don't map zero page in vbo */
 
 /**
  * struct msm_gem_vm_log_entry - An entry in the VM log
@@ -129,7 +130,7 @@ struct msm_gem_vm {
 	uint32_t log_idx;
 
 	/** @faults: the number of GPU hangs associated with this address space */
-	int faults;
+	int faults, kgsl_last_queried_faults;
 
 	/** @managed: is this a kernel managed VM? */
 	bool managed;
@@ -187,7 +188,7 @@ struct msm_gem_vma {
 
 struct drm_gpuva *
 msm_gem_vma_new(struct drm_gpuvm *vm, struct drm_gem_object *obj,
-		u64 offset, u64 range_start, u64 range_end);
+		uint32_t align, u64 offset, u64 range_start, u64 range_end);
 void msm_gem_vma_unmap(struct drm_gpuva *vma, const char *reason);
 int msm_gem_vma_map(struct drm_gpuva *vma, int prot, struct sg_table *sgt);
 void msm_gem_vma_close(struct drm_gpuva *vma);
@@ -196,6 +197,8 @@ struct msm_gem_object {
 	struct drm_gem_object base;
 
 	uint32_t flags;
+
+	uint32_t align;
 
 	/**
 	 * madv: are the backing pages purgeable?
@@ -320,6 +323,8 @@ struct msm_gem_stats {
 void msm_gem_describe(struct drm_gem_object *obj, struct seq_file *m,
 		struct msm_gem_stats *stats);
 void msm_gem_describe_objects(struct list_head *list, struct seq_file *m);
+
+void msm_gem_objects_total(struct list_head *list, struct seq_file *m);
 #endif
 
 static inline void
@@ -449,6 +454,7 @@ struct msm_gem_submit {
 	 */
 	struct dma_fence *user_fence;
 
+	uint32_t timestamp; /* queue timestamp */
 	int fence_id;       /* key into queue->fence_idr */
 	struct msm_gpu_submitqueue *queue;
 	struct pid *pid;    /* submitting process */
@@ -497,5 +503,14 @@ static inline void msm_gem_submit_put(struct msm_gem_submit *submit)
 }
 
 void msm_submit_retire(struct msm_gem_submit *submit);
+
+struct drm_gem_object *msm_gem_vbo_new(struct drm_device *dev, u64 size, u32 flags,
+		struct drm_gpuvm *vm);
+int msm_gem_is_vbo(struct drm_gem_object *obj);
+int msm_gem_vbo_get_iova(struct drm_gem_object *obj,
+		struct drm_gpuvm *vm, uint64_t *iova);
+void msm_gem_vbo_bind(struct drm_gem_object *vbo, struct drm_gem_object *obj,
+		u64 src_offset, u64 dst_offset, u64 length);
+void msm_gem_vbo_unbind(struct drm_gem_object *vbo, struct drm_gem_object *obj, u64 offset, u64 length);
 
 #endif /* __MSM_GEM_H__ */

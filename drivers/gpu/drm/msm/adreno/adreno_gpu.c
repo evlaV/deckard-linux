@@ -139,7 +139,7 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		newname = kasprintf(GFP_KERNEL, "qcom/%s", fwname);
 
 		ret = qcom_mdt_load(dev, fw, newname, pasid,
-				mem_region, mem_phys, mem_size, NULL);
+				    mem_region, mem_phys, mem_size, NULL);
 		kfree(newname);
 	}
 	if (ret)
@@ -177,6 +177,7 @@ int adreno_zap_shader_load(struct msm_gpu *gpu, u32 pasid)
 
 	/* We need SCM to be able to load the firmware */
 	if (!qcom_scm_is_available()) {
+		DRM_DEV_INFO_ONCE(&pdev->dev, "SCM is not available\n");
 		return -ENODEV;
 	}
 

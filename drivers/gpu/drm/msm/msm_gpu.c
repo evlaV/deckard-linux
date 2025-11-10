@@ -779,6 +779,8 @@ static void retire_submit(struct msm_gpu *gpu, struct msm_ringbuffer *ring,
 	u64 elapsed, clock = 0, cycles;
 	unsigned long flags;
 
+	msm_submitqueue_retire_timestamp(submit->queue, submit->timestamp);
+
 	stats = &ring->memptrs->stats[index];
 	/* Convert 19.2Mhz alwayson ticks to nanoseconds for elapsed time */
 	elapsed = (stats->alwayson_end - stats->alwayson_start) * 10000;
@@ -794,6 +796,8 @@ static void retire_submit(struct msm_gpu *gpu, struct msm_ringbuffer *ring,
 
 	submit->queue->ctx->elapsed_ns += elapsed;
 	submit->queue->ctx->cycles     += cycles;
+
+	gpu->elapsed_ns += elapsed;
 
 	trace_msm_gpu_submit_retired(submit, elapsed, clock,
 		stats->alwayson_start, stats->alwayson_end);
@@ -1014,6 +1018,7 @@ int msm_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 	timer_setup(&gpu->hangcheck_timer, hangcheck_handler, 0);
 
 	spin_lock_init(&gpu->perf_lock);
+	spin_lock_init(&gpu->id_lock);
 
 
 	/* Map registers: */

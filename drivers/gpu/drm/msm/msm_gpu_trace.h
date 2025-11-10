@@ -231,6 +231,46 @@ TRACE_EVENT(msm_gpu_regaccess,
 		TP_printk("offset=0x%x", __entry->offset)
 );
 
+TRACE_EVENT(msm_gpu_devfreq_status,
+		TP_PROTO(u64 busy_time),
+		TP_ARGS(busy_time),
+		TP_STRUCT__entry(
+			__field(u64, busy_time)
+			),
+		TP_fast_assign(
+			__entry->busy_time = busy_time;
+			),
+		TP_printk("preempted to %llu", __entry->busy_time)
+);
+
+TRACE_EVENT(msm_kgsl_gpu_command,
+		TP_PROTO(u32 context_id, u32 timestamp),
+		TP_ARGS(context_id, timestamp),
+		TP_STRUCT__entry(
+			__field(u32, context_id)
+			__field(u32, timestamp)
+			),
+		TP_fast_assign(
+			__entry->context_id = context_id;
+			__entry->timestamp = timestamp;
+			),
+		TP_printk("kgsl submit ctx: %u timestamp: %u", __entry->context_id, __entry->timestamp)
+);
+
+TRACE_EVENT(msm_kgsl_gpu_command_sync_timestamp,
+		TP_PROTO(u32 context_id, u32 timestamp),
+		TP_ARGS(context_id, timestamp),
+		TP_STRUCT__entry(
+			__field(u32, context_id)
+			__field(u32, timestamp)
+			),
+		TP_fast_assign(
+			__entry->context_id = context_id;
+			__entry->timestamp = timestamp;
+			),
+		TP_printk("kgsl timesstamp dep ctx: %u timestamp: %u", __entry->context_id, __entry->timestamp)
+);
+
 #endif
 
 #undef TRACE_INCLUDE_PATH

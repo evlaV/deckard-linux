@@ -5,6 +5,7 @@
 #include "msm_gem.h"
 #include "msm_mmu.h"
 #include "msm_gpu_trace.h"
+#include "msm_kgsl.h"
 #include "a6xx_gpu.h"
 #include "a6xx_gmu.xml.h"
 
@@ -21,9 +22,9 @@ static u64 read_gmu_ao_counter(struct a6xx_gpu *a6xx_gpu)
 	u64 count_hi, count_lo, temp;
 
 	do {
-		count_hi = gmu_read(&a6xx_gpu->gmu, REG_A6XX_GMU_ALWAYS_ON_COUNTER_H);
-		count_lo = gmu_read(&a6xx_gpu->gmu, REG_A6XX_GMU_ALWAYS_ON_COUNTER_L);
-		temp = gmu_read(&a6xx_gpu->gmu, REG_A6XX_GMU_ALWAYS_ON_COUNTER_H);
+		count_hi = gmu_read(&a6xx_gpu->gmu, 0x5081);
+		count_lo = gmu_read(&a6xx_gpu->gmu, 0x5080);
+		temp = gmu_read(&a6xx_gpu->gmu, 0x5081);
 	} while (unlikely(count_hi != temp));
 
 	return (count_hi << 32) | count_lo;
@@ -440,6 +441,7 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 	struct msm_ringbuffer *ring = submit->ring;
+	u64 timestamp_iova;
 	unsigned int i, ibs = 0;
 
 	adreno_check_and_reenable_stall(adreno_gpu);
@@ -557,6 +559,20 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 
 	a6xx_gpu->last_seqno[ring->id] = submit->seqno;
 
+	/* write the ctx timestamp (for kgsl memstore) */
+	timestamp_iova = a6xx_gpu->shadow_iova + KGSL_MEMSTORE_OFFSET(submit->queue->id, eoptimestamp);
+	//OUT_PKT7(ring, CP_EVENT_WRITE, 4);
+	//OUT_RING(ring, CACHE_CLEAN | BIT(31) | BIT(27));
+	//OUT_RING(ring, lower_32_bits(timestamp_iova));
+	//OUT_RING(ring, upper_32_bits(timestamp_iova));
+	//OUT_RING(ring, submit->timestamp);
+	OUT_PKT7(ring, CP_MEM_WRITE, 3);
+	OUT_RING(ring, lower_32_bits(timestamp_iova));
+	OUT_RING(ring, upper_32_bits(timestamp_iova));
+	OUT_RING(ring, submit->timestamp);
+
+	OUT_PKT7(ring, CP_WAIT_MEM_WRITES, 0);
+
 	/* write the ringbuffer timestamp */
 	OUT_PKT7(ring, CP_EVENT_WRITE, 4);
 	OUT_RING(ring, CACHE_CLEAN | CP_EVENT_WRITE_0_IRQ | BIT(27));
@@ -595,6 +611,28 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 
 	/* Check to see if we need to start preemption */
 	a6xx_preempt_trigger(gpu);
+}
+
+uint64_t a7xx_gpu_shadow_iova(struct msm_gpu *gpu)
+{
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
+	return a6xx_gpu->shadow_iova;
+}
+
+struct drm_gem_object *a7xx_gpu_shadow_bo(struct msm_gpu *gpu)
+{
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
+	return a6xx_gpu->shadow_bo;
+}
+
+void a7xx_reset_memstore(struct msm_gpu *gpu, uint32_t ctx_id)
+{
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
+	uint32_t *eoptimestamp = (void*)a6xx_gpu->memstore + KGSL_MEMSTORE_OFFSET(ctx_id, eoptimestamp);
+	*eoptimestamp = 0;
 }
 
 static void a6xx_set_hwcg(struct msm_gpu *gpu, bool state)
@@ -1087,6 +1125,19 @@ static int a6xx_ucode_load(struct msm_gpu *gpu)
 						      MSM_BO_WC | MSM_BO_MAP_PRIV,
 						      gpu->vm, &a6xx_gpu->shadow_bo,
 						      &a6xx_gpu->shadow_iova);
+
+		if (IS_ERR(a6xx_gpu->shadow))
+			return PTR_ERR(a6xx_gpu->shadow);
+
+		msm_gem_object_set_name(a6xx_gpu->shadow_bo, "shadow");
+	}
+
+	if (!a6xx_gpu->memstore_bo) {
+		a6xx_gpu->memstore = msm_gem_kernel_new(gpu->dev,
+						      KGSL_MEMSTORE_SIZE,
+						      MSM_BO_WC | MSM_BO_MAP_PRIV,
+						      gpu->vm, &a6xx_gpu->memstore_bo,
+						      &a6xx_gpu->memstore_iova);
 
 		if (IS_ERR(a6xx_gpu->shadow))
 			return PTR_ERR(a6xx_gpu->shadow);
@@ -1599,6 +1650,9 @@ static void a6xx_recover(struct msm_gpu *gpu)
 	if (active_submits)
 		pm_runtime_put(&gpu->pdev->dev);
 
+	if (gpu->perfcntr_active)
+		pm_runtime_put(&gpu->pdev->dev);
+
 	/* And the final one from recover worker */
 	pm_runtime_put_sync(&gpu->pdev->dev);
 
@@ -1608,6 +1662,9 @@ static void a6xx_recover(struct msm_gpu *gpu)
 	dev_pm_genpd_remove_notifier(gmu->cxpd);
 
 	pm_runtime_use_autosuspend(&gpu->pdev->dev);
+
+	if (gpu->perfcntr_active)
+		pm_runtime_get(&gpu->pdev->dev);
 
 	if (active_submits)
 		pm_runtime_get(&gpu->pdev->dev);
@@ -2087,7 +2144,8 @@ static int a7xx_cx_mem_init(struct a6xx_gpu *a6xx_gpu)
 		 * Print a warning because if you mess this up you're about to
 		 * crash horribly.
 		 */
-		if (!qcom_scm_is_available()) {
+		dev_warn_once(gpu->dev->dev, "SCM available = %d\n", qcom_scm_is_available());
+		if (!IS_ENABLED(CONFIG_QCOM_SCM) || !qcom_scm_is_available()) {
 			dev_warn_once(gpu->dev->dev,
 				"SCM is not available, poking fuse register\n");
 			a6xx_llc_write(a6xx_gpu, REG_A7XX_CX_MISC_SW_FUSE_VALUE,
@@ -2186,6 +2244,8 @@ static int a6xx_gmu_pm_resume(struct msm_gpu *gpu)
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 	int ret;
 
+	//printk(KERN_INFO "gpu: a6xx_gmu_pm_resume");
+	
 	gpu->needs_hw_init = true;
 
 	trace_msm_gpu_resume(0);
@@ -2211,6 +2271,8 @@ static int a6xx_pm_resume(struct msm_gpu *gpu)
 	unsigned long freq = gpu->fast_rate;
 	struct dev_pm_opp *opp;
 	int ret;
+
+	//printk(KERN_INFO "gpu: a6xx_pm_resume");
 
 	gpu->needs_hw_init = true;
 
@@ -2260,6 +2322,7 @@ static int a6xx_gmu_pm_suspend(struct msm_gpu *gpu)
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 	int i, ret;
 
+	//printk(KERN_INFO "gpu: a6xx_gmu_pm_suspend");
 	trace_msm_gpu_suspend(0);
 
 	a6xx_llc_deactivate(a6xx_gpu);
@@ -2288,6 +2351,7 @@ static int a6xx_pm_suspend(struct msm_gpu *gpu)
 	struct a6xx_gmu *gmu = &a6xx_gpu->gmu;
 	int i;
 
+	//printk(KERN_INFO "gpu: a6xx_pm_suspend");
 	trace_msm_gpu_suspend(0);
 
 	msm_devfreq_suspend(gpu);

@@ -29,7 +29,7 @@
  * Cmdstream submission:
  */
 
-static struct msm_gem_submit *submit_create(struct drm_device *dev,
+struct msm_gem_submit *submit_create(struct drm_device *dev,
 		struct msm_gpu *gpu,
 		struct msm_gpu_submitqueue *queue, uint32_t nr_bos,
 		uint32_t nr_cmds, u64 drm_client_id)
@@ -372,18 +372,11 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 		submit->bos[i].iova = vma->va.addr;
 	}
 
-	/*
-	 * A second loop while holding the LRU lock (a) avoids acquiring/dropping
-	 * the LRU lock for each individual bo, while (b) avoiding holding the
-	 * LRU lock while calling msm_gem_pin_vma_locked() (which could trigger
-	 * get_pages() which could trigger reclaim.. and if we held the LRU lock
-	 * could trigger deadlock with the shrinker).
-	 */
-	mutex_lock(&priv->lru.lock);
 	for (i = 0; i < submit->nr_bos; i++) {
+		mutex_lock(&priv->lru.lock);
 		msm_gem_pin_obj_locked(submit->bos[i].obj);
+		mutex_unlock(&priv->lru.lock);
 	}
-	mutex_unlock(&priv->lru.lock);
 
 	submit->bos_pinned = true;
 
@@ -673,13 +666,16 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (ret)
 		goto out;
 
+	ret = submit_pin_objects(submit);
+	if (ret)
+		goto out;
+
 	if (!(args->flags & MSM_SUBMIT_NO_IMPLICIT)) {
 		ret = submit_fence_sync(submit);
 		if (ret)
 			goto out;
 	}
 
-	ret = submit_pin_objects(submit);
 	if (ret)
 		goto out;
 
