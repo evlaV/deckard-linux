@@ -418,6 +418,13 @@ config AXP288_FUEL_GAUGE
 	  monitoring as well as alerts for battery over/under voltage and
 	  over/under temperature.
 
+config FUEL_GAUGE_SOUTHGATE
+	tristate "Southgate Fuel Gauge"
+	depends on IIO
+	depends on OF
+	help
+	  Southgate Fuel Gauge.
+
 config BATTERY_MAX17040
 	tristate "Maxim MAX17040/17041/17043 family Fuel Gauge"
 	depends on I2C && IIO
@@ -1086,6 +1093,14 @@ config CHARGER_QCOM_SMB2
 	  Say Y here to enable the Qualcomm PMIC Charger driver. This
 	  adds support for the SMB2 switch mode battery charger found
 	  in PMI8998 and related PMICs.
+
+config CHARGER_QCOM_PM8550B
+	tristate "Qualcomm PM8550B PMIC charger driver"
+	depends on MFD_SPMI_PMIC
+	depends on IIO
+	help
+	  Say Y here to enable the Qualcomm PMIC Charger driver. This
+	  adds support for the PM8550B charger.
 
 config FUEL_GAUGE_MM8013
 	tristate "Mitsumi MM8013 fuel gauge driver"
