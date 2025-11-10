@@ -402,7 +402,11 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 	u32 loopback_cfg = 0, cpol = 0, cpha = 0, demux_output_inv = 0;
 	u32 demux_sel;
 
+	// BUG!  mode isn't the only thing that can be different between slaves,
+	// for example the chip select! aaronna
+#ifdef ALLOW_LAST_MODE_BUG
 	if (mas->last_mode != spi_slv->mode) {
+#endif
 		if (spi_slv->mode & SPI_LOOP)
 			loopback_cfg = LOOPBACK_ENABLE;
 
@@ -426,7 +430,9 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 		writel(demux_output_inv, se->base + SE_SPI_DEMUX_OUTPUT_INV);
 
 		mas->last_mode = spi_slv->mode;
+#ifdef ALLOW_LAST_MODE_BUG
 	}
+#endif
 
 	return geni_spi_set_clock_and_bw(mas, spi_slv->max_speed_hz);
 }
@@ -702,7 +708,7 @@ static int spi_geni_init(struct spi_geni_master *mas)
 	else
 		mas->oversampling = 1;
 
-	fifo_disable = readl(se->base + GENI_IF_DISABLE_RO) & FIFO_IF_DISABLE;
+	fifo_disable = 0;
 	switch (fifo_disable) {
 	case 1:
 		ret = spi_geni_grab_gpi_chan(mas);
@@ -902,6 +908,7 @@ static int setup_se_xfer(struct spi_transfer *xfer,
 		mas->cur_xfer_mode = GENI_SE_FIFO;
 	} else
 		mas->cur_xfer_mode = GENI_SE_DMA;
+	mas->cur_xfer_mode = GENI_SE_FIFO;
 	geni_se_select_mode(se, mas->cur_xfer_mode);
 
 	/*
@@ -1090,7 +1097,12 @@ static int spi_geni_probe(struct platform_device *pdev)
 	mas->se.wrapper = dev_get_drvdata(dev->parent);
 	mas->se.base = base;
 	mas->se.clk = clk;
-
+#if 0
+//TODO: gabe -- found this was missed -- is it needed? from this patch	"GENI_SE firmware loading"
+	mas->se.ibi_base = devm_platform_ioremap_resource(pdev, 1);
+	if (IS_ERR(mas->se.ibi_base))
+		mas->se.ibi_base = NULL;
+#endif
 	ret = devm_pm_opp_set_clkname(&pdev->dev, "se");
 	if (ret)
 		return ret;
