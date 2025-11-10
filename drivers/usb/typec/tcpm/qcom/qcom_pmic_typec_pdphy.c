@@ -15,73 +15,7 @@
 #include <linux/string_choices.h>
 #include <linux/usb/pd.h>
 #include <linux/usb/tcpm.h>
-#include "qcom_pmic_typec.h"
 #include "qcom_pmic_typec_pdphy.h"
-
-/* PD PHY register offsets and bit fields */
-#define USB_PDPHY_MSG_CONFIG_REG	0x40
-#define MSG_CONFIG_PORT_DATA_ROLE	BIT(3)
-#define MSG_CONFIG_PORT_POWER_ROLE	BIT(2)
-#define MSG_CONFIG_SPEC_REV_MASK	(BIT(1) | BIT(0))
-
-#define USB_PDPHY_EN_CONTROL_REG	0x46
-#define CONTROL_ENABLE			BIT(0)
-
-#define USB_PDPHY_RX_STATUS_REG		0x4A
-#define RX_FRAME_TYPE			(BIT(0) | BIT(1) | BIT(2))
-
-#define USB_PDPHY_FRAME_FILTER_REG	0x4C
-#define FRAME_FILTER_EN_HARD_RESET	BIT(5)
-#define FRAME_FILTER_EN_SOP		BIT(0)
-
-#define USB_PDPHY_TX_SIZE_REG		0x42
-#define TX_SIZE_MASK			0xF
-
-#define USB_PDPHY_TX_CONTROL_REG	0x44
-#define TX_CONTROL_RETRY_COUNT(n)	(((n) & 0x3) << 5)
-#define TX_CONTROL_FRAME_TYPE(n)        (((n) & 0x7) << 2)
-#define TX_CONTROL_FRAME_TYPE_CABLE_RESET	(0x1 << 2)
-#define TX_CONTROL_SEND_SIGNAL		BIT(1)
-#define TX_CONTROL_SEND_MSG		BIT(0)
-
-#define USB_PDPHY_RX_SIZE_REG		0x48
-
-#define USB_PDPHY_RX_ACKNOWLEDGE_REG	0x4B
-#define RX_BUFFER_TOKEN			BIT(0)
-
-#define USB_PDPHY_BIST_MODE_REG		0x4E
-#define BIST_MODE_MASK			0xF
-#define BIST_ENABLE			BIT(7)
-#define PD_MSG_BIST			0x3
-#define PD_BIST_TEST_DATA_MODE		0x8
-
-#define USB_PDPHY_TX_BUFFER_HDR_REG	0x60
-#define USB_PDPHY_TX_BUFFER_DATA_REG	0x62
-
-#define USB_PDPHY_RX_BUFFER_REG		0x80
-
-/* VDD regulator */
-#define VDD_PDPHY_VOL_MIN		2800000	/* uV */
-#define VDD_PDPHY_VOL_MAX		3300000	/* uV */
-#define VDD_PDPHY_HPM_LOAD		3000	/* uA */
-
-/* Message Spec Rev field */
-#define PD_MSG_HDR_REV(hdr)		(((hdr) >> 6) & 3)
-
-/* timers */
-#define RECEIVER_RESPONSE_TIME		15	/* tReceiverResponse */
-#define HARD_RESET_COMPLETE_TIME	5	/* tHardResetComplete */
-
-/* Interrupt numbers */
-#define PMIC_PDPHY_SIG_TX_IRQ		0x0
-#define PMIC_PDPHY_SIG_RX_IRQ		0x1
-#define PMIC_PDPHY_MSG_TX_IRQ		0x2
-#define PMIC_PDPHY_MSG_RX_IRQ		0x3
-#define PMIC_PDPHY_MSG_TX_FAIL_IRQ	0x4
-#define PMIC_PDPHY_MSG_TX_DISCARD_IRQ	0x5
-#define PMIC_PDPHY_MSG_RX_DISCARD_IRQ	0x6
-#define PMIC_PDPHY_FR_SWAP_IRQ		0x7
-
 
 struct pmic_typec_pdphy_irq_data {
 	int				virq;
@@ -249,6 +183,10 @@ qcom_pmic_typec_pdphy_pd_transmit_payload(struct pmic_typec_pdphy *pmic_typec_pd
 	if (ret)
 		goto done;
 
+	hdr_len = sizeof(msg->header);
+	txbuf_len = pd_header_cnt_le(msg->header) * 4;
+	txsize_len = hdr_len + txbuf_len - 1;
+
 	/* Write message header sizeof(u16) to USB_PDPHY_TX_BUFFER_HDR_REG */
 	ret = regmap_bulk_write(pmic_typec_pdphy->regmap,
 				pmic_typec_pdphy->base + USB_PDPHY_TX_BUFFER_HDR_REG,
@@ -298,13 +236,11 @@ done:
 	return ret;
 }
 
-static int qcom_pmic_typec_pdphy_pd_transmit(struct tcpc_dev *tcpc,
-					     enum tcpm_transmit_type type,
-					     const struct pd_message *msg,
-					     unsigned int negotiated_rev)
+int qcom_pmic_typec_pdphy_pd_transmit(struct pmic_typec_pdphy *pmic_typec_pdphy,
+				      enum tcpm_transmit_type type,
+				      const struct pd_message *msg,
+				      unsigned int negotiated_rev)
 {
-	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
-	struct pmic_typec_pdphy *pmic_typec_pdphy = tcpm->pmic_typec_pdphy;
 	struct device *dev = pmic_typec_pdphy->dev;
 	int ret;
 
@@ -405,10 +341,8 @@ static irqreturn_t qcom_pmic_typec_pdphy_isr(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int qcom_pmic_typec_pdphy_set_pd_rx(struct tcpc_dev *tcpc, bool on)
+int qcom_pmic_typec_pdphy_set_pd_rx(struct pmic_typec_pdphy *pmic_typec_pdphy, bool on)
 {
-	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
-	struct pmic_typec_pdphy *pmic_typec_pdphy = tcpm->pmic_typec_pdphy;
 	unsigned long flags;
 	int ret;
 
@@ -424,12 +358,9 @@ static int qcom_pmic_typec_pdphy_set_pd_rx(struct tcpc_dev *tcpc, bool on)
 	return ret;
 }
 
-static int qcom_pmic_typec_pdphy_set_roles(struct tcpc_dev *tcpc, bool attached,
-					   enum typec_role power_role,
-					   enum typec_data_role data_role)
+int qcom_pmic_typec_pdphy_set_roles(struct pmic_typec_pdphy *pmic_typec_pdphy,
+				    bool data_role_host, bool power_role_src)
 {
-	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
-	struct pmic_typec_pdphy *pmic_typec_pdphy = tcpm->pmic_typec_pdphy;
 	struct device *dev = pmic_typec_pdphy->dev;
 	unsigned long flags;
 	int ret;
@@ -440,16 +371,97 @@ static int qcom_pmic_typec_pdphy_set_roles(struct tcpc_dev *tcpc, bool attached,
 				 pmic_typec_pdphy->base + USB_PDPHY_MSG_CONFIG_REG,
 				 MSG_CONFIG_PORT_DATA_ROLE |
 				 MSG_CONFIG_PORT_POWER_ROLE,
-				 (data_role == TYPEC_HOST ? MSG_CONFIG_PORT_DATA_ROLE : 0) |
-				 (power_role == TYPEC_SOURCE ? MSG_CONFIG_PORT_POWER_ROLE : 0));
+				 data_role_host << 3 | power_role_src << 2);
 
 	spin_unlock_irqrestore(&pmic_typec_pdphy->lock, flags);
 
 	dev_dbg(dev, "pdphy_set_roles: data_role_host=%d power_role_src=%d\n",
-		data_role, power_role);
+		data_role_host, power_role_src);
 
 	return ret;
 }
+
+#define USBIN_BASE								0x2900
+
+#define USBIN_CURRENT_LIMIT_CFG_REG				(USBIN_BASE + 0x52)
+#define MAX_USBIN_CURRENT_MA					3000 
+#define MIN_USBIN_CURRENT_MA					0
+#define USBIN_CURRENT_STEP_MA					50
+
+int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int icl_ma)
+{
+	int val_u = icl_ma;
+	int val_raw;
+
+	if (icl_ma > MAX_USBIN_CURRENT_MA || icl_ma < MIN_USBIN_CURRENT_MA)
+		dev_err(pmic_typec_pdphy->dev, "USBIN current %d is out of range [%d, %d]\n", icl_ma, MAX_USBIN_CURRENT_MA, MIN_USBIN_CURRENT_MA);
+
+	if (val_u > MAX_USBIN_CURRENT_MA)
+		val_u = MAX_USBIN_CURRENT_MA;
+	if (val_u < MIN_USBIN_CURRENT_MA)
+		val_u = MIN_USBIN_CURRENT_MA;
+
+	val_raw = (val_u - MIN_USBIN_CURRENT_MA) / USBIN_CURRENT_STEP_MA;
+
+	return regmap_write(pmic_typec_pdphy->regmap, USBIN_CURRENT_LIMIT_CFG_REG, val_raw);
+}
+
+#define USBIN_ADAPTER_USB_OVP_CTRL_REG		(USBIN_BASE + 0xA8)
+#define USBIN_ADAPTER_USB_OVP_CTRL_MASK		(BIT(2) | BIT(1) | BIT(0))
+#define USBIN_ADAPTER_USB_OVP_CTRL_13P5V	0x01
+
+static int qcom_pmic_typec_pdphy_set_over_voltage_protection(struct pmic_typec_pdphy *pmic_typec_pdphy)
+{
+	int ret;
+
+	// Just hardcode to 13.5 Volts for now, default is 6.9 Volts
+	ret = regmap_update_bits(pmic_typec_pdphy->regmap, USBIN_ADAPTER_USB_OVP_CTRL_REG,
+		USBIN_ADAPTER_USB_OVP_CTRL_MASK, USBIN_ADAPTER_USB_OVP_CTRL_13P5V);
+
+	return ret;
+}
+
+int qcom_pmic_typec_pdphy_get_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy)
+{
+	// 900 mA
+	int limit = 900;
+
+	// TODO Add QC/BC1.2/DC1.5A Support Here
+	// Default to 900 mA for USB 3.1
+
+	return limit;
+}
+
+#define USBIN_ADAPTER_ALLOW_OVERRIDE_REG		(USBIN_BASE + 0x41)
+#define CONTINUOUS								BIT(3)
+#define FORCE_12V								BIT(2)
+#define FORCE_9V								BIT(1)
+#define FORCE_5V								BIT(0)
+#define FORCE_NULL								0
+
+#define USBIN_CONT_AICL_THRESHOLD_REG			(USBIN_BASE + 0x62)
+#define FORCE_AICL_4P7V							0x06
+#define FORCE_AICL_4P8V							0x07
+#define FORCE_AICL_8P6V							0x1A
+#define FORCE_AICL_8P8V							0x1B
+
+int qcom_pmic_typec_pdphy_set_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy,
+					u32 max_ma, u32 mv)
+{
+	// Set max allowed voltage and AICL
+	if (mv == 9000) {
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_9V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_8P6V);
+	} else {
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_5V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, FORCE_AICL_4P7V);
+	}
+
+	// Set the max allowed input current
+	pdphy_set_usbin_current_limit(pmic_typec_pdphy, max_ma);
+
+	return 0;
+};
 
 static int qcom_pmic_typec_pdphy_enable(struct pmic_typec_pdphy *pmic_typec_pdphy)
 {
@@ -476,8 +488,10 @@ static int qcom_pmic_typec_pdphy_enable(struct pmic_typec_pdphy *pmic_typec_pdph
 
 	qcom_pmic_typec_pdphy_reset_off(pmic_typec_pdphy);
 done:
-	if (ret)
+	if (ret) {
+		regulator_disable(pmic_typec_pdphy->vdd_pdphy);
 		dev_err(dev, "pdphy_enable fail %d\n", ret);
+	}
 
 	return ret;
 }
@@ -508,10 +522,9 @@ done:
 	return ret;
 }
 
-static int qcom_pmic_typec_pdphy_start(struct pmic_typec *tcpm,
-				       struct tcpm_port *tcpm_port)
+int qcom_pmic_typec_pdphy_start(struct pmic_typec_pdphy *pmic_typec_pdphy,
+				struct tcpm_port *tcpm_port)
 {
-	struct pmic_typec_pdphy *pmic_typec_pdphy = tcpm->pmic_typec_pdphy;
 	int i;
 	int ret;
 
@@ -523,22 +536,16 @@ static int qcom_pmic_typec_pdphy_start(struct pmic_typec *tcpm,
 
 	ret = pmic_typec_pdphy_reset(pmic_typec_pdphy);
 	if (ret)
-		goto err_disable_vdd_pdhy;
+		return ret;
 
 	for (i = 0; i < pmic_typec_pdphy->nr_irqs; i++)
 		enable_irq(pmic_typec_pdphy->irq_data[i].irq);
 
 	return 0;
-
-err_disable_vdd_pdhy:
-	regulator_disable(pmic_typec_pdphy->vdd_pdphy);
-
-	return ret;
 }
 
-static void qcom_pmic_typec_pdphy_stop(struct pmic_typec *tcpm)
+void qcom_pmic_typec_pdphy_stop(struct pmic_typec_pdphy *pmic_typec_pdphy)
 {
-	struct pmic_typec_pdphy *pmic_typec_pdphy = tcpm->pmic_typec_pdphy;
 	int i;
 
 	for (i = 0; i < pmic_typec_pdphy->nr_irqs; i++)
@@ -549,20 +556,20 @@ static void qcom_pmic_typec_pdphy_stop(struct pmic_typec *tcpm)
 	regulator_disable(pmic_typec_pdphy->vdd_pdphy);
 }
 
+struct pmic_typec_pdphy *qcom_pmic_typec_pdphy_alloc(struct device *dev)
+{
+	return devm_kzalloc(dev, sizeof(struct pmic_typec_pdphy), GFP_KERNEL);
+}
+
 int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
-				struct pmic_typec *tcpm,
-				const struct pmic_typec_pdphy_resources *res,
+				struct pmic_typec_pdphy *pmic_typec_pdphy,
+				struct pmic_typec_pdphy_resources *res,
 				struct regmap *regmap,
 				u32 base)
 {
-	struct pmic_typec_pdphy *pmic_typec_pdphy;
 	struct device *dev = &pdev->dev;
 	struct pmic_typec_pdphy_irq_data *irq_data;
 	int i, ret, irq;
-
-	pmic_typec_pdphy = devm_kzalloc(dev, sizeof(*pmic_typec_pdphy), GFP_KERNEL);
-	if (!pmic_typec_pdphy)
-		return -ENOMEM;
 
 	if (!res->nr_irqs || res->nr_irqs > PMIC_PDPHY_MAX_IRQS)
 		return -EINVAL;
@@ -584,6 +591,12 @@ int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
 	spin_lock_init(&pmic_typec_pdphy->lock);
 	INIT_WORK(&pmic_typec_pdphy->reset_work, qcom_pmic_typec_pdphy_sig_reset_work);
 
+	// Set Over Voltage Protection to Allow 9 VDC USB In
+	ret = qcom_pmic_typec_pdphy_set_over_voltage_protection(pmic_typec_pdphy);
+	if (ret) {
+		dev_warn(dev, "pdphy_probe failed to set OVP: %d\n", ret);
+	}
+
 	for (i = 0; i < res->nr_irqs; i++, irq_data++) {
 		irq = platform_get_irq_byname(pdev, res->irq_params[i].irq_name);
 		if (irq < 0)
@@ -602,48 +615,5 @@ int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
 			return ret;
 	}
 
-	tcpm->pmic_typec_pdphy = pmic_typec_pdphy;
-
-	tcpm->tcpc.set_pd_rx = qcom_pmic_typec_pdphy_set_pd_rx;
-	tcpm->tcpc.set_roles = qcom_pmic_typec_pdphy_set_roles;
-	tcpm->tcpc.pd_transmit = qcom_pmic_typec_pdphy_pd_transmit;
-
-	tcpm->pdphy_start = qcom_pmic_typec_pdphy_start;
-	tcpm->pdphy_stop = qcom_pmic_typec_pdphy_stop;
-
 	return 0;
 }
-
-const struct pmic_typec_pdphy_resources pm8150b_pdphy_res = {
-	.irq_params = {
-		{
-			.virq = PMIC_PDPHY_SIG_TX_IRQ,
-			.irq_name = "sig-tx",
-		},
-		{
-			.virq = PMIC_PDPHY_SIG_RX_IRQ,
-			.irq_name = "sig-rx",
-		},
-		{
-			.virq = PMIC_PDPHY_MSG_TX_IRQ,
-			.irq_name = "msg-tx",
-		},
-		{
-			.virq = PMIC_PDPHY_MSG_RX_IRQ,
-			.irq_name = "msg-rx",
-		},
-		{
-			.virq = PMIC_PDPHY_MSG_TX_FAIL_IRQ,
-			.irq_name = "msg-tx-failed",
-		},
-		{
-			.virq = PMIC_PDPHY_MSG_TX_DISCARD_IRQ,
-			.irq_name = "msg-tx-discarded",
-		},
-		{
-			.virq = PMIC_PDPHY_MSG_RX_DISCARD_IRQ,
-			.irq_name = "msg-rx-discarded",
-		},
-	},
-	.nr_irqs = 7,
-};
