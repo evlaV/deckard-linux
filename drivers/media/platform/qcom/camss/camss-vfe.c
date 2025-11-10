@@ -22,6 +22,7 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 
+#include "camss-csid.h"
 #include "camss-vfe.h"
 #include "camss.h"
 
@@ -168,8 +169,12 @@ static const struct camss_format_info formats_rdi_845[] = {
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 14) },
 	{ MEDIA_BUS_FMT_Y8_1X8, 8, V4L2_PIX_FMT_GREY, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 8) },
+	{ MEDIA_BUS_FMT_Y8_1X8, 8, V4L2_PIX_FMT_NV12, 1,
+	  PER_PLANE_DATA(0, 1, 1, 2, 3, 8) },
 	{ MEDIA_BUS_FMT_Y10_1X10, 10, V4L2_PIX_FMT_Y10P, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 10) },
+	{ MEDIA_BUS_FMT_Y10_1X10, 10, V4L2_PIX_FMT_NV12, 1,
+	  PER_PLANE_DATA(0, 1, 1, 2, 3, 10) },
 	{ MEDIA_BUS_FMT_Y10_2X8_PADHI_LE, 16, V4L2_PIX_FMT_Y10, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 16) },
 };
@@ -350,6 +355,7 @@ static u32 vfe_src_pad_code(struct vfe_line *line, u32 sink_code,
 	case CAMSS_8550:
 	case CAMSS_8775P:
 	case CAMSS_X1E80100:
+	case CAMSS_8650:
 		switch (sink_code) {
 		case MEDIA_BUS_FMT_YUYV8_1X16:
 		{
@@ -443,7 +449,7 @@ u32 vfe_hw_version(struct vfe_device *vfe)
  * @vfe: VFE Device
  * @wm: Write master id
  */
-void vfe_buf_done(struct vfe_device *vfe, int wm)
+void vfe_buf_done(struct vfe_device *vfe, int wm, struct camss_buf_done_info *buf_done_info)
 {
 	struct vfe_line *line = &vfe->line[vfe->wm_output_map[wm]];
 	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
@@ -481,7 +487,7 @@ void vfe_buf_done(struct vfe_device *vfe, int wm)
 
 	if (output->buf[index]) {
 		ops->vfe_wm_update(vfe, output->wm_idx[0],
-				   output->buf[index]->addr[0],
+				   output->buf[index],
 				   line);
 		ops->reg_update(vfe, line->id);
 	} else {
@@ -547,7 +553,7 @@ int vfe_enable_output_v2(struct vfe_line *line)
 			break;
 		output->gen2.active_num++;
 		ops->vfe_wm_update(vfe, output->wm_idx[0],
-				   output->buf[i]->addr[0], line);
+				   output->buf[i], line);
 		ops->reg_update(vfe, line->id);
 	}
 
@@ -583,7 +589,7 @@ int vfe_queue_buffer_v2(struct camss_video *vid,
 	    output->gen2.active_num < 2) {
 		output->buf[output->gen2.active_num++] = buf;
 		ops->vfe_wm_update(vfe, output->wm_idx[0],
-				   buf->addr[0], line);
+				   buf, line);
 		ops->reg_update(vfe, line->id);
 	} else {
 		vfe_buf_add_pending(output, buf);
@@ -1160,6 +1166,16 @@ void vfe_put(struct vfe_device *vfe)
 
 exit:
 	mutex_unlock(&vfe->power_lock);
+}
+
+long vfe_set_statistics_config(struct vfe_device *vfe, u32 stats_cfg)
+{
+	if(vfe->res->hw_ops->set_statistics_config) {
+		return vfe->res->hw_ops->set_statistics_config(vfe, stats_cfg);
+	}
+	else {
+		return -EINVAL;
+	}
 }
 
 /*
@@ -1997,6 +2013,7 @@ static int vfe_bpl_align(struct vfe_device *vfe)
 	case CAMSS_8550:
 	case CAMSS_8775P:
 	case CAMSS_X1E80100:
+	case CAMSS_8650:
 		ret = 16;
 		break;
 	default:

@@ -14,6 +14,7 @@
 #include <linux/spinlock_types.h>
 #include <media/media-entity.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-event.h>
 #include <media/v4l2-subdev.h>
 
 #include "camss-video.h"
@@ -94,6 +95,8 @@ struct vfe_line {
 	struct vfe_output output;
 	const struct camss_format_info *formats;
 	unsigned int nformats;
+
+	u32 required_comp_done_mask; // bitfield where the index of each mandatory comp group for frames is set
 };
 
 struct vfe_device;
@@ -117,9 +120,11 @@ struct vfe_hw_ops {
 	void (*vfe_wm_start)(struct vfe_device *vfe, u8 wm,
 			     struct vfe_line *line);
 	void (*vfe_wm_stop)(struct vfe_device *vfe, u8 wm);
-	void (*vfe_buf_done)(struct vfe_device *vfe, int port_id);
-	void (*vfe_wm_update)(struct vfe_device *vfe, u8 wm, u32 addr,
+	void (*vfe_buf_done)(struct vfe_device *vfe, int port_id, struct camss_buf_done_info *buf_done_info);
+	void (*vfe_wm_update)(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
 			      struct vfe_line *line);
+	long (*set_statistics_config)(struct vfe_device *vfe, u32 stats_cfg);
+	void (*vfe_report_hw_error)(struct vfe_device *vfe, int port_id, struct camss_hw_error_info *error_info);
 };
 
 struct vfe_isr_ops {
@@ -166,6 +171,8 @@ struct vfe_device {
 	struct camss_video_ops video_ops;
 	struct device *genpd;
 	struct device_link *genpd_link;
+
+	u32 stats_cfg; // user-provided bitfield that indicates which statistics/frameheaders must be provided in the metadata buffers
 };
 
 struct camss_subdev_resources;
@@ -246,9 +253,11 @@ extern const struct vfe_hw_ops vfe_ops_340;
 extern const struct vfe_hw_ops vfe_ops_480;
 extern const struct vfe_hw_ops vfe_ops_680;
 extern const struct vfe_hw_ops vfe_ops_gen3;
+extern const struct vfe_hw_ops vfe_ops_880;
 
 int vfe_get(struct vfe_device *vfe);
 void vfe_put(struct vfe_device *vfe);
+long vfe_set_statistics_config(struct vfe_device *vfe, u32 stats_cfg);
 
 /*
  * vfe_is_lite - Return if VFE is VFE lite.
@@ -280,7 +289,7 @@ int vfe_enable_v2(struct vfe_line *line);
  * @vfe: VFE Device
  * @wm: Write master id
  */
-void vfe_buf_done(struct vfe_device *vfe, int wm);
+void vfe_buf_done(struct vfe_device *vfe, int wm, struct camss_buf_done_info *buf_done_info);
 
 /*
  * vfe_get_output_v2 - Get vfe output line

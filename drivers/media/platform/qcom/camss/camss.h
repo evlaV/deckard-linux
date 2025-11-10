@@ -23,6 +23,7 @@
 #include "camss-ispif.h"
 #include "camss-vfe.h"
 #include "camss-format.h"
+#include "camss-metadata.h"
 
 #define to_camss(ptr_module)	\
 	container_of(ptr_module, struct camss, ptr_module)
@@ -66,10 +67,6 @@ struct resources_icc {
 	struct icc_bw_tbl icc_bw_tbl;
 };
 
-struct resources_wrapper {
-	char *reg;
-};
-
 enum pm_domain {
 	PM_DOMAIN_VFE0 = 0,
 	PM_DOMAIN_VFE1 = 1,
@@ -90,6 +87,7 @@ enum camss_version {
 	CAMSS_8550,
 	CAMSS_8775P,
 	CAMSS_X1E80100,
+	CAMSS_8650,
 };
 
 enum icc_count {
@@ -100,16 +98,19 @@ enum icc_count {
 struct camss_resources {
 	enum camss_version version;
 	const char *pd_name;
+	const struct camss_subdev_resources *top;
 	const struct camss_subdev_resources *csiphy_res;
 	const struct camss_subdev_resources *csid_res;
 	const struct camss_subdev_resources *ispif_res;
 	const struct camss_subdev_resources *vfe_res;
-	const struct resources_wrapper *csid_wrapper_res;
+	const struct camss_subdev_resources *csid_wrapper_res;
 	const struct resources_icc *icc_res;
 	const unsigned int icc_path_num;
 	const unsigned int csiphy_num;
 	const unsigned int csid_num;
 	const unsigned int vfe_num;
+	const unsigned int metadata_num;
+	int (*link_entities)(struct camss *camss);
 };
 
 struct camss {
@@ -119,6 +120,7 @@ struct camss {
 	struct device *dev;
 	struct csiphy_device *csiphy;
 	struct csid_device *csid;
+	struct metadata_device *metadata;
 	struct ispif_device *ispif;
 	struct vfe_device *vfe;
 	void __iomem *csid_wrapper_base;
@@ -132,6 +134,7 @@ struct camss {
 
 struct camss_camera_interface {
 	u8 csiphy_id;
+	u8 combo_id;
 	struct csiphy_csi2_cfg csi2;
 };
 
@@ -151,6 +154,7 @@ struct parent_dev_ops {
 	int (*get)(struct camss *camss, int id);
 	int (*put)(struct camss *camss, int id);
 	void __iomem *(*get_base_address)(struct camss *camss, int id);
+	long (*set_statistics_config)(struct camss *camss, int id, u32 stats_cfg);
 };
 
 void camss_add_clock_margin(u64 *rate);
@@ -158,6 +162,8 @@ int camss_enable_clocks(int nclocks, struct camss_clock *clock,
 			struct device *dev);
 void camss_disable_clocks(int nclocks, struct camss_clock *clock);
 struct media_pad *camss_find_sensor_pad(struct media_entity *entity);
+struct media_entity *camss_find_sensor(struct media_entity *entity);
+struct media_entity *camss_find_sensor_from_csid(struct media_entity *entity);
 s64 camss_get_link_freq(struct media_entity *entity, unsigned int bpp,
 			unsigned int lanes);
 int camss_get_pixel_clock(struct media_entity *entity, u64 *pixel_clock);
@@ -166,8 +172,10 @@ void camss_pm_domain_off(struct camss *camss, int id);
 int camss_vfe_get(struct camss *camss, int id);
 void camss_vfe_put(struct camss *camss, int id);
 void camss_delete(struct camss *camss);
-void camss_buf_done(struct camss *camss, int hw_id, int port_id);
+void camss_buf_done(struct camss *camss, int hw_id, int port_id, struct camss_buf_done_info *buf_done_info);
 void camss_reg_update(struct camss *camss, int hw_id,
 		      int port_id, bool is_clear);
+void camss_report_hw_error(struct camss *camss, int hw_id, int port_id, struct camss_hw_error_info *error_info);
+void camss_trigger_delayed_csid_vfe_register_update(struct camss *camss, int hw_id, int port_id);
 
 #endif /* QC_MSM_CAMSS_H */

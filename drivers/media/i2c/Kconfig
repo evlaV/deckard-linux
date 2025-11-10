@@ -361,6 +361,24 @@ config VIDEO_OG0VE1B
 	  To compile this driver as a module, choose M here: the
 	  module will be called og0ve1b.
 
+config VIDEO_OG01A1B_A
+	tristate "OmniVision OG01A1B sensor support"
+	help
+	  This is a Video4Linux2 sensor driver for the OmniVision
+	  OG01A1B camera with advanced features.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called og01a1b.
+
+config VIDEO_OG0VE10_A
+	tristate "OmniVision OG0VE1B sensor support"
+	help
+	  This is a Video4Linux2 sensor driver for the OmniVision
+	  OG0VE1B camera with advanced features.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called og0ve10.
+
 config VIDEO_OV01A10
 	tristate "OmniVision OV01A10 sensor support"
 	help
@@ -369,6 +387,16 @@ config VIDEO_OV01A10
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called ov01a10.
+
+config VIDEO_ARCIMX616
+	tristate "Arcturus IMX616 sensor support"
+	help
+	  This is a Video4Linux2 sensor driver for the Arcturus
+	  camera that uses dual IMX616 sensors with advanced features, 
+	  EEPROM access, and LED control.
+	  
+	  To compile this driver as a module, choose M here: the
+	  module will be called arcimx616.
 
 config VIDEO_OV02A10
 	tristate "OmniVision OV02A10 sensor support"
@@ -592,6 +620,24 @@ config VIDEO_OV64A40
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called ov64a40.
+
+config VIDEO_OV6650
+	tristate "OmniVision OV6650 sensor support"
+	help
+	  This is a Video4Linux2 sensor driver for the OmniVision
+	  OV6650 camera.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ov6650.
+
+config VIDEO_OV6710
+	tristate "OmniVision OV6710 sensor support"
+	help
+	  This is a Video4Linux2 sensor driver for the OmniVision
+	  OV6710 camera.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ov6710.
 
 config VIDEO_OV7251
 	tristate "OmniVision OV7251 sensor support"

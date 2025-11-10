@@ -19,10 +19,113 @@
 #include <media/v4l2-mediabus.h>
 #include <media/videobuf2-v4l2.h>
 
+// Private ioctls to access CSID/VFE registers
+#define VIDIOC_PRIV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
+#define VIDIOC_PRIV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
+// Keep this old ioctl to keep compatibility with older camss_extra_output_plane_cfg format which did not reserve space for additional outputs...
+#define VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY _IOWR('V', BASE_VIDIOC_PRIVATE + 3, struct camss_extra_output_plane_cfg_legacy)
+#define VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG _IOWR('V', BASE_VIDIOC_PRIVATE + 3, struct camss_extra_output_plane_cfg)
+#define VIDIOC_PRIV_S_MULTI_VCDT_CFG _IO('V', BASE_VIDIOC_PRIVATE + 4) // takes the second vc enabled as parameter
+// TODO: add layout config ioctl (to set plane stride and offsets)
+
+// S_REGS_DELAYED can be used to queue CSID/VFE register updates into buffers that are flused to hardware registers
+// after the next frame completion. This is used to help avoiding ISP updates during the frame readout, which can lead
+// to visual artifacts. ISP update timing infos are provided as part of CAMSS_EXTRA_OUTPUT_TYPE_META_2 and can 
+// be used to compare against frame SOF/EOF timings to make sure no ISP update happened during the readout.
+#define VIDIOC_PRIV_S_REGS_DELAYED _IOW('V', BASE_VIDIOC_PRIVATE + 5, struct csid_vfe_private_registers_config)
+
+// Private events
+#define V4L2_EVENT_CAMSS_HW_ERROR   (V4L2_EVENT_PRIVATE_START + 1)
+
+struct camss_hw_error_info {
+	u32 type;
+	u8 reserved[60]; // V4L events can store up to 64 bytes of data
+};
+
+// Do not change the order of that struct to avoid breaking compatibility
+enum camss_extra_output_type
+{
+	CAMSS_EXTRA_OUTPUT_TYPE_META,
+	CAMSS_EXTRA_OUTPUT_TYPE_STATS_IHIST,
+	CAMSS_EXTRA_OUTPUT_TYPE_STATS_BHIST,
+	CAMSS_EXTRA_OUTPUT_TYPE_DS4,
+	CAMSS_EXTRA_OUTPUT_TYPE_DS16,
+	CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BE,
+	CAMSS_EXTRA_OUTPUT_TYPE_STATS_AEC_BHIST,
+	CAMSS_EXTRA_OUTPUT_TYPE_STATS_AWB_BG,
+	CAMSS_EXTRA_OUTPUT_TYPE_STATS_TINTLESS_BG,
+
+	CAMSS_EXTRA_OUTPUT_TYPE_META_2,
+
+	CAMSS_EXTRA_OUTPUT_TYPE_END,
+	CAMSS_EXTRA_OUTPUT_TYPE_MAX = 32 // Reserve some additional types for future additions
+};
+static_assert(CAMSS_EXTRA_OUTPUT_TYPE_MAX>=CAMSS_EXTRA_OUTPUT_TYPE_END);
+
+struct camss_extra_output_plane_cfg
+{
+	u32 plane_size;
+	// For the regular image output frameheader
+	u32 frameheader_en;
+	u32 frameheader_offset;
+	// To enable additional outputs (downscaled output, statistics, frameheaders) streamed into the plane
+	u32 extra_output_en[CAMSS_EXTRA_OUTPUT_TYPE_MAX];
+	u32 extra_output_offset[CAMSS_EXTRA_OUTPUT_TYPE_MAX];
+	u32 extra_output_frameheader_en[CAMSS_EXTRA_OUTPUT_TYPE_MAX];
+	u32 extra_output_frameheader_offset[CAMSS_EXTRA_OUTPUT_TYPE_MAX];
+};
+
+// Legacy structure compatible with VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY
+#define CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY 5
+struct camss_extra_output_plane_cfg_legacy
+{
+	u32 plane_size, frameheader_en, frameheader_offset;
+	u32 extra_output_en[CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY];
+	u32 extra_output_offset[CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY];
+	u32 extra_output_frameheader_en[CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY];
+	u32 extra_output_frameheader_offset[CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY];
+};
+
+// Minimal metadata structure for CAMSS_EXTRA_OUTPUT_TYPE_META that only includes SOF/EOF info and sensor specific metadata
+struct camss_metadata {
+	u64 sof_timestamp;
+	u64 eof_timestamp;
+	u64 sof_isr_timestamp;
+	u64 eof_isr_timestamp;
+	s64 isp_to_kernel_raw_ts_offset;
+	uint8_t sensorMetaDataBuffer[1208];
+};
+
+// A few rules to help ensuring backward compatibility on that structure
+// Never remove any of the structure members here or change the order
+// New members can be added at the end of the structure but the version must be changed accordingly
+// so that userspace application can detect if the structure/driver supports the members needed.
+#define CAMSS_EXTRA_OUTPUT_METADATA_2_MAX_BUFFER_SIZE (4096)
+#define CAMSS_EXTRA_OUTPUT_METADATA_2_VERSION (1)
+struct camss_metadata_2 {
+	u32 version;
+	u32 size;
+	// ----------
+	u64 last_delayed_regs_update_start_ts;
+	u64 last_delayed_regs_update_end_ts;
+};
+static_assert(sizeof(struct camss_metadata_2) <= CAMSS_EXTRA_OUTPUT_METADATA_2_MAX_BUFFER_SIZE);
+
 struct camss_buffer {
 	struct vb2_v4l2_buffer vb;
 	dma_addr_t addr[3];
 	struct list_head queue;
+
+	// Keep track of the composite group DONE events received for this buffer
+	uint32_t comp_done_status;
+	// Extra buffer (used for metadata/frameheaders/statistics streaming)
+	void* extrabuffer_vaddr; 
+	dma_addr_t extrabuffer_dma_addr; 
+	uint32_t extrabuffer_size;
+
+	// Extra output plane (replaces the driver-local extra buffer above)
+	dma_addr_t extra_output_plane_dma_addr;
+	struct sg_table *extra_output_plane_sgt; 
 };
 
 struct camss_video;
@@ -48,6 +151,14 @@ struct camss_video {
 	unsigned int line_based;
 	const struct camss_format_info *formats;
 	unsigned int nformats;
+
+	// Size requirement for the extra buffer or 0 when no buffer needs to be created
+	u32 required_extrabuffer_size;
+
+	// Extra output plane (replaces the driver-local extra buffer above)
+	bool has_extra_output_plane_cfg;
+	struct camss_extra_output_plane_cfg extra_output_plane_cfg;
+	u32 extra_output_addr_idx;
 };
 
 int msm_video_register(struct camss_video *video, struct v4l2_device *v4l2_dev,
