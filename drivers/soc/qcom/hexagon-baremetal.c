@@ -14,6 +14,8 @@
 #include <dt-bindings/mailbox/qcom-ipcc.h>
 #include <linux/iommu.h>
 #include <linux/mailbox_client.h>
+#include <linux/pm_domain.h>
+#include <linux/pm_opp.h>
 
 #define QDSP6SS_VERSION 0x00
 
@@ -51,6 +53,8 @@ struct dsp {
 	bool is_xtensa;
 	u32 mem_phys;
 	u32 mem_size;
+	struct device *pds[2];
+	int perf[2];
 };
 
 struct dma_map {
@@ -306,6 +310,9 @@ xtensa_boot(struct dsp *dsp)
 	writel_relaxed(1, dsp->base + CPU_CS_A2HSOFTINTCLR);
 	writel_relaxed(1, dsp->base + CPU_CS_H2ASOFTINTCLR);
 
+	dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
+	dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
+
 #define WRAPPER_CPA_START_ADDR 		0xc1020
 #define WRAPPER_CPA_END_ADDR 		0xc1024
 #define WRAPPER_FW_START_ADDR 		0xc1028
@@ -447,6 +454,9 @@ static int dsp_shutdown(struct dsp *dsp)
 
 		// disable CPU watchdog while off
 		writel(0, dsp->base + 0x90008); // CPU_WD_WDOGCONTROL
+
+		dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
+		dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
 	} else {
 		writel(~0u, dsp->base +  QDSP6SS_RESET_CFG);
 		writel(1, dsp->base +  QDSP6SS_RESET_CMD);
@@ -524,7 +534,7 @@ static long dsp_map_dmabuf(struct dsp *dsp, int fd, u32 iova)
 		goto attach_err;
 	}
 
-	map->table = dma_buf_map_attachment(map->attach, DMA_BIDIRECTIONAL);
+	map->table = dma_buf_map_attachment_unlocked(map->attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(map->table)) {
 		ret = PTR_ERR(map->table);
 		goto map_err;
@@ -546,7 +556,7 @@ static long dsp_map_dmabuf(struct dsp *dsp, int fd, u32 iova)
 	return ret;
 
 iommu_err:
-	dma_buf_unmap_attachment(map->attach, map->table, DMA_BIDIRECTIONAL);
+	dma_buf_unmap_attachment_unlocked(map->attach, map->table, DMA_BIDIRECTIONAL);
 map_err:
 	dma_buf_detach(map->buf, map->attach);
 attach_err:
@@ -588,7 +598,7 @@ static void dsp_unmap(struct dsp *dsp, struct dma_map *map)
 {
 	iommu_unmap(dsp->iommu, map->iova, map->size);
 	if (map->buf) {
-		dma_buf_unmap_attachment(map->attach, map->table, DMA_BIDIRECTIONAL);
+		dma_buf_unmap_attachment_unlocked(map->attach, map->table, DMA_BIDIRECTIONAL);
 		dma_buf_detach(map->buf, map->attach);
 		dma_buf_put(map->buf);
 	}
@@ -764,6 +774,8 @@ static int dsp_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&dsp->maps);
 	init_waitqueue_head(&dsp->waitqueue);
 
+	spin_lock_init(&dsp->lock);
+
 	ret = devm_clk_bulk_get_all(dev, &dsp->clks);
 	if (ret < 0)
 		return ret;
@@ -810,8 +822,38 @@ static int dsp_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	/* Get power domains and corresponding power levels */
+	if (!strcmp(dev->of_node->name, "cvp")) {
+		dsp->pds[0] = dev_pm_domain_attach_by_id(dev, 0);
+		if (IS_ERR_OR_NULL(dsp->pds[0]))
+			return PTR_ERR(dsp->pds[0]) ? : -ENODATA;
+		dsp->pds[1] = dev_pm_domain_attach_by_id(dev, 1);
+		if (IS_ERR_OR_NULL(dsp->pds[1]))
+			return PTR_ERR(dsp->pds[1]) ? : -ENODATA;
+
+		dsp->perf[0] = of_get_required_opp_performance_state(dev->of_node, 0);
+		if (dsp->perf[0] < 0)
+			return dsp->perf[0];
+		dsp->perf[1] = of_get_required_opp_performance_state(dev->of_node, 1);
+		if (dsp->perf[1] < 0)
+			return dsp->perf[1];
+	}
+
 	if (dsp->is_xtensa)
-		clk_set_rate(dsp->clks[1].clk, 355200000); //max_rate);
+    {
+        // Uses VIDEO_CC_MVS1C_CLK which looks like it's video_cc_mvs1c_div2_div_clk_src
+        // which scales the input rate by 2 to match what is in the freq_tbl??
+        // So try to map those allowed rates from the ftbl_video_cc_mvs1_clk_src_sm8650 ->
+        // 420000000 -> 840000000
+        // 555000000 -> 1110000000
+        // 675000000 -> 1350000000
+        // 750000000 -> 1500000000
+        // 825000000 -> 1650000000
+        u32 rate_to_set = 825000000;
+        clk_set_rate(dsp->clks[1].clk, rate_to_set);
+        u32 applied_rate = clk_get_rate(dsp->clks[1].clk);
+        printk("cvp clock rate: %d (called with set_rate: %d)", applied_rate, rate_to_set);
+    }
 
 	// XXX
 	ret = clk_bulk_prepare_enable(dsp->num_clks, dsp->clks);
@@ -839,6 +881,14 @@ static int dsp_probe(struct platform_device *pdev)
 		// TURING_QDSP6SS_PLL_PLL_CM_PLL_LUCID_OLE
 		// Set it to use TURBO_L3 frequency - 1843.2 MHz
 		clk_pll_configure_lucid_ole(dsp->base + 0x40000, 1843200000);
+	}
+
+	if (!strcmp(dev->of_node->name, "adsp"))
+	{
+		struct icc_path *dma_path = devm_of_icc_get(dev, "mem");
+		WARN_ON(IS_ERR(dma_path));
+
+		icc_set_bw(dma_path, 0, kBps_to_icc(1000*1000*50));
 	}
 
 	return 0;
