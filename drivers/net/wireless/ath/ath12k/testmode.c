@@ -12,9 +12,12 @@
 #include "core.h"
 #include "hif.h"
 #include "../testmode_i.h"
+#include <linux/printk.h>
 
 #define ATH12K_FTM_SEGHDR_CURRENT_SEQ		GENMASK(3, 0)
 #define ATH12K_FTM_SEGHDR_TOTAL_SEGMENTS	GENMASK(7, 4)
+
+static int ath12k_tm_cmd_testmode_start(struct ath12k *ar, struct nlattr *tb[]);
 
 static const struct nla_policy ath12k_tm_policy[ATH_TM_ATTR_MAX + 1] = {
 	[ATH_TM_ATTR_CMD]		= { .type = NLA_U32 },
@@ -179,6 +182,7 @@ void ath12k_tm_process_event(struct ath12k_base *ab, u32 cmd_id,
 static int ath12k_tm_cmd_get_version(struct ath12k *ar, struct nlattr *tb[])
 {
 	struct sk_buff *skb;
+	//dump_stack();
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_TESTMODE,
 		   "testmode cmd get version_major %d version_minor %d\n",
@@ -215,6 +219,11 @@ static int ath12k_tm_cmd_process_ftm(struct ath12k *ar, struct nlattr *tb[])
 	u32 cmd_id, buf_len;
 	u16 chunk_len, total_bytes, num_segments;
 	u8 segnumber = 0, *bufpos;
+
+	if (ar->ah->state != ATH12K_HW_STATE_TM) {
+		ath12k_warn(ar->ab, "got tm cmd but not in test mode, forcing on\n");
+		ath12k_tm_cmd_testmode_start(ar, NULL);
+	}
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_TESTMODE, "ah->state  %d\n", ar->ah->state);
 	if (ar->ah->state != ATH12K_HW_STATE_TM)
@@ -280,17 +289,25 @@ static int ath12k_tm_cmd_process_ftm(struct ath12k *ar, struct nlattr *tb[])
 
 static int ath12k_tm_cmd_testmode_start(struct ath12k *ar, struct nlattr *tb[])
 {
-	if (ar->ah->state == ATH12K_HW_STATE_TM)
-		return -EALREADY;
+	ath12k_warn(ar->ab, "%s\n", __func__);
 
-	if (ar->ah->state != ATH12K_HW_STATE_OFF)
+	if (ar->ah->state == ATH12K_HW_STATE_TM) {
+		ath12k_warn(ar->ab, "%s ALREADY\n", __func__);
+		return -EALREADY;
+	}
+
+	if (ar->ah->state != ATH12K_HW_STATE_OFF) {
+		ath12k_warn(ar->ab, "%s OFF\n", __func__);
 		return -EBUSY;
+	}
 
 	ar->ab->ftm_event_obj.eventdata = kzalloc(ATH_FTM_EVENT_MAX_BUF_LENGTH,
 						  GFP_KERNEL);
 
 	if (!ar->ab->ftm_event_obj.eventdata)
 		return -ENOMEM;
+
+	ath12k_warn(ar->ab, "%s STATE=TM\n", __func__);
 
 	ar->ah->state = ATH12K_HW_STATE_TM;
 	ar->ftm_msgref = 0;
@@ -305,6 +322,8 @@ static int ath12k_tm_cmd_wmi(struct ath12k *ar, struct nlattr *tb[])
 	int ret = 0, tag;
 	void *buf;
 	u32 cmd_id, buf_len;
+	size_t adjusted_len;
+	struct ath12k_wmi_ftm_cmd *ftm_cmd;
 
 	if (!tb[ATH_TM_ATTR_DATA])
 		return -EINVAL;
@@ -329,17 +348,24 @@ static int ath12k_tm_cmd_wmi(struct ath12k *ar, struct nlattr *tb[])
 		cmd->pdev_id = cpu_to_le32(ar->pdev->pdev_id);
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_TESTMODE,
-		   "testmode cmd wmi cmd_id %d  buf length %d\n",
+		   "testmode cmd WMI cmd_id %d  buf length %d\n",
 		   cmd_id, buf_len);
 
 	ath12k_dbg_dump(ar->ab, ATH12K_DBG_TESTMODE, NULL, "", buf, buf_len);
 
-	skb = ath12k_wmi_alloc_skb(wmi->wmi_ab, buf_len);
+	adjusted_len  = buf_len + 4; // just add sizeof(tlv_header)
+	skb = ath12k_wmi_alloc_skb(wmi->wmi_ab, adjusted_len);
 
 	if (!skb)
 		return -ENOMEM;
 
-	memcpy(skb->data, buf, buf_len);
+	ftm_cmd = (struct ath12k_wmi_ftm_cmd *)skb->data;
+	// incoming buf (and buf_len) already has ath12k_wmi_ftm_seg_hdr_params 
+	ftm_cmd->tlv_header = ath12k_wmi_tlv_hdr(WMI_TAG_ARRAY_BYTE, buf_len);
+
+
+	memcpy(&ftm_cmd->seg_hdr, buf, buf_len);
+
 
 	ret = ath12k_wmi_cmd_send(wmi, skb, cmd_id);
 	if (ret) {
@@ -363,6 +389,8 @@ int ath12k_tm_cmd(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 
 	lockdep_assert_held(&wiphy->mtx);
 
+	printk(KERN_WARNING "************************ len: %d \n",len);
+
 	ret = nla_parse(tb, ATH_TM_ATTR_MAX, data, len, ath12k_tm_policy,
 			NULL);
 	if (ret)
@@ -381,15 +409,20 @@ int ath12k_tm_cmd(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	ab = ar->ab;
 	switch (nla_get_u32(tb[ATH_TM_ATTR_CMD])) {
 	case ATH_TM_CMD_WMI:
+		ath12k_warn(ab, "************************ ATH_TM_CMD_WMI\n");
 		return ath12k_tm_cmd_wmi(ar, tb);
 	case ATH_TM_CMD_TESTMODE_START:
+		ath12k_warn(ab, "************************ ATH_TM_CMD_TESTMODE_START\n");
 		return ath12k_tm_cmd_testmode_start(ar, tb);
 	case ATH_TM_CMD_GET_VERSION:
+		ath12k_warn(ab, "************************ ATH_TM_CMD_GET_VERSION\n");
 		return ath12k_tm_cmd_get_version(ar, tb);
 	case ATH_TM_CMD_WMI_FTM:
+		ath12k_warn(ab, "************************ ATH_TM_CMD_WMI_FTM\n");
 		set_bit(ATH12K_FLAG_FTM_SEGMENTED, &ab->dev_flags);
 		return ath12k_tm_cmd_process_ftm(ar, tb);
 	default:
+		ath12k_warn(ab, "************************ %02x NOTSUP \n",nla_get_u32(tb[ATH_TM_ATTR_CMD]));
 		return -EOPNOTSUPP;
 	}
 }
