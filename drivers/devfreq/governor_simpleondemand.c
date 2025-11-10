@@ -12,6 +12,11 @@
 #include <linux/math64.h>
 #include "governor.h"
 
+struct simple_ondemand_data {
+	unsigned long long frequency;
+	unsigned long long avg_busy;
+};
+
 /* Default constants for DevFreq-Simple-Ondemand (DFSO) */
 #define DFSO_UPTHRESHOLD	(90)
 #define DFSO_DOWNDIFFERENCTIAL	(5)
@@ -20,10 +25,12 @@ static int devfreq_simple_ondemand_func(struct devfreq *df,
 {
 	int err;
 	struct devfreq_dev_status *stat;
-	unsigned long long a, b;
+	unsigned long long a, b, new_freq;
 	unsigned int dfso_upthreshold = DFSO_UPTHRESHOLD;
 	unsigned int dfso_downdifferential = DFSO_DOWNDIFFERENCTIAL;
 	struct devfreq_simple_ondemand_data *data = df->data;
+	struct simple_ondemand_data *governor_data = df->governor_data;
+	unsigned long long busy, fact;
 
 	err = devfreq_update_stats(df);
 	if (err)
@@ -66,33 +73,71 @@ static int devfreq_simple_ondemand_func(struct devfreq *df,
 		return 0;
 	}
 
-	/* Keep the current frequency */
-	if (stat->busy_time * 100 >
-	    stat->total_time * (dfso_upthreshold - dfso_downdifferential)) {
-		*freq = stat->current_frequency;
+	/* /\* Keep the current frequency *\/ */
+	/* if (stat->busy_time * 100 > */
+	/*     stat->total_time * (dfso_upthreshold - dfso_downdifferential)) { */
+	/* 	*freq = stat->current_frequency; */
+	/* 	return 0; */
+	/* } */
+
+	busy = div_u64(stat->busy_time * 1000000, stat->total_time);
+	/*        0.1  */
+	fact = 100000 * stat->total_time / (df->profile->polling_ms * 1000);
+	governor_data->avg_busy = busy > governor_data->avg_busy ?
+		busy :
+		div_u64(governor_data->avg_busy * (1000000 - fact) + busy * fact, 1000000);
+
+	if (governor_data->avg_busy > (1000000/2)) {
+		*freq = DEVFREQ_MAX_FREQ;
 		return 0;
 	}
 
 	/* Set the desired frequency based on the load */
-	a = stat->busy_time;
-	a *= stat->current_frequency;
-	b = div_u64(a, stat->total_time);
+	b = div_u64(governor_data->avg_busy * stat->current_frequency, 1000000);
 	b *= 100;
 	b = div_u64(b, (dfso_upthreshold - dfso_downdifferential / 2));
-	*freq = (unsigned long) b;
+	if (b > *freq) {
+		governor_data->frequency = *freq = (unsigned long) b;
+	} else {
+		/* if we are reducing the frequency limit the drop to 10% */
+		new_freq = governor_data->frequency * 95 / 100;
+		governor_data->frequency = *freq = new_freq > b ? new_freq : b;
+	}
 
 	return 0;
+}
+
+static int simpleondemand_init(struct devfreq *devfreq)
+{
+	struct simple_ondemand_data *data = kzalloc(sizeof(struct simple_ondemand_data),
+					      GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
+	devfreq->governor_data = data;
+
+	return 0;
+}
+
+static void simpleondemand_exit(struct devfreq *devfreq)
+{
+	kfree(devfreq->governor_data);
+	devfreq->governor_data = NULL;
 }
 
 static int devfreq_simple_ondemand_handler(struct devfreq *devfreq,
 				unsigned int event, void *data)
 {
+	int ret = 0;
+
 	switch (event) {
 	case DEVFREQ_GOV_START:
+		ret = simpleondemand_init(devfreq);
 		devfreq_monitor_start(devfreq);
 		break;
 
 	case DEVFREQ_GOV_STOP:
+		simpleondemand_exit(devfreq);
 		devfreq_monitor_stop(devfreq);
 		break;
 
@@ -112,7 +157,7 @@ static int devfreq_simple_ondemand_handler(struct devfreq *devfreq,
 		break;
 	}
 
-	return 0;
+	return ret;
 }
 
 static struct devfreq_governor devfreq_simple_ondemand = {

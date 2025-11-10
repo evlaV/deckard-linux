@@ -16,6 +16,7 @@
 #include <linux/soc/qcom/geni-se.h>
 #include <linux/spi/spi.h>
 #include <linux/spinlock.h>
+#include <trace/gpuvis.h>
 
 /* SPI SE specific registers and respective register fields */
 #define SE_SPI_CPHA		0x224
@@ -153,6 +154,8 @@ static void handle_se_timeout(struct spi_controller *spi,
 	struct geni_se *se = &mas->se;
 	const struct spi_transfer *xfer;
 
+	TRACE_BEGIN_CTX();
+
 	spin_lock_irq(&mas->lock);
 	if (mas->cur_xfer_mode == GENI_SE_FIFO)
 		writel(0, se->base + SE_GENI_TX_WATERMARK_REG);
@@ -255,6 +258,8 @@ static bool spi_geni_is_abort_still_pending(struct spi_geni_master *mas)
 	struct geni_se *se = &mas->se;
 	u32 m_irq, m_irq_en;
 
+	TRACE_BEGIN_CTX();
+
 	if (!mas->abort_failed)
 		return false;
 
@@ -282,55 +287,6 @@ static bool spi_geni_is_abort_still_pending(struct spi_geni_master *mas)
 	mas->abort_failed = false;
 
 	return false;
-}
-
-static void spi_geni_set_cs(struct spi_device *slv, bool set_flag)
-{
-	struct spi_geni_master *mas = spi_controller_get_devdata(slv->controller);
-	struct spi_controller *spi = dev_get_drvdata(mas->dev);
-	struct geni_se *se = &mas->se;
-	unsigned long time_left;
-
-	if (!(slv->mode & SPI_CS_HIGH))
-		set_flag = !set_flag;
-
-	if (set_flag == mas->cs_flag)
-		return;
-
-	pm_runtime_get_sync(mas->dev);
-
-	if (spi_geni_is_abort_still_pending(mas)) {
-		dev_err(mas->dev, "Can't set chip select\n");
-		goto exit;
-	}
-
-	spin_lock_irq(&mas->lock);
-	if (mas->cur_xfer) {
-		dev_err(mas->dev, "Can't set CS when prev xfer running\n");
-		spin_unlock_irq(&mas->lock);
-		goto exit;
-	}
-
-	mas->cs_flag = set_flag;
-	/* set xfer_mode to FIFO to complete cs_done in isr */
-	mas->cur_xfer_mode = GENI_SE_FIFO;
-	geni_se_select_mode(se, mas->cur_xfer_mode);
-
-	reinit_completion(&mas->cs_done);
-	if (set_flag)
-		geni_se_setup_m_cmd(se, SPI_CS_ASSERT, 0);
-	else
-		geni_se_setup_m_cmd(se, SPI_CS_DEASSERT, 0);
-	spin_unlock_irq(&mas->lock);
-
-	time_left = wait_for_completion_timeout(&mas->cs_done, HZ);
-	if (!time_left) {
-		dev_warn(mas->dev, "Timeout setting chip select\n");
-		handle_se_timeout(spi, NULL);
-	}
-
-exit:
-	pm_runtime_put(mas->dev);
 }
 
 static void spi_setup_word_len(struct spi_geni_master *mas, u16 mode,
@@ -404,6 +360,7 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 
 	// BUG!  mode isn't the only thing that can be different between slaves,
 	// for example the chip select! aaronna
+#define ALLOW_LAST_MODE_BUG
 #ifdef ALLOW_LAST_MODE_BUG
 	if (mas->last_mode != spi_slv->mode) {
 #endif
@@ -434,7 +391,8 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 	}
 #endif
 
-	return geni_spi_set_clock_and_bw(mas, spi_slv->max_speed_hz);
+       //setup_se_xfer will call this
+       return 0; // geni_spi_set_clock_and_bw(mas, spi_slv->max_speed_hz);
 }
 
 static void
@@ -591,6 +549,8 @@ static int spi_geni_prepare_message(struct spi_controller *spi,
 	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	int ret;
 
+	TRACE_BEGIN_CTX();
+
 	switch (mas->cur_xfer_mode) {
 	case GENI_SE_FIFO:
 	case GENI_SE_DMA:
@@ -708,7 +668,12 @@ static int spi_geni_init(struct spi_geni_master *mas)
 	else
 		mas->oversampling = 1;
 
+	mas->last_mode = 0xffff; //init to some value	
+	
+	fifo_disable = readl(se->base + GENI_IF_DISABLE_RO) & FIFO_IF_DISABLE;
+#ifdef ALLOW_DMA
 	fifo_disable = 0;
+#endif
 	switch (fifo_disable) {
 	case 1:
 		ret = spi_geni_grab_gpi_chan(mas);
@@ -734,7 +699,7 @@ static int spi_geni_init(struct spi_geni_master *mas)
 		break;
 	}
 
-	/* We always control CS manually */
+	/* We never control CS manually */
 	if (!spi->target) {
 		spi_tx_cfg = readl(se->base + SE_SPI_TRANS_CFG);
 		spi_tx_cfg &= ~CS_TOGGLE;
@@ -768,6 +733,8 @@ static bool geni_spi_handle_tx(struct spi_geni_master *mas)
 	unsigned int bytes_per_fifo_word = geni_byte_per_fifo_word(mas);
 	unsigned int i = 0;
 
+	TRACE_BEGIN_CTX();
+
 	/* Stop the watermark IRQ if nothing to send */
 	if (!mas->cur_xfer) {
 		writel(0, se->base + SE_GENI_TX_WATERMARK_REG);
@@ -788,7 +755,7 @@ static bool geni_spi_handle_tx(struct spi_geni_master *mas)
 		bytes_to_write = min(bytes_per_fifo_word, max_bytes - i);
 		for (j = 0; j < bytes_to_write; j++)
 			fifo_byte[j] = tx_buf[i++];
-		iowrite32_rep(se->base + SE_GENI_TX_FIFOn, &fifo_word, 1);
+		iowrite32_rep(se->base + SE_GENI_TX_FIFOn, &fifo_word, 1); //cpu usage scales with this function when transferring more bytes
 	}
 	mas->tx_rem_bytes -= max_bytes;
 	if (!mas->tx_rem_bytes) {
@@ -807,6 +774,8 @@ static void geni_spi_handle_rx(struct spi_geni_master *mas)
 	u8 *rx_buf;
 	unsigned int bytes_per_fifo_word = geni_byte_per_fifo_word(mas);
 	unsigned int i = 0;
+
+	TRACE_BEGIN_CTX();
 
 	rx_fifo_status = readl(se->base + SE_GENI_RX_FIFO_STATUS);
 	rx_bytes = (rx_fifo_status & RX_FIFO_WC_MSK) * bytes_per_fifo_word;
@@ -847,9 +816,12 @@ static int setup_se_xfer(struct spi_transfer *xfer,
 				u16 mode, struct spi_controller *spi)
 {
 	u32 m_cmd = 0;
+	u32 m_params = 0;
 	u32 len;
 	struct geni_se *se = &mas->se;
 	int ret;
+
+	TRACE_BEGIN_CTX();
 
 	/*
 	 * Ensure that our interrupt handler isn't still running from some
@@ -900,6 +872,7 @@ static int setup_se_xfer(struct spi_transfer *xfer,
 	 * expected to fit into in 1 entry almost always, and if any
 	 * doesn't for any reason we fall back to FIFO mode anyway
 	 */
+#ifdef ALLOW_DMA
 	if (!xfer->tx_sg.nents && !xfer->rx_sg.nents)
 		mas->cur_xfer_mode = GENI_SE_FIFO;
 	else if (xfer->tx_sg.nents > 1 || xfer->rx_sg.nents > 1) {
@@ -908,15 +881,24 @@ static int setup_se_xfer(struct spi_transfer *xfer,
 		mas->cur_xfer_mode = GENI_SE_FIFO;
 	} else
 		mas->cur_xfer_mode = GENI_SE_DMA;
+#else
 	mas->cur_xfer_mode = GENI_SE_FIFO;
-	geni_se_select_mode(se, mas->cur_xfer_mode);
+#endif
+	//this should be setup in the init function already
+	//geni_se_select_mode(se, mas->cur_xfer_mode);
+
+	/* don't toggle CS unless CS change is needed and its the last transfer */
+	if (!xfer->cs_change) {
+		if (!list_is_last(&xfer->transfer_list, &spi->cur_msg->transfers))
+			m_params = FRAGMENTATION;
+	}
 
 	/*
 	 * Lock around right before we start the transfer since our
 	 * interrupt could come in at any time now.
 	 */
 	spin_lock_irq(&mas->lock);
-	geni_se_setup_m_cmd(se, m_cmd, FRAGMENTATION);
+	geni_se_setup_m_cmd(se, m_cmd, m_params);
 
 	if (mas->cur_xfer_mode == GENI_SE_DMA) {
 		if (m_cmd & SPI_RX_ONLY)
@@ -940,6 +922,8 @@ static int spi_geni_transfer_one(struct spi_controller *spi,
 {
 	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	int ret;
+
+	TRACE_BEGIN_CTX();
 
 	if (spi_geni_is_abort_still_pending(mas))
 		return -EBUSY;
@@ -1159,14 +1143,6 @@ static int spi_geni_probe(struct platform_device *pdev)
 	ret = spi_geni_init(mas);
 	if (ret)
 		return ret;
-
-	/*
-	 * check the mode supported and set_cs for fifo mode only
-	 * for dma (gsi) mode, the gsi will set cs based on params passed in
-	 * TRE
-	 */
-	if (!spi->target && mas->cur_xfer_mode == GENI_SE_FIFO)
-		spi->set_cs = spi_geni_set_cs;
 
 	/*
 	 * TX is required per GSI spec, see setup_gsi_xfer().
