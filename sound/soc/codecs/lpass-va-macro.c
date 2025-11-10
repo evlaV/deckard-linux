@@ -925,14 +925,18 @@ static int va_macro_digital_mute(struct snd_soc_dai *dai, int mute, int stream)
 			 VA_MACRO_DEC_MAX) {
 		tx_vol_ctl_reg = CDC_VA_TX0_TX_PATH_CTL +
 					VA_MACRO_TX_PATH_OFFSET * decimator;
-		if (mute)
+		if (mute) {
 			snd_soc_component_update_bits(component, tx_vol_ctl_reg,
 					CDC_VA_TX_PATH_PGA_MUTE_EN_MASK,
 					CDC_VA_TX_PATH_PGA_MUTE_EN);
-		else
+		} else {
 			snd_soc_component_update_bits(component, tx_vol_ctl_reg,
 					CDC_VA_TX_PATH_PGA_MUTE_EN_MASK,
 					CDC_VA_TX_PATH_PGA_MUTE_DISABLE);
+			/* short delay required to avoid pop */
+			if (!in_atomic())
+				usleep_range(6000, 6010);
+		}
 	}
 
 	return 0;
@@ -1726,6 +1730,7 @@ static const struct of_device_id va_macro_dt_match[] = {
 	{ .compatible = "qcom,sm8250-lpass-va-macro", .data = &sm8250_va_data },
 	{ .compatible = "qcom,sm8450-lpass-va-macro", .data = &sm8450_va_data },
 	{ .compatible = "qcom,sm8550-lpass-va-macro", .data = &sm8550_va_data },
+	{ .compatible = "qcom,sm8650-lpass-va-macro", .data = &sm8550_va_data },
 	{ .compatible = "qcom,sc8280xp-lpass-va-macro", .data = &sm8450_va_data },
 	{}
 };

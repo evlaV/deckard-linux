@@ -3026,6 +3026,8 @@ static const struct of_device_id wsa_macro_dt_match[] = {
 	}, {
 		.compatible = "qcom,sm8550-lpass-wsa-macro",
 	}, {
+		.compatible = "qcom,sm8650-lpass-wsa-macro",
+	}, {
 		.compatible = "qcom,sc8280xp-lpass-wsa-macro",
 		.data = (void *)LPASS_MACRO_FLAG_HAS_NPL_CLOCK,
 	},
