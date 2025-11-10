@@ -16,7 +16,8 @@
 #include <linux/soc/qcom/geni-se.h>
 #include <linux/spi/spi.h>
 #include <linux/spinlock.h>
-#include <trace/gpuvis.h>
+//#include <trace/gpuvis.h>
+#define TRACE_BEGIN_CTX()  
 
 /* SPI SE specific registers and respective register fields */
 #define SE_SPI_CPHA		0x224
