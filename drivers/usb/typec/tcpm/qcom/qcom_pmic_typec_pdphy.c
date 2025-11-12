@@ -451,6 +451,161 @@ static int qcom_pmic_typec_pdphy_set_roles(struct tcpc_dev *tcpc, bool attached,
 	return ret;
 }
 
+#define USBIN_BASE								0x2900
+
+#define USBIN_CURRENT_LIMIT_CFG_REG				(USBIN_BASE + 0x52)
+#define MAX_USBIN_CURRENT_MA					3000
+#define MIN_USBIN_CURRENT_MA					0
+#define USBIN_CURRENT_STEP_MA					50
+
+#define USBIN_CURRENT_LIMIT_OVERRIDE_REG		(USBIN_BASE + 0x51)
+#define ICL_OVERRIDE_ENABLED_AFTER_APSD			0x10
+
+#define USBIN_AICL_CFG_REG						(USBIN_BASE + 0x60)
+#define USBIN_AICL_ENABLED						BIT(7)
+#define USBIN_AICL_QWLS_BD_TRIG_EN				BIT(6)
+#define USBIN_AICL_HDC_EN						BIT(5)
+#define USBIN_AICL_START_AT_MAX					BIT(4)
+
+static int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int icl_ma)
+{
+	int val_u = icl_ma;
+	int val_raw;
+
+	if (icl_ma > MAX_USBIN_CURRENT_MA || icl_ma < MIN_USBIN_CURRENT_MA)
+		dev_err(pmic_typec_pdphy->dev, "USBIN current %d is out of range [%d, %d]\n", icl_ma, MAX_USBIN_CURRENT_MA, MIN_USBIN_CURRENT_MA);
+
+	if (val_u > MAX_USBIN_CURRENT_MA)
+		val_u = MAX_USBIN_CURRENT_MA;
+	if (val_u < MIN_USBIN_CURRENT_MA)
+		val_u = MIN_USBIN_CURRENT_MA;
+
+	val_raw = (val_u - MIN_USBIN_CURRENT_MA) / USBIN_CURRENT_STEP_MA;
+
+
+	regmap_write(pmic_typec_pdphy->regmap, USBIN_AICL_CFG_REG, USBIN_AICL_START_AT_MAX | USBIN_AICL_ENABLED | USBIN_AICL_HDC_EN);
+	regmap_write(pmic_typec_pdphy->regmap, USBIN_CURRENT_LIMIT_OVERRIDE_REG, ICL_OVERRIDE_ENABLED_AFTER_APSD);
+	return regmap_write(pmic_typec_pdphy->regmap, USBIN_CURRENT_LIMIT_CFG_REG, val_raw);
+}
+
+#define USBIN_ADAPTER_USB_OVP_CTRL_REG		(USBIN_BASE + 0xA8)
+#define USBIN_ADAPTER_USB_OVP_CTRL_MASK		(BIT(2) | BIT(1) | BIT(0))
+#define USBIN_ADAPTER_USB_OVP_CTRL_13P5V	0x01
+#define USBIN_ADAPTER_USB_OVP_CTRL_16P4V	0x02
+
+static int qcom_pmic_typec_pdphy_set_over_voltage_protection(struct pmic_typec_pdphy *pmic_typec_pdphy)
+{
+	int ret;
+
+	// Just hardcode to 16.4 Volts for now, default is 6.9 Volts
+	ret = regmap_update_bits(pmic_typec_pdphy->regmap, USBIN_ADAPTER_USB_OVP_CTRL_REG,
+		USBIN_ADAPTER_USB_OVP_CTRL_MASK, USBIN_ADAPTER_USB_OVP_CTRL_16P4V);
+
+	return ret;
+}
+
+static int qcom_pmic_typec_pdphy_get_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy)
+{
+	// 900 mA
+	int limit = 900;
+
+	// TODO Add QC/BC1.2/DC1.5A Support Here
+	// Default to 900 mA for USB 3.1
+
+	return limit;
+}
+
+#define USBIN_ADAPTER_ALLOW_OVERRIDE_REG		(USBIN_BASE + 0x41)
+#define CONTINUOUS								BIT(3)
+#define FORCE_12V								BIT(2)
+#define FORCE_9V								BIT(1)
+#define FORCE_5V								BIT(0)
+#define FORCE_NULL								0
+
+#define USBIN_HVOV_SEL							(USBIN_BASE + 0x42)
+#define VOLT_14P2								0x00
+#define VOLT_17P2								0x01
+#define VOLT_20P2								0x10
+#define VOLT_22P0								0x11
+
+#define USBIN_CONT_AICL_THRESHOLD_REG			(USBIN_BASE + 0x62)
+// #define FORCE_AICL_4P7V							0x06
+// #define FORCE_AICL_4P8V							0x07
+// #define FORCE_AICL_8P6V							0x1A
+// #define FORCE_AICL_8P8V							0x1B
+// #define FORCE_AICL_11P6V						0x29
+// #define FORCE_AICL_11P8V						0x2A
+// #define FORCE_AICL_14P4V						0x33
+// #define FORCE_AICL_14P8V						0x34
+
+static int qcom_pmic_typec_pdphy_set_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy,
+					u32 max_ma, u32 mv)
+{
+	// NOTE If we want to allow more than 15 Volts, 0x2940 must be updated from 0x08 -> 0x0C
+
+	// AICL Threshold is from PD Spec.
+	// 95/100 is -5% tolernace allowed on output voltage.
+	// 1000 is mV drop, PD spec is 750 mV at connecter. Since we have another 80 mOhms in headstrap, we can drop another 250 mV at 3 Amps.
+	u32 aicl_threshold_mv = mv * 95 / 100 - 1000 * max_ma / 3000;
+	u8 cont_aicl_thres_reg = 0;
+
+	if (aicl_threshold_mv > 19200) {
+		// Upper Bound
+		cont_aicl_thres_reg = 63;
+
+	} else if (aicl_threshold_mv > 12800) {
+		// 400 mV steps
+		cont_aicl_thres_reg = (aicl_threshold_mv - 12800) / 400 + 47;
+
+	} else if (aicl_threshold_mv > 4800) {
+		cont_aicl_thres_reg = (aicl_threshold_mv - 4800) / 200 + 7;
+
+	} else if (aicl_threshold_mv > 4100) {
+		cont_aicl_thres_reg = (aicl_threshold_mv - 4100) / 100;
+
+	} // else Min Threshold
+
+	// Set max allowed voltage and AICL
+	if (mv >= 15000) {
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, CONTINUOUS);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_17P2);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, cont_aicl_thres_reg);
+	} else if (mv >= 12000) {
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_12V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_14P2);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, cont_aicl_thres_reg);
+	} else if (mv >= 9000) {
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_9V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_14P2);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, cont_aicl_thres_reg);
+	} else {
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_ADAPTER_ALLOW_OVERRIDE_REG, FORCE_5V);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_HVOV_SEL, VOLT_14P2);
+		regmap_write(pmic_typec_pdphy->regmap, USBIN_CONT_AICL_THRESHOLD_REG, cont_aicl_thres_reg);
+	}
+
+	// Set the max allowed input current
+	pdphy_set_usbin_current_limit(pmic_typec_pdphy, max_ma);
+
+	return 0;
+}
+
+static int qcom_pmic_typec_core_get_current_limit(struct tcpc_dev *tcpc)
+{
+	// Fall Back Current Limit when PD is not available to check PMIC
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+
+	return qcom_pmic_typec_pdphy_get_current_limit(tcpm->pmic_typec_pdphy);
+}
+
+static int qcom_pmic_typec_core_set_current_limit(struct tcpc_dev *tcpc,
+						 u32 max_ma, u32 mv)
+{
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+
+	return qcom_pmic_typec_pdphy_set_current_limit(tcpm->pmic_typec_pdphy, max_ma, mv);
+}
+
 static int qcom_pmic_typec_pdphy_enable(struct pmic_typec_pdphy *pmic_typec_pdphy)
 {
 	struct device *dev = pmic_typec_pdphy->dev;
@@ -584,6 +739,12 @@ int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
 	spin_lock_init(&pmic_typec_pdphy->lock);
 	INIT_WORK(&pmic_typec_pdphy->reset_work, qcom_pmic_typec_pdphy_sig_reset_work);
 
+	// Set Over Voltage Protection to Allow 9 VDC USB In
+	ret = qcom_pmic_typec_pdphy_set_over_voltage_protection(pmic_typec_pdphy);
+	if (ret) {
+		dev_warn(dev, "pdphy_probe failed to set OVP: %d\n", ret);
+	}
+
 	for (i = 0; i < res->nr_irqs; i++, irq_data++) {
 		irq = platform_get_irq_byname(pdev, res->irq_params[i].irq_name);
 		if (irq < 0)
@@ -607,6 +768,8 @@ int qcom_pmic_typec_pdphy_probe(struct platform_device *pdev,
 	tcpm->tcpc.set_pd_rx = qcom_pmic_typec_pdphy_set_pd_rx;
 	tcpm->tcpc.set_roles = qcom_pmic_typec_pdphy_set_roles;
 	tcpm->tcpc.pd_transmit = qcom_pmic_typec_pdphy_pd_transmit;
+	tcpm->tcpc.get_current_limit = qcom_pmic_typec_core_get_current_limit;
+	tcpm->tcpc.set_current_limit = qcom_pmic_typec_core_set_current_limit;
 
 	tcpm->pdphy_start = qcom_pmic_typec_pdphy_start;
 	tcpm->pdphy_stop = qcom_pmic_typec_pdphy_stop;

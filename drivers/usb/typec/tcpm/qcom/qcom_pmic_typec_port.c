@@ -621,6 +621,95 @@ done:
 	return ret;
 }
 
+// PD tSafe0V = 650000 usec
+#define VBUS_SAFE_TIMEOUT_USEC  650000
+#define VBUS_SAFE_CHECK_PERIOD_USEC 130000
+
+static bool qcom_pmic_typec_port_is_vbus_vsafe0v(struct pmic_typec_port *pmic_typec_port)
+{
+	unsigned int sensor_status;
+	bool safe = false;
+	int ret;
+
+	ret = regmap_read(pmic_typec_port->regmap,
+			  pmic_typec_port->base + TYPEC_SM_STATUS_REG,
+			  &sensor_status);
+	if (ret) {
+		safe = false;
+	} else {
+		safe = (sensor_status & TYPEC_SM_VBUS_VSAFE0V);
+	}
+
+	//pr_warn("qcom_pmic_typec_is_vbus_vsafe0v reading 0x%08X - safe %d\n", sensor_status, safe);
+
+	return (safe);
+}
+
+static int qcom_pmic_typec_port_legacy_cable_reset(struct pmic_typec_port *pmic_typec_port)
+{
+	int ret,i = 0;
+	uint regval;
+	// workaround for legacy cable detected on PON
+	// todo is there a way to pass the PON reason to this module?
+	// check legacy cable status
+	regmap_read(pmic_typec_port->regmap,
+				pmic_typec_port->base + LEGACY_CABLE_STATUS_REG, &regval);
+	if ( regval & TYPEC_LEGACY_CABLE_STATUS ) {
+		dev_dbg(pmic_typec_port->dev, "Legacy cable detected on TypeC start, toggling CC to clear\n");
+		// disable cc ( set port role disabled )
+		ret = regmap_write(pmic_typec_port->regmap,
+				pmic_typec_port->base + TYPEC_MODE_CFG_REG,
+				TYPEC_DISABLE_CMD);
+		// wait till vbus safe 0V, 650 msec timeout from PD spec
+		i = 0;
+		while ( !qcom_pmic_typec_port_is_vbus_vsafe0v(pmic_typec_port) && ( i++ < ( VBUS_SAFE_TIMEOUT_USEC / VBUS_SAFE_CHECK_PERIOD_USEC ) ) ) {
+				usleep_range(VBUS_SAFE_CHECK_PERIOD_USEC, VBUS_SAFE_CHECK_PERIOD_USEC+1000);
+		}
+		// renable cc ( set port role DRP )
+		ret = regmap_write(pmic_typec_port->regmap,
+				pmic_typec_port->base + TYPEC_MODE_CFG_REG, 0);
+	}
+    return ret;
+}
+
+static int qcom_pmic_typec_port_disable_cc(struct pmic_typec_port *pmic_typec_port)
+{
+	int ret;
+	// disable cc ( set port role disabled )
+	ret = regmap_write(pmic_typec_port->regmap,
+			pmic_typec_port->base + TYPEC_MODE_CFG_REG,
+			TYPEC_DISABLE_CMD);
+	return 0;
+}
+
+static bool qcom_pmic_typec_is_vbus_vsafe0v(struct tcpc_dev *tcpc)
+{
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+	bool ret;
+
+	//mutex_lock(&tcpm->lock); XXX what was this mutex for?
+	ret = qcom_pmic_typec_port_is_vbus_vsafe0v(tcpm->pmic_typec_port);
+	//mutex_unlock(&tcpm->lock);
+
+	return ret;
+}
+
+static int qcom_pmic_typec_legacy_cable_reset(struct tcpc_dev *tcpc)
+{
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+
+	return qcom_pmic_typec_port_legacy_cable_reset(tcpm->pmic_typec_port);
+}
+
+static int qcom_pmic_typec_disable_pd(struct tcpc_dev *tcpc)
+{
+	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+
+	qcom_pmic_typec_port_disable_cc(tcpm->pmic_typec_port);
+	tcpm->pdphy_stop(tcpm);
+	return 0;
+}
+
 #define TYPEC_INTR_EN_CFG_1_MASK		  \
 	(TYPEC_LEGACY_CABLE_INT_EN		| \
 	 TYPEC_NONCOMPLIANT_LEGACY_CABLE_INT_EN	| \
@@ -763,9 +852,14 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 	tcpm->tcpc.set_polarity = qcom_pmic_typec_port_set_polarity;
 	tcpm->tcpc.set_vconn = qcom_pmic_typec_port_set_vconn;
 	tcpm->tcpc.start_toggling = qcom_pmic_typec_port_start_toggling;
+	tcpm->tcpc.is_vbus_vsafe0v = qcom_pmic_typec_is_vbus_vsafe0v;
+	tcpm->tcpc.qcom_legacy_reset = qcom_pmic_typec_legacy_cable_reset;
+	tcpm->tcpc.disable_pd = qcom_pmic_typec_disable_pd;
 
 	tcpm->port_start = qcom_pmic_typec_port_start;
 	tcpm->port_stop = qcom_pmic_typec_port_stop;
+
+	qcom_pmic_typec_port_legacy_cable_reset(pmic_typec_port);
 
 	return 0;
 }
