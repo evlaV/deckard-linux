@@ -1118,7 +1118,11 @@
 	clock-frequency = <32764>;
 };
 
+#ifdef AYANEO
+&swr3 {
+#else
 &swr0 {
+#endif
 	status = "okay";
 
 	/* WSA8845, Speaker North */

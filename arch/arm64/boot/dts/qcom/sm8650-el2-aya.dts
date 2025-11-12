@@ -1,0 +1,147 @@
+#include "sm8650-aya.dts"
+#include "sm8650-el2.dtsi"
+
+/ {
+	sound {
+		compatible = "qcom,lpass-sndcard";
+		model = "SM8650-AYA-LPASS";
+
+		wcd-playback {
+			link-name = "WCD Playback";
+
+			platform {
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_RXTX_CODEC_RX_01>;
+			};
+
+			codec {
+				sound-dai = <&wcd939x 0>, <&swr1 0>, <&lpass_rxmacro 0>;
+			};
+		};
+
+		wcd-mix-playback {
+			link-name = "WCD MIX Playback";
+
+			platform {
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_RXTX_CODEC_RX_23>;
+			};
+
+			codec {
+				sound-dai = <&wcd939x 0>, <&swr1 0>, <&lpass_rxmacro 1>;
+			};
+		};
+
+		wsa {
+			link-name = "WSA Playback";
+
+			platform {
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_RX_01_WSA2>;
+			};
+
+			codec {
+				sound-dai = <&north_spkr>, <&south_spkr>, <&swr3 0>, <&lpass_wsa2macro 0>;
+			};
+		};
+
+		wsa-mix {
+			link-name = "WSA MIX Playback";
+
+			platform {
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_RX_23_WSA2>;
+			};
+
+			codec {
+				sound-dai = <&north_spkr>, <&south_spkr>, <&swr3 0>, <&lpass_wsa2macro 1>;
+			};
+		};
+
+		dp {
+			link-name = "DisplayPort Playback";
+
+			platform {
+				sound-dai = <&lpass_hdmitx 0>;
+			};
+
+			codec {
+				sound-dai = <&mdss_dp0>;
+			};
+		};
+
+		wcd-capture {
+			link-name = "WCD Capture";
+
+			platform {
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_RXTX_CODEC_TX>;
+			};
+
+			codec {
+				sound-dai = <&wcd939x 1>, <&swr2 0>, <&lpass_txmacro 0>;
+			};
+		};
+
+		wcd-echo {
+			link-name = "WCD ECHO Capture";
+
+			platform {
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_WSA_CODEC_TX_ECHO>;
+			};
+
+			codec {
+				sound-dai = <&lpass_rxmacro 4>;
+			};
+		};
+
+		wsa-vi {
+			link-name = "WSA VI Capture";
+
+			platform {
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_TX_VI_WSA2>;
+			};
+
+			codec {
+				sound-dai = <&lpass_wsa2macro 2>;
+			};
+		};
+
+		wsa-echo {
+			link-name = "WSA ECHO Capture";
+
+			platform {
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_TX_ECHO_WSA2>;
+			};
+
+			codec {
+				sound-dai = <&lpass_wsa2macro 3>;
+			};
+		};
+
+		/* note: not working, wrong amixer settings? */
+		dmic {
+			link-name = "VA Capture";
+			capture;
+
+			platform {
+				sound-dai = <&lpass_va_lpaif LPAIF_VA_CODEC_TX>;
+			};
+
+			codec {
+				sound-dai = <&lpass_vamacro 0>;
+			};
+		};
+	};
+};
+
+&wcd_usbss_sbu_mux {
+	remote-endpoint = <&typec_controller>;
+};
+
+&pm8550b_typec_mux_out {
+	remote-endpoint = <&redriver_ss_out>;
+};
+
+&usb_dp_qmpphy_out {
+	remote-endpoint = <&redriver_ss_in>;
+};
+
+&redriver_ss_out {
+	remote-endpoint = <&pm8550b_typec_mux_out>;
+};

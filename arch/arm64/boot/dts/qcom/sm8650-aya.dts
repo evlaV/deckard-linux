@@ -1,0 +1,519 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) 2024, Linaro Limited
+ */
+
+/dts-v1/;
+
+#define AYANEO
+#include "sm8650-hdk.dts"
+
+// no pm8010:
+/delete-node/ &pm8010_m;
+/delete-node/ &pm8010_n;
+/ {
+	thermal-zones {
+		/delete-node/ pm8010-m-thermal;
+		/delete-node/ pm8010-n-thermal;
+	};
+};
+&apps_rsc {
+	/delete-node/ regulators-6;
+	/delete-node/ regulators-7;
+};
+
+/delete-node/ &lt9611_1v2;
+/delete-node/ &lt9611_3v3;
+/delete-node/ &lt9611_codec;
+/delete-node/ &lt9611_irq_pin;
+/delete-node/ &lt9611_rst_pin;
+/delete-node/ &vreg_bob_3v3;
+
+&pmic_glink_ss_in {
+	remote-endpoint = <&redriver_ss_out>;
+};
+
+#if 0
+&wcd939x {
+	mode-switch;
+	orientation-switch;
+
+	port {
+		wcd_codec_headset_in: endpoint {
+			remote-endpoint = <&wcd_usbss_headset_out>;
+		};
+	};
+};
+
+&wcd_usbss {
+	ports {
+		port@1 {
+			reg = <1>;
+
+			wcd_usbss_headset_out: endpoint {
+				remote-endpoint = <&wcd_codec_headset_in>;
+			};
+		};
+	};
+};
+#endif
+
+/ {
+	model = "AYANEO Pocket S2";
+	compatible = "qcom,sm8650-ayaneo-ps2", "qcom,sm8650";
+
+	aliases {
+		hsuart0 = &uart13;
+	};
+
+	/delete-node/ hdmi-out;
+
+	fan0: pwm-fan {
+		status = "okay";
+		compatible = "pwm-fan";
+		#cooling-cells = <2>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <14 IRQ_TYPE_EDGE_FALLING>;
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&fan0_pwr_active>, <&pwm_fan_ctrl_default>, <&fan0_int_active>;
+		pinctrl-1 = <&fan0_pwr_sleep>;
+		pwms = <&pm8550_pwm 3 50000>;
+		cooling-levels = <0 16 32 45 60 80 105 130 155 180 205 230 255>;
+	};
+
+	/delete-node/ leds;
+
+	pmic-glink {
+		/delete-property/ orientation-gpios;
+	};
+
+	// sound {} sm8650-ayaneo-ps2.dts changed model/audio-routing properties
+
+	thermal-zones {
+		cpu7-top-thermal {
+			trips {
+				cpu7_top_trip0: trip-point0 { temperature = <38000>; hysteresis = <2000>; type = "passive"; };
+				cpu7_top_trip1: trip-point1 { temperature = <42000>; hysteresis = <2000>; type = "passive"; };
+				cpu7_top_trip2: trip-point2 { temperature = <46000>; hysteresis = <2000>; type = "passive"; };
+				cpu7_top_trip3: trip-point3 { temperature = <50000>; hysteresis = <2000>; type = "passive"; };
+				cpu7_top_trip4: trip-point4 { temperature = <55000>; hysteresis = <2000>; type = "passive"; };
+				cpu7_top_trip5: trip-point5 { temperature = <70000>; hysteresis = <2000>; type = "passive"; };
+				cpu7_top_trip6: trip-point6 { temperature = <75000>; hysteresis = <3000>; type = "passive"; };
+				cpu7_top_trip7: trip-point7 { temperature = <80000>; hysteresis = <3000>; type = "passive"; };
+			};
+			cooling-maps {
+				map0 { trip = <&cpu7_top_trip0>; cooling-device = <&fan0 1 1>; };
+				map1 { trip = <&cpu7_top_trip1>; cooling-device = <&fan0 2 3>; };
+				map2 { trip = <&cpu7_top_trip2>; cooling-device = <&fan0 4 5>; };
+				map3 { trip = <&cpu7_top_trip3>; cooling-device = <&fan0 6 6>; };
+				map4 { trip = <&cpu7_top_trip4>; cooling-device = <&fan0 7 8>; };
+				map5 { trip = <&cpu7_top_trip5>; cooling-device = <&fan0 9 9>; };
+				map6 { trip = <&cpu7_top_trip6>; cooling-device = <&fan0 10 10>; };
+				map7 { trip = <&cpu7_top_trip7>; cooling-device = <&fan0 11 11>; };
+			};
+		};
+	};
+
+	vph_pwr: regulator-vph-pwr {
+		compatible = "regulator-fixed";
+
+		regulator-name = "vph_pwr";
+		regulator-min-microvolt = <3700000>;
+		regulator-max-microvolt = <3700000>;
+
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	vreg_bl1_en: regulator-bl1-en {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_bl1_en";
+		gpio = <&tlmm 163 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on; // XXX
+	};
+
+	vreg_bl2_en: regulator-bl2-en {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_bl2_en";
+		gpio = <&tlmm 164 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on; // XXX
+	};
+};
+
+/* DMIC 01 23 */
+&lpass_vamacro {
+	pinctrl-0 = <&dmic01_default>, <&dmic23_default>;
+	pinctrl-names = "default";
+	vdd-micb-supply = <&vreg_l15b_1p8>;
+	qcom,dmic-sample-rate = <4800000>;
+};
+
+&gpi_dma2 {
+	status = "okay";
+};
+
+&i2c4 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	touchscreen@5d {
+		reg = <0x5d>;
+		status = "okay";
+		compatible = "goodix,gt911";
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <162 IRQ_TYPE_EDGE_FALLING>;
+
+		reset-gpios = <&tlmm 161 GPIO_ACTIVE_HIGH>;
+		VDDIO-supply = <&vreg_l14b_3p2>;
+		AVDD28-supply = <&vreg_l14b_3p2>;
+
+		touchscreen-size-x = <1440>;
+		touchscreen-size-y = <2560>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&ts_reset_default>, <&ts_irq_default>, <&usb_typec_pwr_en>;
+	};
+};
+
+&i2c6 {
+	/delete-property/ clock-frequency;
+
+	typec-mux@1c {
+		compatible = "onnn,nb7vpq904m";
+		reg = <0x1c>;
+
+		vcc-supply = <&vreg_l15b_1p8>;
+
+		retimer-switch;
+		orientation-switch;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				redriver_ss_out: endpoint {
+					remote-endpoint = <&pmic_glink_ss_in>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				redriver_ss_in: endpoint {
+					data-lanes = <3 2 1 0>;
+					remote-endpoint = <&usb_dp_qmpphy_out>;
+				};
+			};
+		};
+	};
+};
+
+&i2c9 {
+	status = "okay";
+
+	/* Screen power */
+	sgm3804: regulator@3e {
+		compatible = "sgmicro,sgm3804";
+		reg = <0x3e>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&panel_pwr_active>;
+		regulator-name = "panel-avdd";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		reset-gpios = <&tlmm 59 GPIO_ACTIVE_HIGH>, <&tlmm 58 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+
+	/* Backlight */
+	sy7758_bl: sy7758@2e {
+		compatible = "silergy,sy7758";
+		reg = <0x2e>;
+		status = "okay";
+	};
+};
+
+&mdss_dsi0 {
+	status = "okay";
+	qcom,master-dsi;
+	qcom,dual-dsi-mode;
+	qcom,sync-dual-dsi;
+	vdda-supply = <&vreg_l3i_1p2>;
+
+	panel@0 {
+		status = "okay";
+		compatible = "ayaneo,wt0630-2k";
+		reg = <0>;
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&disp0_reset_n_active>;
+		pinctrl-1 = <&disp0_reset_n_suspend>;
+
+		vddio-supply = <&vreg_l12b_1p8>;
+		vci-supply = <&vreg_l13b_3p0>;
+		vdd-supply = <&vreg_l11b_1p2>;
+		avdd-supply = <&sgm3804>;
+
+		reset-gpios = <&tlmm 133 GPIO_ACTIVE_LOW>;
+		backlight = <&sy7758_bl>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				panel0_in_0: endpoint {
+					remote-endpoint = <&mdss_dsi0_out>;
+				};
+			};
+
+			port@1{
+				reg = <1>;
+				panel0_in_1: endpoint {
+					remote-endpoint = <&mdss_dsi1_out>;
+				};
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	remote-endpoint = <&panel0_in_0>;
+	data-lanes = <0 1 2 3>;
+};
+
+&mdss_dsi0_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+
+	status = "okay";
+};
+
+&mdss_dsi1 {
+	vdda-supply = <&vreg_l3i_1p2>;
+	qcom,dual-dsi-mode;
+	qcom,sync-dual-dsi;
+	assigned-clock-parents = <&mdss_dsi0_phy DSI_BYTE_PLL_CLK>, <&mdss_dsi0_phy DSI_PIXEL_PLL_CLK>;
+	status = "okay";
+};
+
+&mdss_dsi1_out {
+	remote-endpoint = <&panel0_in_1>;
+	data-lanes = <0 1 2 3>;
+};
+
+&mdss_dsi1_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+
+	status = "okay";
+};
+
+&pcie1 {
+	pinctrl-0 = <&pcie1_default_state>,<&upd720201_active>, <&gamepad_pwr_en>;
+};
+
+&pm8550_gpios {
+	pwm_fan_ctrl_default: pwm-fan-ctrl-default {
+		pins = "gpio9";
+		function = "func1";
+		output-low;
+		bias-disable;
+		power-source = <0>;
+		qcom,drive-strength = <3>; /* PMIC_GPIO_STRENGTH_LOW */
+	};
+
+	pwm_fan_ctrl_sleep: pwm-fan-ctrl-sleep {
+		pins = "gpio9";
+		function = "func0";
+		output-high;
+		bias-disable;
+		power-source = <0>;
+		qcom,drive-strength = <3>; /* PMIC_GPIO_STRENGTH_LOW */
+	};
+};
+
+&qupv3_id_2 {
+	/* AYANEO Controller serial interface */
+	uart13: serial@894000 {
+		compatible = "qcom,geni-uart";
+		reg = <0 0x00894000 0 0x4000>;
+		interrupts = <GIC_SPI 587 IRQ_TYPE_LEVEL_HIGH 0>;
+		clocks = <&gcc GCC_QUPV3_WRAP2_S5_CLK>;
+		clock-names = "se";
+		interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
+					&clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
+					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
+					&config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>;
+		interconnect-names = "qup-core",
+						"qup-config";
+		power-domains = <&rpmhpd RPMHPD_CX>;
+		operating-points-v2 = <&qup_opp_table_100mhz>;
+		pinctrl-0 = <&qup_uart13_default>;
+		pinctrl-names = "default";
+		status = "okay";
+	};
+};
+
+/delete-node/ &hwfence_shbuf;
+&reserved_memory {
+	lost_reg_mem: lost-reg-mem {
+		reg = <0 0x9b09c000 0 0x4000>;
+		no-map;
+	};
+
+	hwfence_shbuf: hwfence-shbuf@d4e23000 {
+		reg = <0 0xd4e23000 0 0x2dd000>;
+		no-map;
+	};
+
+	splash_region: splash-region {
+		label = "cont_splash_region";
+		reg = <0 0xd5100000 0 0x2b00000>;
+		no-map;
+	};
+};
+
+&tlmm {
+	gpio-reserved-ranges = <36 1>, <38 6>, <74 1>;
+
+	panel_pwr_active: panel-pwr-active-state {
+		pins = "gpio58", "gpio59", "gpio164", "gpio163";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-up;
+		output-high;
+	};
+
+	disp0_reset_n_active: disp0-reset-n-active-state {
+		pins = "gpio133";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	disp0_reset_n_suspend: disp0-reset-n-suspend-state {
+		pins = "gpio133";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	mdp_vsync_active: mdp-vsync-active-state {
+		pins = "gpio86";
+		function = "mdp_vsync";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	mdp_vsync_suspend: mdp-vsync-suspend-state {
+		pins = "gpio86";
+		function = "mdp_vsync";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	upd720201_active: upd720201-active-state {
+		pins = "gpio121",  "gpio122", "gpio123";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+		output-high;
+	};
+
+	gamepad_pwr_en: gamepad-pwr-en-active-state {
+		pins = "gpio28";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-high;
+	};
+
+	ts_irq_default: ts-irq-active-state {
+		pins = "gpio162";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+		input-enable;
+	};
+
+	ts_reset_default: ts-reset-active-state {
+		pins = "gpio161";
+		function = "gpio";
+		drive-strength = <8>;
+		input-enable;
+		bias-pull-down;
+	};
+
+	turbo_key_default: turbo-key-default-state {
+		pins = "gpio78", "gpio79", "gpio82";
+		function = "gpio";
+		drive-strength = <2>;
+		input-enable;
+		bias-pull-up;
+	};
+
+	tlmm_key_default: tlmm-key-default-state {
+		pins = "gpio2", "gpio126", "gpio128", "gpio129", "gpio127";
+		function = "gpio";
+		drive-strength = <2>;
+		input-enable;
+		bias-pull-up;
+	};
+
+	fan0_pwr_active: fan0-pwr-active-state {
+		pins = "gpio124","gpio125";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-high;
+	};
+
+	fan0_int_active: fan0-int-active-state {
+		pins = "gpio14";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-pull;
+		input-enable;
+	};
+
+	fan0_pwr_sleep: fan0-pwr-sleep-state {
+		pins = "gpio124", "gpio125";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-low;
+	};
+
+	usb_typec_pwr_en: usb-typec-vbus-en-state {
+		pins = "gpio108", "gpio109";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-high;
+	};
+
+	qup_uart13_default: qup-uart13-default-state {
+		/* TX, RX */
+		pins = "gpio22", "gpio23";
+		function = "qup2_se5";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	qup_uart13_sleep: qup-uart13-sleep-state {
+		/* TX, RX */
+		pins = "gpio22", "gpio23";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+};
+
+&usb_dp_qmpphy_out {
+	remote-endpoint = <&redriver_ss_in>;
+};
+
