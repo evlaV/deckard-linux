@@ -22,7 +22,7 @@
 #include <dt-bindings/mailbox/qcom-ipcc.h>
 #include <dt-bindings/phy/phy-qcom-qmp.h>
 #include <dt-bindings/power/qcom,rpmhpd.h>
-#include <dt-bindings/power/qcom-rpmpd.h>
+#include <dt-bindings/power/qcom-rpmpd.h> // XXX
 #include <dt-bindings/reset/qcom,sm8650-gpucc.h>
 #include <dt-bindings/soc/qcom,gpr.h>
 #include <dt-bindings/soc/qcom,rpmh-rsc.h>
@@ -717,10 +717,8 @@
 		};
 	};
 
-	memory@a0000000 {
+	memory@80000000 {
 		device_type = "memory";
-		/* We expect the bootloader to fill in the size */
-		reg = <0 0xa0000000 0 0>;
 	};
 
 	cpu0_opp_table: opp-table-cpu0 {
@@ -3990,7 +3988,9 @@
 			iommus = <&apps_smmu 0x60 0>;
 
 			lanes-per-direction = <2>;
-			qcom,ice = <&ice>;
+			// qcom,ice = <&ice>;
+
+			dma-coherent;
 
 			phys = <&ufs_mem_phy>;
 			phy-names = "ufsphy";
@@ -4095,11 +4095,17 @@
 
 			#clock-cells = <1>;
 			#reset-cells = <1>;
+
+			reboot-mode {
+				compatible = "syscon-reboot-mode";
+				offset = <0x19000>; /* TCSR_BOOT_MISC_DETECT */
+				mode-edl = <1>;
+			};
 		};
 
 		gpu: gpu@3d00000 {
 			compatible = "qcom,adreno-43051401", "qcom,adreno";
-			reg = <0x0 0x03d00000 0x0 0x40000>,
+			reg = <0x0 0x03d00000 0x0 0x61000>,
 			      <0x0 0x03d9e000 0x0 0x2000>,
 			      <0x0 0x03d61000 0x0 0x800>;
 			reg-names = "kgsl_3d0_reg_memory",
@@ -7014,7 +7020,7 @@
 			};
 		};
 
-		timer@17420000 {
+		timer: timer@17420000 {
 			compatible = "arm,armv7-timer-mem";
 			reg = <0 0x17420000 0 0x1000>;
 

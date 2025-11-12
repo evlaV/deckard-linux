@@ -23,7 +23,7 @@
 
 	aliases {
 		serial0 = &uart15;
-		serial1 = &uart14;
+		//serial1 = &uart14;
 	};
 
 	chosen {
@@ -284,6 +284,8 @@
 		vddrfa1p2-supply = <&vreg_s1c_1p2>;
 		vddrfa1p8-supply = <&vreg_s6c_1p8>;
 
+		voltage-list = <944000 1800000 1200000 976000 916000 1316000 1864000>;
+
 		clocks = <&rpmhcc RPMH_RF_CLK1>;
 
 		regulators {
@@ -521,7 +523,7 @@
 
 		vreg_s3c_0p9: smps3 {
 			regulator-name = "vreg_s3c_0p9";
-			regulator-min-microvolt = <976000>;
+			regulator-min-microvolt = <916000>;
 			regulator-max-microvolt = <1064000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
@@ -1065,10 +1067,14 @@
 	iommus = <&apps_smmu 0xa3 0x3>;
 
 	status = "okay";
+
+	firmware-name = "qcom/sm8650/qupv3fw.elf";
 };
 
 &qupv3_id_2 {
 	status = "okay";
+
+	firmware-name = "qcom/sm8650/qupv3fw.elf";
 };
 
 &remoteproc_adsp {
@@ -1121,7 +1127,7 @@
 		reg = <0 0>;
 		pinctrl-0 = <&spkr_1_sd_n_active>;
 		pinctrl-names = "default";
-		powerdown-gpios = <&lpass_tlmm 21 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&lpass_tlmm 21 GPIO_ACTIVE_LOW>;
 		#sound-dai-cells = <0>;
 		sound-name-prefix = "SpkrLeft";
 		vdd-1p8-supply = <&vreg_l15b_1p8>;
@@ -1144,7 +1150,7 @@
 		reg = <0 1>;
 		pinctrl-0 = <&spkr_2_sd_n_active>;
 		pinctrl-names = "default";
-		powerdown-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;
 		#sound-dai-cells = <0>;
 		sound-name-prefix = "SpkrRight";
 		vdd-1p8-supply = <&vreg_l15b_1p8>;
@@ -1255,6 +1261,7 @@
 	};
 };
 
+#if 0
 &uart14 {
 	status = "okay";
 
@@ -1272,6 +1279,7 @@
 		max-speed = <3200000>;
 	};
 };
+#endif
 
 &uart15 {
 	status = "okay";
