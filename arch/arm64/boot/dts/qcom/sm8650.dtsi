@@ -2008,7 +2008,7 @@
 			status = "disabled";
 		};
 
-		qupv3_id_1: geniqup@8c0000 {
+		qupv3_id_2: geniqup@8c0000 {
 			compatible = "qcom,geni-se-qup";
 			reg = <0 0x008c0000 0 0x2000>;
 
@@ -2875,7 +2875,7 @@
 			status = "disabled";
 		};
 
-		qupv3_id_0: geniqup@ac0000 {
+		qupv3_id_1: geniqup@ac0000 {
 			compatible = "qcom,geni-se-qup";
 			reg = <0 0x00ac0000 0 0x2000>;
 
