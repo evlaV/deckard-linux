@@ -40,6 +40,10 @@
  *      contexts within a single scope block, you must provide a unique `name`
  *      argument that is a valid variable name (a symbol, not a string).
  *
+ *    - TRACE_INSTANTANEOUS(name, ...): If you just want a single instant in time
+ *      marked, this uses the same format as the others and will get picked up by
+ *      analysis tools in the same way.
+ *
  * Conditional trace emission via a paired set of macros:
  *
  *    - TRACE_BEGIN_CTX_CONDITIONAL(name, ...)
@@ -94,6 +98,7 @@ int main()
     TRACE_BEGIN_CTX(TRACE_BASIC "This will not show line information");
     {
         TRACE_BEGIN_CTX_CONDITIONAL(name, "secret_number=10");
+        TRACE_INSTANTANEOUS("An instant inbetween");
         TRACE_END_CTX_CONDITIONAL(my_custom_conditional(begin_ctx), name, TRACE_BASIC);
     }
 
@@ -396,5 +401,21 @@ void gpuvis_trace_cleanup(struct gpuvis_trace_context_t *begin_ctx) {
 // Helper defines for `TRACE_END_CTX_CONDITIONAL()`
 #define TRACE_LONGER_THAN(us)   ((end_ctx->time - begin_ctx->time) > (us)*1000)
 #define TRACE_SHORTER_THAN(us)  ((end_ctx->time - begin_ctx->time) <= (us)*1000)
+
+// Instantaneous reporting, e.g. EventWriteString()
+#define TRACE_INSTANTANEOUS_IMPL(name, ...) { \
+    struct gpuvis_trace_context_t ctx; \
+    gpuvis_trace_init(&ctx, trace_ctx_id(), tracepoint_string(__func__), tracepoint_string(#name), tracepoint_string(FILE_LINE), NULL); \
+    char payload_storage[128]; \
+    gpuvis_trace_add_payload(&ctx, NULL, payload_storage, sizeof(payload_storage), "" __VA_ARGS__); \
+    gpuvis_trace_report(&ctx, tracepoint_string("ctx")); \
+}
+
+#define TRACE_INSTANTANEOUS(...) \
+    TRACE_INSTANTANEOUS_IMPL(, __VA_ARGS__) \
+
+#define TRACE_INSTANTANEOUS_NAMED(name, ...) \
+    TRACE_INSTANTANEOUS_IMPL(name, __VA_ARGS__) \
+
 
 #endif // _UAPI_TRACE_GPUVIS_H
