@@ -2203,7 +2203,7 @@
 		address-width = <16>;
 		status = "okay";
 		vcc-supply = <&rgb_3v0_vout>;
-		label = "passthrough_cams_eeprom_right";
+		label = "passthrough_cams_eeprom_left";
     };
 	eeprom@53 {
 		compatible = "atmel,24c64";
@@ -2213,7 +2213,7 @@
 		address-width = <16>;
 		status = "okay";
 		vcc-supply = <&rgb_3v0_vout>;
-		label = "passthrough_cams_eeprom_left";
+		label = "passthrough_cams_eeprom_right";
     };
 	cam3@1a {
 		compatible = "arcimx616";
