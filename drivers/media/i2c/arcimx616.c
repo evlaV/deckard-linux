@@ -128,6 +128,7 @@ struct arcimx616_dev {
 	struct v4l2_mbus_framefmt fmt;
 
 	bool streaming;
+	bool is_left_sensor;
 
 	// nvmem_device_read/nvmem_device_write cannot work directly with user pointers to we need
 	// to copy to/from this buffer
@@ -170,7 +171,8 @@ static int arcimx616_ensure_eeprom_client(struct arcimx616_dev *sensor)
 	struct i2c_client  *master = sensor->i2c_client;
 	struct i2c_adapter *adap   = master->adapter;
 	struct i2c_client  *cl;
-	bool is_left = (master->addr == 0x1a) ? true : false;
+	
+	bool is_left = sensor->is_left_sensor;
 	u8 addr = (is_left) ? 0x50 : 0x53;
 	struct i2c_board_info info = { I2C_BOARD_INFO("24c64", addr) };
 	/* already cached? */
@@ -648,12 +650,14 @@ static int arcimx616_nvmem_match(struct device *dev, const void *data)
 {
 	const char* expected_prefix = data;
 	const char* name = dev_name(dev);
+	int result;
 
 	if(strlen(name) < strlen(expected_prefix)) {
 		return 0; // name too short to hold the prefix
 	}
 
-	return memcmp(expected_prefix, name, strlen(expected_prefix)) == 0;
+	result = memcmp(expected_prefix, name, strlen(expected_prefix)) == 0;
+	return result;
 }
 
 
@@ -673,7 +677,7 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 
 	// Try to find an nvmem device with a name starting with this expected prefix
 	// TODO: consider making that an of property
-	bool is_left = (sensor->i2c_client->addr == 0x10) ? true : false;
+	bool is_left = sensor->is_left_sensor;
 	struct nvmem_device* nvmem_dev;
 	int retries = 5;
 	
@@ -890,27 +894,27 @@ static int arcimx616_aw9106_set_leds(struct arcimx616_dev *sensor,
     ret |= arcimx616_aw9106_write_reg(sensor, 0x13, 0x00); // P1WKMD
 
     /* Write brightness registers (DIM0..5) */
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x20, left_r);   // out0
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x21, left_g);   // out1
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x22, left_b);   // out2
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x23, right_r);  // out3
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x24, right_g);  // out4
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x25, right_b);  // out5
+    ret |= arcimx616_aw9106_write_reg(sensor, 0x20, right_r);   // out0
+    ret |= arcimx616_aw9106_write_reg(sensor, 0x21, right_g);   // out1
+    ret |= arcimx616_aw9106_write_reg(sensor, 0x22, right_b);   // out2
+    ret |= arcimx616_aw9106_write_reg(sensor, 0x23, left_r);  // out3
+    ret |= arcimx616_aw9106_write_reg(sensor, 0x24, left_g);  // out4
+    ret |= arcimx616_aw9106_write_reg(sensor, 0x25, left_b);  // out5
 
     /*
      * Enable breathing on whichever pins are meant to breathe:
      */
     if (left_breathe) {
         /* left => out0/out1/out2 => bits 0..2 */
-        if (left_r > 0) paten_val |= BIT(0);
-        if (left_g > 0) paten_val |= BIT(1); 
-        if (left_b > 0) paten_val |= BIT(2);
+        if (right_r > 0) paten_val |= BIT(0);
+        if (right_g > 0) paten_val |= BIT(1); 
+        if (right_b > 0) paten_val |= BIT(2);
     }
     if (right_breathe) {
         /* right => out3/out4/out5 => bits 3..5 */
-        if (right_r > 0) paten_val |= BIT(3);
-        if (right_g > 0) paten_val |= BIT(4);
-        if (right_b > 0) paten_val |= BIT(5);
+        if (left_r > 0) paten_val |= BIT(3);
+        if (left_g > 0) paten_val |= BIT(4);
+        if (left_b > 0) paten_val |= BIT(5);
     }
     ret |= arcimx616_aw9106_write_reg(sensor, 0x14, paten_val);
 
@@ -921,11 +925,11 @@ static int arcimx616_aw9106_set_leds(struct arcimx616_dev *sensor,
      *    P1DIR(0x05) => bits [3..0] => OUT3..OUT0
      *    P0DIR(0x04) => bits [1..0] => OUT5..OUT4
      */
-    if (left_breathe) {
+    if (right_breathe) {
         /* out0..2 => bits 0..2 => set them to 1 => blink */
         p1dir |= 0x07;  /* sets bits 2..0 */
     }
-    if (right_breathe) {
+    if (left_breathe) {
         /* out3 => bit3 in P1DIR, out4=>bit0 in P0DIR, out5=>bit1 in P0DIR */
         p1dir |= 0x08;  /* set bit3 => out3 => blink */
         p0dir |= 0x03;  /* set bits 1..0 => out5..4 => blink */
@@ -1578,8 +1582,12 @@ static void arcimx616_connect_work_fn(struct work_struct *work)
         if (first_stage) {
             // First stage - turn on power and LEDs
 			arcimx616_set_power(sensor, true);
-			int sensor0Connected = arcimx616_check_chip_id(g_arcimx616_sensors[0]);
-			int sensor1Connected = arcimx616_check_chip_id(g_arcimx616_sensors[1]);
+
+			int left_sensor_index = g_arcimx616_sensors[0]->is_left_sensor ? 0 : 1;
+			int right_sensor_index = left_sensor_index == 0 ? 1 : 0;
+
+			int left_sensor_connected = arcimx616_check_chip_id(g_arcimx616_sensors[left_sensor_index]);
+			int right_sensor_connected = arcimx616_check_chip_id(g_arcimx616_sensors[right_sensor_index]);
 
 			// Check if we can identify the LED chip
 			u8 led_chip_id = 0;
@@ -1587,11 +1595,11 @@ static void arcimx616_connect_work_fn(struct work_struct *work)
 			bool led_chip_valid = (led_chip_detected == 0 && led_chip_id == 0x23);
 
 			if (led_chip_valid) {
-				arcimx616_aw9106_set_leds(sensor, 	sensor0Connected != 0 ? 255 : 0, 
-												sensor0Connected == 0 ? 255 : 0, 
+				arcimx616_aw9106_set_leds(sensor, 	left_sensor_connected != 0 ? 255 : 0, 
+												left_sensor_connected == 0 ? 255 : 0, 
 												0, 
-												sensor1Connected != 0 ? 255 : 0, 
-												sensor1Connected == 0 ? 255 : 0,
+												right_sensor_connected != 0 ? 255 : 0, 
+												right_sensor_connected == 0 ? 255 : 0,
 												0,
 												true, true, true);
 			}
@@ -1772,6 +1780,24 @@ static int arcimx616_probe(struct i2c_client *client)
 	mutex_init(&sensor->lock);
 
 	mutex_init(&sensor->mutex);
+	
+	/* Determine if this is left or right sensor based on device tree 'id' property */
+	{
+		const char *id;
+		if (of_property_read_string(dev->of_node, "id", &id)) {
+			dev_err(dev, "Failed to read 'id' property\n");
+			ret = -EINVAL;
+			goto entity_cleanup;
+		}
+		if (strcmp(id, "passthrough_left") == 0) {
+			sensor->is_left_sensor = true;
+			dev_info(dev, "Identified as left sensor\n");
+		} else {
+			sensor->is_left_sensor = false;
+			dev_info(dev, "Identified as right sensor\n");
+		}
+	}
+	
 	ret = arcimx616_init_controls(sensor);
 	if (ret) {
 		dev_err(&client->dev, "failed to init controls: %d", ret);
