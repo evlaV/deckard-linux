@@ -307,6 +307,7 @@ dtb-$(CONFIG_ARCH_QCOM)	+= sm8550-sony-xperia-yodo-pdx234.dtb
 sm8650-hdk-display-card-dtbs	:= sm8650-hdk.dtb sm8650-hdk-display-card.dtbo
 
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-aya.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-deckard.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-el2-aya.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-el2-hdk.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-hdk-display-card.dtb

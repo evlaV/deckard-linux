@@ -284,9 +284,11 @@ static int max98390_set_clock(struct snd_soc_component *component,
 		/* BCLK configuration */
 		value = max98390_get_bclk_sel(blr_clk_ratio);
 		if (!value) {
-			dev_err(component->dev, "format unsupported %d\n",
-				params_format(params));
-			return -EINVAL;
+			/*
+			 * Returning -ENOTSUPP instead of -EINVAL avoids
+			 * an unnecessary dev_err message in the caller.
+			 */
+			return -ENOTSUPP;
 		}
 
 		regmap_update_bits(max98390->regmap,
@@ -462,39 +464,56 @@ static int max98390_dai_set_sysclk(struct snd_soc_dai *dai,
 	return 0;
 }
 
-static const struct snd_soc_dai_ops max98390_dai_ops = {
-	.set_sysclk = max98390_dai_set_sysclk,
-	.set_fmt = max98390_dai_set_fmt,
-	.hw_params = max98390_dai_hw_params,
-	.set_tdm_slot = max98390_dai_tdm_slot,
-};
-
-static int max98390_dac_event(struct snd_soc_dapm_widget *w,
-		struct snd_kcontrol *kcontrol, int event)
+static void max98390_mute_work(struct work_struct *work)
 {
-	struct snd_soc_component *component =
-		snd_soc_dapm_to_component(w->dapm);
 	struct max98390_priv *max98390 =
-		snd_soc_component_get_drvdata(component);
+		container_of(work, struct max98390_priv, mute_work);
 
-	switch (event) {
-	case SND_SOC_DAPM_POST_PMU:
+	if (max98390->mute) {
+		regmap_update_bits(max98390->regmap,
+			MAX98390_R23FF_GLOBAL_EN,
+			MAX98390_GLOBAL_EN_MASK, 0);
+		msleep(50);
+		regmap_update_bits(max98390->regmap,
+			MAX98390_R203A_AMP_EN,
+			MAX98390_AMP_EN_MASK, 0);
+	} else {
 		regmap_update_bits(max98390->regmap,
 			MAX98390_R203A_AMP_EN,
 			MAX98390_AMP_EN_MASK, 1);
 		regmap_update_bits(max98390->regmap,
 			MAX98390_R23FF_GLOBAL_EN,
 			MAX98390_GLOBAL_EN_MASK, 1);
-		break;
-	case SND_SOC_DAPM_POST_PMD:
-		regmap_update_bits(max98390->regmap,
-			MAX98390_R23FF_GLOBAL_EN,
-			MAX98390_GLOBAL_EN_MASK, 0);
-		regmap_update_bits(max98390->regmap,
-			MAX98390_R203A_AMP_EN,
-			MAX98390_AMP_EN_MASK, 0);
-		break;
+		msleep(10);
 	}
+}
+
+static int max98390_dac_mute(struct snd_soc_dai *dai, int mute, int stream)
+{
+	struct snd_soc_component *component = dai->component;
+	struct max98390_priv *max98390 =
+		snd_soc_component_get_drvdata(component);
+
+	if (max98390->mute != mute) {
+		max98390->mute = mute;
+		schedule_work(&max98390->mute_work);
+	}
+
+	return 0;
+}
+
+static const struct snd_soc_dai_ops max98390_dai_ops = {
+	.set_sysclk = max98390_dai_set_sysclk,
+	.set_fmt = max98390_dai_set_fmt,
+	.hw_params = max98390_dai_hw_params,
+	.set_tdm_slot = max98390_dai_tdm_slot,
+	.mute_stream = max98390_dac_mute,
+	.mute_unmute_on_trigger = true,
+};
+
+static int max98390_dac_event(struct snd_soc_dapm_widget *w,
+		struct snd_kcontrol *kcontrol, int event)
+{
 	return 0;
 }
 
@@ -790,7 +809,6 @@ static int max98390_dsm_init(struct snd_soc_component *component)
 {
 	int ret;
 	int param_size, param_start_addr;
-	char filename[128];
 	const char *vendor, *product;
 	struct max98390_priv *max98390 =
 		snd_soc_component_get_drvdata(component);
@@ -800,27 +818,37 @@ static int max98390_dsm_init(struct snd_soc_component *component)
 	vendor = dmi_get_system_info(DMI_SYS_VENDOR);
 	product = dmi_get_system_info(DMI_PRODUCT_NAME);
 
-	if (!strcmp(max98390->dsm_param_name, "default")) {
-		if (vendor && product) {
-			snprintf(filename, sizeof(filename),
-				"dsm_param_%s_%s.bin", vendor, product);
+	// First check if filename has been set yet
+	if(strncmp(max98390->filename, "dsm_param", strlen("dsm_param"))){
+		printk("setting up default file\n");
+		if (!strcmp(max98390->dsm_param_name, "default")) {
+			if (vendor && product) {
+				snprintf(max98390->filename, sizeof(max98390->filename),
+					"dsm_param_%s_%s.bin", vendor, product);
+			} else {
+				sprintf(max98390->filename, "dsm_param.bin");
+			}
 		} else {
-			sprintf(filename, "dsm_param.bin");
+			snprintf(max98390->filename, sizeof(max98390->filename), "%s",
+				max98390->dsm_param_name);
 		}
-	} else {
-		snprintf(filename, sizeof(filename), "%s",
-			max98390->dsm_param_name);
 	}
-	ret = request_firmware(&fw, filename, component->dev);
+
+	ret = request_firmware(&fw, max98390->filename, component->dev);
 	if (ret) {
+		dev_err(component->dev, "Requested Firmware %s Not Found! Trying default\n", max98390->filename);
 		ret = request_firmware(&fw, "dsm_param.bin", component->dev);
 		if (ret) {
 			ret = request_firmware(&fw, "dsmparam.bin",
 				component->dev);
-			if (ret)
+			if (ret) {
+				dev_err(component->dev, "Firmware Not Found!\n");
 				goto err;
+			}
 		}
 	}
+
+	dev_info(component->dev, "Found Firmware %s", max98390->filename);
 
 	dev_dbg(component->dev,
 		"max98390: param fw size %zd\n",
@@ -861,7 +889,7 @@ static void max98390_init_regs(struct snd_soc_component *component)
 
 	regmap_write(max98390->regmap, MAX98390_CLK_MON, 0x6f);
 	regmap_write(max98390->regmap, MAX98390_DAT_MON, 0x00);
-	regmap_write(max98390->regmap, MAX98390_PWR_GATE_CTL, 0x00);
+	regmap_write(max98390->regmap, MAX98390_PWR_GATE_CTL, 0x2f);
 	regmap_write(max98390->regmap, MAX98390_PCM_RX_EN_A, 0x03);
 	regmap_write(max98390->regmap, MAX98390_ENV_TRACK_VOUT_HEADROOM, 0x0e);
 	regmap_write(max98390->regmap, MAX98390_BOOST_BYPASS1, 0x46);
@@ -940,9 +968,13 @@ static int max98390_probe(struct snd_soc_component *component)
 			(max98390->ambient_temp_value) & 0x000000ff);
 	}
 
+    /* save a pointer to the component in priv for use with sysfs entries */
+    max98390->component = component;
+
 	return 0;
 }
 
+#if 0 
 static int max98390_suspend(struct device *dev)
 {
 	struct max98390_priv *max98390 = dev_get_drvdata(dev);
@@ -970,6 +1002,7 @@ static int max98390_resume(struct device *dev)
 static const struct dev_pm_ops max98390_pm = {
 	SYSTEM_SLEEP_PM_OPS(max98390_suspend, max98390_resume)
 };
+#endif
 
 static const struct snd_soc_component_driver soc_codec_dev_max98390 = {
 	.probe			= max98390_probe,
@@ -1011,6 +1044,62 @@ static void max98390_slot_config(struct i2c_client *i2c,
 	else
 		max98390->i_l_slot = 1;
 }
+
+/* sysfs helper for loading different firmware files */
+static ssize_t firmware_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct max98390_priv *max98390 = dev_get_drvdata(dev);
+	return scnprintf(buf, PAGE_SIZE, "%s", max98390->filename);
+}
+
+static ssize_t firmware_store(struct device *dev, struct device_attribute *attr,const char *buf, size_t count)
+{
+	struct max98390_priv *max98390 = dev_get_drvdata(dev);
+
+	// Max size 128 taken from init function
+	snprintf(max98390->filename, 128, "%.*s",
+				(int)min(count, 128 - 1), buf);
+
+	dev_info(dev, "MAX98390 firmware set to %s", max98390->filename);
+	return count;
+}
+
+static const char * const load_modes[] = {
+	"load", "unload"
+};
+
+static ssize_t load_store(struct device *dev, struct device_attribute *attr,const char *buf, size_t count)
+{
+	int ret, mode;
+	struct max98390_priv *max98390 = dev_get_drvdata(dev);
+	struct snd_soc_component *component = max98390->component;
+
+	mode = sysfs_match_string(load_modes, buf);
+	if (mode < 0) {
+		return mode;
+	}
+
+	ret = max98390_dsm_init(component);
+	if ( ret ) {
+		return ret;
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(firmware);
+static DEVICE_ATTR_WO(load);
+
+static struct attribute *max98390_attrs[] = {
+	&dev_attr_firmware.attr,
+	&dev_attr_load.attr,
+	NULL,
+};
+
+static const struct attribute_group max98390_attr_group = {
+	.name = "max98390",
+	.attrs = max98390_attrs,
+};
 
 static int max98390_i2c_probe(struct i2c_client *i2c)
 {
@@ -1059,6 +1148,9 @@ static int max98390_i2c_probe(struct i2c_client *i2c)
 	if (ret)
 		max98390->dsm_param_name = "default";
 
+	max98390->mute = 1;
+	INIT_WORK(&max98390->mute_work, max98390_mute_work);
+
 	/* voltage/current slot configuration */
 	max98390_slot_config(i2c, max98390);
 
@@ -1097,6 +1189,14 @@ static int max98390_i2c_probe(struct i2c_client *i2c)
 			&soc_codec_dev_max98390,
 			max98390_dai, ARRAY_SIZE(max98390_dai));
 
+    /* Setup sysfs files */
+    dev_set_drvdata(&i2c->dev, max98390);
+    ret = sysfs_create_group(&i2c->dev.kobj, &max98390_attr_group);
+    if (ret < 0) {
+        dev_err(&i2c->dev, "failed to create MAX98390 sysfs files\n");
+        return ret;
+    }
+
 	return ret;
 }
 
@@ -1128,7 +1228,7 @@ static struct i2c_driver max98390_i2c_driver = {
 		.name = "max98390",
 		.of_match_table = of_match_ptr(max98390_of_match),
 		.acpi_match_table = ACPI_PTR(max98390_acpi_match),
-		.pm = pm_ptr(&max98390_pm),
+		//.pm = pm_ptr(&max98390_pm),
 	},
 	.probe = max98390_i2c_probe,
 	.id_table = max98390_i2c_id,
