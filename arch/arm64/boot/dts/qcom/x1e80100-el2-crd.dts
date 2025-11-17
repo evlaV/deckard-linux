@@ -11,13 +11,11 @@
 		compatible = "qcom,lpass-sndcard";
 		model = "X1E80100-CRD-LPASS";
 
-
-		wcd-playback-dai-link {
+		wcd-playback {
 			link-name = "WCD Playback";
-			soundwire;
 
 			platform {
-				sound-dai = <&lpass_rxtx_lpaif LPASS_RX_CODEC_DMA_0>;
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_RXTX_CODEC_RX_01>;
 			};
 
 			codec {
@@ -25,26 +23,23 @@
 			};
 		};
 
-		wcd-capture-dai-link {
-			link-name = "WCD Capture";
-			soundwire;
-			capture;
+		wcd-mix-playback {
+			link-name = "WCD MIX Playback";
 
 			platform {
-				sound-dai = <&lpass_rxtx_lpaif LPASS_TX_CODEC_DMA_3>;
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_RXTX_CODEC_RX_23>;
 			};
 
 			codec {
-				sound-dai = <&wcd938x 1>, <&swr2 1>, <&lpass_txmacro 0>;
+				sound-dai = <&wcd938x 0>, <&swr1 0>, <&lpass_rxmacro 1>;
 			};
 		};
 
-		wsa-dai-link {
+		wsa {
 			link-name = "WSA Playback";
-			soundwire;
 
 			platform {
-				sound-dai = <&lpass_wsa_lpaif LPASS_RX_CODEC_DMA_0>;
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_RX_01>;
 			};
 
 			codec {
@@ -55,12 +50,11 @@
 			};
 		};
 
-		/* HW mixing in wsa macro.. figure out how to support this
-		wsa-mix-dai-link {
+		wsa-mix {
 			link-name = "WSA MIX Playback";
 
 			platform {
-				sound-dai = <&lpass_wsa_lpaif LPASS_RX_CODEC_DMA_1>;
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_RX_23>;
 			};
 
 			codec {
@@ -70,14 +64,60 @@
 					    <&swr3 0>, <&lpass_wsa2macro 1>;
 			};
 		};
-		*/
 
-		va-dai-link {
-			link-name = "VA Capture";
-			capture;
+		wcd-capture {
+			link-name = "WCD Capture";
 
 			platform {
-				sound-dai = <&lpass_va_lpaif LPASS_TX_CODEC_DMA_0>;
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_RXTX_CODEC_TX>;
+			};
+
+			codec {
+				sound-dai = <&wcd938x 1>, <&swr2 0>, <&lpass_txmacro 0>;
+			};
+		};
+
+		wcd-echo {
+			link-name = "WCD ECHO Capture";
+
+			platform {
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_WSA_CODEC_TX_ECHO>;
+			};
+
+			codec {
+				sound-dai = <&lpass_rxmacro 4>;
+			};
+		};
+
+		wsa-vi {
+			link-name = "WSA VI Capture";
+
+			platform {
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_TX_VI>;
+			};
+
+			codec {
+				sound-dai = <&lpass_wsamacro 2>;
+			};
+		};
+
+		wsa-echo {
+			link-name = "WSA ECHO Capture";
+
+			platform {
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_TX_ECHO>;
+			};
+
+			codec {
+				sound-dai = <&lpass_wsamacro 3>;
+			};
+		};
+
+		dmic {
+			link-name = "VA Capture";
+
+			platform {
+				sound-dai = <&lpass_va_lpaif LPAIF_VA_CODEC_TX>;
 			};
 
 			codec {
@@ -85,14 +125,4 @@
 			};
 		};
 	};
-};
-
-&lpass_rxtx_lpaif {
-	lpm-config = <LPASS_RX_CODEC_DMA_0 0x4000>,
-		     <LPASS_TX_CODEC_DMA_3 0x4000>;
-};
-
-&lpass_wsa_lpaif {
-	lpm-config = <LPASS_RX_CODEC_DMA_0 0x4000>,
-		     <LPASS_RX_CODEC_DMA_1 0x4000>;
 };

@@ -4585,29 +4585,31 @@
 			status = "reserved"; /* owned by ADSP */
 		};
 
+		lpass_wsa_2ch_lpaif: lpaif@6a00000 {
+			compatible = "qcom,lpaif-v5";
+			reg = <0 0x06a00000 0 0x2b000>;
+			interrupts = <GIC_SPI 162 IRQ_TYPE_LEVEL_HIGH>;
+			#sound-dai-cells = <1>;
 
-		/* sort out the rest.. */
+			power-domains = <&lpass_aoncc LPASS_AON_CC_LPASS_AUDIO_HM_GDSCR>;
 
-		/*
-		lpass_audio_lpm: lpm@6c80000 {
-			reg = <0 0x06c80000 0 0x10000>;
-			// clocks = XXX
+			status = "reserved"; /* owned by ADSP */
 		};
 
-		lpass_va_lpm: lpm@6d40000 {
-			reg = <0 0x06d40000 0 0x3000>;
-			// clocks = XXX
-		};
+		lpass_aud_lpaif: lpaif@6a40000 {
+			compatible = "qcom,lpaif-v5";
+			reg = <0 0x06a40000 0 0x2b000>;
+			interrupts = <GIC_SPI 196 IRQ_TYPE_LEVEL_HIGH>;
+			#sound-dai-cells = <1>;
 
-		lpass_lpm: lpm@7c10000 {
-			reg = <0 0x07c10000 0 0x8000>;
-			// clocks = XXX
-		}; */
+			power-domains = <&lpass_aoncc LPASS_AON_CC_LPASS_AUDIO_HM_GDSCR>;
+
+			status = "reserved"; /* owned by ADSP */
+		};
 
 		lpass_rxtx_lpaif: lpaif@6b40000 {
-			compatible = "qcom,x1e80100-lpaif";
-			reg = <0 0x06b40000 0 0x2b000>,
-			      <0 0x06c88000 0 0x8000>;
+			compatible = "qcom,lpaif-v5";
+			reg = <0 0x06b40000 0 0x2b000>;
 			interrupts = <GIC_SPI 180 IRQ_TYPE_LEVEL_HIGH>;
 			#sound-dai-cells = <1>;
 
@@ -4617,9 +4619,8 @@
 		};
 
 		lpass_wsa_lpaif: lpaif@6b80000 {
-			compatible = "qcom,x1e80100-lpaif";
-			reg = <0 0x06b80000 0 0x2b000>,
-			      <0 0x06c80000 0 0x8000>;
+			compatible = "qcom,lpaif-v5";
+			reg = <0 0x06b80000 0 0x2b000>;
 			interrupts = <GIC_SPI 179 IRQ_TYPE_LEVEL_HIGH>;
 			#sound-dai-cells = <1>;
 
@@ -4629,9 +4630,8 @@
 		};
 
 		lpass_va_lpaif: lpaif@6d00000 {
-			compatible = "qcom,x1e80100-lpaif";
-			reg = <0 0x06d00000 0 0x2b000>,
-			      <0 0x06d40000 0 0x3000>;
+			compatible = "qcom,lpaif-v5";
+			reg = <0 0x06d00000 0 0x2b000>;
 			interrupts = <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>;
 			#sound-dai-cells = <1>;
 
@@ -4640,24 +4640,28 @@
 			status = "reserved"; /* owned by ADSP */
 		};
 
-		/* lpass_hdmi_lpaif: lpaif@7be8000 {
-			compatible = "qcom,x1e80100-lpaif-hdmi";
-			reg = <0 0x07b88000 0 0x1000>, // hdmi-ctl wrong size?
-			      <0 0x07be8000 0 0x7000>, // wrong size?
-			      // <0 0x07c10000 0 0x8000>;
+		lpass_hdmitx: lpaif@7be8000 {
+			compatible = "qcom,lpaif-hdmi";
+			reg = <0 0x07be8000 0 0x7000>,
+			      <0 0x07b88000 0 0x1000>;
 			interrupts = <GIC_SPI 268 IRQ_TYPE_LEVEL_HIGH>;
+			#sound-dai-cells = <1>;
 
 			power-domains = <&lpass_hm LPASS_CORE_HM_GDSCR>;
+
+			status = "reserved"; /* owned by ADSP */
 		};
 
 		lpass_core_lpaif: lpaif@7d00000 {
-			compatible = "qcom,x1e80100-lpaif";
-			reg = <0 0x07d00000 0 0x2b000>,
-			      <0 0x07c10000 0 0x8000>;
+			compatible = "qcom,lpaif-v5";
+			reg = <0 0x07d00000 0 0x2b000>;
 			interrupts = <GIC_SPI 160 IRQ_TYPE_LEVEL_HIGH>;
+			#sound-dai-cells = <1>;
 
 			power-domains = <&lpass_hm LPASS_CORE_HM_GDSCR>;
-		}; */
+
+			status = "reserved"; /* owned by ADSP */
+		};
 
 		lpass_ag_noc: interconnect@7e40000 {
 			compatible = "qcom,x1e80100-lpass-ag-noc";

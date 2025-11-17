@@ -3,6 +3,8 @@
  * Copyright (c) 2024, Jonathan Marek
  */
 
+#include <dt-bindings/sound/qcom,lpaif-v5.h>
+
 /* NOTE: many of the reserved-memory regions can be deleted,
  * but most of them are excluded by EFI memory and just deleting
  * them from DTB is not enough to make the memory available
@@ -11,6 +13,28 @@
 / {
 	/delete-node/ smp2p-cdsp;
 	/delete-node/ sound;
+
+	reserved-memory {
+		/* not regular memory: */
+
+		lpass_audio_lpm: lpm@6c80000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x06c80000 0 0x10000>;
+			no-map;
+		};
+
+		lpass_va_lpm: lpm@6d40000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x06d40000 0 0x3000>;
+			no-map;
+		};
+
+		lpass_lpm: lpm@7c10000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x07c10000 0 0x8000>;
+			no-map;
+		};
+	};
 };
 
 &gpu {
@@ -43,16 +67,39 @@
 	status = "okay";
 };
 
+&lpass_aud_lpaif {
+	status = "okay";
+	memory-region = <&lpass_audio_lpm>;
+};
+
 &lpass_rxtx_lpaif {
 	status = "okay";
+	memory-region = <&lpass_audio_lpm>;
+};
+
+&lpass_wsa_2ch_lpaif {
+	status = "okay";
+	memory-region = <&lpass_audio_lpm>;
 };
 
 &lpass_wsa_lpaif {
 	status = "okay";
+	memory-region = <&lpass_audio_lpm>;
 };
 
 &lpass_va_lpaif {
 	status = "okay";
+	memory-region = <&lpass_va_lpm>;
+};
+
+&lpass_core_lpaif {
+	status = "okay";
+	memory-region = <&lpass_lpm>;
+};
+
+&lpass_hdmitx {
+	status = "okay";
+	memory-region = <&lpass_lpm>;
 };
 
 &lpass_tlmm {
@@ -136,14 +183,3 @@
 	/delete-property/ resets;
 	/delete-property/ reset-names;
 };
-
-/* XXX: create complete dt-bindings include for these */
-#define LPASS_RX_CODEC_DMA_0 17
-#define LPASS_RX_CODEC_DMA_1 18
-#define LPASS_RX_CODEC_DMA_2 19
-#define LPASS_RX_CODEC_DMA_3 20
-
-#define LPASS_TX_CODEC_DMA_0 49
-#define LPASS_TX_CODEC_DMA_1 50
-#define LPASS_TX_CODEC_DMA_2 51
-#define LPASS_TX_CODEC_DMA_3 52
