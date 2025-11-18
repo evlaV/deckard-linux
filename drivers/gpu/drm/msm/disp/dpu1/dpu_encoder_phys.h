@@ -99,6 +99,7 @@ struct dpu_encoder_phys_ops {
 			struct drm_crtc_state *crtc_state,
 			struct drm_connector_state *conn_state);
 	void (*enable)(struct dpu_encoder_phys *encoder);
+	void (*hacktiming)(struct dpu_encoder_phys *encoder, struct drm_display_mode *mode);
 	void (*disable)(struct dpu_encoder_phys *encoder);
 	int (*control_vblank_irq)(struct dpu_encoder_phys *enc, bool enable);
 	int (*wait_for_commit_done)(struct dpu_encoder_phys *phys_enc);
