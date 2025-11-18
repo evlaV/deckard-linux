@@ -13,6 +13,7 @@
 #include <linux/seq_file.h>
 
 #include <drm/drm_atomic.h>
+#include <drm/drm_bridge.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_file.h>
 #include <drm/drm_probe_helper.h>
@@ -1324,6 +1325,84 @@ out:
 	mutex_unlock(&dpu_enc->enc_lock);
 }
 
+struct drm_encoder *glb_drm_enc = NULL;
+static void _dpu_encoder_kickoff_phys(struct dpu_encoder_virt *dpu_enc);
+
+void dpu_encoder_kickoff_hack(void)
+{
+	dpu_encoder_kickoff(glb_drm_enc);
+}
+
+/* modified from dpu_encoder_virt_atomic_enable */
+void dpu_encoder_virt_hack_timing(int mode_idx)
+{
+	struct dpu_encoder_virt *dpu_enc;
+	struct dpu_encoder_phys *phys;
+	struct drm_display_mode *t, *mode;
+	struct drm_connector *connector;
+	int i;
+
+	if (!glb_drm_enc)
+		return;
+
+	dpu_enc = to_dpu_encoder_virt(glb_drm_enc);
+
+	mutex_lock(&dpu_enc->enc_lock);
+
+	if (dpu_enc->connector) {
+		connector = dpu_enc->connector;
+		//panel_bridge_connector_get_modes(dpu_enc->connector);
+		if (!list_empty(&connector->modes)) {
+			list_for_each_entry_safe(mode, t, &connector->modes, head) {
+				if (!mode_idx)
+					break;
+				mode_idx--;
+			}
+		}
+	} else {
+		printk("%s: No connector is found for the encoder\n", __func__);
+		return;
+	}
+
+	/* mark the pending mode to switch refresh rate */
+	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
+		phys = dpu_enc->phys_encs[i];
+		phys->mode_pending = mode;
+	}
+
+	/* update pending flush cached bits in ctl side */
+	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
+		phys = dpu_enc->phys_encs[i];
+		phys->enable_state = DPU_ENC_ENABLING;
+		phys->hw_ctl->ops.update_pending_flush_intf(phys->hw_ctl,
+			phys->hw_intf->idx);
+	}
+
+	/* Update timing in intf. Always enable slave encoder before master */
+	if (dpu_enc->cur_slave && dpu_enc->cur_slave->ops.hacktiming)
+		dpu_enc->cur_slave->ops.hacktiming(dpu_enc->cur_slave, mode);
+
+	if (dpu_enc->cur_master && dpu_enc->cur_master->ops.hacktiming)
+		dpu_enc->cur_master->ops.hacktiming(dpu_enc->cur_master, mode);
+
+	/* update panel's backlight. dsi cmd tx may sleep, do it in this thread */
+	drm_bridge_chain_mode_set(
+		list_first_entry_or_null(&connector->encoder->bridge_chain,
+					 struct drm_bridge, chain_node),
+		mode, mode);
+
+	/* _dpu_encoder_irq_enable() call phys->ops.irq_enable(phys) to hook
+	 * dpu_encoder_phys_vid_irq_enable(), where dsi master is checked and
+	 * mutex is locked.
+	 * dpu_encoder_phys_vid_vblank_irq() will be triggered on irq. The
+	 * register flush happens in irq handler, and backlight shall be handled
+	 * in another thread due to dsi tx requirement.
+	*/
+	_dpu_encoder_irq_enable(glb_drm_enc);
+
+	mutex_unlock(&dpu_enc->enc_lock);
+}
+
 static void dpu_encoder_virt_atomic_enable(struct drm_encoder *drm_enc,
 					struct drm_atomic_state *state)
 {
@@ -1343,6 +1422,7 @@ static void dpu_encoder_virt_atomic_enable(struct drm_encoder *drm_enc,
 	dpu_enc->connector = drm_atomic_get_new_connector_for_encoder(state, drm_enc);
 
 	cur_mode = &dpu_enc->base.crtc->state->adjusted_mode;
+	glb_drm_enc = drm_enc;
 
 	dpu_enc->wide_bus_en = dpu_encoder_is_widebus_enabled(drm_enc);
 
