@@ -13,6 +13,7 @@
 #include <linux/seq_file.h>
 
 #include <drm/drm_atomic.h>
+#include <drm/drm_bridge.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_file.h>
 #include <drm/drm_probe_helper.h>
@@ -1348,12 +1349,43 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 {
 	struct dpu_encoder_virt *dpu_enc = glb_dpu_enc;
 	struct dpu_encoder_phys *phys;
+	struct drm_display_mode *t, *mode;
 	int i;
 
 	if (!dpu_enc)
 		return;
 
 	mutex_lock(&dpu_enc->enc_lock);
+
+	if (dpu_enc->connector) {
+		struct drm_connector *connector = dpu_enc->connector;
+		//panel_bridge_connector_get_modes(dpu_enc->connector);
+		if (!list_empty(&connector->probed_modes)) {
+			list_for_each_entry_safe(mode, t, &connector->probed_modes, head) {
+				printk("mode %dx%d\n", mode->hdisplay, mode->vdisplay);
+				if (mode->vsync_start == glb_mode[mode_idx].vsync_start)
+					break;
+			}
+		} else {
+			printk("========no probed mode, list all:\n");
+			if (!list_empty(&connector->modes)) {
+				list_for_each_entry_safe(mode, t, &connector->modes, head) {
+					printk("mode %dx%d\n", mode->hdisplay, mode->vdisplay);
+					if (mode->vsync_start == glb_mode[mode_idx].vsync_start) {
+						printk("found mode with vtotal %d\n", mode->vtotal);
+						break;
+					}
+				}
+			}
+		}
+
+		/* update panel's backlight */
+		drm_bridge_chain_mode_set(
+					  list_first_entry_or_null(&connector->encoder->bridge_chain,
+								   struct drm_bridge,
+								   chain_node),
+					  mode, mode);
+	}
 
 	/* always enable slave encoder before master */
 	if (dpu_enc->cur_slave && dpu_enc->cur_slave->ops.hacktiming)
