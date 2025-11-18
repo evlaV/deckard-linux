@@ -1339,6 +1339,29 @@ out:
 	mutex_unlock(&dpu_enc->enc_lock);
 }
 
+struct dpu_encoder_virt *glb_dpu_enc = NULL;
+struct drm_display_mode glb_mode[4];
+
+/* modified from dpu_encoder_virt_atomic_enable */
+void dpu_encoder_virt_hack_timing(int mode_idx)
+{
+	struct dpu_encoder_virt *dpu_enc = glb_dpu_enc;
+
+	if (!dpu_enc)
+		return;
+
+	mutex_lock(&dpu_enc->enc_lock);
+
+	/* always enable slave encoder before master */
+	if (dpu_enc->cur_slave && dpu_enc->cur_slave->ops.hacktiming)
+		dpu_enc->cur_slave->ops.hacktiming(dpu_enc->cur_slave, &glb_mode[mode_idx]);
+
+	if (dpu_enc->cur_master && dpu_enc->cur_master->ops.hacktiming)
+		dpu_enc->cur_master->ops.hacktiming(dpu_enc->cur_master, &glb_mode[mode_idx]);
+
+	mutex_unlock(&dpu_enc->enc_lock);
+}
+
 static void dpu_encoder_virt_atomic_enable(struct drm_encoder *drm_enc,
 					struct drm_atomic_commit *state)
 {
@@ -1358,6 +1381,31 @@ static void dpu_encoder_virt_atomic_enable(struct drm_encoder *drm_enc,
 	dpu_enc->connector = drm_atomic_get_new_connector_for_encoder(state, drm_enc);
 
 	cur_mode = &dpu_enc->base.crtc->state->adjusted_mode;
+	glb_dpu_enc = dpu_enc;
+
+	printk(" %dx%d\n", cur_mode->hdisplay, cur_mode->vdisplay);
+	switch (cur_mode->vsync_start) {
+	case 2564: /* 120Hz */
+		memcpy(&glb_mode[0], cur_mode, sizeof(struct drm_display_mode));
+		printk("******** 120Hz mode is saved\n");
+		break;
+	case 2169: /* 144Hz */
+		memcpy(&glb_mode[1], cur_mode, sizeof(struct drm_display_mode));
+		printk("******** 144Hz mode is saved\n");
+		break;
+	case 3425: /* 90Hz */
+		memcpy(&glb_mode[2], cur_mode, sizeof(struct drm_display_mode));
+		printk("******** 120Hz mode is saved\n");
+		break;
+	case 3857: /* 80Hz */
+		memcpy(&glb_mode[3], cur_mode, sizeof(struct drm_display_mode));
+		printk("******** 80Hz mode is saved\n");
+		break;
+	default:
+		printk("******** no mode is saved\n");
+		goto out;
+		break;
+	}
 
 	dpu_enc->wide_bus_en = dpu_encoder_is_widebus_enabled(drm_enc);
 
