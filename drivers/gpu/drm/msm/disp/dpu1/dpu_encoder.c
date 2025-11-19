@@ -1350,6 +1350,7 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 	struct dpu_encoder_virt *dpu_enc = glb_dpu_enc;
 	struct dpu_encoder_phys *phys;
 	struct drm_display_mode *t, *mode;
+	struct drm_connector *connector;
 	int i;
 
 	if (!dpu_enc)
@@ -1358,7 +1359,7 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 	mutex_lock(&dpu_enc->enc_lock);
 
 	if (dpu_enc->connector) {
-		struct drm_connector *connector = dpu_enc->connector;
+		connector = dpu_enc->connector;
 		//panel_bridge_connector_get_modes(dpu_enc->connector);
 		if (!list_empty(&connector->modes)) {
 			list_for_each_entry_safe(mode, t, &connector->modes, head) {
@@ -1367,12 +1368,9 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 				mode_idx--;
 			}
 		}
-
-		/* update panel's backlight */
-		drm_bridge_chain_mode_set(
-			list_first_entry_or_null(&connector->encoder->bridge_chain,
-						 struct drm_bridge, chain_node),
-			mode, mode);
+	} else {
+		printk("%s: No connector is found for the encoder\n", __func__);
+		return;
 	}
 
 	/* update timing in dsi controller */
@@ -1404,6 +1402,12 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 		if (phys->ops.handle_post_kickoff)
 			phys->ops.handle_post_kickoff(phys);
 	}
+
+	/* update panel's backlight */
+	drm_bridge_chain_mode_set(
+		list_first_entry_or_null(&connector->encoder->bridge_chain,
+					 struct drm_bridge, chain_node),
+		mode, mode);
 
 	mutex_unlock(&dpu_enc->enc_lock);
 }
