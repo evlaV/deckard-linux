@@ -1370,15 +1370,15 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 
 		/* update panel's backlight */
 		drm_bridge_chain_mode_set(
-					  list_first_entry_or_null(&connector->encoder->bridge_chain,
-								   struct drm_bridge,
-								   chain_node),
-					  mode, mode);
+			list_first_entry_or_null(&connector->encoder->bridge_chain,
+						 struct drm_bridge, chain_node),
+			mode, mode);
 	}
 
+	/* update timing in dsi controller */
 	dsi_mgr_bridge_hacktiming(mode);
 
-	/* always enable slave encoder before master */
+	/* Update timing in intf. Always enable slave encoder before master */
 	if (dpu_enc->cur_slave && dpu_enc->cur_slave->ops.hacktiming)
 		dpu_enc->cur_slave->ops.hacktiming(dpu_enc->cur_slave, mode);
 
@@ -1386,6 +1386,7 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 		dpu_enc->cur_master->ops.hacktiming(dpu_enc->cur_master, mode);
 
 
+	/* update pending flush cached bits in ctl side */
 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
 		phys = dpu_enc->phys_encs[i];
 		phys->enable_state = DPU_ENC_ENABLING;
@@ -1393,7 +1394,7 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 			phys->hw_intf->idx);
 	}
 
-	/* All phys encs are ready to go, trigger the kickoff */
+	/* All phys encs are ready to go, trigger the kickoff from ctl side */
 	_dpu_encoder_kickoff_phys(dpu_enc);
 
 	/* allow phys encs to handle any post-kickoff business */
