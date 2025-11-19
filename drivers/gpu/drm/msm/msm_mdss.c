@@ -466,7 +466,6 @@ static const struct dev_pm_ops mdss_pm_ops = {
 	SET_RUNTIME_PM_OPS(mdss_runtime_suspend, mdss_runtime_resume, NULL)
 };
 
-extern void dsi_mgr_bridge_hacktiming(int mode_idx);
 extern void dpu_encoder_virt_hack_timing(int mode_idx);
 
 static ssize_t
@@ -474,7 +473,7 @@ mode_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	//struct msm_mdss *mdss = dev_get_drvdata(dev);
 
-	return sysfs_emit(buf, "0:120Hz 1:144Hz, 2:90Hz, 3:80Hz\n");
+	return sysfs_emit(buf, "echo 0-3 to switch to mode in /sys/devices/platform/soc@0/ae00000.display-subsystem/ae01000.display-controller/drm/card0/card0-DSI-1/modes\n");
 }
 
 static ssize_t
@@ -495,7 +494,6 @@ mode_store(struct device *dev, struct device_attribute *attr,
 */
 
 	printk("********* set mode index %d\n", mode_idx);
-	dsi_mgr_bridge_hacktiming(mode_idx);
 	dpu_encoder_virt_hack_timing(mode_idx);
 	return count;
 }

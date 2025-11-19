@@ -211,14 +211,13 @@ static int dsi_mgr_bridge_get_id(struct drm_bridge *bridge)
 extern struct drm_display_mode glb_mode[2];
 struct drm_bridge *glb_bridge = NULL;
 
-void dsi_mgr_bridge_hacktiming(int mode_idx)
+void dsi_mgr_bridge_hacktiming(struct drm_display_mode *mode)
 {
 	struct drm_bridge *bridge = glb_bridge;
 	int id = dsi_mgr_bridge_get_id(bridge);
 	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
 	struct msm_dsi *msm_dsi1 = dsi_mgr_get_dsi(DSI_1);
 	struct mipi_dsi_host *host = msm_dsi->host;
-	struct drm_display_mode *mode = &glb_mode[mode_idx];
 	bool is_bonded_dsi = IS_BONDED_DSI();
 
 	DBG("id=%d", id);
