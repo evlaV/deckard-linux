@@ -77,6 +77,33 @@
 			reg = <0 0x82700000 0 0x100000>;
 			no-map;
 		};
+
+		/* 2MB, 8 clocks to power on each 256KB block */
+		lpass_lpi_tcm: lpm@6000000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x06000000 0 0x00200000>;
+			no-map;
+		};
+
+		/* 64KB, 4 clocks to power on each 16KB block */
+		lpass_audio_lpm: lpm@6c80000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x06c80000 0 0x10000>;
+			no-map;
+		};
+
+		/* 12KB, 1 clock */
+		lpass_va_lpm: lpm@6d40000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x06d40000 0 0x3000>;
+			no-map;
+		};
+
+		lpass_lpm: lpm@7c10000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x07c10000 0 0x8000>;
+			no-map;
+		};
 	};
 
 	psci {
@@ -151,6 +178,42 @@
 
 /delete-node/ &ipa;
 
+&lpass_aoncc {
+	status = "okay";
+};
+
+&lpass_audiocc {
+	status = "okay";
+};
+
+&lpass_corecc {
+	status = "okay";
+};
+
+&lpass_hm {
+	status = "okay";
+};
+
+&lpass_wsa_lpaif {
+	status = "okay";
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM0_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM1_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM2_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM3_CLK>;
+	memory-region = <&lpass_audio_lpm>;
+};
+
+&lpass_va_lpaif {
+	status = "okay";
+	clocks = <&lpass_aoncc LPASS_AON_CC_VA_MEM0_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM0_CLK>; /* XXX: why does it need this clock */
+	memory-region = <&lpass_va_lpm>;
+};
+
+&lpass_core_lpaif {
+	status = "okay";
+};
+
 &lpass_wsa2macro {
 	/delete-property/ clocks;
 	status = "disabled";
@@ -172,8 +235,8 @@
 };
 
 &lpass_vamacro {
-	/delete-property/ clocks;
-	status = "disabled";
+	clocks = <&lpass_aoncc LPASS_AON_CC_TX_MCLK_CLK>;
+	clock-names = "mclk";
 };
 
 &lpass_tlmm {
