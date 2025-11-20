@@ -8283,8 +8283,8 @@
 				 <&ipcc IPCC_CLIENT_LPASS 2>,
 				 <&ipcc IPCC_CLIENT_LPASS 3>;
 
-			clocks = <&aoncc LPASS_AON_CC_LPI_NOC_HS_CLK>,
-				 <&aoncc LPASS_AON_CC_Q6_AXIM_CLK>;
+			clocks = <&lpass_aoncc LPASS_AON_CC_LPI_NOC_HS_CLK>,
+				 <&lpass_aoncc LPASS_AON_CC_Q6_AXIM_CLK>;
 			clock-names = "lpi_noc_hs", "q6_axim";
 
 
