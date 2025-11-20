@@ -248,7 +248,7 @@
 	status = "disabled";
 };
 
-&aoncc {
+&lpass_aoncc {
 	status = "disabled";
 };
 
