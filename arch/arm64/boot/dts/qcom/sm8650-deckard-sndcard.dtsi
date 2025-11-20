@@ -1,0 +1,45 @@
+#include <dt-bindings/sound/qcom,lpaif-v5.h>
+/ {
+	sound {
+		compatible = "qcom,lpass-sndcard";
+		//model = "SM8650-DECKARD";
+		model = "SM8250 LPASS"; // XXX soundsetup.sh looking for "SM8250"..
+
+		pinctrl-0 = <&i2s2_active>;
+		pinctrl-names = "default";
+
+		/* note: remove <lpass_core_lpaif N> and corresponding clock to make it use LPM
+		 * directly instead of chaining two LPAIFs to use normal memory
+		 */
+
+		wsa {
+			link-name = "SPKR Playback";
+
+			clocks = <&lpass_corecc LPASS_CORE_CC_EXT_IF0_IBIT_CLK>,
+				 <&lpass_audiocc LPASS_AUDIO_CC_EXT_IF2_IBIT_CLK>;
+			clock-names = "master", "slave";
+
+			platform {
+				sound-dai =  <&lpass_core_lpaif 1>, <&lpass_wsa_lpaif LPAIF_WSA_LPASS_I2S2>;
+			};
+
+			codec {
+				sound-dai = <&left_spkr_i2s>, <&right_spkr_i2s>;
+			};
+		};
+
+		dmic {
+			link-name = "VA Capture";
+
+			clocks = <&lpass_corecc LPASS_CORE_CC_EXT_IF1_IBIT_CLK>;
+
+			platform {
+				sound-dai = <&lpass_core_lpaif 2>, <&lpass_va_lpaif LPAIF_VA_CODEC_TX>;
+			};
+
+			codec {
+				sound-dai = <&lpass_vamacro 0>;
+			};
+		};
+	};
+};

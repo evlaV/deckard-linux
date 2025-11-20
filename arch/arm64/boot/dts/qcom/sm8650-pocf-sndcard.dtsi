@@ -1,0 +1,57 @@
+#include <dt-bindings/sound/qcom,lpaif-v5.h>
+/ {
+	sound {
+		compatible = "qcom,lpass-sndcard";
+		//model = "SM8650-POCF";
+		model = "SM8250 LPASS"; // XXX soundsetup.sh looking for "SM8250"..
+
+		pinctrl-0 = <&i2s2_active>;
+		pinctrl-names = "default";
+
+		/* note: remove <lpass_core_lpaif N> and corresponding clock to make it use LPM
+		 * directly instead of chaining two LPAIFs to use normal memory
+		 */
+
+		wsa {
+			link-name = "SPKR Playback";
+
+			clocks = <&lpass_corecc LPASS_CORE_CC_EXT_IF0_IBIT_CLK>;
+
+			platform {
+				sound-dai = <&lpass_core_lpaif 1>, <&lpass_wsa_lpaif LPAIF_WSA_CODEC_RX_01>;
+			};
+
+			codec {
+				sound-dai = <&left_spkr>, <&right_spkr>, <&swr0 0>, <&lpass_wsamacro 0>;
+			};
+		};
+
+		wsa-mix {
+			link-name = "SPKR MIX Playback";
+
+			clocks = <&lpass_corecc LPASS_CORE_CC_EXT_IF1_IBIT_CLK>;
+
+			platform {
+				sound-dai = <&lpass_core_lpaif 2>, <&lpass_wsa_lpaif LPAIF_WSA_CODEC_RX_23>;
+			};
+
+			codec {
+				sound-dai = <&left_spkr>, <&right_spkr>, <&swr0 0>, <&lpass_wsamacro 1>;
+			};
+		};
+
+		dmic {
+			link-name = "VA Capture";
+
+			clocks = <&lpass_corecc LPASS_CORE_CC_EXT_IF2_IBIT_CLK>;
+
+			platform {
+				sound-dai = <&lpass_core_lpaif 3>, <&lpass_va_lpaif LPAIF_VA_CODEC_TX>;
+			};
+
+			codec {
+				sound-dai = <&lpass_vamacro 0>;
+			};
+		};
+	};
+};
