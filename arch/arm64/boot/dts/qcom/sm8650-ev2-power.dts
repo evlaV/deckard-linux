@@ -365,7 +365,7 @@
 
 #if 1
 //120mW
-&aoncc {
+&lpass_aoncc {
 	status = "disabled";
 };
 

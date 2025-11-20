@@ -1575,16 +1575,7 @@
 	qcom,dmic-sample-rate = <2400000>; /* or 3200000 */
 };
 
-&sound {
-	status = "okay";
-
-	codecs = <&left_spkr>,
-		 <&right_spkr>,
-		 <&swr0 0>,
-		 <&lpass_wsamacro 0>,
-		 <&lpass_wsamacro 1>,
-		 <&lpass_vamacro 0>;
-};
+#include "sm8650-pocf-sndcard.dtsi"
 
 &swr0 {
 	status = "okay";
