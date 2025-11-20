@@ -212,7 +212,7 @@ lpaif_open(struct snd_soc_component *component, struct snd_pcm_substream *substr
 	snd_pcm_hw_constraint_minmax(runtime, SNDRV_PCM_HW_PARAM_CHANNELS, 1, max_channels);
 
 	if (lpaif->no_lpm)
-		type = SNDRV_DMA_TYPE_NONCOHERENT;
+		type = SNDRV_DMA_TYPE_DEV;
 	else
 		type = SNDRV_DMA_TYPE_DEV_WC; /* NONCOHERENT doesn't work with shared-dma-pool */
 
@@ -222,12 +222,11 @@ lpaif_open(struct snd_soc_component *component, struct snd_pcm_substream *substr
 
 	snd_pcm_set_runtime_buffer(substream, &substream->dma_buffer);
 
-	if (type == SNDRV_DMA_TYPE_NONCOHERENT) {
+	if (type == SNDRV_DMA_TYPE_DEV) {
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 			substream->dma_buffer.dev.dir = DMA_TO_DEVICE;
 		else
 			substream->dma_buffer.dev.dir = DMA_FROM_DEVICE;
-		substream->runtime->hw.info |= SNDRV_PCM_INFO_EXPLICIT_SYNC;
 	}
 	return 0;
 }

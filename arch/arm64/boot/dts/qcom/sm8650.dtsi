@@ -5166,6 +5166,8 @@
 				 <&apps_smmu 0x1101 0>,
 				 <&apps_smmu 0x1102 0>;
 
+			dma-coherent;
+
 			power-domains = <&lpass_hm LPASS_CORE_HM_GDSCR>;
 
 			status = "reserved"; /* owned by ADSP */
