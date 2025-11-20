@@ -75,11 +75,43 @@ CLK_RCG2(0x1b004, lpass_aon_cc_tx_mclk_clk_src, 0, 0, NULL);
 CLK_BRANCH(0x11060, lpass_aon_cc_va_mem0_clk, lpass_aon_cc_main_clk_src, 1);
 CLK_BRANCH(0x1b014, lpass_aon_cc_tx_mclk_clk, lpass_aon_cc_tx_mclk_clk_src, 1);
 
+static struct clk_branch lpass_aon_cc_lpi_noc_hs_clk = {
+	.halt_reg = 0x21008,
+	.halt_check = BRANCH_HALT,
+	.hwcg_reg = 0x21008,
+	.hwcg_bit = 1,
+	.clkr = {
+		.enable_reg = 0x21008,
+		.enable_mask = BIT(0),
+		.hw.init = &(struct clk_init_data){
+			.name = "lpass_aon_cc_lpi_noc_hs_clk",
+			.ops = &clk_branch2_ops,
+		},
+	},
+};
+
+static struct clk_branch lpass_aon_cc_q6_axim_clk = {
+	.halt_reg = 0x21034,
+	.halt_check = BRANCH_HALT,
+	.hwcg_reg = 0x21034,
+	.hwcg_bit = 1,
+	.clkr = {
+		.enable_reg = 0x21034,
+		.enable_mask = BIT(0),
+		.hw.init = &(struct clk_init_data){
+			.name = "lpass_aon_cc_q6_axim_clk",
+			.ops = &clk_branch2_ops,
+		},
+	},
+};
+
 static struct clk_regmap *lpass_aon_cc_sm8550_clocks[] = {
 	[LPASS_AON_CC_MAIN_CLK_SRC] = &lpass_aon_cc_main_clk_src.clkr,
 	[LPASS_AON_CC_TX_MCLK_CLK_SRC] = &lpass_aon_cc_tx_mclk_clk_src.clkr,
 	[LPASS_AON_CC_VA_MEM0_CLK] = &lpass_aon_cc_va_mem0_clk.clkr,
 	[LPASS_AON_CC_TX_MCLK_CLK] = &lpass_aon_cc_tx_mclk_clk.clkr,
+	[LPASS_AON_CC_LPI_NOC_HS_CLK] = &lpass_aon_cc_lpi_noc_hs_clk.clkr,
+	[LPASS_AON_CC_Q6_AXIM_CLK] = &lpass_aon_cc_q6_axim_clk.clkr,
 };
 
 /* lpass_audio_cc */
