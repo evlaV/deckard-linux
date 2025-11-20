@@ -1806,16 +1806,7 @@
 	qcom,dmic-sample-rate = <2400000>; /* or 3200000 */
 };
 
-&sound {
-    enable-i2s;
-    // enable-hdmi;
-    codecs =
-       <&left_spkr_i2s>, <&right_spkr_i2s>,
-       <&lpass_vamacro 0>;
-
-    pinctrl-0 = <&i2s2_active>;
-    pinctrl-names = "default";
-};
+#include "sm8650-deckard-sndcard.dtsi"
 
 &i2c_hub_8 {
     /* MAX98390 */
