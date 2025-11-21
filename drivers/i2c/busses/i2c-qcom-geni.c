@@ -263,11 +263,27 @@ static void geni_i2c_err(struct geni_i2c_dev *gi2c, int err)
 	}
 }
 
+static bool geni_i2c_handle_tx(struct geni_i2c_dev *gi2c, struct i2c_msg *cur)
+{
+	int j;
+	u32 val;
+
+	for (j = 0; j < gi2c->tx_wm; j++) {
+		/* make the assumption that reading buf one u32 at a time is safe (99.9999999% it will be) */
+		val = *(u32*)&cur->buf[gi2c->cur_wr];
+		writel_relaxed(val, gi2c->se.base + SE_GENI_TX_FIFOn);
+		gi2c->cur_wr += 4;
+		if (gi2c->cur_wr >= cur->len) /* TX Complete */
+			return false;
+	}
+	return true;
+}
+
 static irqreturn_t geni_i2c_irq(int irq, void *dev)
 {
 	struct geni_i2c_dev *gi2c = dev;
 	void __iomem *base = gi2c->se.base;
-	int j, p;
+	int j;
 	u32 m_stat;
 	u32 rx_st;
 	u32 dm_tx_st;
@@ -311,37 +327,28 @@ static irqreturn_t geni_i2c_irq(int irq, void *dev)
 	} else if (cur->flags & I2C_M_RD &&
 		   m_stat & (M_RX_FIFO_WATERMARK_EN | M_RX_FIFO_LAST_EN)) {
 		u32 rxcnt = rx_st & RX_FIFO_WC_MSK;
+		u32 rem = cur->len - gi2c->cur_rd;
+		u32 dwords = MIN(rxcnt, rem >> 2);
+		rem -= dwords << 2;
 
-		for (j = 0; j < rxcnt; j++) {
-			p = 0;
+		for (j = 0; j < dwords; j++) {
 			val = readl_relaxed(base + SE_GENI_RX_FIFOn);
-			while (gi2c->cur_rd < cur->len && p < sizeof(val)) {
-				cur->buf[gi2c->cur_rd++] = val & 0xff;
+			*(u32*)&cur->buf[gi2c->cur_rd] = val;
+			gi2c->cur_rd += 4;
+		}
+		if (rem && rxcnt > dwords) {
+			val = readl_relaxed(base + SE_GENI_RX_FIFOn);
+			/* rem has to be 1,2,3 */
+			for (j = 0; j < rem; j++) {
+				cur->buf[gi2c->cur_rd++] = (u8) val;
 				val >>= 8;
-				p++;
 			}
-			if (gi2c->cur_rd == cur->len)
-				break;
 		}
 	} else if (!(cur->flags & I2C_M_RD) &&
 		   m_stat & M_TX_FIFO_WATERMARK_EN) {
-		for (j = 0; j < gi2c->tx_wm; j++) {
-			u32 temp;
-
-			val = 0;
-			p = 0;
-			while (gi2c->cur_wr < cur->len && p < sizeof(val)) {
-				temp = cur->buf[gi2c->cur_wr++];
-				val |= temp << (p * 8);
-				p++;
-			}
-			writel_relaxed(val, base + SE_GENI_TX_FIFOn);
+		if (!geni_i2c_handle_tx(gi2c, cur))
 			/* TX Complete, Disable the TX Watermark interrupt */
-			if (gi2c->cur_wr == cur->len) {
-				writel_relaxed(0, base + SE_GENI_TX_WATERMARK_REG);
-				break;
-			}
-		}
+			writel_relaxed(0, base + SE_GENI_TX_WATERMARK_REG);
 	}
 
 	if (m_stat)
@@ -505,8 +512,11 @@ static int geni_i2c_tx_one_msg(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
 		gi2c->dma_buf = dma_buf;
 	}
 
-	if (!dma_buf) /* Get FIFO IRQ */
-		writel_relaxed(1, se->base + SE_GENI_TX_WATERMARK_REG);
+	if (!dma_buf) {
+		if (geni_i2c_handle_tx(gi2c, msg))
+			/* msg not fully written to FIFO, enable watermark irq */
+			writel_relaxed(1, se->base + SE_GENI_TX_WATERMARK_REG);
+	}
 
 	cur = gi2c->cur;
 	time_left = wait_for_completion_timeout(&gi2c->done, XFER_TIMEOUT);
@@ -514,6 +524,34 @@ static int geni_i2c_tx_one_msg(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
 		geni_i2c_abort_xfer(gi2c);
 
 	geni_i2c_tx_msg_cleanup(gi2c, cur);
+
+	return gi2c->err;
+}
+
+static int geni_i2c_tx_rx_two_msg(struct geni_i2c_dev *gi2c, struct i2c_msg *msg, u32 m_param)
+{
+	unsigned long time_left;
+	struct geni_se *se = &gi2c->se;
+
+	geni_se_select_mode(se, GENI_SE_FIFO);
+
+
+	writel_relaxed(msg[0].len, se->base + SE_I2C_TX_TRANS_LEN);
+	writel_relaxed(msg[1].len, se->base + SE_I2C_RX_TRANS_LEN);
+	geni_se_setup_m_cmd(se, I2C_WRITE_READ, m_param);
+
+	gi2c->xfer_len = 0;
+	gi2c->dma_addr = 0;
+	gi2c->dma_buf = NULL;
+
+	geni_i2c_handle_tx(gi2c, msg);
+
+	time_left = wait_for_completion_timeout(&gi2c->done, XFER_TIMEOUT);
+	if (!time_left)
+		geni_i2c_abort_xfer(gi2c);
+
+	gi2c->cur_wr = 0;
+	gi2c->cur_rd = 0;
 
 	return gi2c->err;
 }
@@ -893,7 +931,16 @@ static int geni_i2c_fifo_xfer(struct geni_i2c_dev *gi2c,
 		gi2c->cur = &msgs[i];
 		if (msgs[i].flags & I2C_M_RD)
 			ret = geni_i2c_rx_one_msg(gi2c, &msgs[i], m_param);
-		else
+		else if (i + 1 < num /* there's another message */
+			&& (msgs[i + 1].flags & I2C_M_RD) /* its a read */
+			&& msgs[i].addr == msgs[i + 1].addr /* to the same addr */
+			&& msgs[i].len < gi2c->tx_wm) { /* and the write fits in the TX fifo */
+			if (i + 2 == num)
+				m_param &= ~STOP_STRETCH; /* remove STOP_STRETCH if it will be the last msg */
+			gi2c->cur = &msgs[i + 1]; /* so irq() reads into the read message */
+			ret = geni_i2c_tx_rx_two_msg(gi2c, &msgs[i], m_param);
+			i++;
+		} else
 			ret = geni_i2c_tx_one_msg(gi2c, &msgs[i], m_param);
 
 		if (ret)
