@@ -13,6 +13,7 @@
 #include "pm8550ve.dtsi"
 #include "pmk8550.dtsi"
 #include "sm8650-el2.dtsi"
+#include <dt-bindings/sound/qcom,lpaif-v5.h>
 
 / {
 	model = "AYANEO Pocket S2";
@@ -340,8 +341,338 @@
 	};
 
 
+	sound {
+		compatible = "qcom,lpass-sndcard";
+		model = "SM8650-AYA-LPASS";
+
+		wcd-playback {
+			link-name = "WCD Playback";
+
+			clocks = <&lpass_corecc LPASS_CORE_CC_EXT_IF1_IBIT_CLK>;
+
+			platform {
+				sound-dai = <&lpass_core_lpaif 2>, <&lpass_rxtx_lpaif LPAIF_RXTX_CODEC_RX_01>;
+			};
+
+			codec {
+				sound-dai = <&wcd939x 0>, <&swr1 0>, <&lpass_rxmacro 0>;
+			};
+		};
+
+		wcd-mix-playback {
+			link-name = "WCD MIX Playback";
+
+			platform {
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_RXTX_CODEC_RX_23>;
+			};
+
+			codec {
+				sound-dai = <&wcd939x 0>, <&swr1 0>, <&lpass_rxmacro 1>;
+			};
+		};
+
+		wsa {
+			link-name = "WSA Playback";
+
+			clocks = <&lpass_corecc LPASS_CORE_CC_EXT_IF0_IBIT_CLK>;
+
+			platform {
+				sound-dai = <&lpass_core_lpaif 1>, <&lpass_wsa_lpaif LPAIF_WSA_CODEC_RX_01_WSA2>;
+			};
+
+			codec {
+				sound-dai = <&left_spkr>, <&right_spkr>, <&swr3 0>, <&lpass_wsa2macro 0>;
+			};
+		};
+
+		wsa-mix {
+			link-name = "WSA MIX Playback";
+
+			platform {
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_RX_23_WSA2>;
+			};
+
+			codec {
+				sound-dai = <&left_spkr>, <&right_spkr>, <&swr3 0>, <&lpass_wsa2macro 1>;
+			};
+		};
+
+		wcd-capture {
+			link-name = "WCD Capture";
+
+			platform {
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_RXTX_CODEC_TX>;
+			};
+
+			codec {
+				sound-dai = <&wcd939x 1>, <&swr2 0>, <&lpass_txmacro 0>;
+			};
+		};
+
+		wcd-echo {
+			link-name = "WCD ECHO Capture";
+
+			platform {
+				sound-dai = <&lpass_rxtx_lpaif LPAIF_WSA_CODEC_TX_ECHO>;
+			};
+
+			codec {
+				sound-dai = <&lpass_rxmacro 4>;
+			};
+		};
+
+		wsa-vi {
+			link-name = "WSA VI Capture";
+
+			platform {
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_TX_VI_WSA2>;
+			};
+
+			codec {
+				sound-dai = <&lpass_wsa2macro 2>;
+			};
+		};
+
+		wsa-echo {
+			link-name = "WSA ECHO Capture";
+
+			platform {
+				sound-dai = <&lpass_wsa_lpaif LPAIF_WSA_CODEC_TX_ECHO_WSA2>;
+			};
+
+			codec {
+				sound-dai = <&lpass_wsa2macro 3>;
+			};
+		};
+
+		/* does it have a DMIC? */
+		dmic {
+			link-name = "VA Capture";
+
+			platform {
+				sound-dai = <&lpass_va_lpaif LPAIF_VA_CODEC_TX>;
+			};
+
+			codec {
+				sound-dai = <&lpass_vamacro 0>;
+			};
+		};
+#if 0
+		dp {
+			link-name = "DisplayPort Playback";
+
+			platform {
+				sound-dai = <&lpass_hdmitx 0>;
+			};
+
+			codec {
+				sound-dai = <&mdss_dp0>;
+			};
+		};
+#endif
+	};
+
+	/* copied from hdk (note: ayaneo-ps2 has some extra stuff hooked for analog usb-c audio) */
+	wcd939x: audio-codec {
+		compatible = "qcom,wcd9395-codec", "qcom,wcd9390-codec";
+
+		pinctrl-0 = <&wcd_default>;
+		pinctrl-names = "default";
+
+		qcom,micbias1-microvolt = <1800000>;
+		qcom,micbias2-microvolt = <1800000>;
+		qcom,micbias3-microvolt = <1800000>;
+		qcom,micbias4-microvolt = <1800000>;
+		qcom,mbhc-buttons-vthreshold-microvolt = <75000 150000 237000 500000 500000 500000 500000 500000>;
+		qcom,mbhc-headset-vthreshold-microvolt = <1700000>;
+		qcom,mbhc-headphone-vthreshold-microvolt = <50000>;
+		qcom,rx-device = <&wcd_rx>;
+		qcom,tx-device = <&wcd_tx>;
+
+		reset-gpios = <&tlmm 107 GPIO_ACTIVE_LOW>;
+
+		vdd-buck-supply = <&vreg_l15b_1p8>;
+		vdd-rxtx-supply = <&vreg_l15b_1p8>;
+		vdd-io-supply = <&vreg_l15b_1p8>;
+		vdd-mic-bias-supply = <&vreg_bob1>;
+
+		#sound-dai-cells = <1>;
+	};
 };
 
+/* enable lpass stuff that is (mostly) disabled for deckard */
+&lpass_aud_lpaif {
+	status = "okay";
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM0_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM1_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM2_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM3_CLK>;
+	memory-region = <&lpass_audio_lpm>;
+};
+
+&lpass_rxtx_lpaif {
+	status = "okay";
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM0_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM1_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM2_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM3_CLK>;
+	memory-region = <&lpass_audio_lpm>;
+};
+
+&lpass_wsa_2ch_lpaif {
+	status = "okay";
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM0_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM1_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM2_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM3_CLK>;
+	memory-region = <&lpass_audio_lpm>;
+};
+
+&lpass_wsa_lpaif {
+	status = "okay";
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM0_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM1_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM2_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM3_CLK>;
+	memory-region = <&lpass_audio_lpm>;
+};
+
+&lpass_va_lpaif {
+	status = "okay";
+	clocks = <&lpass_aoncc LPASS_AON_CC_VA_MEM0_CLK>;
+	memory-region = <&lpass_va_lpm>;
+};
+
+&lpass_core_lpaif {
+	status = "okay";
+};
+
+&lpass_hdmitx {
+	status = "okay";
+};
+
+&lpass_txmacro {
+	status = "okay";
+	clocks = <&lpass_aoncc LPASS_AON_CC_TX_MCLK_CLK>, <&lpass_vamacro>;
+	clock-names = "mclk", "fsgen";
+};
+
+&lpass_rxmacro {
+	status = "okay";
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_RX_MCLK_CLK>, <&lpass_vamacro>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_TX_MCLK_RX_CLK>;
+	clock-names = "mclk", "fsgen", "macro";
+};
+
+&lpass_vamacro {
+	status = "okay";
+	clocks = <&lpass_aoncc LPASS_AON_CC_TX_MCLK_CLK>;
+	clock-names = "mclk";
+};
+
+&lpass_wsamacro {
+	status = "okay";
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_WSA_MCLK_CLK>, <&lpass_vamacro>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_TX_MCLK_WSA_CLK>;
+	clock-names = "mclk", "fsgen", "macro";
+};
+
+&lpass_wsa2macro {
+	status = "okay";
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_WSA2_MCLK_CLK>, <&lpass_vamacro>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_TX_MCLK_WSA2_CLK>;
+	clock-names = "mclk", "fsgen", "macro";
+};
+
+/* swrN copied from HDK, except speakers on swr3 instead of swr0 */
+
+&swr3 {
+	status = "okay";
+
+	/* WSA8845, Speaker North */
+	left_spkr: speaker@0,0 {
+		compatible = "sdw20217020400";
+		reg = <0 0>;
+		pinctrl-0 = <&spkr_1_sd_n_active>;
+		pinctrl-names = "default";
+		powerdown-gpios = <&lpass_tlmm 21 GPIO_ACTIVE_LOW>;
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "SpkrLeft";
+		vdd-1p8-supply = <&vreg_l15b_1p8>;
+		vdd-io-supply = <&vreg_l3c_1p2>;
+
+		/*
+		 * WSA8845 Port 1 (DAC)     <=> SWR0 Port 1 (SPKR_L)
+		 * WSA8845 Port 2 (COMP)    <=> SWR0 Port 2 (SPKR_L_COMP)
+		 * WSA8845 Port 3 (BOOST)   <=> SWR0 Port 3 (SPKR_L_BOOST)
+		 * WSA8845 Port 4 (PBR)     <=> SWR0 Port 7 (PBR)
+		 * WSA8845 Port 5 (VISENSE) <=> SWR0 Port 10 (SPKR_L_VI)
+		 * WSA8845 Port 6 (CPS)     <=> SWR0 Port 13 (CPS)
+		 */
+		qcom,port-mapping = <1 2 3 7 10 13>;
+	};
+
+	/* WSA8845, Speaker South */
+	right_spkr: speaker@0,1 {
+		compatible = "sdw20217020400";
+		reg = <0 1>;
+		pinctrl-0 = <&spkr_2_sd_n_active>;
+		pinctrl-names = "default";
+		powerdown-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "SpkrRight";
+		vdd-1p8-supply = <&vreg_l15b_1p8>;
+		vdd-io-supply = <&vreg_l3c_1p2>;
+
+		/*
+		 * WSA8845 Port 1 (DAC)     <=> SWR0 Port 4 (SPKR_R)
+		 * WSA8845 Port 2 (COMP)    <=> SWR0 Port 5 (SPKR_R_COMP)
+		 * WSA8845 Port 3 (BOOST)   <=> SWR0 Port 6 (SPKR_R_BOOST)
+		 * WSA8845 Port 4 (PBR)     <=> SWR0 Port 7 (PBR)
+		 * WSA8845 Port 5 (VISENSE) <=> SWR0 Port 11 (SPKR_R_VI)
+		 * WSA8845 Port 6 (CPS)     <=> SWR0 Port 13 (CPS)
+		 */
+		qcom,port-mapping = <4 5 6 7 11 13>;
+	};
+};
+
+&swr1 {
+	status = "okay";
+
+	/* WCD9395 RX */
+	wcd_rx: codec@0,4 {
+		compatible = "sdw20217010e00";
+		reg = <0 4>;
+
+		/*
+		 * WCD9395 RX Port 1 (HPH_L/R)      <=> SWR1 Port 1 (HPH_L/R)
+		 * WCD9395 RX Port 2 (CLSH)         <=> SWR1 Port 2 (CLSH)
+		 * WCD9395 RX Port 3 (COMP_L/R)     <=> SWR1 Port 3 (COMP_L/R)
+		 * WCD9395 RX Port 4 (LO)           <=> SWR1 Port 4 (LO)
+		 * WCD9395 RX Port 5 (DSD_L/R)      <=> SWR1 Port 5 (DSD_L/R)
+		 * WCD9395 RX Port 6 (HIFI_PCM_L/R) <=> SWR1 Port 9 (HIFI_PCM_L/R)
+		 */
+		qcom,rx-port-mapping = <1 2 3 4 5 9>;
+	};
+};
+
+&swr2 {
+	status = "okay";
+
+	/* WCD9395 TX */
+	wcd_tx: codec@0,3 {
+		compatible = "sdw20217010e00";
+		reg = <0 3>;
+
+		/*
+		 * WCD9395 TX Port 1 (ADC1,2,3,4)         <=> SWR2 Port 2 (TX SWR_INPUT 0,1,2,3)
+		 * WCD9395 TX Port 2 (ADC3,4 & DMIC0,1)   <=> SWR2 Port 2 (TX SWR_INPUT 0,1,2,3)
+		 * WCD9395 TX Port 3 (DMIC0,1,2,3 & MBHC) <=> SWR2 Port 3 (TX SWR_INPUT 4,5,6,7)
+		 * WCD9395 TX Port 4 (DMIC4,5,6,7)        <=> SWR2 Port 4 (TX SWR_INPUT 8,9,10,11)
+		 */
+		qcom,tx-port-mapping = <2 2 3 4>;
+	};
+};
 
 &apps_rsc {
     regulators-6 {
@@ -1191,11 +1522,13 @@
 
 &lpass_tlmm {
 	status = "okay";
-};
-
-// Disable Soundwire
-&wsa_swr_active {
-	status = "disabled";
+	spkr_1_sd_n_active: spkr-1-sd-n-active-state {
+		pins = "gpio21";
+		function = "gpio";
+		drive-strength = <16>;
+		bias-disable;
+		output-low;
+	};
 };
 
 &tlmm {
