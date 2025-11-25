@@ -1575,6 +1575,7 @@ static int dsi_cmd_dma_tx(struct msm_dsi_host *msm_host, int len)
 	triggered = msm_dsi_manager_cmd_xfer_trigger(
 						msm_host->id, dma_base, len);
 	if (triggered) {
+		/* we should minimize the wait handler delay */
 		ret = wait_for_completion_timeout(&msm_host->dma_comp,
 					msecs_to_jiffies(200));
 		DBG("ret=%d", ret);
@@ -2188,8 +2189,8 @@ int msm_dsi_host_init(struct msm_dsi *msm_dsi)
 		return dev_err_probe(&pdev->dev, -EINVAL, "failed to get irq\n");
 
 	/* do not autoenable, will be enabled later */
-	ret = devm_request_irq(&pdev->dev, msm_host->irq, dsi_host_irq,
-			IRQF_TRIGGER_HIGH | IRQF_NO_AUTOEN,
+       ret = devm_request_any_context_irq(&pdev->dev, msm_host->irq, dsi_host_irq,
+                       IRQF_TRIGGER_HIGH | IRQF_NO_AUTOEN | IRQF_NO_THREAD,
 			"dsi_isr", msm_host);
 	if (ret < 0)
 		return dev_err_probe(&pdev->dev, ret, "failed to request IRQ%u\n",
@@ -2332,6 +2333,7 @@ void msm_dsi_host_xfer_restore(struct mipi_dsi_host *host,
 	pm_runtime_put(&msm_host->pdev->dev);
 }
 
+/* This takes 15ms or more */
 int msm_dsi_host_cmd_tx(struct mipi_dsi_host *host,
 				const struct mipi_dsi_msg *msg)
 {
