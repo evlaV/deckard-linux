@@ -155,6 +155,7 @@ enum dpu_intr_idx {
  * @dpu_kms:		Pointer to the dpu_kms top level
  * @cdm_cfg:		CDM block config needed to store WB/DP block's CDM configuration
  * @cached_mode:	DRM mode cached at mode_set time, acted on in enable
+ * @mode_pending:	Dynamic refresh rate switching is in progress
  * @vblank_ctl_lock:	Vblank ctl mutex lock to protect vblank_refcount
  * @enabled:		Whether the encoder has enabled and running a mode
  * @split_role:		Role to play in a split-panel configuration
@@ -186,6 +187,7 @@ struct dpu_encoder_phys {
 	struct dpu_kms *dpu_kms;
 	struct dpu_hw_cdm_cfg cdm_cfg;
 	struct drm_display_mode cached_mode;
+	struct drm_display_mode *mode_pending;
 	struct mutex vblank_ctl_lock;
 	enum dpu_enc_split_role split_role;
 	enum dpu_intf_mode intf_mode;
