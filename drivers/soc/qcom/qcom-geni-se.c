@@ -17,9 +17,12 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/soc/qcom/geni-se.h>
+#include <linux/firmware/qcom/qcom_scm.h>
+#include <linux/soc/qcom/mdt_loader.h>
 
 /**
  * DOC: Overview
@@ -1359,12 +1362,119 @@ int geni_load_se_firmware(struct geni_se *se, enum geni_se_protocol_type protoco
 }
 EXPORT_SYMBOL_GPL(geni_load_se_firmware);
 
+#define SCM_PAS_ID_QUPFW	0x13
+
+static bool se_firmware_tz_loaded;
+
+static int geni_load_se_firmware_tz(struct device *dev)
+{
+	const struct firmware *firmware = NULL;
+	struct reserved_mem *rmem;	
+	struct device_node *node;
+	const char *fw_name;
+	phys_addr_t mem_phys = 0;
+	void *mem_virt = NULL;
+	size_t mem_size = 0;
+	ssize_t fw_size = 0;
+	int ret;
+
+	if (!qcom_scm_pas_supported(SCM_PAS_ID_QUPFW) ||
+	    !device_property_present(dev, "memory-region") ||
+	    !device_property_present(dev, "firmware-name"))
+		return 0;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	node = of_parse_phandle(dev->of_node, "memory-region", 0);
+	if (!node) {
+		dev_err(dev, "no memory-region specified\n");
+		return -EINVAL;
+	}
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	rmem = of_reserved_mem_lookup(node);
+	of_node_put(node);
+	if (!rmem) {
+		dev_err(dev, "failed to lookup reserved memory-region\n");
+		return -EINVAL;
+	}
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	ret = device_property_read_string(dev, "firmware-name", &fw_name);
+	if (ret) {
+		dev_err(dev, "Failed to read firmware-name property: %d\n", ret);
+		return -EINVAL;
+	}
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	ret = request_firmware(&firmware, fw_name, dev);
+	if (ret) {
+		dev_err(dev, "%s: failed to request fw \"%s\", error %d\n",
+			__func__, fw_name, ret);
+		return ret;
+	}
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	fw_size = qcom_mdt_get_size(firmware);
+	if (fw_size < 0) {
+		ret = fw_size;
+		dev_err(dev, "%s: out of bound fw image fw size: %ld\n",
+			__func__, fw_size);
+		goto err_release_fw;
+	}
+
+	dev_info(dev, "%s: %s, size: %ld\n", __func__, fw_name, fw_size);
+
+	mem_phys = rmem->base;
+	mem_size = rmem->size;
+
+	if (mem_size < fw_size) {
+		ret = -EINVAL;
+		goto err_release_fw;
+	}
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	mem_virt = memremap(mem_phys, mem_size, MEMREMAP_WC);
+	if (!mem_virt) {
+		dev_err(dev, "unable to remap fw memory region %pa size %#zx\n",
+			mem_phys, mem_size);
+		goto err_release_fw;
+	}
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	ret = qcom_mdt_load(dev, firmware, fw_name, SCM_PAS_ID_QUPFW, mem_virt,
+			    mem_phys, mem_size, NULL);
+	if (ret)
+		dev_err(dev, "%s: error %d loading fw \"%s\"\n",
+			__func__, ret, fw_name);
+	else
+		se_firmware_tz_loaded = true;
+
+	pr_info("%s:%d ret %d\n", __func__, __LINE__, ret);
+
+	memunmap(mem_virt);
+err_release_fw:
+	release_firmware(firmware);
+	return ret;
+}
+
 static int geni_se_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct geni_wrapper *wrapper;
 	const struct geni_se_desc *desc;
 	int ret;
+
+	/* When jumbing back to EL2, the QUP setup can be done by TZ */
+	if (!se_firmware_tz_loaded &&
+	    qcom_scm_is_available())
+		geni_load_se_firmware_tz(dev);
 
 	wrapper = devm_kzalloc(dev, sizeof(*wrapper), GFP_KERNEL);
 	if (!wrapper)
