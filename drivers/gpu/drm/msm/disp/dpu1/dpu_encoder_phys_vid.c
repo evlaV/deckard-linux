@@ -414,6 +414,8 @@ static void dpu_encoder_phys_vid_hack_timing(
 	programmable_fetch_config(phys_enc, &timing_params);
 }
 
+extern void dpu_encoder_kickoff_hack(void);
+extern void dsi_mgr_bridge_hacktiming(struct drm_display_mode *mode);
 static void dpu_encoder_phys_vid_vblank_irq(void *arg)
 {
 	struct dpu_encoder_phys *phys_enc = arg;
@@ -429,12 +431,25 @@ static void dpu_encoder_phys_vid_vblank_irq(void *arg)
 
 	atomic_read(&phys_enc->pending_kickoff_cnt);
 
+	/* Commit refresh rate switching */
+	if (dpu_encoder_phys_vid_is_master(phys_enc) && phys_enc->mode_pending) {
+		/* No reg flush for dsi controller reg, so update timing here */
+		dsi_mgr_bridge_hacktiming(phys_enc->mode_pending);
+		/* update dpu register */
+		dpu_encoder_kickoff_hack();
+
+		/* Suppose backlight tuning is done. Otherwise, we clear the mode
+		 * later than backight tuning. */
+		phys_enc->mode_pending = NULL;
+	}
+
 	/*
 	 * only decrement the pending flush count if we've actually flushed
 	 * hardware. due to sw irq latency, vblank may have already happened
 	 * so we need to double-check with hw that it accepted the flush bits
 	 */
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
+
 	if (hw_ctl->ops.get_flush_register)
 		flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
 
