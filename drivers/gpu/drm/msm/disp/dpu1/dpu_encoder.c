@@ -1340,21 +1340,27 @@ out:
 	mutex_unlock(&dpu_enc->enc_lock);
 }
 
-struct dpu_encoder_virt *glb_dpu_enc = NULL;
+struct drm_encoder *glb_drm_enc = NULL;
 static void _dpu_encoder_kickoff_phys(struct dpu_encoder_virt *dpu_enc);
-extern void dsi_mgr_bridge_hacktiming(struct drm_display_mode *mode);
+
+void dpu_encoder_kickoff_hack(void)
+{
+	dpu_encoder_kickoff(glb_drm_enc);
+}
 
 /* modified from dpu_encoder_virt_atomic_enable */
 void dpu_encoder_virt_hack_timing(int mode_idx)
 {
-	struct dpu_encoder_virt *dpu_enc = glb_dpu_enc;
+	struct dpu_encoder_virt *dpu_enc;
 	struct dpu_encoder_phys *phys;
 	struct drm_display_mode *t, *mode;
 	struct drm_connector *connector;
 	int i;
 
-	if (!dpu_enc)
+	if (!glb_drm_enc)
 		return;
+
+	dpu_enc = to_dpu_encoder_virt(glb_drm_enc);
 
 	mutex_lock(&dpu_enc->enc_lock);
 
@@ -1373,16 +1379,11 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 		return;
 	}
 
-	/* update timing in dsi controller */
-	dsi_mgr_bridge_hacktiming(mode);
-
-	/* Update timing in intf. Always enable slave encoder before master */
-	if (dpu_enc->cur_slave && dpu_enc->cur_slave->ops.hacktiming)
-		dpu_enc->cur_slave->ops.hacktiming(dpu_enc->cur_slave, mode);
-
-	if (dpu_enc->cur_master && dpu_enc->cur_master->ops.hacktiming)
-		dpu_enc->cur_master->ops.hacktiming(dpu_enc->cur_master, mode);
-
+	/* mark the pending mode to switch refresh rate */
+	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
+		phys = dpu_enc->phys_encs[i];
+		phys->mode_pending = mode;
+	}
 
 	/* update pending flush cached bits in ctl side */
 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
@@ -1392,22 +1393,27 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 			phys->hw_intf->idx);
 	}
 
-	/* All phys encs are ready to go, trigger the kickoff from ctl side */
-	_dpu_encoder_kickoff_phys(dpu_enc);
+	/* Update timing in intf. Always enable slave encoder before master */
+	if (dpu_enc->cur_slave && dpu_enc->cur_slave->ops.hacktiming)
+		dpu_enc->cur_slave->ops.hacktiming(dpu_enc->cur_slave, mode);
 
-	/* allow phys encs to handle any post-kickoff business */
-	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
-		phys = dpu_enc->phys_encs[i];
-		phys->enable_state = DPU_ENC_ENABLING;
-		if (phys->ops.handle_post_kickoff)
-			phys->ops.handle_post_kickoff(phys);
-	}
+	if (dpu_enc->cur_master && dpu_enc->cur_master->ops.hacktiming)
+		dpu_enc->cur_master->ops.hacktiming(dpu_enc->cur_master, mode);
 
-	/* update panel's backlight */
+	/* update panel's backlight. dsi cmd tx may sleep, do it in this thread */
 	drm_bridge_chain_mode_set(
 		list_first_entry_or_null(&connector->encoder->bridge_chain,
 					 struct drm_bridge, chain_node),
 		mode, mode);
+
+	/* _dpu_encoder_irq_enable() call phys->ops.irq_enable(phys) to hook
+	 * dpu_encoder_phys_vid_irq_enable(), where dsi master is checked and
+	 * mutex is locked.
+	 * dpu_encoder_phys_vid_vblank_irq() will be triggered on irq. The
+	 * register flush happens in irq handler, and backlight shall be handled
+	 * in another thread due to dsi tx requirement.
+	*/
+	_dpu_encoder_irq_enable(glb_drm_enc);
 
 	mutex_unlock(&dpu_enc->enc_lock);
 }
@@ -1431,7 +1437,7 @@ static void dpu_encoder_virt_atomic_enable(struct drm_encoder *drm_enc,
 	dpu_enc->connector = drm_atomic_get_new_connector_for_encoder(state, drm_enc);
 
 	cur_mode = &dpu_enc->base.crtc->state->adjusted_mode;
-	glb_dpu_enc = dpu_enc;
+	glb_drm_enc = drm_enc;
 
 	dpu_enc->wide_bus_en = dpu_encoder_is_widebus_enabled(drm_enc);
 
