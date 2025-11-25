@@ -431,7 +431,7 @@ static void a6xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	OUT_RING(ring, upper_32_bits(rbmemptr(ring, fence)));
 	OUT_RING(ring, submit->seqno);
 
-	trace_msm_gpu_submit_flush(submit, adreno_gpu->funcs->get_timestamp(gpu));
+	trace_msm_gpu_submit_flush(submit, read_gmu_ao_counter(a6xx_gpu), 0);
 
 	a6xx_flush(gpu, ring);
 }
@@ -640,9 +640,15 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	OUT_PKT7(ring, CP_SET_MARKER, 1);
 	OUT_RING(ring, 0x100); /* IFPC enable */
 
-	trace_msm_gpu_submit_flush(submit, adreno_gpu->funcs->get_timestamp(gpu));
+	uint64_t begin, end;
+
+	begin = ktime_get_boottime_ns();
 
 	a6xx_flush_yield(gpu, ring);
+
+	end = ktime_get_boottime_ns();
+
+	trace_msm_gpu_submit_flush(submit, read_gmu_ao_counter(a6xx_gpu), end - begin);
 
 	/* Check to see if we need to start preemption */
 	if (adreno_is_a8xx(adreno_gpu))
