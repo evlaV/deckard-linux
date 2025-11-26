@@ -140,6 +140,7 @@ struct mp3317 {
 	struct regulator_desc desc;
 	unsigned long rst;
     u8 default_map[sizeof(MP3317_DEFAULT_MAP)];
+    unsigned int use_pm_ops;
 };
 
 static ssize_t reg_dump_show(struct device *dev, struct device_attribute *attr, char *buf);
@@ -1818,6 +1819,9 @@ static int mp3317_leds_suspend(struct device *dev)
 {
 	struct mp3317 *led = dev_get_drvdata(dev);
 
+	if ( !led->use_pm_ops )
+		return 0;
+
 	gpiod_set_value_cansleep(led->en_gpio, 0);
 
 	return 0;
@@ -1827,6 +1831,9 @@ static int mp3317_leds_suspend(struct device *dev)
 static int mp3317_leds_resume(struct device *dev)
 {
 	struct mp3317 *led = dev_get_drvdata(dev);
+
+	if ( !led->use_pm_ops )
+		return 0;
 
 	gpiod_set_value_cansleep(led->en_gpio, 1);
 	usleep_range(10000,20000);
@@ -1994,6 +2001,12 @@ static int mp3317_leds_probe(struct i2c_client *client)
 		} else {
 			dev_err(dev, "Regulator match failed, %d\n", ret);
 		}
+	}
+
+	// check if pm-ops should be used, default to true
+	if ( device_property_read_u32(dev, "mp3317,use-pm-ops",
+				&led->use_pm_ops) ) {
+		led->use_pm_ops = 1;
 	}
 
 	return 0;
