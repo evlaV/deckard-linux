@@ -1795,6 +1795,8 @@
 
 		mp3317,label = "mp3317-backlight-right";
 
+		mp3317,use-pm-ops = <0>; // disable pm ops, handled by display driver
+
 		regulator {
 			backlight_right: backlight{
 				regulator-name = "backlight_right";
@@ -1872,6 +1874,8 @@
 		mp3317,en-ctl = <0xBF>;
 
 		mp3317,label = "mp3317-backlight-left";
+
+		mp3317,use-pm-ops = <0>; // disable pm ops, handled by display driver
 
 		regulator {
 			backlight_left: backlight{
