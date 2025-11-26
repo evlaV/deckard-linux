@@ -249,7 +249,7 @@ by a particular renderpass/blit.
 	</reg32>
 
 	<bitset name="a7xx_aperture_cntl" inline="yes">
-		<bitfield name="PIPE" low="12" high="13" type="a7xx_pipe"/>
+		<bitfield name="PIPE" low="12" high="13" type="adreno_pipe"/>
 		<bitfield name="CLUSTER" low="8" high="10" type="a7xx_cluster"/>
 		<bitfield name="CONTEXT" low="4" high="5"/>
 	</bitset>
@@ -261,6 +261,15 @@ by a particular renderpass/blit.
 	<reg32 offset="0x0A01" name="CP_APERTURE_CNTL_SQE" variants="A6XX"/>
 	<reg32 offset="0x0A03" name="CP_APERTURE_CNTL_CD" variants="A6XX"/>
 	<reg32 offset="0x0A03" name="CP_APERTURE_CNTL_CD" type="a7xx_aperture_cntl" variants="A7XX-"/>
+
+	<bitset name="a8xx_aperture_cntl" inline="yes">
+		<bitfield name="CONTEXTID3D" low="4" high="5"/>
+		<bitfield name="CLUSTERID" low="8" high="11"/>
+		<bitfield name="PIPEID" low="12" high="15"/>
+		<bitfield name="SLICEID" low="16" high="18"/>
+		<bitfield name="USESLICEID" pos="23" type="boolean"/>
+	</bitset>
+
 
 	<reg32 offset="0x0a61" name="CP_BV_PROTECT_STATUS" variants="A7XX-"/>
 	<reg32 offset="0x0a64" name="CP_BV_HW_FAULT" variants="A7XX-"/>
