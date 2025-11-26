@@ -462,6 +462,28 @@ by a particular renderpass/blit.
 
 	<array offset="0x0a9c" name="CP_RESERVED_REG" stride="1" length="4" variants="A7XX"/>
 	<array offset="0x0958" name="CP_RESERVED_REG" stride="1" length="4" variants="A8XX-"/>
+	<bitset name="a8xx_aperture_cntl" inline="yes">
+		<bitfield name="CONTEXTID3D" low="4" high="5"/>
+		<bitfield name="CLUSTERID" low="8" high="11"/>
+		<bitfield name="PIPEID" low="12" high="15"/>
+		<bitfield name="SLICEID" low="16" high="18"/>
+		<bitfield name="USESLICEID" pos="23" type="boolean"/>
+	</bitset>
+
+
+	<reg32 offset="0x0a61" name="CP_BV_PROTECT_STATUS" variants="A7XX-"/>
+	<reg32 offset="0x0a64" name="CP_BV_HW_FAULT" variants="A7XX-"/>
+	<reg32 offset="0x0a81" name="CP_BV_DRAW_STATE_ADDR" variants="A7XX-"/>
+	<reg32 offset="0x0a82" name="CP_BV_DRAW_STATE_DATA" variants="A7XX-"/>
+	<reg32 offset="0x0a83" name="CP_BV_ROQ_DBG_ADDR" variants="A7XX-"/>
+	<reg32 offset="0x0a84" name="CP_BV_ROQ_DBG_DATA" variants="A7XX-"/>
+	<reg32 offset="0x0a85" name="CP_BV_SQE_UCODE_DBG_ADDR" variants="A7XX-"/>
+	<reg32 offset="0x0a86" name="CP_BV_SQE_UCODE_DBG_DATA" variants="A7XX-"/>
+	<reg32 offset="0x0a87" name="CP_BV_SQE_STAT_ADDR" variants="A7XX-"/>
+	<reg32 offset="0x0a88" name="CP_BV_SQE_STAT_DATA" variants="A7XX-"/>
+	<reg32 offset="0x0a96" name="CP_BV_MEM_POOL_DBG_ADDR" variants="A7XX-"/>
+	<reg32 offset="0x0a97" name="CP_BV_MEM_POOL_DBG_DATA" variants="A7XX-"/>
+	<reg64 offset="0x0a98" name="CP_BV_RB_RPTR_ADDR" variants="A7XX-"/>
 
 	<bitset name="a8xx_aperture_cntl" inline="yes">
 		<bitfield name="CONTEXTID3D" low="4" high="5"/>
@@ -503,10 +525,6 @@ by a particular renderpass/blit.
 		<doc>number of remaining dwords incl current dword being consumed?</doc>
 		<bitfield name="REM" low="16" high="31"/>
 	</reg32>
-
-	<reg32 offset="0x0a96" name="CP_BV_MEM_POOL_DBG_ADDR" variants="A7XX"/>
-	<reg32 offset="0x0a97" name="CP_BV_MEM_POOL_DBG_DATA" variants="A7XX"/>
-	<reg64 offset="0x0a98" name="CP_BV_RB_RPTR_ADDR" variants="A7XX"/>
 
 	<reg32 offset="0x0a9a" name="CP_RESOURCE_TABLE_DBG_ADDR" variants="A7XX"/>
 	<reg32 offset="0x0a9b" name="CP_RESOURCE_TABLE_DBG_DATA" variants="A7XX"/>
