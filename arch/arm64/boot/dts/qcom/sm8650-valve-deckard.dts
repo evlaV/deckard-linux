@@ -889,6 +889,8 @@
 
 		mp3317,label = "mp3317-scene-illum-ir";
 
+		mp3317,use-pm-ops = <0>; // disable pm ops, handled by display driver
+
 		status = "okay";
 	};
 };
