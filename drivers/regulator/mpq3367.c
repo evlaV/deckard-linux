@@ -259,6 +259,10 @@ static int mpq3367_probe(struct i2c_client *client)
 			PTR_ERR(mpq->en_gpio));
 	}
 
+	// see comment in panel-deckard
+	//if (gpiod_get_direction(mpq->en_gpio))
+	//	gpiod_direction_output(mpq->en_gpio, 0);
+
 	// default to PWM dimming if not set in DTS
 	mpq->dimming_mode = MPQ3367_PWM_DIMMING;
 	if ( !of_property_read_string(dev->of_node, "mode", &mode) ) {

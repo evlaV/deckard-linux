@@ -1278,6 +1278,13 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 		return PTR_ERR(ctx->reset_gpios);
 	}
 
+	// ASIS doesn't do what we want. we still need to set it to output 0 if it wasnt in output mode
+	for (i = 0; i < ctx->reset_gpios->ndescs; i++) {
+		// get_direction is broken for PMIC gpios? (booting without display on won't work without this..)
+		//if (gpiod_get_direction(ctx->reset_gpios->desc[i]))
+		//	gpiod_direction_output(ctx->reset_gpios->desc[i], 0);
+	}
+
 	memset(&bl_props, 0, sizeof(bl_props));
 	bl_props.type = BACKLIGHT_RAW;
 	bl_props.brightness = BRIGHTNESS_DEFAULT;

@@ -1177,6 +1177,10 @@ static void dpu_encoder_virt_atomic_mode_set(struct drm_encoder *drm_enc,
 		return;
 	}
 
+	// MDP_INTF_TIMING_ENGINE_EN(1) = 0
+	// DSI driver bugs out if this is on when it powers on DSI (dsi_sw_reset, etc.)
+	writel_relaxed(0, dpu_kms->mmio + 0xae36000-0x0ae01000);
+
 	trace_dpu_enc_mode_set(DRMID(drm_enc));
 
 	/* Query resource that have been reserved in atomic check step. */

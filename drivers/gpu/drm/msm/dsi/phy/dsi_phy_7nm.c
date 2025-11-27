@@ -874,6 +874,12 @@ static int dsi_pll_7nm_init(struct msm_dsi_phy *phy)
 
 	pll_7nm->phy = phy;
 
+	// we don't use DSI1 PLL, init breaks the slave mode, so skip it
+	if (phy->id == 1) {
+		phy->vco_hw = &pll_7nm->clk_hw;
+		return 0;
+	}
+
 	ret = pll_7nm_register(pll_7nm, phy->provided_clocks->hws);
 	if (ret) {
 		DRM_DEV_ERROR(&pdev->dev, "failed to register PLL: %d\n", ret);

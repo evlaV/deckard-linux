@@ -385,6 +385,7 @@ static const struct of_device_id qcom_smmu_client_of_match[] __maybe_unused = {
 	{ .compatible = "qcom,sm6375-mdss" },
 	{ .compatible = "qcom,sm8150-mdss" },
 	{ .compatible = "qcom,sm8250-mdss" },
+	{ .compatible = "qcom,sm8650-mdss" }, // this gets us an identity mapping until the driver attaches something
 	{ .compatible = "qcom,x1e80100-mdss" },
 	{ }
 };

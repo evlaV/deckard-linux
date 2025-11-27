@@ -187,6 +187,8 @@ struct msm_dsi_host {
 	bool power_on;
 	bool enabled;
 	int irq;
+
+	bool not_first_power_on;
 };
 
 static inline u32 dsi_read(struct msm_dsi_host *msm_host, u32 reg)
@@ -2428,12 +2430,24 @@ static void msm_dsi_sfpb_config(struct msm_dsi_host *msm_host, bool enable)
 
 int msm_dsi_host_power_on(struct mipi_dsi_host *host,
 			struct msm_dsi_phy_shared_timings *phy_shared_timings,
-			bool is_bonded_dsi, struct msm_dsi_phy *phy)
+			bool is_bonded_dsi, struct msm_dsi_phy *phy,
+			struct mipi_dsi_host *host1)
 {
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
+	struct msm_dsi_host *msm_host1 = to_msm_dsi_host(host1);
 	const struct msm_dsi_cfg_handler *cfg_hnd = msm_host->cfg_hnd;
 	int ret = 0;
 
+	if (!msm_host->not_first_power_on && host1) {
+		// pixel/byte clock needs to be disabled before touching pll
+		// (with clk_ignore_unused the clocks stay on until they are used once)
+		cfg_hnd->ops->link_clk_enable(msm_host);
+		cfg_hnd->ops->link_clk_disable(msm_host);
+		// need to do DSI1 as well, because the DSI0 pll is the src of DSI1 pix/byte clks
+		cfg_hnd->ops->link_clk_enable(msm_host1);
+		cfg_hnd->ops->link_clk_disable(msm_host1);
+		msm_host->not_first_power_on = 1;
+	}
 	mutex_lock(&msm_host->dev_mutex);
 	if (msm_host->power_on) {
 		DBG("dsi host already on");

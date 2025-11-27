@@ -400,7 +400,8 @@ static struct msm_mdss *msm_mdss_init(struct platform_device *pdev, bool is_mdp5
 	int ret;
 	int irq;
 
-	ret = msm_mdss_reset(&pdev->dev);
+	// this resets both dsi and "dpu" (which obviously breaks handoff)
+	ret = 0;//msm_mdss_reset(&pdev->dev);
 	if (ret)
 		return ERR_PTR(ret);
 

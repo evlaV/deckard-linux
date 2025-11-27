@@ -844,6 +844,15 @@ struct msm_mmu *msm_iommu_disp_new(struct device *dev, unsigned long quirks)
 		return mmu;
 
 	iommu = to_msm_iommu(mmu);
+
+	/* XXX: this should be mapped *before* attaching the iommu domain, to get 0 faults
+	 * (but that doesn't seem to work - need to find out why)
+	 * the alternative is to stop scanout from memory and display a solid color during handoff
+	 * this is an ugly hack but the driver allocates address space starting at 0x1000, its probably OK?
+	 * (should at least unmap the first time framebuffer changes)
+	 */
+	iommu_map(iommu->domain, 0xaf400000, 0xaf400000, 0x03000000, IOMMU_READ, GFP_KERNEL);
+
 	iommu_set_fault_handler(iommu->domain, msm_disp_fault_handler, iommu);
 
 	return mmu;

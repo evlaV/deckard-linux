@@ -347,12 +347,20 @@ static int nex10000ub_probe(struct i2c_client *client)
 		return PTR_ERR(nex10000ub->enp_gpio);
 	}
 
+	// see comment in panel-deckard
+	// if (gpiod_get_direction(nex10000ub->enp_gpio))
+	//	gpiod_direction_output(nex10000ub->enp_gpio, 0);
+
 	nex10000ub->enn_gpio = devm_gpiod_get(dev, "enn", GPIOD_ASIS);
 	if (IS_ERR(nex10000ub->enn_gpio)) {
 		dev_err(dev, "cannot get enn gpio %ld\n",
 			PTR_ERR(nex10000ub->enn_gpio));
 		return PTR_ERR(nex10000ub->enn_gpio);
 	}
+
+	// see comment in panel-deckard
+	// if (gpiod_get_direction(nex10000ub->enn_gpio))
+	//	gpiod_direction_output(nex10000ub->enn_gpio, 0);
 
 	for (id = 0; id < NEX10000UB_NUM_REGULATORS; ++id) {
 		config.dev = dev;

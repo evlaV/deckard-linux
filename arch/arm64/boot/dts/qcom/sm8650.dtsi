@@ -6076,6 +6076,12 @@
 						opp-hz = /bits/ 64 <514000000>;
 						required-opps = <&rpmhpd_opp_nom>;
 					};
+
+					// for handoff from panel-test which uses a high pixel clock mode (514 isn't enough)
+					opp-540000000 {
+						opp-hz = /bits/ 64 <540000000>;
+						required-opps = <&rpmhpd_opp_nom>;
+					};
 				};
 			};
 

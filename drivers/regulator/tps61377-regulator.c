@@ -94,6 +94,10 @@ static int tps61377_probe(struct platform_device *pdev)
 	if (IS_ERR(tps61377->en_gpio))
 		return PTR_ERR(tps61377->en_gpio);
 
+	// ASIS doesn't do what we want. we still need to set it to output 0 if it wasnt in output mode
+	if (gpiod_get_direction(tps61377->en_gpio))
+		gpiod_direction_output(tps61377->en_gpio, 0);
+
 	tps61377->pgood_gpio = devm_gpiod_get(dev, "pgood", GPIOD_IN);
 	if (IS_ERR(tps61377->pgood_gpio))
 		return PTR_ERR(tps61377->pgood_gpio);
