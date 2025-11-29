@@ -1432,11 +1432,11 @@ static ssize_t otp_show(struct device *dev,
 		mutex_lock(&sensor->lock);
 
         /* If OTP is already cached, return it immediately */
-        if (sensor->otp_valid) {
-			memcpy(buf, sensor->otp_data, sizeof(sensor->otp_data));
-			mutex_unlock(&sensor->lock);
-            return sizeof(sensor->otp_data);
-		}
+        // if (sensor->otp_valid) {
+		// 	memcpy(buf, sensor->otp_data, sizeof(sensor->otp_data));
+		// 	mutex_unlock(&sensor->lock);
+        //     return sizeof(sensor->otp_data);
+		// }
 
 		/* Check if sensor is currently powered on (being used by something else) */
 		if (sensor->power_count > 0) {
@@ -1467,6 +1467,9 @@ static ssize_t otp_show(struct device *dev,
 		if (ret) {
 			dev_err(dev, "Failed to read OTP data: %d\n", ret);
 			goto power_off;
+		}
+		else {
+			dev_info(dev, "OTP data read successfully\n");
 		}
 
 		/* Mark as valid and cache the result */
