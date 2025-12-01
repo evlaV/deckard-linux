@@ -406,6 +406,7 @@ static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 
 	// Only try to set src to QDSP6SSPLL for cDSP on 8650
 	if (dsp->is_cdsp) {
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
 		dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
 		pm_runtime_get_sync(dsp->pds[0]);
 		dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
@@ -426,6 +427,7 @@ static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 	}
 
 	if (dsp->is_adsp) {
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
 		dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
 		pm_runtime_get_sync(dsp->pds[0]);
 		dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
@@ -506,6 +508,7 @@ static int dsp_shutdown(struct dsp *dsp)
 			pm_runtime_put(dsp->pds[2]);
 			dev_pm_genpd_set_performance_state(dsp->pds[3], 0);
 			pm_runtime_put(dsp->pds[3]);
+			icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*50));
 		}
 
 		if (dsp->is_adsp) {
@@ -513,6 +516,7 @@ static int dsp_shutdown(struct dsp *dsp)
 			pm_runtime_put(dsp->pds[0]);
 			dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
 			pm_runtime_put(dsp->pds[1]);
+			icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*50));
 
 		}
 	}
@@ -991,6 +995,36 @@ static void dsp_remove(struct platform_device *pdev)
 	return;
 }
 
+static int dsp_suspend(struct device *dev)
+{
+	struct dsp *dsp = dev_get_drvdata(dev);
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	if (atomic_read(&dsp->booted) &&
+	    (dsp->is_adsp || dsp->is_cdsp)) {
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*50));
+	}
+
+	return 0;
+}
+
+static int dsp_resume(struct device *dev)
+{
+	struct dsp *dsp = dev_get_drvdata(dev);
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	if (atomic_read(&dsp->booted) &&
+	    (dsp->is_adsp || dsp->is_cdsp)) {
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
+	}
+
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(dsp_pm_ops, dsp_suspend, dsp_resume);
+
 static const struct of_device_id dsp_match_table[] = {
 	{ .compatible = "qcom,sm8650-hexagon" },
 	{ .compatible = "qcom,sm8650-xtensa" },
@@ -1004,6 +1038,7 @@ static struct platform_driver dsp_driver = {
 	.driver = {
 		.name = "dsp-sm8650",
 		.of_match_table = dsp_match_table,
+		.pm = pm_ptr(&dsp_pm_ops),
 	},
 };
 module_platform_driver(dsp_driver);
