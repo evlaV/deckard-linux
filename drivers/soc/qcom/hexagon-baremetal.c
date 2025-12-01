@@ -16,6 +16,7 @@
 #include <linux/mailbox_client.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_opp.h>
+#include <linux/pm_runtime.h>
 
 #define QDSP6SS_VERSION 0x00
 
@@ -902,6 +903,32 @@ static void dsp_remove(struct platform_device *pdev)
 	return;
 }
 
+static int dsp_suspend(struct device *dev)
+{
+	struct dsp *dsp = dev_get_drvdata(dev);
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	dsp_shutdown(dsp);
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	misc_deregister(&dsp->miscdev);
+
+	return 0;
+}
+
+static int dsp_resume(struct device *dev)
+{
+	/* Do nothing */
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(dsp_pm_ops, dsp_suspend, dsp_resume);
+
 static const struct of_device_id dsp_match_table[] = {
 	{ .compatible = "qcom,sm8650-hexagon" },
 	{ .compatible = "qcom,sm8650-xtensa" },
@@ -915,6 +942,7 @@ static struct platform_driver dsp_driver = {
 	.driver = {
 		.name = "dsp-sm8650",
 		.of_match_table = dsp_match_table,
+		.pm = pm_ptr(&dsp_pm_ops),
 	},
 };
 module_platform_driver(dsp_driver);
