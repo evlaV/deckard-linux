@@ -421,6 +421,7 @@ dtb-$(CONFIG_ARCH_QCOM) += sm8650-dv1-power.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-dv1-t10robothead.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-dv2.dtb
 dtb-$(CONFIG_ARCH_QCOM) += sm8650-dv2-power.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-mp.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8750-mtp.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8750-qrd.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= talos-evk.dtb
