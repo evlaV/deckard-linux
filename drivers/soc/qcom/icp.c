@@ -337,6 +337,8 @@ static int reset_ipe_bps_cores(struct icp_data *icp)
 	return 0;
 }
 
+static void icp_shutdown(struct icp_data *icp);
+
 static int icp_boot(struct icp_data *icp, struct icp_boot_config __user *cfg_uptr)
 {
 	struct icp_boot_config config;
@@ -395,6 +397,8 @@ static int icp_boot(struct icp_data *icp, struct icp_boot_config __user *cfg_upt
 	}
 	if(!cnt) {
 		dev_err(icp->dev, "ICP boot failure (init=0x%x) \n", readl_relaxed(icp->icp_base + ICP_GP_REG(3)));
+		// Call icp_shutdown to fully reset the hardware for future attemps, this also resets icp->booted to 0
+		icp_shutdown(icp);
 		return -EIO;
 	}
 
@@ -483,8 +487,10 @@ static int icp_open(struct inode *inode, struct file *file)
 
 	// Power is kept on while device is opened
 	ret = pm_runtime_resume_and_get(icp->dev);
-	if (ret < 0)
+	if (ret < 0) {
+		atomic_set(&icp->open, 0);
 		return ret;
+	}
 
 	return 0;
 }
@@ -812,11 +818,41 @@ static void icp_remove(struct platform_device *pdev)
 	put_power(icp);
 }
 
+static int icp_suspend(struct device *dev)
+{
+	struct icp_data *icp = dev_get_drvdata(dev);
+
+	// If the ICP was booted we need to shut it down and also reset the 
+	// IPE/BPS/CDM cores to ensure that nothing will run during suspend
+	if(atomic_read(&icp->booted)) {
+		icp_shutdown(icp);
+		reset_ipe_bps_cores(icp);
+	}
+
+	// Disable clocks and release power
+	clk_bulk_disable_unprepare(icp->clk_cnt, icp->clks);
+	return pm_runtime_force_suspend(icp->dev);
+}
+
+static int icp_resume(struct device *dev)
+{
+	struct icp_data *icp = dev_get_drvdata(dev);
+	int ret;
+
+	// Resume power and clocks
+	ret = pm_runtime_force_resume(icp->dev);
+	if (ret)
+		return ret;
+
+	return clk_bulk_prepare_enable(icp->clk_cnt, icp->clks);
+}
+
 static const struct of_device_id icp_match_table[] = {
 	{ .compatible = "qcom,sm8650-icp" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, icp_match_table);
+static DEFINE_SIMPLE_DEV_PM_OPS(icp_pm_ops, icp_suspend, icp_resume);
 
 static struct platform_driver icp_driver = {
 	.probe = icp_probe,
@@ -824,6 +860,7 @@ static struct platform_driver icp_driver = {
 	.driver = {
 		.name = "icp-sm8650",
 		.of_match_table = icp_match_table,
+		.pm = pm_ptr(&icp_pm_ops),
 	},
 };
 module_platform_driver(icp_driver);
