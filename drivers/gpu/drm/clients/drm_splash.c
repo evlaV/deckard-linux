@@ -28,11 +28,15 @@
 #include "drm_draw_internal.h"
 #include "drm_internal.h"
 
+//#define DRM_SPLASH_SHOW_BACKGROUND_FALLBACK_COLOUR
+
 #define DRM_SPLASH_BACKGROUND_FALLBACK_COLOUR	0x138FCD
 
 struct drm_splash_scanout {
 	struct drm_client_buffer *buffer;
+#ifdef DRM_SPLASH_SHOW_BACKGROUND_FALLBACK_COLOUR
 	u32 color;
+#endif
 };
 
 struct drm_splash {
@@ -53,6 +57,7 @@ static struct drm_splash *client_to_drm_splash(struct drm_client_dev *client)
 	return container_of_const(client, struct drm_splash, client);
 }
 
+#ifdef DRM_SPLASH_SHOW_BACKGROUND_FALLBACK_COLOUR
 static void drm_splash_fill(struct iosys_map *map, unsigned int dst_pitch,
 			    unsigned int height, unsigned int width,
 			    u32 px_width, u32 color)
@@ -91,6 +96,7 @@ static int drm_splash_fill_solid_color(struct drm_splash_scanout *scanout)
 
 	return drm_client_framebuffer_flush(scanout->buffer, &r);
 }
+#endif
 
 static int drm_splash_copy_simplefb(struct drm_splash *dsplash,
 				    struct drm_splash_scanout *scanout)
@@ -140,6 +146,7 @@ static int drm_splash_setup_modeset(struct drm_splash *dsplash,
 		width = dsplash->fb_width;
 		height = dsplash->fb_height;
 		format = dsplash->fb_format->format;
+#ifdef DRM_SPLASH_SHOW_BACKGROUND_FALLBACK_COLOUR
 	} else {
 		format = drm_splash_find_usable_format(crtc->primary);
 		if (format == DRM_FORMAT_INVALID)
@@ -147,6 +154,10 @@ static int drm_splash_setup_modeset(struct drm_splash *dsplash,
 		scanout->color =
 			drm_draw_color_from_xrgb8888(DRM_SPLASH_BACKGROUND_FALLBACK_COLOUR,
 						     format);
+#else
+	} else {
+		return -EINVAL;
+#endif
 	}
 
 	scanout->buffer = drm_client_framebuffer_create(client, width, height, format);
@@ -210,7 +221,11 @@ static void drm_splash_init_client(struct drm_splash *dsplash)
 		if (dsplash->fb_base)
 			drm_splash_copy_simplefb(dsplash, &dsplash->scanout[i]);
 		else
+#ifdef DRM_SPLASH_SHOW_BACKGROUND_FALLBACK_COLOUR
 			drm_splash_fill_solid_color(&dsplash->scanout[i]);
+#else
+			continue;
+#endif
 	}
 
 	if (drm_client_modeset_commit(client))
@@ -407,8 +422,10 @@ void drm_splash_register(struct drm_device *dev,
 		splash->fb_size = resource_size(mem);
 		splash->fb_base = devm_memremap(dev->dev, mem->start,
 						splash->fb_size, MEMREMAP_WC);
-		if (IS_ERR(splash->fb_base))
+		if (IS_ERR(splash->fb_base)) {
+			splash->fb_base = NULL;
 			goto no_simplefb;
+		}
 
 		drm_info(dev, "drm_splash: found %dx%d/%d format %p4cc framebuffer\n",
 			 splash->fb_width, splash->fb_height, splash->fb_stride,
@@ -417,6 +434,11 @@ void drm_splash_register(struct drm_device *dev,
 
 no_simplefb:
 	of_node_put(of_node);
+
+#ifndef DRM_SPLASH_SHOW_BACKGROUND_FALLBACK_COLOUR
+	if (IS_ERR_OR_NULL(splash->fb_base))
+		goto err_free;
+#endif
 
 	mutex_init(&splash->lock);
 	if (drm_client_init(dev, &splash->client, "drm_splash",
