@@ -5268,7 +5268,7 @@
 			iommus = <&apps_smmu 0x540 0>;
 
 			bus-width = <4>;
-
+			max-sd-hs-hz = <37500000>;
 			/* Forbid SDR104/SDR50 - broken hw! */
 			// sdhci-caps-mask = <0x3 0>;
 
