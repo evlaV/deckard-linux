@@ -624,6 +624,9 @@ bool dpu_encoder_use_dsc_merge(struct drm_encoder *drm_enc)
 	struct dpu_encoder_virt *dpu_enc = to_dpu_encoder_virt(drm_enc);
 	int i, intf_count = 0, num_dsc = 0;
 
+	if (dpu_enc->disp_info.intf_type == INTF_WB)
+		return false;
+
 	for (i = 0; i < MAX_PHYS_ENCODERS_PER_VIRTUAL; i++)
 		if (dpu_enc->phys_encs[i])
 			intf_count++;
