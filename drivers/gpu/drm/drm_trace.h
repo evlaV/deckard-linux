@@ -66,6 +66,25 @@ TRACE_EVENT(drm_vblank_event_delivered,
 		      __entry->seq)
 );
 
+TRACE_EVENT(drm_get_vblank_timestamp,
+	    TP_PROTO(int vpos, int crtc_clock, s64 etime, s64 vblank_time),
+	    TP_ARGS(vpos, crtc_clock, etime, vblank_time),
+	    TP_STRUCT__entry(
+		    __field(int, vpos)
+		    __field(int, crtc_clock)
+		    __field(s64, etime)
+		    __field(s64, vblank_time)
+		    ),
+	    TP_fast_assign(
+		    __entry->vpos        = vpos       ;
+		    __entry->crtc_clock  = crtc_clock ;
+		    __entry->etime       = etime      ;
+		    __entry->vblank_time = vblank_time;
+		    ),
+
+	    TP_printk("vpos=%u crtc_clock=%u etime=%lld vblank_time=%lld", __entry->vpos, __entry->crtc_clock, __entry->etime, __entry->vblank_time)
+);
+
 #endif /* _DRM_TRACE_H_ */
 
 /* This part must be outside protection */

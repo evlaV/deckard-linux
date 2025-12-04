@@ -803,6 +803,8 @@ drm_crtc_vblank_helper_get_vblank_timestamp_internal(
 	 */
 	*vblank_time = ktime_sub_ns(etime, delta_ns);
 
+	trace_drm_get_vblank_timestamp(vpos, mode->crtc_clock, etime, *vblank_time);
+
 	if (!drm_debug_enabled(DRM_UT_VBL))
 		return true;
 
