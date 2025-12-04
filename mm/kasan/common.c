@@ -599,6 +599,7 @@ void __kasan_vrealloc(const void *addr, unsigned long old_size,
 		__kasan_unpoison_vmalloc(addr + old_size,
 					new_size - old_size,
 					KASAN_VMALLOC_PROT_NORMAL |
-					KASAN_VMALLOC_VM_ALLOC);
+					KASAN_VMALLOC_VM_ALLOC |
+					KASAN_VMALLOC_KEEP_TAG);
 	}
 }
