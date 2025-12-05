@@ -1843,7 +1843,11 @@ static inline void cac_blob_size_to_cfg(u32 csz, u32 *width, u32 *height)
 	*height = csz >> 16;
 }
 
-#define FILTER_BILINEAR                 0x3
+//qseed_filter can be set to the following values to change filter behavior
+#define FILTER_EDGE_DIRECTED_2D	0x0
+#define FILTER_CIRCULAR_2D		0x1
+#define FILTER_SEPARABLE_1D		0x2
+#define FILTER_BILINEAR			0x3
 
 /* setup all SSPP rectx and QSEED3 related register per user land requirement */
 static void dpu_crtc_set_cac_blob(struct msm_kms *kms,
