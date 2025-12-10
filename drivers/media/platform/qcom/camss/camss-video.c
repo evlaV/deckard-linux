@@ -857,7 +857,7 @@ static int video_set_extra_output_plane_config(struct camss_video *video, void* 
 	// get which index is used to store the additional plane address, NV12 format will use 2 addresses (Y/CbCr planes)
 	video->extra_output_addr_idx = (video->active_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12) ? 2 : 1;
 
-	dev_warn(video->camss->dev, "camss-video: extra output plane configured \n");
+	dev_dbg(video->camss->dev, "camss-video: extra output plane configured \n");
 
 	return 0;
 }
@@ -879,7 +879,7 @@ static int video_set_custom_plane_layout(struct camss_video *video, void* arg)
 	for(int i=0; i<CAMSS_CUSTOM_PLANE_LAYOUT_NUM_PLANES; i++)
 	{
 		sizeimage += video->custom_plane_layout.size[i];
-		dev_warn(video->camss->dev, "camss-video: plane layout %d stride=%u offset=%u size=%u\n", i,
+		dev_dbg(video->camss->dev, "camss-video: plane layout %d stride=%u offset=%u size=%u\n", i,
 			video->custom_plane_layout.stride[i], video->custom_plane_layout.offset[i], video->custom_plane_layout.size[i]);
 	}
 
