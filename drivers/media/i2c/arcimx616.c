@@ -1101,7 +1101,7 @@ static void arcimx616_set_power_off(struct arcimx616_dev *sensor)
 	if(sensor->reset_gpio == NULL) {
 		return ;
 	}
-	dev_err(&client->dev, "%s: Powered off\n",
+	dev_dbg(&client->dev, "%s: Powered off\n",
 			__func__);
 	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
 
@@ -1268,7 +1268,7 @@ static int arcimx616_s_power(struct v4l2_subdev *sd, int on)
 		dev_err(&client->dev, "could not map memory\n");
 	}
 	
-	dev_err(&client->dev, "calling s_power with on:%d",on);
+	dev_dbg(&client->dev, "calling s_power with on:%d",on);
 	mutex_lock(&sensor->lock);
 
 	/*
@@ -1299,7 +1299,7 @@ static int arcimx616_check_chip_id(struct arcimx616_dev *sensor)
 		ret = -ENXIO;
 	}
 	else { 
-		dev_err(&client->dev, "%s: Correct chip identifier, expected 0x616, got 0x%x\n",
+		dev_dbg(&client->dev, "%s: Correct chip identifier, expected 0x616, got 0x%x\n",
 			__func__, chip_id);
 	}
 	return ret;
@@ -1572,7 +1572,7 @@ static void arcimx616_connect_work_fn(struct work_struct *work)
     static bool first_stage = true;
 
     if (!sensor->detect_gpio) {
-        dev_err(&sensor->i2c_client->dev, "No detect GPIO found\n");
+        dev_dbg(&sensor->i2c_client->dev, "No detect GPIO found\n");
         return;
     }
 
@@ -1734,7 +1734,8 @@ static int arcimx616_probe(struct i2c_client *client)
 	/* get system clock (xclk) */
 	sensor->xclk = devm_clk_get(dev, "xclk");
 	if (IS_ERR(sensor->xclk)) {
-		dev_err(dev, "failed to get xclk\n");
+		// This is normal because the xclk is shared between the two sensors
+		dev_dbg(dev, "failed to get xclk\n");
 	}
 	sensor->xclk2 = devm_clk_get(dev, "xclk2");
 	sensor->reset_gpio = devm_gpiod_get_optional(dev, "reset",
@@ -1746,7 +1747,7 @@ static int arcimx616_probe(struct i2c_client *client)
 	sensor->mux_select = devm_gpiod_get_optional(dev, "mux-select",
 						     GPIOD_OUT_HIGH);
 	if(sensor->detect_gpio) {
-		dev_err(&client->dev, "detect GPIO found\n");
+		dev_dbg(&client->dev, "detect GPIO found\n");
 		sensor->irq = gpiod_to_irq(sensor->detect_gpio);
 		ret = devm_request_threaded_irq(dev, sensor->irq, NULL, gpio_handler,
                                         IRQF_SHARED | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
@@ -1755,11 +1756,11 @@ static int arcimx616_probe(struct i2c_client *client)
 			dev_err(&client->dev, "failed to request IRQ for detect GPIO\n");
 		}
 		else {
-			dev_err(&client->dev, "IRQ for detect GPIO requested successfully\n");
+			dev_dbg(&client->dev, "IRQ for detect GPIO requested successfully\n");
 		}
 	}
 	else {
-		dev_err(&client->dev, "no detect GPIO found\n");
+		dev_dbg(&client->dev, "no detect GPIO found\n");
 	}
 
 	struct v4l2_subdev *sd;
@@ -1791,10 +1792,10 @@ static int arcimx616_probe(struct i2c_client *client)
 		}
 		if (strcmp(id, "passthrough_left") == 0) {
 			sensor->is_left_sensor = true;
-			dev_info(dev, "Identified as left sensor\n");
+			dev_dbg(dev, "Identified as left sensor\n");
 		} else {
 			sensor->is_left_sensor = false;
-			dev_info(dev, "Identified as right sensor\n");
+			dev_dbg(dev, "Identified as right sensor\n");
 		}
 	}
 	
@@ -1829,7 +1830,7 @@ static int arcimx616_probe(struct i2c_client *client)
 						PTR_ERR(g_dual_i2c_client));
 					g_dual_i2c_client = NULL;
 				} else {
-					dev_info(&client->dev, "Created dual i2c client at address 0x36\n");
+					dev_dbg(&client->dev, "Created dual i2c client at address 0x36\n");
 				}
 
 				struct i2c_board_info aw9106_info = {
@@ -1841,7 +1842,7 @@ static int arcimx616_probe(struct i2c_client *client)
 						PTR_ERR(g_aw9106_i2c_client));
 					g_aw9106_i2c_client = NULL;
 				} else {
-					dev_info(&client->dev, "Created AW9106 i2c client at address 0x%02x\n", AW9106C_ADDR);
+					dev_dbg(&client->dev, "Created AW9106 i2c client at address 0x%02x\n", AW9106C_ADDR);
 				}
 			}
 		} else {
@@ -1854,13 +1855,13 @@ static int arcimx616_probe(struct i2c_client *client)
 
 	/* Check if detect_gpio is low (something plugged in) during probe */
 	if (sensor->detect_gpio && gpiod_get_value(sensor->detect_gpio) == 0) {
-		dev_info(&client->dev, "Accessory detected during probe, checking connectivity\n");
+		dev_dbg(&client->dev, "Accessory detected during probe, checking connectivity\n");
 		// Power on to check I2C connectivity
 		arcimx616_set_power(sensor, true);
 		// Set mux enable low
 		if (sensor->mux_enable) {
 			gpiod_set_value_cansleep(sensor->mux_enable, 0);
-			dev_info(&client->dev, "Mux enable GPIO set to low during probe\n");
+			dev_dbg(&client->dev, "Mux enable GPIO set to low during probe\n");
 		}
 		// Check connectivity and set mux select appropriately
 		arcimx616_check_and_set_mux(sensor);
@@ -1889,7 +1890,7 @@ entity_cleanup:
 	}
 	mutex_destroy(&sensor->lock);
 	media_entity_cleanup(&sensor->sd.entity);
-	dev_err(&client->dev, "Returning %d from arcimx616_probe",ret);
+	dev_dbg(&client->dev, "Returning %d from arcimx616_probe",ret);
 
 	return ret;
 }
@@ -1924,12 +1925,12 @@ static void arcimx616_remove(struct i2c_client *client)
 			if (g_dual_i2c_client) {
 				i2c_unregister_device(g_dual_i2c_client);
 				g_dual_i2c_client = NULL;
-				dev_info(&client->dev, "Cleaned up dual i2c client\n");
+				dev_dbg(&client->dev, "Cleaned up dual i2c client\n");
 			}
 			if (g_aw9106_i2c_client) {
 				i2c_unregister_device(g_aw9106_i2c_client);
 				g_aw9106_i2c_client = NULL;
-				dev_info(&client->dev, "Cleaned up AW9106 i2c client\n");
+				dev_dbg(&client->dev, "Cleaned up AW9106 i2c client\n");
 			}
 		}
 	}
