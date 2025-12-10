@@ -537,8 +537,6 @@ static int og0ve10_restore_mode(struct og0ve10_dev *sensor)
 	if (ret < 0)
 		return ret;
 
-	ret = og0ve10_read_reg(sensor, 0x3662, &val);
-
 	return 0;
 }
 
@@ -573,7 +571,7 @@ static int og0ve10_set_power_on(struct og0ve10_dev *sensor)
 	}
 
 	og0ve10_reset(sensor);
-	dev_info(&client->dev, "og0ve10_set_power_on: completed successfully\n");
+	dev_dbg(&client->dev, "og0ve10_set_power_on: completed successfully\n");
 	return 0;
 
 xclk_off:
@@ -619,7 +617,7 @@ static int og0ve10_read_otp_once(struct og0ve10_dev *sensor, u8 *otp_data)
 
 static int og0ve10_set_power(struct og0ve10_dev *sensor, bool on)
 {
-	dev_info(&sensor->i2c_client->dev, "og0ve10_set_power: on = %d\n", on);
+	dev_dbg(&sensor->i2c_client->dev, "og0ve10_set_power: on = %d\n", on);
 	int ret = 0;
 
 	if (on) {
@@ -636,7 +634,7 @@ static int og0ve10_set_power(struct og0ve10_dev *sensor, bool on)
 		}
 
 	} else {
-		dev_info(&sensor->i2c_client->dev, "og0ve10_set_power: power off\n");
+		dev_dbg(&sensor->i2c_client->dev, "og0ve10_set_power: power off\n");
 		og0ve10_set_power_off(sensor);
 	}
 
@@ -1692,7 +1690,7 @@ static int og0ve10_probe(struct i2c_client *client)
 				PTR_ERR(g_dual_i2c_client_og0ve10));
 			g_dual_i2c_client_og0ve10 = NULL;
 		} else {
-			dev_info(&client->dev, "Created dual i2c client at address 0x70\n");
+			dev_dbg(&client->dev, "Created dual i2c client at address 0x70\n");
 		}
 	}
 
@@ -1752,7 +1750,7 @@ static void og0ve10_remove(struct i2c_client *client)
 	if (numSensors_og0VE10 == 0 && g_dual_i2c_client_og0ve10) {
 		i2c_unregister_device(g_dual_i2c_client_og0ve10);
 		g_dual_i2c_client_og0ve10 = NULL;
-		dev_info(&client->dev, "Cleaned up dual i2c client\n");
+		dev_dbg(&client->dev, "Cleaned up dual i2c client\n");
 	}
 
 	v4l2_async_unregister_subdev(&sensor->sd);

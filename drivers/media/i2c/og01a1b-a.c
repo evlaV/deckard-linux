@@ -1131,24 +1131,6 @@ static int og01a1b_restore_mode(struct og01a1b_dev *sensor)
 	if (ret < 0)
 		return ret;
 
-	ret = og01a1b_read_reg(sensor, 0x3662, &val);
-	// Verify that register map was succesfully changed from the default value
-	// (Power on default:0b100 )
-	// if (ret < 0 || val != 0x24) {
-	// 	struct i2c_client *client = sensor->i2c_client;
-	// 	const char *id;
-	// 	dev_err(&client->dev, "Register map not verified  as written. Likely hardware problem with %s\n", of_property_read_string( client->dev.of_node, "id", &id ) ? "unknown camera" : id );
-	// 	return -EINVAL;
-	// }
-	struct i2c_client *client = sensor->i2c_client;
-	dev_err(&client->dev, "got 0x%x from 0x%x", val, 0x3662);
-
-	//set registers for 1 lane mode if necessary
-	// if(sensor->ep.bus.mipi_csi2.num_data_lanes == 1) {
-	// 	og01a1b_write_reg(sensor, 0x3662, 0b010);
-	// 	og01a1b_write_reg(sensor, 0x3039, 0x32);
-
-	// }
 
 	return 0;
 }
@@ -2258,7 +2240,7 @@ static int og01a1b_probe(struct i2c_client *client)
 				PTR_ERR(g_dual_i2c_client));
 			g_dual_i2c_client = NULL;
 		} else {
-			dev_info(&client->dev, "Created dual i2c client at address 0x70\n");
+			dev_dbg(&client->dev, "Created dual i2c client at address 0x70\n");
 		}
 	}
 
@@ -2294,7 +2276,7 @@ static void og01a1b_remove(struct i2c_client *client)
 	if (numSensors == 0 && g_dual_i2c_client) {
 		i2c_unregister_device(g_dual_i2c_client);
 		g_dual_i2c_client = NULL;
-		dev_info(&client->dev, "Cleaned up dual i2c client\n");
+		dev_dbg(&client->dev, "Cleaned up dual i2c client\n");
 	}
 
 	v4l2_async_unregister_subdev(&sensor->sd);
