@@ -668,6 +668,11 @@ static void dpu_hw_sspp_setup_cac(struct dpu_hw_sspp *ctx, struct cac_blob *cac)
 	dpu_hw_setup_cac(c, &dcac, ctx->cap->sblk->scaler_blk.base);
 }
 
+static void dpu_hw_sspp_disable_cac(struct dpu_hw_sspp *ctx)
+{
+	DPU_REG_WRITE(&ctx->hw, SSPP_CAC_CTRL, 0);
+}
+
 static void _setup_layer_ops(struct dpu_hw_sspp *c,
 		unsigned long features, const struct dpu_mdss_version *mdss_rev)
 {
@@ -677,6 +682,7 @@ static void _setup_layer_ops(struct dpu_hw_sspp *c,
 	c->ops.setup_solidfill = dpu_hw_sspp_setup_solidfill;
 	c->ops.setup_pe = dpu_hw_sspp_setup_pe_config;
 	c->ops.setup_cac = dpu_hw_sspp_setup_cac;
+	c->ops.disable_cac = dpu_hw_sspp_disable_cac;
 
 	if (test_bit(DPU_SSPP_QOS, &features)) {
 		c->ops.setup_qos_lut = dpu_hw_sspp_setup_qos_lut;

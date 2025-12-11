@@ -252,6 +252,12 @@ struct dpu_hw_sspp_ops {
 	void (*setup_cac)(struct dpu_hw_sspp *ctx, struct cac_blob *cac);
 
 	/**
+	 * @disable_cac: disable CAC mode for pipe
+	 * @ctx: Pointer to pipe context
+	 */
+	void (*disable_cac)(struct dpu_hw_sspp *ctx);
+
+	/**
 	 * @setup_sourceaddress: setup pipe source addresses
 	 * @pipe: Pointer to software pipe context
 	 * @layout: format layout information for programming buffer to hardware
