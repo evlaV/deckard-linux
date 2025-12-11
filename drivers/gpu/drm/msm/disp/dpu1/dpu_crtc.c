@@ -44,6 +44,7 @@
 #define	CONVERT_S3_15(val) \
 	(((((u64)val) & ~BIT_ULL(63)) >> 17) & GENMASK_ULL(17, 0))
 
+static void dpu_crtc_disable_cac(struct msm_kms *kms);
 static void dpu_crtc_set_cac_blob(struct msm_kms *kms, struct cac_blob *cac);
 
 static struct dpu_kms *_dpu_crtc_get_kms(struct drm_crtc *crtc)
@@ -479,6 +480,7 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 
 	memset(active_fetch, 0, sizeof(active_fetch));
 	memset(active_pipes, 0, sizeof(active_pipes));
+
 	drm_atomic_crtc_for_each_plane(plane, crtc) {
 		skip_plane = false;
 		state = plane->state;
@@ -507,7 +509,7 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 						  PIPES_PER_STAGE);
 				set_bit(pstate->pipe[pipe_idx].sspp->idx, active_fetch);
 				/* skip CAC SSPP that's only for fetch */
-				if (dpu_kms->planar_cac_enable &&
+				if (dpu_kms->cac_state_cur == CAC_ENABLED &&
 				    (pstate->pipe[pipe_idx].sspp->idx == SSPP_DMA0 ||
 				    pstate->pipe[pipe_idx].sspp->idx == SSPP_DMA1)) {
 						skip_plane = true;
@@ -540,7 +542,7 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	}
 
 	DRM_DEBUG_ATOMIC("checking CAC blending\n");
-	if (!dpu_kms->planar_cac_enable || !pstate)
+	if (dpu_kms->cac_state_cur == CAC_DISABLED || !pstate)
 		goto skip_cac_blend;
 
 	/*
@@ -602,6 +604,7 @@ static void _dpu_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 				}
 			}
 		}
+
 		/* to blend CAC hidden plane to setup alpha with op_mode DPU_BLEND_BG_ALPHA_BG_CONST */
 		if (pstate->base.pixel_blend_mode != DRM_MODE_BLEND_PIXEL_NONE &&
 		    format->alpha_enable)
@@ -649,7 +652,6 @@ static void _dpu_crtc_blend_setup(struct drm_crtc *crtc)
 	struct dpu_hw_stage_cfg stage_cfg[STAGES_PER_PLANE];
 	DECLARE_BITMAP(active_lms, LM_MAX);
 	enum dpu_stage stage;
-	struct dpu_kms *dpu_kms = _dpu_crtc_get_kms(crtc);
 	int i;
 
 	DRM_DEBUG_ATOMIC("%s\n", dpu_crtc->name);
@@ -710,9 +712,6 @@ static void _dpu_crtc_blend_setup(struct drm_crtc *crtc)
 			lm->ops.setup_blendstage(lm, mixer[i].hw_lm->idx,
 				&stage_cfg[i / PIPES_PER_STAGE]);
 	}
-
-	if (!dpu_kms->planar_cac_enable)
-		return;
 }
 
 /**
@@ -1099,9 +1098,14 @@ static void dpu_crtc_atomic_begin(struct drm_crtc *crtc,
 
 	_dpu_crtc_setup_cp_blocks(crtc);
 
-	if (dpu_kms->planar_cac_enable == CAC_ENABLING) {
+	if (dpu_kms->cac_state_cached == CAC_ENABLING) {
 		dpu_crtc_set_cac_blob(priv->kms, dpu_kms->cac_blobs);
-		dpu_kms->planar_cac_enable = CAC_ENABLED;
+		dpu_kms->cac_state_cached = CAC_ENABLED;
+		dpu_kms->cac_state_cur = CAC_ENABLED;
+	} else if (dpu_kms->cac_state_cached == CAC_DISABLING) {
+		dpu_crtc_disable_cac(priv->kms);
+		dpu_kms->cac_state_cached = CAC_DISABLED;
+		dpu_kms->cac_state_cur = CAC_DISABLED;
 	}
 
 	/*
@@ -1918,6 +1922,10 @@ static void dpu_crtc_set_cac_blob(struct msm_kms *kms,
 		cac_pipe = &dpu_kms->cac_pipes[i*PIPES_PER_STAGE];
 		sspp = cac_pipe->sspp;
 
+		/*
+		 * Configure VIG0/1/2/3 and DMA2/3 here. For DMA0/1, CAC is
+		 * setup in plane side as multi-mode is also needed.
+		 */
 		sspp->ops.setup_cac(sspp, cac);
 		/* setup img size as 6.9 does. the green size is passed in that? */
 		if ((i & 2) == 0)
@@ -1975,11 +1983,24 @@ static void dpu_crtc_set_cac_blob(struct msm_kms *kms,
 		sspp = cac_pipe->sspp;
 		cac_pipe_cfg = &dpu_kms->cac_pipe_cfg[i];
 
-		if (cac_pipe->sspp->idx <= SSPP_DMA1)
-			sspp->ops.setup_pe(cac_pipe->sspp, &pe_ext);
+		if (sspp->idx <= SSPP_DMA1)
+			sspp->ops.setup_pe(sspp, &pe_ext);
 
 		/* call dpu_hw_sspp_setup_rects to set src/dst and size/xy for all SSPP per cfg */
 		sspp->ops.setup_rects(cac_pipe, cac_pipe_cfg);
+	}
+}
+
+static void dpu_crtc_disable_cac(struct msm_kms *kms)
+{
+	struct dpu_hw_sspp *sspp;
+	struct dpu_kms *dpu_kms = to_dpu_kms(kms);
+	int i;
+
+	for (i = 0; i < PLANAR_CAC_PIPES_WITH_FETCH; i++) {
+		sspp = dpu_kms->cac_pipes[i].sspp;
+		if (i >= PLANAR_CAC_PIPES)
+			sspp->ops.disable_cac(sspp);
 	}
 }
 
@@ -1990,7 +2011,6 @@ crtc_atomic_set_property(struct drm_crtc *crtc,
 {
 	struct msm_drm_private *priv = crtc->dev->dev_private;
 	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
-	struct dpu_crtc_state *cstate = to_dpu_crtc_state(state);
 	struct drm_property_blob *blob;
 
 	if (property != dpu_kms->cac_prop)
@@ -2011,7 +2031,8 @@ crtc_atomic_set_property(struct drm_crtc *crtc,
 
 	memcpy(dpu_kms->cac_blobs, blob->data, blob->length);
 	drm_property_blob_put(blob);
-	dpu_kms->planar_cac_enable = CAC_ENABLING;
+	if (dpu_kms->cac_state_cached != CAC_ENABLED)
+		dpu_kms->cac_state_cached = CAC_ENABLING;
 	/* use the last 2 stage for hidden SSPP, it's DPU_STAGE_9/10 for now */
 	/* TODO: change max val per catalog */
 	dpu_kms->cac_vig_lm_stage = DPU_STAGE_MAX - 3;

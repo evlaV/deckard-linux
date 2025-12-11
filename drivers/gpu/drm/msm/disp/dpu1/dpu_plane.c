@@ -936,7 +936,7 @@ static int dpu_plane_atomic_check_nosspp(struct drm_plane *plane,
 				DRM_RECT_ARG(&pipe_cfg->src_rect), DRM_RECT_ARG(&pipe_cfg->dst_rect));
 
 		/* Split wide rect into 2 rect */
-		if (kms->planar_cac_enable ||
+		if (kms->cac_state_cur == CAC_ENABLED ||
 		     (drm_rect_width(&pipe_cfg->src_rect) > max_linewidth) ||
 		     _dpu_plane_calc_clk(mode, pipe_cfg) > max_mdp_clk_rate) {
 
@@ -1196,7 +1196,7 @@ static int dpu_plane_atomic_check(struct drm_plane *plane,
 					      pipe->sspp,
 					      msm_framebuffer_format(new_plane_state->fb),
 					      max_linewidth,
-					      dpu_kms->planar_cac_enable)) {
+					      dpu_kms->cac_state_cur == CAC_ENABLED)) {
 		DPU_DEBUG_PLANE(pdpu, "invalid " DRM_RECT_FMT " /" DRM_RECT_FMT
 				" max_line:%u, can't use split source\n",
 				DRM_RECT_ARG(&pipe_cfg->src_rect),
@@ -1286,7 +1286,7 @@ static int dpu_plane_assign_resource_in_stage(struct dpu_sw_pipe *pipe,
 					      pipe->sspp,
 					      msm_framebuffer_format(plane_state->fb),
 					      dpu_kms->catalog->caps->max_linewidth,
-					      dpu_kms->planar_cac_enable))
+					      dpu_kms->cac_state_cur == CAC_ENABLED))
 		return 0;
 
 	r_pipe->sspp = dpu_rm_reserve_sspp(&dpu_kms->rm, global_state, crtc, reqs);
@@ -1337,7 +1337,7 @@ static int dpu_plane_virtual_assign_resources(struct drm_crtc *crtc,
 	reqs.rot90 = drm_rotation_90_or_270(plane_state->rotation);
 
 	for (i = 0; i < STAGES_PER_PLANE; i++) {
-		if (!dpu_kms->planar_cac_enable && prev_adjacent_pstate[i] &&
+		if (dpu_kms->cac_state_cur == CAC_DISABLED && prev_adjacent_pstate[i] &&
 		    dpu_plane_try_multirect_shared(pstate, prev_adjacent_pstate[i], fmt,
 						   dpu_kms->catalog->caps->max_linewidth,
 						   i))
@@ -1477,7 +1477,7 @@ static void dpu_plane_sspp_update_pipe(struct drm_plane *plane,
 	if (layout && pipe->sspp->ops.setup_sourceaddress) {
 		trace_dpu_plane_set_scanout(pipe, layout);
 		pipe->sspp->ops.setup_sourceaddress(pipe, layout,
-						    kms->planar_cac_enable);
+						    kms->cac_state_cur == CAC_ENABLED);
 	}
 
 	/* override for color fill */
@@ -1490,7 +1490,7 @@ static void dpu_plane_sspp_update_pipe(struct drm_plane *plane,
 
 	/* skip source rect setup for fetch SSPP in CAC case */
 	if (pipe->sspp->ops.setup_rects) {
-		if (!(kms->planar_cac_enable &&
+		if (!(kms->cac_state_cur == CAC_ENABLED &&
 		    (pipe->sspp->idx == SSPP_DMA0 || pipe->sspp->idx == SSPP_DMA1)))
 			pipe->sspp->ops.setup_rects(pipe,
 					pipe_cfg);
@@ -1498,13 +1498,11 @@ static void dpu_plane_sspp_update_pipe(struct drm_plane *plane,
 
 	_dpu_plane_setup_scaler(pipe, fmt, false, pipe_cfg);
 
-	if (pipe->sspp->ops.setup_multirect)
-		pipe->sspp->ops.setup_multirect(
-				pipe);
-
-
-	if (kms->planar_cac_enable && pipe->sspp->ops.setup_cac)
+	if (kms->cac_state_cur == CAC_ENABLED && pipe->sspp->ops.setup_cac)
 		pipe->sspp->ops.setup_cac(pipe->sspp, NULL);
+	else if (pipe->sspp->ops.setup_multirect)
+		pipe->sspp->ops.setup_multirect(pipe);
+
 
 	if (pipe->sspp->ops.setup_format) {
 		unsigned int rotation = pipe_cfg->rotation;

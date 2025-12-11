@@ -307,6 +307,7 @@ static int dpu_kms_debugfs_init(struct msm_kms *kms, struct drm_minor *minor)
 	entry = debugfs_create_dir("debug", minor->debugfs_root);
 
 	debugfs_create_x32(DPU_DEBUGFS_HWMASKNAME, 0600, entry, p);
+	debugfs_create_u32("cac_enable", 0600, entry, &dpu_kms->cac_state_cached);
 
 	dpu_debugfs_danger_init(dpu_kms, entry);
 	dpu_debugfs_vbif_init(dpu_kms, entry);
@@ -1345,6 +1346,8 @@ static int dpu_kms_init(struct drm_device *ddev)
 
 	pm_runtime_enable(&pdev->dev);
 	dpu_kms->rpm_enabled = true;
+	dpu_kms->cac_state_cur = CAC_DISABLED;
+	dpu_kms->cac_state_cached = CAC_DISABLED;
 
 	return 0;
 }

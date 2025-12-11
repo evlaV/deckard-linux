@@ -62,13 +62,14 @@
 #define PLANAR_CAC_SSPP_VIG	4
 #define PLANAR_CAC_SSPP		6
 #define PLANAR_CAC_SSPP_WITH_FETCH	8
-#define PLANAR_CAC_PIPES	12
-#define PLANAR_CAC_PIPES_WITH_FETCH	16
+#define PLANAR_CAC_PIPES	(PLANAR_CAC_SSPP * 2)
+#define PLANAR_CAC_PIPES_WITH_FETCH	(PLANAR_CAC_SSPP_WITH_FETCH * 2)
 
 enum cac_state {
 	CAC_DISABLED = 0,
 	CAC_ENABLING,
 	CAC_ENABLED,
+	CAC_DISABLING,
 };
 
 extern bool dpu_use_virtual_planes;
@@ -110,7 +111,8 @@ struct dpu_kms {
 	size_t num_clocks;
 
 	struct drm_property *cac_prop;
-	enum cac_state planar_cac_enable;
+	enum cac_state cac_state_cached;
+	enum cac_state cac_state_cur;
 	u32 cac_vig_lm_stage;	/* stage in LM to blend SSPP_VIG0~3 */
 	u32 cac_blob_id;
 
