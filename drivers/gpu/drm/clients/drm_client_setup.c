@@ -64,6 +64,13 @@ void drm_client_setup(struct drm_device *dev, const struct drm_format_info *form
 	}
 #endif
 
+#ifdef CONFIG_DRM_CLIENT_VRCONSOLE
+	if (!strcmp(drm_client_default, "vrconsole")) {
+		drm_vrconsole_register(dev);
+		return;
+	}
+#endif
+
 	if (strcmp(drm_client_default, ""))
 		drm_warn(dev, "Unknown DRM client %s\n", drm_client_default);
 }

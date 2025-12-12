@@ -13,6 +13,7 @@ config DRM_CLIENT_SELECTION
 	tristate
 	depends on DRM
 	select DRM_CLIENT_LIB if DRM_CLIENT_SPLASH
+	select DRM_CLIENT_LIB if DRM_CLIENT_VRCONSOLE
 	select DRM_CLIENT_LIB if DRM_CLIENT_LOG
 	select DRM_CLIENT_LIB if DRM_FBDEV_EMULATION
 	help
@@ -99,6 +100,19 @@ config DRM_CLIENT_SPLASH
 	  Message and progress can be set through sysfs; an initial message can also
 	  be set by using the kernel command line 'drm_client_lib.message=' option.
 
+config DRM_CLIENT_VRCONSOLE
+	bool "Display graphical VR Console"
+	depends on DRM_CLIENT_SELECTION
+	select DRM_CLIENT
+	select DRM_CLIENT_SETUP
+	select DRM_DRAW
+	help
+	  This enables a splash drm client, able to display a colored background,
+	  or the content of a simple-framebuffer if available.
+
+	  Message and progress can be set through sysfs; an initial message can also
+	  be set by using the kernel command line 'drm_client_lib.message=' option.
+
 choice
 	prompt "Default DRM Client"
 	depends on DRM_CLIENT_SELECTION
@@ -131,6 +145,12 @@ config DRM_CLIENT_DEFAULT_SPLASH
 	help
 	  Use splash as default drm client.
 
+config DRM_CLIENT_DEFAULT_VRCONSOLE
+	bool "vrconsole"
+	depends on DRM_CLIENT_VRCONSOLE
+	help
+	  Use vrconsole as default drm client.
+
 endchoice
 
 config DRM_CLIENT_DEFAULT
@@ -139,6 +159,7 @@ config DRM_CLIENT_DEFAULT
        default "fbdev" if DRM_CLIENT_DEFAULT_FBDEV
        default "log" if DRM_CLIENT_DEFAULT_LOG
        default "splash" if DRM_CLIENT_DEFAULT_SPLASH
+       default "vrconsole" if DRM_CLIENT_DEFAULT_VRCONSOLE
        default ""
 
 endmenu
