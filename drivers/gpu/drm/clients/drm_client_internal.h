@@ -31,4 +31,11 @@ static inline void drm_splash_register(struct drm_device *dev,
 {}
 #endif
 
+#ifdef CONFIG_DRM_CLIENT_VRCONSOLE
+void drm_vrconsole_register(struct drm_device *dev);
+#else
+static inline void drm_vrconsole_register(struct drm_device *dev)
+{}
+#endif
+
 #endif
