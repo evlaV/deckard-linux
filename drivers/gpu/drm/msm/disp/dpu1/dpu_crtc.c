@@ -1094,8 +1094,10 @@ static void dpu_crtc_atomic_begin(struct drm_crtc *crtc,
 
 	_dpu_crtc_setup_cp_blocks(crtc);
 
-	if (dpu_kms->planar_cac_enable)
+	if (dpu_kms->planar_cac_enable == CAC_ENABLING) {
 		dpu_crtc_set_cac_blob(priv->kms, dpu_kms->cac_blobs);
+		dpu_kms->planar_cac_enable = CAC_ENABLED;
+	}
 
 	/*
 	 * PP_DONE irq is only used by command mode for now.
@@ -2024,7 +2026,7 @@ crtc_atomic_set_property(struct drm_crtc *crtc,
 
 	memcpy(dpu_kms->cac_blobs, blob->data, blob->length);
 	drm_property_blob_put(blob);
-	dpu_kms->planar_cac_enable = 1;
+	dpu_kms->planar_cac_enable = CAC_ENABLING;
 	/* use the last 2 stage for hidden SSPP, it's DPU_STAGE_9/10 for now */
 	/* TODO: change max val per catalog */
 	dpu_kms->cac_vig_lm_stage = DPU_STAGE_MAX - 3;
