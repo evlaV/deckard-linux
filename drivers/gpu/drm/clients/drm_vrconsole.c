@@ -426,12 +426,12 @@ void drm_vrconsole_register(struct drm_device *dev)
 				      dev->dev);
 	if (ret) {
 		drm_warn(dev, "failed to load vrterminal (%d)\n", ret);
-		goto err_free;
+		goto err_free_font;
 	}
 
 	mutex_init(&new->lock);
 	if (drm_client_init(dev, &new->client, "drm_vrconsole", &drm_vrconsole_client_funcs))
-		goto err_free;
+		goto err_free_terminal;
 
 	drm_client_register(&new->client);
 
@@ -440,7 +440,7 @@ void drm_vrconsole_register(struct drm_device *dev)
 			TTY_DRIVER_REAL_RAW |
 			TTY_DRIVER_UNNUMBERED_NODE);
 	if (IS_ERR(new->tty))
-		goto err_free;
+		goto err_free_terminal;
 
 	tty_port_init(&new->port);
 	new->port.ops = &vrconsole_port_ops;
@@ -459,7 +459,7 @@ void drm_vrconsole_register(struct drm_device *dev)
 	ret = tty_register_driver(new->tty);
 	if (ret < 0) {
 		drm_warn(dev, "failed to register vrtconsole driver (%d)\n", ret);
-		goto err_free;
+		goto err_free_tty;
 	}
 
 	strscpy(new->console.name, "vrconsole");
@@ -470,10 +470,14 @@ void drm_vrconsole_register(struct drm_device *dev)
 	drm_dbg(dev, "Registered with drm vrconsole as %s\n", new->console.name);
 	return;
 
-err_free:
-	release_firmware(new->vrfont);
+err_free_tty:
+	tty_driver_kref_put(new->tty);
+	tty_port_destroy(&new->port);
+err_free_terminal:
 	release_firmware(new->vrterminal);
-
+err_free_font:
+	release_firmware(new->vrfont);
+err_free:
 	kfree(new);
 err_warn:
 	drm_warn(dev, "Failed to register with drm vrconsole\n");
