@@ -134,3 +134,4 @@ obj-$(CONFIG_CHARGER_QCOM_PM8550B)	+= qcom_pm8550b_charger.o
 obj-$(CONFIG_FUEL_GAUGE_MM8013)	+= mm8013.o
 obj-$(CONFIG_MACSMC_POWER)	+= macsmc-power.o
 obj-$(CONFIG_CHARGER_MAX77759)	+= max77759_charger.o
+obj-$(CONFIG_HOTSWAP_NORTHGATE)	+= northgate_hotswap.o
