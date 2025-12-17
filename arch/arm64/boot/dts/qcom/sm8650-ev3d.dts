@@ -454,23 +454,23 @@
 		regulators {
 			vpos_r: vposr{
 				regulator-name = "lcdr_vpos";
-				regulator-min-microvolt = <5800000>;
-				regulator-max-microvolt = <5800000>;
+				regulator-min-microvolt = <5400000>;
+				regulator-max-microvolt = <5500000>;
 			};
 			vneg_r: vnegr{
 				regulator-name = "lcdr_vneg";
-				regulator-min-microvolt = <5800000>;
-				regulator-max-microvolt = <5800000>;
+				regulator-min-microvolt = <5400000>;
+				regulator-max-microvolt = <6300000>;
 			};
 			vpos_l: vposl{
 				regulator-name = "lcdl_vpos";
-				regulator-min-microvolt = <5800000>;
-				regulator-max-microvolt = <5800000>;
+				regulator-min-microvolt = <5400000>;
+				regulator-max-microvolt = <5500000>;
 			};
 			vneg_l: vnegl{
 				regulator-name = "lcdl_vneg";
-				regulator-min-microvolt = <5800000>;
-				regulator-max-microvolt = <5800000>;
+				regulator-min-microvolt = <5400000>;
+				regulator-max-microvolt = <6300000>;
 			};
 		};
 	};
@@ -1340,11 +1340,14 @@
 		dual-panel;
 		dphy;
 
-		pinctrl-0 = <&display_resx1>, <&display_resx2>;
+		pinctrl-0 = <&display_resx1>, <&display_resx2>, <&te_left_n>, <&te_right_n>;
 		pinctrl-names = "default";
 
 		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
 			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
+        
+		te-gpios = <&tlmm 163 GPIO_ACTIVE_HIGH>,
+                    <&tlmm 178 GPIO_ACTIVE_HIGH>;
 
 		//Bias supplies enabled via GPIO
 		left-pos-supply = <&vpos_l>;
@@ -1920,6 +1923,20 @@
 		gpios = <110 GPIO_ACTIVE_HIGH>;
 		output-low;
 		line-name = "fpga_cam1_frame_sync";
+	};
+
+	te_left_n: te_left_state {
+		pins = "gpio163";
+		function = "normal";
+		bias-pull-down;
+		input-enable;
+	};
+
+	te_right_n: te_right_state {
+		pins = "gpio178";
+		function = "normal";
+		bias-pull-down;
+		input-enable;
 	};
 };
 

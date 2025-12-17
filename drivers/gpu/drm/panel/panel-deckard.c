@@ -124,8 +124,12 @@ struct lpm026m648c_ctx {
 	struct regulator_bulk_data lcd_bias_regulators[ARRAY_SIZE(lcd_bias_names)];
 
 	struct gpio_descs *reset_gpios;
+	struct gpio_descs *te_gpios;
 	struct gpio_desc *enp_gpio;
 	struct gpio_desc *enn_gpio;
+
+	int te_left_gpio_irq;
+	int te_right_gpio_irq;
 
 	struct backlight_device *backlight;
 	struct mipi_dsi_device *dsi[2];
@@ -153,79 +157,38 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 	return container_of(panel, struct lpm026m648c_ctx, panel);
 }
 
-static const struct drm_display_mode modes[5] = {
+static const struct drm_display_mode modes[1] = {
+#ifdef NO_DSC
 	{
-		.name = "  2160x2160_120",
-		.clock = (2160 + 24 + 20 + 20) * (2160 + 404 + 1 + 20) * 120 / 1000,
-		.hdisplay = 2160,
-		.hsync_start = (2160 + 24),
-		.hsync_end = (2160 + 24 + 20),
-		.htotal = (2160 + 24 + 20 + 20),
-		.vdisplay = 2160,
-		.vsync_start = 2160 + 404,
-		.vsync_end = 2160 + 404 + 1,
-		.vtotal = 2160 + 404 + 1 + 20,
+		.name = "1776x1920_60",
+		.clock =  (1776 + 20 + 8 + 28) * (1920 + 7 + 1 + 17) * 60 / 1000,
+		.hdisplay = 1776,
+		.hsync_start = (1776 + 20),
+		.hsync_end = (1776 + 20 + 8),
+		.htotal = (1776 + 20 + 8 + 28),
+		.vdisplay = 1920,
+		.vsync_start = 1920 + 7,
+		.vsync_end = 1920 + 7 + 1,
+		.vtotal = 1920 + 7 + 1 + 17,
 		.width_mm = 50,
 		.height_mm = 50,
-
-	},
+	}
+#else
 	{
-		.name = "  2160x2160_90",
-		.clock = (2160 + 24 + 20 + 20) * (2160 + 1265 + 1 + 20) * 90 / 1000,
-		.hdisplay = 2160,
-		.hsync_start = (2160 + 24),
-		.hsync_end = (2160 + 24 + 20),
-		.htotal = (2160 + 24 + 20 + 20),
-		.vdisplay = 2160,
-		.vsync_start = 2160 + 1265,
-		.vsync_end = 2160 + 1265 + 1,
-		.vtotal = 2160 + 1265 + 1 + 20,
+		.name = "1776x1920_90",
+		.clock =  (1776 + 20 + 8 + 28) * (1920 + 7 + 1 + 17) * 90 / 1000,
+		.hdisplay = 1776,
+		.hsync_start = (1776 + 20),
+		.hsync_end = (1776 + 20 + 8),
+		.htotal = (1776 + 20 + 8 + 28),
+		.vdisplay = 1920,
+		.vsync_start = 1920 + 7,
+		.vsync_end = 1920 + 7 + 1,
+		.vtotal = 1920 + 7 + 1 + 17,
 		.width_mm = 50,
 		.height_mm = 50,
-	},
-	{
-		.name = "  2160x2160_80",
-		.clock = (2160 + 24 + 20 + 20) * (2160 + 1697 + 1 + 20) * 80 / 1000,
-		.hdisplay = 2160,
-		.hsync_start = (2160 + 24),
-		.hsync_end = (2160 + 24 + 20),
-		.htotal = (2160 + 24 + 20 + 20),
-		.vdisplay = 2160,
-		.vsync_start = 2160 + 1697,
-		.vsync_end = 2160 + 1697 + 1,
-		.vtotal = 2160 + 1697 + 1 + 20,
-		.width_mm = 50,
-		.height_mm = 50,
-	},
-	{
-		.name = "  2160x2160_144",
-		.clock = (2160 + 24 + 20 + 20) * (2160 + 9 + 1 + 20) * 144 / 1000,
-		.hdisplay = 2160,
-		.hsync_start = (2160 + 24),
-		.hsync_end = (2160 + 24 + 20),
-		.htotal = (2160 + 24 + 20 + 20),
-		.vdisplay = 2160,
-		.vsync_start = 2160 + 9,
-		.vsync_end = 2160 + 9 + 1,
-		.vtotal = 2160 + 9 + 1 + 20,
-		.width_mm = 50,
-		.height_mm = 50,
-
-	},
-	{
-		.name = "  2160x2160_72",
-		.clock = (2160 + 24 + 20 + 20) * (2160 + 2128 + 1 + 20) * 72 / 1000,
-		.hdisplay = 2160,
-		.hsync_start = (2160 + 24),
-		.hsync_end = (2160 + 24 + 20),
-		.htotal = (2160 + 24 + 20 + 20),
-		.vdisplay = 2160,
-		.vsync_start = 2160 + 2128,
-		.vsync_end = 2160 + 2128 + 1,
-		.vtotal = 2160 + 2128 + 1 + 20,
-		.width_mm = 50,
-		.height_mm = 50,
-	},
+	}
+#endif
 };
 
 #define lpm026m648c_dsi_write_seq(ctx, cmd, seq...)					\
@@ -270,6 +233,7 @@ static int dsi_populate_dsc_params(struct lpm026m648c_ctx *ctx)
 		DRM_DEV_ERROR(ctx->dev, "failed to setup dsc params\n");
 
 	dsc->initial_scale_value = drm_dsc_initial_scale_value(dsc);
+    DRM_DEV_ERROR(ctx->dev, "dsc scale value %d\n", dsc->initial_scale_value);
 	dsc->line_buf_depth = dsc->bits_per_component + 1;
 
 	return drm_dsc_compute_rc_parameters(dsc);
@@ -279,16 +243,16 @@ static int lpm026m648c_init_dsc_config(struct lpm026m648c_ctx *ctx)
 {
 	ctx->dsc_cfg = (struct drm_dsc_config) {
 		.dsc_version_major = 0x1,
-		.dsc_version_minor = 0x2,
-		.slice_height = 48,
-		.slice_width = 540,
+		.dsc_version_minor = 0x1,
+		.slice_height = 24,
+		.slice_width = 444,
 		.slice_count = 4,
 		.bits_per_component = 8,
 		.bits_per_pixel = 8 << 4,
 		.block_pred_enable = true,
 
-		.pic_width = 2160,
-		.pic_height = 2160,
+		.pic_width = 1776,
+		.pic_height = 1920,
 	};
 
 	return dsi_populate_dsc_params(ctx);
@@ -326,277 +290,37 @@ static int update_vcom(struct lpm026m648c_ctx *ctx)
 	return ret;
 }
 
-static void dsi_write_panel_on_jdi(struct drm_panel *panel)
+
+
+static void dsi_write_oled_panel_on(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+
+    dev_err(ctx->dev, "Running OLED init sequence");
 
 	u8 pps_cmd[1 + sizeof(struct drm_dsc_picture_parameter_set)];
 
 	drm_dsc_pps_payload_pack((void *)&pps_cmd[1], &ctx->dsc_cfg);
-	pps_cmd[0] = LPM02648C_PPS_SET;
+	pps_cmd[0] = 0xF6;
 
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x04);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DSI_CTL,
-				  0x20, 0x6b, 0x80, 0x06, 0x33, 0x9a, 0x00,
-				  0x1a, 0x7a);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
-				  0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-				  BE16(GPO1_TES1_120_JDI), BE16(GPO1_TEW1), 0x00, 0x00,
-				  0x00, 0x00,
-				  BE16(GPO1_TES1_120_JDI-CAMERA_TRIGGER_OFFSET),
-				  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET2, 0x1e);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3, 0x70, 0x08, 0xd0,
-				  0x02, 0x21, 0x6f, 0x08, 0x5a, 0x00, 0x00,
-				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86,
-				  LE16(VBP), 0x08, 0x70, BE16(VFP));
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
-				  0x46, 0x61, 0x00, 0x8b);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET5, BE16(VID_VS_DELAY),
-				  0x00, 0x00, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_TE_GPIO_CTL, 0x00, 0x6A, 0x02);
-	lpm026m648c_dsi_write_buffer(ctx, pps_cmd);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_GET_COMPRESSION_MODE, 0x01);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_TEAR_SCANLINE, 0x00, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_TEAR_ON, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_ADDRESS_MODE, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_PIXEL_FORMAT, 0x77);
+#ifdef NO_DSC
+	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_GET_COMPRESSION_MODE, 0x00); // no compression
+#else
+	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_GET_COMPRESSION_MODE, 0x11); // enable dsc compression
+#endif
+	lpm026m648c_dsi_write_buffer(ctx, pps_cmd); // dsc
+    //lpm026m648c_dsi_write_seq(ctx, 0xF6, 0x11, 0x00, 0x00, 0xAB, 0x10, 0xA0, 0x0A, 0x00, 0x05, 0xA0, 0x00, 0x20, 0x02, 0xD0, 0x03, 0x84, 0x01, 0x9A, 0x02, 0x68, 0x00, 0x19, 0x02, 0xD9, 0x00, 0x0E, 0x00, 0x0F, 0x03, 0xDf, 0x02, 0xEB, 0x16, 0x00, 0x10, 0xEC, 0x07, 0x10, 0x20, 0x00, 0x06, 0x0F, 0x0F, 0x33, 0x0E, 0x1C, 0x2A, 0x38, 0x46, 0x54, 0x62, 0x69, 0x70, 0x77, 0x79, 0x7B, 0x7D, 0x7E, 0x01, 0xC2, 0x22, 0x00, 0x2A, 0x40, 0x2A, 0xBE, 0x3A, 0xFC, 0x3A, 0xFA, 0x3A, 0xF8, 0x3B, 0x38, 0x3B, 0x78, 0x3B, 0x76, 0x4B, 0xB6, 0x4B, 0xB6, 0x4B, 0xF4, 0x63, 0xF4, 0x7C, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 );
+	// try forcing the panel dsc params ( but this won't match local settings )
+    //Panel_VBP * 1/2 - 4
+    // 8*1/2-4
+	lpm026m648c_dsi_write_seq(ctx, 0x3B, 0x00, 0x08, 0x00, 0x08, 0x00, 0x00, 0x06, 0x17, 0x05, 0x9F, 0x04, 0xC7, 0x03, 0xAF); // video mode
+	lpm026m648c_dsi_write_seq(ctx, 0x51, 0xFF); // full brightness
+	lpm026m648c_dsi_write_seq(ctx, 0x53, 0x20); // manual brightness, dimming off
+	lpm026m648c_dsi_write_seq(ctx, 0x26, 0x01); // default gamma set
+	lpm026m648c_dsi_write_seq(ctx, 0x65, 0xB0); // scaling
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_EXIT_SLEEP_MODE);
 	msleep(170);
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_ON);
-	//lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x80);
-	msleep(200);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x03);
-	msleep(200);
-}
-
-static void dsi_write_panel_on_sharp(struct drm_panel *panel)
-{
-	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-
-	u8 pps_cmd[1 + sizeof(struct drm_dsc_picture_parameter_set)];
-
-	drm_dsc_pps_payload_pack((void *)&pps_cmd[1], &ctx->dsc_cfg);
-	pps_cmd[0] = LPM02648C_PPS_SET;
-
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x00);
-	// update vcom per starting mode
-	update_vcom(ctx);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DSI_CTL,
-				  0x20, 0x6b, 0x80, 0x06, 0x33, 0x9a, 0x00,
-				  0x1a, 0x7a);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
-				  0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-				  BE16(GPO1_TES1_120_SHARP), BE16(GPO1_TEW1), 0x00, 0x00,
-				  0x00, 0x00,
-				  BE16(GPO1_TES1_120_SHARP-CAMERA_TRIGGER_OFFSET),
-				  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3, 0x08, 0x70, 0x28,
-				  0x48, 0x00, 0x00, 0x13, 0x21, 0xff, 0x00, 0x0f, 0x01,
-				  0x14, 0x17, 0x00, 0x00, 0x00, 0x02, 0x40, 0x0C, 0x00, 0x00,
-				  0x00, 0x20, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x70, 0x08,
-				  0xD0, 0x02, 0x21, 0x6F, 0x08, 0x5A, 0x00, 0x00, 0x00, 0x00,
-				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				  0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP), 0x08, 0x70,
-				  BE16(VFP), 0x00, 0x00, 0x08, 0x3B, 0x00, 0x00, 0x19, 0x01, 0x22);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
-				  0x46, 0x61, 0x00, 0x8b);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET5, BE16(VID_VS_DELAY),
-				  0x00, 0x00, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET6, 0x00, 0x24, 0x00, 0x00,
-				  0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00,
-				  0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0A, 0x0A,
-				  0x00, 0x00, 0x00, 0x03, 0x1D, 0x01, 0x00, 0x00, 0x00, 0x01,
-				  0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00,
-				  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);				  
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_TE_GPIO_CTL, 0x00, 0x6A, 0x02);
-	lpm026m648c_dsi_write_buffer(ctx, pps_cmd);
-	//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_GET_COMPRESSION_MODE, 0x01);
-	//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_TEAR_SCANLINE, 0x00, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_TEAR_ON, 0x00);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_ADDRESS_MODE, 0x40);
-	//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_PIXEL_FORMAT, 0x77);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_EXIT_SLEEP_MODE);
-	msleep(170);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_ON);
-	msleep(200);
-}
-
-static void dsi_write_panel_on_boe(struct drm_panel *panel)
-{
-	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-
-	u8 pps_cmd[1 + sizeof(struct drm_dsc_picture_parameter_set)];
-
-	drm_dsc_pps_payload_pack((void *)&pps_cmd[1], &ctx->dsc_cfg);
-	pps_cmd[0] = LPM02648C_PPS_SET;
-
-	if ( !ctx->dphy ) {
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DSI_CTL,
-					  0x20, 0x6b, 0x80, 0x06, 0x33, 0x9A, 0x00,
-					  0x1a, 0x7a);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
-					  0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-					  BE16(GPO1_TES1_120_BOE), BE16(GPO1_TEW1), 0x00, 0x00,
-					  0x00, 0x00,
-					  BE16(GPO1_TES1_120_BOE-CAMERA_TRIGGER_OFFSET),
-					  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3, 0x0B, 0x70, 0x08,
-					  0x48, 0x00, 0x00, 0x13, 0x01, 0xFF, 0x00, 0x01, 0x09,
-					  0x16, 0x16, 0x00, 0x00, 0x00, 0x01, 0x40, 0x0C, 0x00,
-					  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00,
-					  0x70, 0x08, 0xD0, 0x02, 0x21, 0x6F, 0x08, 0x5A, 0x00,
-					  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-					  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP),
-					  0x08, 0x70, BE16(VFP), 0x00, 0x00, 0x08, 0x3A, 0x00, 0x00,
-					  0x17, 0x00, 0x17);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80,
-					  0x46, 0x61, 0x00, 0x8b);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET5, BE16(VID_VS_DELAY),
-					  0x00, 0x00, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_TE_GPIO_CTL, 0x00, 0x6A, 0x02);
-		lpm026m648c_dsi_write_buffer(ctx, pps_cmd);
-		//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_GET_COMPRESSION_MODE, 0x01);
-		//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_TEAR_SCANLINE, 0x00, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_TEAR_ON, 0x00);
-		//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_ADDRESS_MODE, 0x00);
-		//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_PIXEL_FORMAT, 0x77);
-	} else {
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x04);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x00);
-		// update vcom per starting mode
-		update_vcom(ctx);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DSI_CTL,
-					0x30, 0x6b, 0x00, 0x06, 0x33, 0x8E, 0x00,
-					0x1a, 0x7a);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
-					0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-					BE16(GPO1_TES1_120_BOE), BE16(GPO1_TEW1), 0x00, 0x00,
-					0x00, 0x00,
-					BE16(GPO1_TES1_120_BOE-CAMERA_TRIGGER_OFFSET),
-					BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET1, RTN, 0x86, LE16(VBP),
-					0x08, 0x70, BE16(VFP), 0x00, 0x00, 0x08, 0x3A, 0x00, 0x00,
-					0x17, 0x00, 0x17);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET2, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3, 0x0B);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET3_2, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET4, 0x8b, 0x00, 0x80, 0x46, 0x61, 0x00, 0x8b);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_SET5, BE16(VID_VS_DELAY), 0x00, 0x00, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, LPM02648C_TE_GPIO_CTL, 0x00, 0x6A, 0x02);
-		lpm026m648c_dsi_write_buffer(ctx, pps_cmd);
-		//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_GET_COMPRESSION_MODE, 0x01);
-		//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_TEAR_SCANLINE, 0x00, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_TEAR_ON, 0x00);
-		//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_ADDRESS_MODE, 0x00);
-		lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_PIXEL_FORMAT, 0x77);		
-	}
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_EXIT_SLEEP_MODE);
-	msleep(170);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_ON);
-	msleep(200);
-}
-
-static int get_panel_info(struct drm_panel *panel)
-{
-	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-	int ret;
-	unsigned int id, offset, panel_num;
-	u8 panel_info_regs[] = { LPM02648C_MFG_INFO };
-	u8 *info = ctx->panel_mfg_info;
-
-	panel_num = ctx->is_dual_panel ? 2 : 1;
-	for (id = 0; id < panel_num; id++) {
-		offset =  id*PANEL_MFG_INFO_NUM_BYTES;
-		ret = mipi_dsi_generic_read(ctx->dsi[id], panel_info_regs, 1,
-				&info[offset], PANEL_MFG_INFO_NUM_BYTES);
-		if (ret < 0) {
-			DRM_DEV_ERROR(ctx->dev, "failed to read panel%d info\n", id);
-        }
-	}
-	// save left vcom values
-	ctx->vcom120[0] = ctx->panel_mfg_info[VCOM120_OFFSET] << 8 | ctx->panel_mfg_info[VCOM120_OFFSET + 1];
-	ctx->vcom90[0] = ctx->panel_mfg_info[VCOM90_OFFSET] << 8 | ctx->panel_mfg_info[VCOM90_OFFSET + 1];
-	// save right vcom values
-	ctx->vcom120[1] = ctx->panel_mfg_info[VCOM120_OFFSET + PANEL_MFG_INFO_NUM_BYTES] << 8 | ctx->panel_mfg_info[VCOM120_OFFSET + PANEL_MFG_INFO_NUM_BYTES + 1];
-	ctx->vcom90[1] = ctx->panel_mfg_info[VCOM90_OFFSET + PANEL_MFG_INFO_NUM_BYTES] << 8 | ctx->panel_mfg_info[VCOM90_OFFSET + PANEL_MFG_INFO_NUM_BYTES + 1];
-    return 0;
-}
-
-static void dsi_write_panel_on(struct drm_panel *panel)
-{
-	int ret;
-	char panel_left, panel_right;
-	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-
-	if (!ctx->dphy) {
-		// read panel info to determine panel type
-		ret = get_panel_info(panel);
-		if ( ret ) {
-			DRM_DEV_ERROR(ctx->dev, "Could not get panel info for init sequence, defaulting to Sharp\n" );
-			ctx->panel_vendor = VENDOR_SHARP;
-		} else {
-			// need to support old format JDI displays
-			if ( ctx->panel_mfg_info[VENDOR_OFFSET] == 1 ) {
-				panel_left = ctx->panel_mfg_info[VENDOR_OFFSET + 1];
-			} else {
-				panel_left = ctx->panel_mfg_info[VENDOR_OFFSET];
-			}
-			if ( ctx->panel_mfg_info[VENDOR_OFFSET + PANEL_MFG_INFO_NUM_BYTES] == 1 ) {
-				panel_right = ctx->panel_mfg_info[VENDOR_OFFSET + PANEL_MFG_INFO_NUM_BYTES + 1];
-			} else {
-				panel_right = ctx->panel_mfg_info[VENDOR_OFFSET + PANEL_MFG_INFO_NUM_BYTES];
-			}
-			if (panel_left && panel_right && panel_left != panel_right) {
-				DRM_DEV_ERROR(ctx->dev, "Displays don't match ( %c != %c ), using %c\n", panel_left, panel_right, panel_left );
-				ctx->panel_vendor = panel_left;
-			} else if (panel_left && panel_right) {
-				DRM_DEV_INFO(ctx->dev, "Displays match ( %c == %c ), using %c\n", panel_left, panel_right, panel_left );
-				ctx->panel_vendor = panel_left;
-			} else if ( panel_left && !panel_right ) {
-				DRM_DEV_INFO(ctx->dev, "Only left panel, using %c\n", panel_left);
-				ctx->panel_vendor = panel_left;
-			} else if ( !panel_left && panel_right ) {
-				DRM_DEV_INFO(ctx->dev, "Only right panel, using %c\n", panel_right );
-				ctx->panel_vendor = panel_right;
-			} else {
-				DRM_DEV_ERROR(ctx->dev, "no panel mfg info, defaulting to sharp ( %c %c )\n", panel_left, panel_right );
-				ctx->panel_vendor = VENDOR_SHARP;
-			}
-		}
-	} else {
-		// Dphy units default to BOE
-		DRM_DEV_INFO(ctx->dev, "DPHY board, default to BOE\n" );
-		ctx->panel_vendor = VENDOR_BOE;
-	}
-
-	if ( ctx->panel_vendor == VENDOR_SHARP ) {
-		dsi_write_panel_on_sharp(panel);
-	} else if ( ctx->panel_vendor == VENDOR_BOE ) {
-		dsi_write_panel_on_boe(panel);
-	} else if ( ctx->panel_vendor == VENDOR_JDI ) {
-		dsi_write_panel_on_jdi(panel);
-	} else {
-		DRM_DEV_ERROR(ctx->dev, "unrecognized panel vendor ( %c ), defualt to sharp\n", ctx->panel_mfg_info[VENDOR_OFFSET] );
-		dsi_write_panel_on_sharp(panel);
-		ctx->panel_vendor = VENDOR_SHARP;
-	}
 }
 
 static void dsi_write_panel_off(struct drm_panel *panel)
@@ -612,23 +336,6 @@ static void dsi_write_panel_off(struct drm_panel *panel)
 static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 			  u16 pulse_offset_rows)
 {
-	u16 gpo1_tes1 = pulse_offset_rows;
-	u16 gpo1_tew1;
-	u16 cam_trig_start = 0, cam_trig_width = 0;
-
-	gpo1_tew1 = brightness > BRIGHTNESS_MAX_120 ?
-		    BRIGHTNESS_MAX_120 : brightness;
-	// Scale brightness based on current mode
-	gpo1_tew1 = gpo1_tew1 * modes[ctx->current_mode].vtotal / modes[MODE_120].vtotal;
-
-	// set offset based on frame rate to optimize settling time vs latency
-	if ( modes[ctx->current_mode].vtotal == modes[MODE_144].vtotal ) {
-		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_144_SHARP : GPO1_TES1_144_BOE;
-	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_120].vtotal ) {
-		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
-	} else {
-		gpo1_tes1 = GPO1_TES1_90;
-	}
 
 	if (!ctx->dphy) {
 		ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
@@ -636,16 +343,7 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 			ctx->dsi[1]->mode_flags &= ~MIPI_DSI_MODE_LPM;
 	}
 
-	if (brightness) {
-		cam_trig_start = (gpo1_tes1 > CAMERA_TRIGGER_OFFSET) ?
-				 (gpo1_tes1 - CAMERA_TRIGGER_OFFSET) : 0;
-		cam_trig_width = gpo1_tew1 + CAMERA_TRIGGER_OFFSET*2;
-	}
-
-	lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-				  BE16(gpo1_tes1), BE16(gpo1_tew1), 0x00, 0x00,
-				  0x00, 0x00, BE16(cam_trig_start),
-				  BE16(cam_trig_width));
+	lpm026m648c_dsi_write_seq(ctx, 0x51, brightness); // full brightness
 
 	if (!ctx->dphy) {
 		ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
@@ -659,12 +357,13 @@ static int lpm026m648c_power_on(struct lpm026m648c_ctx *ctx)
 {
 	int ret;
 
+    // VDDI 1.8V
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->power_supplies),
 				    ctx->power_supplies);
 	if (ret < 0)
 		return ret;
 
-	usleep_range(1000, 2000);
+	usleep_range(10000, 20000);
 
 	// turn on AVDD
 	ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_POS].consumer);
@@ -673,18 +372,28 @@ static int lpm026m648c_power_on(struct lpm026m648c_ctx *ctx)
 		dev_err(ctx->dev, "Could not enable AVDD\n");
 		return ret;
 	}
-	usleep_range(1000, 2000);
-	// turn on AVEE
-	ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
-	ret |= regulator_enable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+
+	// set voltages here since we can't talk until after they are enabled
+	// make sure we set the bias voltage here
+	ret = regulator_set_voltage(ctx->lcd_bias_regulators[LEFT_POS].consumer, 5500000, 5500000);
+	ret |= regulator_set_voltage(ctx->lcd_bias_regulators[RIGHT_POS].consumer, 5500000, 5500000);
 	if ( ret ) {
-		dev_err(ctx->dev, "Could not enable AVEE\n");
+		dev_err(ctx->dev, "Could not set AVDD\n");
 		return ret;
 	}
+    // MIPI 11
+	ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
+	if (ctx->is_dual_panel)
+		ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
+
+	usleep_range(10000, 20000);
 	
-	msleep(20);
 	gpiod_set_value(ctx->reset_gpios->desc[0], 1);
 	gpiod_set_value(ctx->reset_gpios->desc[1], 1);
+
+    usleep_range(10000, 20000);
+
+	// interrupt callback to turn on AVEE/ELVSS when TE gets set
 	return 0;
 }
 
@@ -768,11 +477,12 @@ static int lpm026m648c_unprepare(struct drm_panel *panel)
 static int lpm026m648c_prepare(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-	int ret;
 
 	if (ctx->prepared)
 		return 0;
 
+// OLED display does not use backlight drivers
+#if 0
 	// turn on preboost drivers
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->preboost_drivers), ctx->preboost_drivers);
 	if (ret < 0)
@@ -792,18 +502,13 @@ static int lpm026m648c_prepare(struct drm_panel *panel)
 		DRM_DEV_ERROR(ctx->dev, "backlight driver on failed\n");
 		goto power_off;
 	}
-
+#endif
 	// clear out panel manufacturing info
 	memset(ctx->panel_mfg_info, 0, ARRAY_SIZE(ctx->panel_mfg_info));
 
 	ctx->prepared = true;
 
 	return 0;
-
-power_off:
-	if (lpm026m648c_power_off(ctx))
-		DRM_DEV_ERROR(ctx->dev, "power_off failed\n");
-	return ret;
 }
 
 static int lpm026m648c_bl_get_brightness(struct backlight_device *bl)
@@ -836,7 +541,7 @@ static const struct backlight_ops lpm026m648c_bl_ops = {
 static int lpm026m648c_enable(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-	int ret, i;
+	int ret;
 
 	if (ctx->enabled)
 		return 0;
@@ -847,27 +552,7 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 		goto power_off;
 	}
 
-	ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
-	if (ctx->is_dual_panel)
-		ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
-
-	msleep(20);
-	dsi_write_panel_on(panel);
-
-	// default to 120, but we will change this based on frame rate
-	ctx->backlight->props.pulse_offset_rows = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
-
-	if ( ctx->panel_vendor == VENDOR_SHARP || ctx->panel_vendor == VENDOR_BOE ) {
-		for ( i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++ ) {
-			regulator_set_voltage(ctx->lcd_bias_regulators[i].consumer, 5800000, 5800000);
-		}
-	} else {
-		for ( i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++ ) {
-			regulator_set_voltage(ctx->lcd_bias_regulators[i].consumer, 5700000, 5700000);
-		}
-	}
-
-	ret = backlight_enable(ctx->backlight);
+	dsi_write_oled_panel_on(panel);
 
 	ctx->enabled = true;
 
@@ -1222,9 +907,41 @@ static const struct drm_panel_funcs lpm026m648c_drm_funcs = {
 	.unprepare = lpm026m648c_unprepare,
 	.prepare = lpm026m648c_prepare,
 	.get_modes = lpm026m648c_get_modes,
-    .mode_set = lpm026m648c_mode_set,
 	.debugfs_init = lpm026m648c_debugfs_init,
 };
+
+static irqreturn_t te_irq_handler_top(int irq, void *dev_id)
+{
+	return IRQ_WAKE_THREAD;
+}
+
+static irqreturn_t te_irq_handler(int irq, void *dev_id)
+{
+	int ret = 0;
+	struct lpm026m648c_ctx *ctx = dev_id;
+
+	// turn on AVEE/ELVSS ( left / right is tied together so we just turn them both on )
+	ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
+	ret |= regulator_enable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
+	if ( ret ) {
+		dev_err(ctx->dev, "Could not enable  AVEE/ELVSS \n");
+		return ret;
+	}
+
+	// make sure we set the bias voltage here
+	ret = regulator_set_voltage(ctx->lcd_bias_regulators[RIGHT_NEG].consumer, 6300000, 6300000);
+	ret |= regulator_set_voltage(ctx->lcd_bias_regulators[LEFT_NEG].consumer, 6300000, 6300000);
+
+	if ( ret ) {
+		dev_err(ctx->dev, "Could not set AVEE\n");
+		return ret;
+	}
+
+	DRM_DEV_INFO(ctx->dev, "ELVSS enabled\n");
+
+	return IRQ_HANDLED;
+}
+
 
 static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 {
@@ -1278,10 +995,45 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 		return PTR_ERR(ctx->reset_gpios);
 	}
 
+	ctx->te_gpios = devm_gpiod_get_array(dev, "te", GPIOD_IN);
+	if (IS_ERR(ctx->te_gpios)){
+		DRM_DEV_ERROR(ctx->dev, "Failed to get te gpios\n");
+		return PTR_ERR(ctx->te_gpios);
+	}
+
+	ctx->te_left_gpio_irq = gpiod_to_irq(ctx->te_gpios->desc[0]);
+	ctx->te_right_gpio_irq = gpiod_to_irq(ctx->te_gpios->desc[1]);
+
+	ret = devm_request_threaded_irq(
+		dev, ctx->te_left_gpio_irq,
+		te_irq_handler_top,
+		te_irq_handler, IRQF_TRIGGER_RISING,
+		"TE_LEFT", ctx);
+
+	if (ret) {
+		DRM_DEV_ERROR(dev,
+			"request te left alert interrupt failed with %d\n",
+			ret);
+		return ret;
+	}
+	
+	ret = devm_request_threaded_irq(
+		dev, ctx->te_right_gpio_irq,
+		te_irq_handler_top,
+		te_irq_handler, IRQF_TRIGGER_RISING,
+		"TE_RIGHT", ctx);
+
+	if (ret) {
+		DRM_DEV_ERROR(dev,
+			"request te right alert interrupt failed with %d\n",
+			ret);
+		return ret;
+	}
+
 	memset(&bl_props, 0, sizeof(bl_props));
 	bl_props.type = BACKLIGHT_RAW;
-	bl_props.brightness = BRIGHTNESS_DEFAULT;
-	bl_props.max_brightness = BRIGHTNESS_MAX_120;
+	bl_props.brightness = 0xFF;
+	bl_props.max_brightness = 0xFF;
 
 	ctx->backlight = devm_backlight_device_register(dev, dev_name(dev),
 							dev, ctx->dsi[0],
