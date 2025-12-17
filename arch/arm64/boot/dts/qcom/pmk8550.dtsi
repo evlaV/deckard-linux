@@ -27,6 +27,7 @@
 		nvmem-cell-names = "reboot-mode";
 		mode-recovery = <0x01>;
 		mode-bootloader = <0x02>;
+		mode-edl = <0x03>;
 	};
 };
 
