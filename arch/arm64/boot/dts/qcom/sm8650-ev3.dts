@@ -1554,7 +1554,7 @@
 	};
 
 	uart_detect: uart_detect-state {
-		pins = "gpio6";
+		pins = "gpio7";
 		function = "normal";
 		power-source = <1>;
 	};
