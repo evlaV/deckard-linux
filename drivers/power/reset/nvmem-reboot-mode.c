@@ -21,10 +21,14 @@ static int nvmem_reboot_mode_write(struct reboot_mode_driver *reboot,
 {
 	int ret;
 	struct nvmem_reboot_mode *nvmem_rbm;
+	//truncate magic to 8 bits 
+	//otherwise it will fail in nvmem_cell_write with a mismatched len in __nvmem_cell_entry_write()
+	u8 magic_val_to_write = (u8) magic; 
+	dev_info(reboot->dev, "truncating reboot mode bits [%#x] to [%#x]\n",magic,magic_val_to_write);
 
 	nvmem_rbm = container_of(reboot, struct nvmem_reboot_mode, reboot);
 
-	ret = nvmem_cell_write(nvmem_rbm->cell, &magic, sizeof(magic));
+	ret = nvmem_cell_write(nvmem_rbm->cell, &magic_val_to_write, sizeof(magic_val_to_write));
 	if (ret < 0)
 		dev_err(reboot->dev, "update reboot mode bits failed\n");
 
