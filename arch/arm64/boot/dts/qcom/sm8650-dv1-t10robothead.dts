@@ -1518,6 +1518,13 @@
 		function = "normal";
 		power-source = <1>;
 	};
+
+	strap_irq: paddle-id-state {
+		pins = "gpio10";
+		function = "normal";
+		bias-pull-up;
+		input-enable;
+	};
 };
 
 &pm8550b_eusb2_repeater {
@@ -2114,22 +2121,16 @@
 		vcc-supply  = <&vreg_l15b_1p8>;
 	};
 
-	// Northgate/Enthusiast Paddle Card Silego
-	slg46534v@48 {
-		compatible = "silego,northgate_paddle";
-		reg = <0x48>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		status = "ok";
-	};
-
 	// Northgate/Enthusiast Hotswap Card Silego
-	slg4ad48669m@18 {
+	northgate_hotswap: slg4ad48669m@18 {
 		compatible = "silego,northgate_hotswap";
 		reg = <0x18>;
-		#address-cells = <1>;
-		#size-cells = <0>;
+
+		interrupt-parent = <&pm8550b_gpios>;
+		interrupts = <10 IRQ_TYPE_LEVEL_HIGH>;
+
+		pinctrl-0 = <&strap_irq>;
+		pinctrl-names = "default";
 
 		status = "ok";
 	};
