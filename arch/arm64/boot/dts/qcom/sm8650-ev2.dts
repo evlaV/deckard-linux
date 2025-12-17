@@ -2049,15 +2049,6 @@
 		rsense      = <25>;      /* 100's of microOhms */
 	};
 
-	// Southgate/Northgate Secondary Hotswap Battery
-	max17320_hotswap@76 {
-		compatible  = "maxim,max17320";
-		status		= "okay";
-		reg         = <0x76>;
-		nvm_reg     = /bits/ 8 <0x4b>;
-		rsense      = <25>;      /* 100's of microOhms */
-	};
-
     // PADDLE EEPROM
     eeprom@50 {
         compatible  = "atmel,24c32";
@@ -2075,26 +2066,6 @@
 		label       = "strap_v2_eeprom";
 		reg         = <0x51>;
 		vcc-supply  = <&vreg_l15b_1p8>;
-	};
-
-	// Northgate/Enthusiast Paddle Card Silego
-	slg46534v@48 {
-		compatible = "silego,northgate_paddle";
-		reg = <0x48>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		status = "ok";
-	};
-
-	// Northgate/Enthusiast Hotswap Card Silego
-	slg4ad48669m@18 {
-		compatible = "silego,northgate_hotswap";
-		reg = <0x18>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		status = "ok";
 	};
 };
 

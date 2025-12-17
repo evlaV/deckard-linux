@@ -429,6 +429,13 @@ config AXP288_FUEL_GAUGE
 	  monitoring as well as alerts for battery over/under voltage and
 	  over/under temperature.
 
+config HOTSWAP_NORTHGATE
+	tristate "Northgate Hotswap"
+	depends on I2C
+	depends on OF
+	help
+	  Northgate Hotswap Controller.
+
 config BATTERY_MAX17040
 	tristate "Maxim MAX17040/17041/17043 family Fuel Gauge"
 	depends on I2C && IIO
