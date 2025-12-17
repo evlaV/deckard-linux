@@ -14,7 +14,7 @@
 #include <linux/regulator/of_regulator.h>
 #include <linux/delay.h>
 
-#define NEX10000UB_MAX_VSEL             20
+#define NEX10000UB_MAX_VSEL             25
 #define NEX10000UB_VOLTAGE_MIN          4000000
 #define NEX10000UB_STEP_100mV           100000
 
