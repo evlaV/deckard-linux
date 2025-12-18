@@ -15,6 +15,9 @@
 #include <linux/console.h>
 #include <linux/vt_kern.h>
 #include <linux/vt_buffer.h>
+#include <linux/input.h>
+#include <linux/platform_data/simplefb.h>
+#include <linux/of_reserved_mem.h>
 
 #include <drm/drm_client.h>
 #include <drm/drm_drv.h>
@@ -23,6 +26,7 @@
 #include <drm/drm_print.h>
 
 #include "drm_client_internal.h"
+#include "drm_draw_internal.h"
 #include "drm_internal.h"
 
 #include "vrterminal.h"
@@ -40,6 +44,12 @@ struct drm_vrconsole {
 	bool probed;
 	u32 n_scanout;
 	struct drm_vrconsole_scanout *scanout;
+	int fb_width;
+	int fb_height;
+	int fb_stride;
+	const struct drm_format_info *fb_format;
+	void *fb_base;
+	size_t fb_size;
 	const struct firmware *vrfont_fw;
 	const struct firmware *vrterminal_fw;
 	VRFont_t vrfont;
@@ -48,7 +58,12 @@ struct drm_vrconsole {
 	VRStereoBounds_t terminalBounds;
 	struct consw csw;
 	struct work_struct update_work;
+	struct input_handler input_handler;
+	bool switch_to_console;
+	bool console_enabled;
 };
+
+static struct input_handler input_switch_handler;
 
 static struct drm_vrconsole *client_to_drm_vrconsole(struct drm_client_dev *client)
 {
@@ -60,14 +75,32 @@ static struct drm_vrconsole *consw_to_drm_vrconsole(const struct consw *csw)
 	return container_of(csw, struct drm_vrconsole, csw);
 }
 
-static u32 drm_vrconsole_find_usable_format(struct drm_plane *plane)
+static struct drm_vrconsole *input_handler_to_drm_vrconsole(struct input_handler *handler)
 {
-	int i;
+	return container_of(handler, struct drm_vrconsole, input_handler);
+}
 
-	for (i = 0; i < plane->format_count; i++)
-		if (plane->format_types[i] == DRM_FORMAT_XRGB8888)
-			return plane->format_types[i];
-	return DRM_FORMAT_INVALID;
+static int drm_vrconsole_copy_simplefb(struct drm_vrconsole *dvrconsole,
+				    struct drm_vrconsole_scanout *scanout)
+{
+	struct drm_framebuffer *fb = scanout->buffer->fb;
+	struct drm_rect r = DRM_RECT_INIT(0, 0, fb->width, fb->height);
+	struct iosys_map map;
+	int line;
+	int ret;
+
+	ret = drm_client_buffer_vmap_local(scanout->buffer, &map);
+	if (ret)
+		return ret;
+
+	for (line = 0; line < fb->height; ++line)
+		iosys_map_memcpy_to(&map, fb->pitches[0] * line,
+			dvrconsole->fb_base + (dvrconsole->fb_stride * line),
+			min_t(unsigned int, fb->pitches[0], dvrconsole->fb_stride));
+
+	drm_client_buffer_vunmap_local(scanout->buffer);
+
+	return drm_client_framebuffer_flush(scanout->buffer, &r);
 }
 
 static int drm_vrconsole_setup_modeset(struct drm_vrconsole *dvrconsole,
@@ -75,14 +108,9 @@ static int drm_vrconsole_setup_modeset(struct drm_vrconsole *dvrconsole,
 				 struct drm_mode_set *mode_set,
 				 struct drm_vrconsole_scanout *scanout)
 {
-	struct drm_crtc *crtc = mode_set->crtc;
-	u32 width = mode_set->mode->hdisplay;
-	u32 height = mode_set->mode->vdisplay;
-	u32 format;
-
-	format = drm_vrconsole_find_usable_format(crtc->primary);
-	if (format == DRM_FORMAT_INVALID)
-		return -EINVAL;
+	u32 width = dvrconsole->fb_width;
+	u32 height = dvrconsole->fb_height;
+	u32 format = DRM_FORMAT_XRGB8888;
 
 	scanout->buffer = drm_client_framebuffer_create(client, width, height, format);
 	if (IS_ERR(scanout->buffer)) {
@@ -137,6 +165,15 @@ static void drm_vrconsole_init_client(struct drm_vrconsole *dvrconsole)
 	if (n_modeset == 0)
 		goto err_nomodeset;
 
+	if (!dvrconsole->console_enabled) {
+		for (i = 0; i < n_modeset; i++) {
+			if (!dvrconsole->scanout[i].buffer)
+				continue;
+
+			drm_vrconsole_copy_simplefb(dvrconsole, &dvrconsole->scanout[i]);
+		}
+	}
+
 	if (drm_client_modeset_commit(client))
 		goto err_failed_commit;
 
@@ -176,6 +213,8 @@ static void drm_vrconsole_client_unregister(struct drm_client_dev *client)
 	struct drm_vrconsole *dvrconsole = client_to_drm_vrconsole(client);
 	struct drm_device *dev = client->dev;
 
+	input_unregister_handler(&input_switch_handler);
+
 	console_lock();
 	do_unbind_con_driver(&dvrconsole->csw, 0, MAX_NR_CONSOLES - 1, 1);
 	do_unregister_con_driver(&dvrconsole->csw);
@@ -202,6 +241,8 @@ static int drm_vrconsole_client_hotplug(struct drm_client_dev *client)
 
 	mutex_lock(&dvrconsole->lock);
 	drm_vrconsole_free_scanout(client);
+	if (!dvrconsole->console_enabled)
+		drm_vrconsole_init_client(dvrconsole);
 	mutex_unlock(&dvrconsole->lock);
 
 	return 0;
@@ -231,6 +272,9 @@ static void drm_vrconsole_update(struct drm_vrconsole *dvrconsole,
 	pb.h = scanout->buffer->fb->height;
 	pb.stride = scanout->buffer->fb->pitches[0];
 	pb.map = &map;
+
+	if (dvrconsole->switch_to_console)
+		clear_pixbuf(&pb, pb.w, pb.h);
 
 	if ( dvrconsole->terminalUpdate.full_update )
 	{
@@ -280,13 +324,21 @@ static void vrcon_terminal_update_work(struct work_struct *work)
 							update_work);
 	int i;
 
+	if (!dvrconsole->console_enabled &&
+	    !dvrconsole->switch_to_console)
+		return;
+
 	console_lock();
 
-	if (!dvrconsole->terminalUpdate.full_update &&
+	if (!dvrconsole->switch_to_console &&
+	    !dvrconsole->terminalUpdate.full_update &&
 	    !dvrconsole->terminalUpdate.update_count) {
 		console_unlock();
 		return;
 	}
+
+	if (dvrconsole->switch_to_console)
+		dvrconsole->console_enabled = 1;
 
 	if (!dvrconsole->probed) {
 		drm_vrconsole_init_client(dvrconsole);
@@ -301,6 +353,9 @@ static void vrcon_terminal_update_work(struct work_struct *work)
 	}
 
 	vrterminal_update_reset( &dvrconsole->terminalUpdate );
+
+	if (dvrconsole->switch_to_console)
+		dvrconsole->switch_to_console = 0;
 
 	console_unlock();
 }
@@ -451,12 +506,198 @@ const struct consw vr_con = {
 	// debug...
 };
 
+static void input_switch_event(struct input_handle *handle, unsigned int event_type,
+		      unsigned int event_code, int value)
+{
+	struct drm_vrconsole *dvrconsole = input_handler_to_drm_vrconsole(handle->handler);
+
+	if (!dvrconsole->switch_to_console && value) {
+		pr_info("%s: do the switch\n", __func__);
+		dvrconsole->switch_to_console = true;
+		schedule_work(&dvrconsole->update_work);
+	}
+}
+
+static bool input_switch_match(struct input_handler *handler, struct input_dev *dev)
+{
+	if (test_bit(EV_KEY, dev->evbit) && test_bit(KEY_SELECT, dev->keybit))
+			return true;
+	if (test_bit(EV_KEY, dev->evbit) && test_bit(KEY_ESC, dev->keybit))
+			return true;
+
+	return false;
+}
+
+static int input_switch_connect(struct input_handler *handler, struct input_dev *dev,
+			const struct input_device_id *id)
+{
+	struct input_handle *handle;
+	int error;
+
+	handle = kzalloc(sizeof(struct input_handle), GFP_KERNEL);
+	if (!handle)
+		return -ENOMEM;
+
+	handle->dev = dev;
+	handle->handler = handler;
+	handle->name = "kbd";
+
+	error = input_register_handle(handle);
+	if (error)
+		goto err_free_handle;
+
+	error = input_open_device(handle);
+	if (error)
+		goto err_unregister_handle;
+
+	return 0;
+
+ err_unregister_handle:
+	input_unregister_handle(handle);
+ err_free_handle:
+	kfree(handle);
+	return error;
+}
+
+static void input_switch_disconnect(struct input_handle *handle)
+{
+	input_close_device(handle);
+	input_unregister_handle(handle);
+	kfree(handle);
+}
+
+static void input_switch_start(struct input_handle *handle)
+{
+	struct drm_vrconsole *dvrconsole = input_handler_to_drm_vrconsole(handle->handler);
+
+	if (!dvrconsole->switch_to_console &&
+	    (test_bit(KEY_SELECT, handle->dev->key) ||
+	     test_bit(KEY_ESC, handle->dev->key))) {
+		pr_info("%s: do the switch\n", __func__);
+		dvrconsole->switch_to_console = true;
+		schedule_work(&dvrconsole->update_work);
+	}
+}
+
+static const struct input_device_id input_switch_ids[] = {
+	{
+		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
+		.evbit = { BIT_MASK(EV_KEY) },
+	},
+	{ },    /* Terminating entry */
+};
+
+MODULE_DEVICE_TABLE(input, input_switch_ids);
+
+static struct input_handler input_switch_handler = {
+	.event		= input_switch_event,
+	.match		= input_switch_match,
+	.connect	= input_switch_connect,
+	.disconnect	= input_switch_disconnect,
+	.start		= input_switch_start,
+	.name		= "input_switch",
+	.id_table	= input_switch_ids,
+};
+
+static int drm_vrconsole_get_width_of(struct device_node *of_node)
+{
+	u32 width;
+
+	int ret = of_property_read_u32(of_node, "width", &width);
+	if (ret)
+		return ret;
+
+	return width;
+}
+
+static int drm_vrconsole_get_height_of(struct device_node *of_node)
+{
+	u32 height;
+
+	int ret = of_property_read_u32(of_node, "height", &height);
+	if (ret)
+		return ret;
+
+	return height;
+}
+
+static int drm_vrconsole_get_stride_of(struct device_node *of_node)
+{
+	u32 stride;
+
+	int ret = of_property_read_u32(of_node, "stride", &stride);
+	if (ret)
+		return ret;
+
+	return stride;
+}
+
+static const struct drm_format_info *
+drm_vrconsole_get_validated_format(struct drm_device *dev, const char *format_name)
+{
+	static const struct simplefb_format formats[] = SIMPLEFB_FORMATS;
+	const struct simplefb_format *fmt = formats;
+	const struct simplefb_format *end = fmt + ARRAY_SIZE(formats);
+	const struct drm_format_info *info;
+
+	if (!format_name) {
+		drm_err(dev, "drm_vrconsole: missing framebuffer format\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	while (fmt < end) {
+		if (!strcmp(format_name, fmt->name)) {
+			info = drm_format_info(fmt->fourcc);
+			if (!info)
+				return ERR_PTR(-EINVAL);
+			return info;
+		}
+		++fmt;
+	}
+
+	drm_err(dev, "drm_vrconsole: unknown framebuffer format %s\n",
+		format_name);
+
+	return ERR_PTR(-EINVAL);
+}
+
+static const struct drm_format_info *
+drm_vrconsole_get_format_of(struct drm_device *dev, struct device_node *of_node)
+{
+	const char *format;
+	int ret;
+
+	ret = of_property_read_string(of_node, "format", &format);
+	if (ret)
+		return ERR_PTR(ret);
+
+	return drm_vrconsole_get_validated_format(dev, format);
+}
+
+static struct resource *
+drm_vrconsole_get_memory_of(struct drm_device *dev, struct device_node *of_node)
+{
+	struct resource r, *res;
+	int err;
+
+	err = of_reserved_mem_region_to_resource(of_node, 0, &r);
+	if (err)
+		return NULL;
+
+	res = devm_kmemdup(dev->dev, &r, sizeof(r), GFP_KERNEL);
+	if (!res)
+		return ERR_PTR(-ENOMEM);
+
+	return res;
+}
+
 /**
  * drm_vrconsole_register() - Register a drm device to drm_vrconsole
  * @dev: the drm device to register.
  */
 void drm_vrconsole_register(struct drm_device *dev)
 {
+	struct device_node *of_node;
 	struct drm_vrconsole *new;
 	int ret;
 
@@ -464,7 +705,58 @@ void drm_vrconsole_register(struct drm_device *dev)
 	if (!new)
 		goto err_warn;
 
+	memcpy(&new->input_handler, &input_switch_handler, sizeof(input_switch_handler));
+
+	ret = input_register_handler(&new->input_handler);
+	if (ret)
+		goto err_warn;
+
 	INIT_WORK(&new->update_work, vrcon_terminal_update_work);
+
+	of_node = of_find_compatible_node(NULL, NULL, "simple-framebuffer");
+	if (of_node && of_device_is_available(of_node)) {
+		struct resource *mem = NULL;
+
+		new->fb_width = drm_vrconsole_get_width_of(of_node);
+		if (new->fb_width < 0)
+			goto err_node_put;
+
+		new->fb_height = drm_vrconsole_get_height_of(of_node);
+		if (new->fb_height < 0)
+			goto err_node_put;
+
+		new->fb_stride = drm_vrconsole_get_stride_of(of_node);
+		if (new->fb_stride < 0)
+			goto err_node_put;
+
+		new->fb_format = drm_vrconsole_get_format_of(dev, of_node);
+		if (IS_ERR(new->fb_format))
+			goto err_node_put;
+
+		if (new->fb_format->format != DRM_FORMAT_ARGB8888 &&
+		    new->fb_format->format != DRM_FORMAT_XRGB8888) {
+			drm_warn(dev, "drm_vrconsole: invalid fb-simple format\n");
+			goto err_node_put;
+		}
+
+		mem = drm_vrconsole_get_memory_of(dev, of_node);
+		if (IS_ERR_OR_NULL(mem))
+			goto err_node_put;
+
+		new->fb_size = resource_size(mem);
+		new->fb_base = devm_memremap(dev->dev, mem->start,
+						new->fb_size, MEMREMAP_WC);
+		if (IS_ERR(new->fb_base)) {
+			new->fb_base = NULL;
+			goto err_node_put;
+		}
+
+		drm_info(dev, "drm_vrconsole: found %dx%d/%d format %p4cc framebuffer\n",
+			 new->fb_width, new->fb_height, new->fb_stride,
+			 &new->fb_format->format);
+
+		of_node_put(of_node);
+	}
 
 	/* TODO make it a module parameter */
 	ret = request_firmware_direct(&new->vrfont_fw, "RobotoMono-Bold.vrfont",
@@ -531,6 +823,8 @@ err_free_font:
 	release_firmware(new->vrfont_fw);
 err_free:
 	kfree(new);
+err_node_put:
+	of_node_put(of_node);
 err_warn:
 	drm_warn(dev, "Failed to register with drm vrconsole\n");
 }
