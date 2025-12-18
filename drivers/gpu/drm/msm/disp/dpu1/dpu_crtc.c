@@ -790,8 +790,11 @@ void dpu_crtc_vblank_callback(struct drm_crtc *crtc)
 {
 	struct dpu_crtc *dpu_crtc = to_dpu_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
+	struct msm_drm_private *priv = crtc->dev->dev_private;
+	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
 	unsigned long flags;
 	u64 cur_seq;
+	int ret;
 
 	/* keep statistics on vblank callback - with auto reset via debugfs */
 	if (ktime_compare(dpu_crtc->vblank_cb_time, ktime_set(0, 0)) == 0)
@@ -816,6 +819,26 @@ void dpu_crtc_vblank_callback(struct drm_crtc *crtc)
 		dpu_crtc->flip_event_pending = false;
 		drm_crtc_vblank_put(crtc);
 	}
+
+	if (dpu_kms->cac_state_cached == CAC_ENABLING ||
+	    dpu_kms->cac_state_cached == CAC_DISABLING) {
+		ret = drm_crtc_vblank_get(crtc);
+		if (ret) {
+			WARN(1, "Failed to get vblank for CAC state change\n");
+			goto skip_cac_state;
+		}
+		if (dpu_kms->cac_state_cached == CAC_ENABLING) {
+			dpu_crtc_set_cac_blob(priv->kms, dpu_kms->cac_blobs);
+			dpu_kms->cac_state_cached = CAC_ENABLED;
+			dpu_kms->cac_state_cur = CAC_ENABLED;
+		} else {
+			dpu_crtc_disable_cac(priv->kms);
+			dpu_kms->cac_state_cached = CAC_DISABLED;
+			dpu_kms->cac_state_cur = CAC_DISABLED;
+		}
+		drm_crtc_vblank_put(crtc);
+	}
+skip_cac_state:
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
@@ -1069,8 +1092,6 @@ static void dpu_crtc_atomic_begin(struct drm_crtc *crtc,
 {
 	struct dpu_crtc_state *cstate = to_dpu_crtc_state(crtc->state);
 	struct drm_encoder *encoder;
-	struct msm_drm_private *priv = crtc->dev->dev_private;
-	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
 
 	if (!crtc->state->enable) {
 		DRM_DEBUG_ATOMIC("crtc%d -> enable %d, skip atomic_begin\n",
@@ -1097,16 +1118,6 @@ static void dpu_crtc_atomic_begin(struct drm_crtc *crtc,
 	_dpu_crtc_blend_setup(crtc);
 
 	_dpu_crtc_setup_cp_blocks(crtc);
-
-	if (dpu_kms->cac_state_cached == CAC_ENABLING) {
-		dpu_crtc_set_cac_blob(priv->kms, dpu_kms->cac_blobs);
-		dpu_kms->cac_state_cached = CAC_ENABLED;
-		dpu_kms->cac_state_cur = CAC_ENABLED;
-	} else if (dpu_kms->cac_state_cached == CAC_DISABLING) {
-		dpu_crtc_disable_cac(priv->kms);
-		dpu_kms->cac_state_cached = CAC_DISABLED;
-		dpu_kms->cac_state_cur = CAC_DISABLED;
-	}
 
 	/*
 	 * PP_DONE irq is only used by command mode for now.
