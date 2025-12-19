@@ -697,6 +697,7 @@ drm_vrconsole_get_memory_of(struct drm_device *dev, struct device_node *of_node)
  */
 void drm_vrconsole_register(struct drm_device *dev)
 {
+	struct resource *mem = NULL;
 	struct device_node *of_node;
 	struct drm_vrconsole *new;
 	int ret;
@@ -705,65 +706,70 @@ void drm_vrconsole_register(struct drm_device *dev)
 	if (!new)
 		goto err_warn;
 
-	memcpy(&new->input_handler, &input_switch_handler, sizeof(input_switch_handler));
-
-	ret = input_register_handler(&new->input_handler);
-	if (ret)
-		goto err_warn;
-
-	INIT_WORK(&new->update_work, vrcon_terminal_update_work);
-
 	of_node = of_find_compatible_node(NULL, NULL, "simple-framebuffer");
-	if (of_node && of_device_is_available(of_node)) {
-		struct resource *mem = NULL;
-
-		new->fb_width = drm_vrconsole_get_width_of(of_node);
-		if (new->fb_width < 0)
-			goto err_node_put;
-
-		new->fb_height = drm_vrconsole_get_height_of(of_node);
-		if (new->fb_height < 0)
-			goto err_node_put;
-
-		new->fb_stride = drm_vrconsole_get_stride_of(of_node);
-		if (new->fb_stride < 0)
-			goto err_node_put;
-
-		new->fb_format = drm_vrconsole_get_format_of(dev, of_node);
-		if (IS_ERR(new->fb_format))
-			goto err_node_put;
-
-		if (new->fb_format->format != DRM_FORMAT_ARGB8888 &&
-		    new->fb_format->format != DRM_FORMAT_XRGB8888) {
-			drm_warn(dev, "drm_vrconsole: invalid fb-simple format\n");
-			goto err_node_put;
-		}
-
-		mem = drm_vrconsole_get_memory_of(dev, of_node);
-		if (IS_ERR_OR_NULL(mem))
-			goto err_node_put;
-
-		new->fb_size = resource_size(mem);
-		new->fb_base = devm_memremap(dev->dev, mem->start,
-						new->fb_size, MEMREMAP_WC);
-		if (IS_ERR(new->fb_base)) {
-			new->fb_base = NULL;
-			goto err_node_put;
-		}
-
-		drm_info(dev, "drm_vrconsole: found %dx%d/%d format %p4cc framebuffer\n",
-			 new->fb_width, new->fb_height, new->fb_stride,
-			 &new->fb_format->format);
-
-		of_node_put(of_node);
+	if (!of_node) {
+		drm_warn(dev, "no simple-fb node\n");
+		goto err_free;
 	}
+
+	if (!of_device_is_available(of_node)) {
+		drm_warn(dev, "no simple-fb enabled node\n");
+		goto err_free;
+	}
+
+	new->fb_width = drm_vrconsole_get_width_of(of_node);
+	if (new->fb_width < 0)
+		goto err_node_put;
+
+	new->fb_height = drm_vrconsole_get_height_of(of_node);
+	if (new->fb_height < 0)
+		goto err_node_put;
+
+	new->fb_stride = drm_vrconsole_get_stride_of(of_node);
+	if (new->fb_stride < 0)
+		goto err_node_put;
+
+	new->fb_format = drm_vrconsole_get_format_of(dev, of_node);
+	if (IS_ERR(new->fb_format))
+		goto err_node_put;
+
+	if (new->fb_format->format != DRM_FORMAT_ARGB8888 &&
+	    new->fb_format->format != DRM_FORMAT_XRGB8888) {
+		drm_warn(dev, "drm_vrconsole: invalid fb-simple format\n");
+		goto err_node_put;
+	}
+
+	mem = drm_vrconsole_get_memory_of(dev, of_node);
+	if (IS_ERR_OR_NULL(mem))
+		goto err_node_put;
+
+	new->fb_size = resource_size(mem);
+	new->fb_base = devm_memremap(dev->dev, mem->start,
+					new->fb_size, MEMREMAP_WC);
+	if (IS_ERR(new->fb_base)) {
+		new->fb_base = NULL;
+		goto err_node_put;
+	}
+
+	drm_info(dev, "drm_vrconsole: found %dx%d/%d format %p4cc framebuffer\n",
+		 new->fb_width, new->fb_height, new->fb_stride,
+		 &new->fb_format->format);
+
+	of_node_put(of_node);
+
+	mutex_init(&new->lock);
+	if (drm_client_init(dev, &new->client, "drm_vrconsole", &drm_vrconsole_client_funcs))
+		goto err_free;
+
+	/* Register drm client early, so it can show the splash while we register the console */
+	drm_client_register(&new->client);
 
 	/* TODO make it a module parameter */
 	ret = request_firmware_direct(&new->vrfont_fw, "RobotoMono-Bold.vrfont",
 				      dev->dev);
 	if (ret) {
 		drm_warn(dev, "failed to load vrfont (%d)\n", ret);
-		goto err_free;
+		goto err_warn_console;
 	}
 
 	/* TODO make it a module parameter */
@@ -771,7 +777,7 @@ void drm_vrconsole_register(struct drm_device *dev)
 				      dev->dev);
 	if (ret) {
 		drm_warn(dev, "failed to load vrterminal (%d)\n", ret);
-		goto err_free_font;
+		goto err_warn_console;
 	}
 
 	// Init the font and the terminal
@@ -779,14 +785,14 @@ void drm_vrconsole_register(struct drm_device *dev)
 			  new->vrfont_fw->size );
 	if (ret) {
 		drm_warn(dev, "Font failed init (%d)\n", ret);
-		goto err_free_terminal;
+		goto err_warn_console;
 	}
 
 	ret = vrterminal_init(&new->vrterminal, new->vrterminal_fw->data,
 			       new->vrterminal_fw->size);
 	if (ret) {
 		drm_warn(dev, "Terminal failed init (%d)\n", ret);
-		goto err_free_terminal;
+		goto err_warn_console;
 	}
 
 	memcpy(&new->terminalBounds, &new->vrterminal.terminalBounds,
@@ -800,11 +806,7 @@ void drm_vrconsole_register(struct drm_device *dev)
 			( (int) new->vrfont.maxGlyphWidth ) * 10, ( (int) new->vrfont.maxGlyphWidth ) * 10,
 			( (int) new->vrfont.maxGlyphHeight ) * 10, ( (int) new->vrfont.maxGlyphHeight ) * 10 );
 
-	mutex_init(&new->lock);
-	if (drm_client_init(dev, &new->client, "drm_vrconsole", &drm_vrconsole_client_funcs))
-		goto err_free_terminal;
-
-	drm_client_register(&new->client);
+	INIT_WORK(&new->update_work, vrcon_terminal_update_work);
 
 	memcpy(&new->csw, &vr_con, sizeof(vr_con));
 
@@ -812,21 +814,28 @@ void drm_vrconsole_register(struct drm_device *dev)
 	ret = do_take_over_console(&new->csw, 0, MAX_NR_CONSOLES - 1, 1);
 	console_unlock();
 	if (ret)
-		drm_warn(dev, "failed to register console (%d)\n", ret);
+		goto err_warn_console;
+
+	/* Register input handler as the very end when we are sure the console is registered */
+	memcpy(&new->input_handler, &input_switch_handler, sizeof(input_switch_handler));
+
+	ret = input_register_handler(&new->input_handler);
+	if (ret)
+		drm_warn(dev, "failed to register input handler\n");
 
 	drm_dbg(dev, "Registered with vt\n");
 	return;
 
-err_free_terminal:
-	release_firmware(new->vrterminal_fw);
-err_free_font:
-	release_firmware(new->vrfont_fw);
-err_free:
-	kfree(new);
 err_node_put:
 	of_node_put(of_node);
+err_free:
+	kfree(new);
 err_warn:
 	drm_warn(dev, "Failed to register with drm vrconsole\n");
+	return;
+err_warn_console:
+	drm_warn(dev, "failed to register vt console\n");
+	return;
 }
 
 MODULE_DESCRIPTION("DRM VR VT console");
