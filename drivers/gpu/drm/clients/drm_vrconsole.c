@@ -213,7 +213,7 @@ static void drm_vrconsole_client_unregister(struct drm_client_dev *client)
 	struct drm_vrconsole *dvrconsole = client_to_drm_vrconsole(client);
 	struct drm_device *dev = client->dev;
 
-	input_unregister_handler(&input_switch_handler);
+	input_unregister_handler(&dvrconsole->input_handler);
 
 	console_lock();
 	do_unbind_con_driver(&dvrconsole->csw, 0, MAX_NR_CONSOLES - 1, 1);
@@ -506,33 +506,16 @@ const struct consw vr_con = {
 	// debug...
 };
 
-static void input_switch_event(struct input_handle *handle, unsigned int event_type,
-		      unsigned int event_code, int value)
-{
-	struct drm_vrconsole *dvrconsole = input_handler_to_drm_vrconsole(handle->handler);
-
-	if (!dvrconsole->switch_to_console && value) {
-		pr_info("%s: do the switch\n", __func__);
-		dvrconsole->switch_to_console = true;
-		schedule_work(&dvrconsole->update_work);
-	}
-}
-
-static bool input_switch_match(struct input_handler *handler, struct input_dev *dev)
-{
-	if (test_bit(EV_KEY, dev->evbit) && test_bit(KEY_SELECT, dev->keybit))
-			return true;
-	if (test_bit(EV_KEY, dev->evbit) && test_bit(KEY_ESC, dev->keybit))
-			return true;
-
-	return false;
-}
-
 static int input_switch_connect(struct input_handler *handler, struct input_dev *dev,
 			const struct input_device_id *id)
 {
+	struct drm_vrconsole *dvrconsole = input_handler_to_drm_vrconsole(handler);
 	struct input_handle *handle;
 	int error;
+
+	/* If we already have switched, ignore new matching devices */
+	if (dvrconsole->console_enabled || dvrconsole->switch_to_console)
+		return 0;
 
 	handle = kzalloc(sizeof(struct input_handle), GFP_KERNEL);
 	if (!handle)
@@ -566,13 +549,51 @@ static void input_switch_disconnect(struct input_handle *handle)
 	kfree(handle);
 }
 
+static bool input_switch_filter(struct input_handle *handle, unsigned int event_type,
+				unsigned int event_code, int value)
+{
+	struct drm_vrconsole *dvrconsole = input_handler_to_drm_vrconsole(handle->handler);
+
+	/* If we already have switched, ignore any key input */
+	if (dvrconsole->console_enabled || dvrconsole->switch_to_console)
+		return false;
+
+	if ((event_code == KEY_SELECT || event_code == KEY_ESC) && value) {
+		pr_info("%s: do the switch\n", __func__);
+		dvrconsole->switch_to_console = true;
+		schedule_work(&dvrconsole->update_work);
+	}
+
+	/* Still pass event to other clients */
+	return false;
+}
+
+static bool input_switch_match(struct input_handler *handler, struct input_dev *dev)
+{
+	struct drm_vrconsole *dvrconsole = input_handler_to_drm_vrconsole(handler);
+
+	/* If we already have switched, stop matching new input devices */
+	if (dvrconsole->console_enabled || dvrconsole->switch_to_console)
+		return false;
+
+	if (test_bit(EV_KEY, dev->evbit) && test_bit(KEY_SELECT, dev->keybit))
+			return true;
+	if (test_bit(EV_KEY, dev->evbit) && test_bit(KEY_ESC, dev->keybit))
+			return true;
+
+	return false;
+}
+
 static void input_switch_start(struct input_handle *handle)
 {
 	struct drm_vrconsole *dvrconsole = input_handler_to_drm_vrconsole(handle->handler);
 
-	if (!dvrconsole->switch_to_console &&
-	    (test_bit(KEY_SELECT, handle->dev->key) ||
-	     test_bit(KEY_ESC, handle->dev->key))) {
+	/* If we already have switched, return the start state and disconnect*/
+	if (dvrconsole->console_enabled || dvrconsole->switch_to_console)
+		return;
+
+	if (test_bit(KEY_SELECT, handle->dev->key) ||
+	     test_bit(KEY_ESC, handle->dev->key)) {
 		pr_info("%s: do the switch\n", __func__);
 		dvrconsole->switch_to_console = true;
 		schedule_work(&dvrconsole->update_work);
@@ -590,7 +611,7 @@ static const struct input_device_id input_switch_ids[] = {
 MODULE_DEVICE_TABLE(input, input_switch_ids);
 
 static struct input_handler input_switch_handler = {
-	.event		= input_switch_event,
+	.filter		= input_switch_filter,
 	.match		= input_switch_match,
 	.connect	= input_switch_connect,
 	.disconnect	= input_switch_disconnect,
