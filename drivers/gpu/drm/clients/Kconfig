@@ -116,7 +116,7 @@ config DRM_CLIENT_VRCONSOLE
 choice
 	prompt "Default DRM Client"
 	depends on DRM_CLIENT_SELECTION
-	depends on DRM_FBDEV_EMULATION || DRM_CLIENT_LOG || DRM_CLIENT_SPLASH
+	depends on DRM_FBDEV_EMULATION || DRM_CLIENT_LOG || DRM_CLIENT_SPLASH || DRM_CLIENT_VRCONSOLE
 	default DRM_CLIENT_DEFAULT_FBDEV
 	help
 	  Selects the default drm client.
