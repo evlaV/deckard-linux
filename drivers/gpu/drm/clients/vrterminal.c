@@ -347,7 +347,7 @@ void vrterminal_putc( TerminalUpdate_t * pUpdate, VRTerminal_t * pTerminal, uint
 	pTerminal->cursor_x = x;
 
 	int nCellIndex = pTerminal->cursor_y * pTerminal->width + pTerminal->cursor_x;
-	if ( pTerminal->vCells[nCellIndex].ch != c )
+	if ( pTerminal->vCells[nCellIndex].ch != c || pTerminal->vCells[nCellIndex].attr != attr )
 	{
 		// are we overwriting a visible character at the current cursor position?
 		if ( is_visible_ascii( pTerminal->vCells[nCellIndex].ch ) )
