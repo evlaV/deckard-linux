@@ -187,8 +187,8 @@ static int pm8550b_charger_get_charge_current_max(struct pm8550b_charger *chg)
 
 static int pm8550b_charger_set_charge_current(struct pm8550b_charger *chg, int val)
 {
-	unsigned int existing_reg = 0;
 	unsigned int reg = 0;
+	bool changed = false;
 
 	/* Charge Current to High */
 	if (val > pm8550b_charger_get_charge_current_max(chg)) {
@@ -196,10 +196,8 @@ static int pm8550b_charger_set_charge_current(struct pm8550b_charger *chg, int v
 	}
 
 	reg = (val / 1000) / CHGR_ICHG_CFG_MA_PER_UNIT;
-	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_ICHG_CFG_ADDR, &existing_reg);
-
-	if (existing_reg != reg) {
-		regmap_write(chg->regmap, chg->base[BASE_CHG1] + CHGR_ICHG_CFG_ADDR, reg);
+	regmap_update_bits_check(chg->regmap, chg->base[BASE_CHG1] + CHGR_ICHG_CFG_ADDR, 0xFF, reg, &changed);
+	if (changed) {
 		power_supply_changed(chg->psy);
 	}
 
@@ -208,14 +206,12 @@ static int pm8550b_charger_set_charge_current(struct pm8550b_charger *chg, int v
 
 static int pm8550b_charger_set_charge_current_max(struct pm8550b_charger *chg, int val)
 {
-	unsigned int existing_reg = 0;
 	unsigned int reg = 0;
+	bool changed = false;
 
 	reg = (val / 1000) / CHGR_ICHG_CFG_MA_PER_UNIT;
-	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_ICHG_MAX_ADDR, &existing_reg);
-
-	if (existing_reg != reg) {
-		regmap_write(chg->regmap, chg->base[BASE_CHG1] + CHGR_ICHG_MAX_ADDR, reg);
+	regmap_update_bits_check(chg->regmap, chg->base[BASE_CHG1] + CHGR_ICHG_MAX_ADDR, 0xFF, reg, &changed);
+	if (changed) {
 		power_supply_changed(chg->psy);
 	}
 
@@ -241,8 +237,8 @@ static int pm8550b_charger_get_float_voltage_max(void)
 
 static int pm8550b_charger_set_float_voltage(struct pm8550b_charger *chg, int val)
 {
-	unsigned int existing_reg = 0;
 	unsigned int reg = 0;
+	bool changed = false;
 
 	/* Float Voltage to High */
 	if (val > pm8550b_charger_get_float_voltage_max()) {
@@ -255,11 +251,8 @@ static int pm8550b_charger_set_float_voltage(struct pm8550b_charger *chg, int va
 	}
 
 	reg = (val / 1000 - CHGR_VFLT_CFG_MV_OFFSET) / CHGR_VFLT_CFG_MV_PER_UNIT;
-
-	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_VFLT_CFG_ADDR, &existing_reg);
-
-	if (existing_reg != reg) {
-		regmap_write(chg->regmap, chg->base[BASE_CHG1] + CHGR_VFLT_CFG_ADDR, reg);
+	regmap_update_bits_check(chg->regmap, chg->base[BASE_CHG1] + CHGR_VFLT_CFG_ADDR, 0xFF, reg, &changed);
+	if (changed) {
 		power_supply_changed(chg->psy);
 	}
 
@@ -312,6 +305,7 @@ static int pm8550b_charger_get_precharge_current(struct pm8550b_charger *chg)
 	return (precharge_currents[reg & CHGR_IPRE_CFG_MASK] * 1000);
 }
 
+// TODO There is a race condition here with pm8550b_charger_get_termination_current()
 static int pm8550b_charger_set_termination_current(struct pm8550b_charger *chg, int val)
 {
 	s16 iadc_val = 0;
@@ -335,6 +329,7 @@ static int pm8550b_charger_set_termination_current(struct pm8550b_charger *chg, 
 	return 0;
 }
 
+// TODO There is a race condition here with pm8550b_charger_set_termination_current()
 static int pm8550b_charger_get_termination_current(struct pm8550b_charger *chg)
 {
 	unsigned int reg;
@@ -601,6 +596,7 @@ static bool charging_enable_get(struct pm8550b_charger *chg)
 	return (!!(reg & CHGR_CHG_EN_CHARGING_ENABLE_CMD));
 }
 
+// TODO There should be locking here, but likely OK since we only have one writer
 static void charging_enable_set(struct pm8550b_charger *chg, bool enable)
 {
 	enum chgr_charge_status status;
@@ -776,6 +772,7 @@ static ssize_t qph2_allow_show(struct device *dev, struct device_attribute *attr
 	return sysfs_emit(buf, "%d\n", !!(reg & CHGR2_QPH2_CHG_CTRL_ALLOW_QPH2_MASK));
 }
 
+// TODO Add Locking
 static ssize_t qph2_allow_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct power_supply *psy = dev_get_drvdata(dev);
@@ -884,8 +881,6 @@ static irqreturn_t qcom_pm8550b_charger_isr(int irq, void *dev_id)
 	struct pm8550b_charger *chg = irq_data->charger;
 	unsigned int reg = 0;
 
-	// spin_lock_irq(&chg->lock);
-
 	switch (irq_data->virq) {
 	case PM8550B_CHARGER_STATE_CHANGE_IRQ:
 		regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHARGER_STATUS_ADDR, &reg);
@@ -902,8 +897,6 @@ static irqreturn_t qcom_pm8550b_charger_isr(int irq, void *dev_id)
 		break;
 	}
 
-	// spin_unlock_irq(&chg->lock);
-
 	return IRQ_HANDLED;
 }
 
@@ -915,8 +908,6 @@ static irqreturn_t qcom_pm8550b_charger2_isr(int irq, void *dev_id)
 
 	if (!chg->regmap)
 		return IRQ_HANDLED;
-
-	// spin_lock_irq(&chg->lock);
 
 	switch (irq_data->virq) {
 	case PM8550B_CHARGER2_CHARGE_PATH_CHANGE_IRQ:
@@ -935,8 +926,6 @@ static irqreturn_t qcom_pm8550b_charger2_isr(int irq, void *dev_id)
 		power_supply_changed(chg->psy);
 		break;
 	}
-
-	// spin_unlock_irq(&chg->lock);
 
 	return IRQ_HANDLED;
 }
@@ -1125,11 +1114,6 @@ static int qcom_pm8550b_charger_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void qcom_pm8550b_charger_remove(struct platform_device *pdev)
-{
-	// struct pm8550b_charger *chg = platform_get_drvdata(pdev);
-}
-
 static struct pm8550b_charger1_resources pm8550b_charger1_res = {
 	.irq_params = {
 		{
@@ -1189,7 +1173,6 @@ static struct platform_driver qcom_pm8550b_charger_driver = {
 		.of_match_table = qcom_pm8550b_charger_table,
 	},
 	.probe = qcom_pm8550b_charger_probe,
-	.remove = qcom_pm8550b_charger_remove,
 };
 
 module_platform_driver(qcom_pm8550b_charger_driver);
@@ -1217,3 +1200,5 @@ MODULE_LICENSE("GPL");
 
 // qcom,jeita-soft-fcc-ua = <2500000 2500000>;
 // qcom,jeita-soft-fv-uv = <4250000 4250000>;
+
+// TODO Add resume_noirq for aicl
