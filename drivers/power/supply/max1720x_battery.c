@@ -5855,7 +5855,6 @@ static void max1720x_init_worker(struct work_struct *work)
 
 static struct max1720x_platform_data *max1720x_parse_dt(struct device *dev)
 {
-	struct device_node *np = dev->of_node;
 	struct max1720x_platform_data *pdata;
 	int ret;
 
@@ -5863,39 +5862,39 @@ static struct max1720x_platform_data *max1720x_parse_dt(struct device *dev)
 	if (!pdata)
 		return NULL;
 
-	ret = of_property_read_u32(np, "talrt-min", &pdata->temp_min);
+	ret = device_property_read_u32(dev,"talrt-min", &pdata->temp_min);
 	if (ret < 0)
 		pdata->temp_min = -128; /* DegreeC */ /* Disable alert */
 
-	ret = of_property_read_u32(np, "talrt-max", &pdata->temp_max);
+	ret = device_property_read_u32(dev,"talrt-max", &pdata->temp_max);
 	if (ret < 0)
 		pdata->temp_max = 127; /* DegreeC */ /* Disable alert */
 
-	ret = of_property_read_u32(np, "valrt-min", &pdata->volt_min);
+	ret = device_property_read_u32(dev,"valrt-min", &pdata->volt_min);
 	if (ret < 0)
 		pdata->volt_min = 0; /* mV */ /* Disable alert */
 
-	ret = of_property_read_u32(np, "valrt-max", &pdata->volt_max);
+	ret = device_property_read_u32(dev,"valrt-max", &pdata->volt_max);
 	if (ret < 0)
 		pdata->volt_max = 5100; /* mV */ /* Disable alert */
 
-	ret = of_property_read_u32(np, "ialrt-min", &pdata->curr_min);
+	ret = device_property_read_u32(dev,"ialrt-min", &pdata->curr_min);
 	if (ret < 0)
 		pdata->curr_min = -5120; /* mA */ /* Disable alert */
 
-	ret = of_property_read_u32(np, "ialrt-max", &pdata->curr_max);
+	ret = device_property_read_u32(dev,"ialrt-max", &pdata->curr_max);
 	if (ret < 0)
 		pdata->curr_max = 5080; /* mA */ /* Disable alert */
 
-	ret = of_property_read_u32(np, "salrt-min", &pdata->soc_min);
+	ret = device_property_read_u32(dev,"salrt-min", &pdata->soc_min);
 	if (ret < 0)
 		pdata->soc_min = 0; /* Percent */ /* Disable alert */
 
-	ret = of_property_read_u32(np, "salrt-max", &pdata->soc_max);
+	ret = device_property_read_u32(dev,"salrt-max", &pdata->soc_max);
 	if (ret < 0)
 		pdata->soc_max = 255; /* Percent */ /* Disable alert */
 
-	ret = of_property_read_u32(np, "rsense", &pdata->rsense);
+	ret = device_property_read_u32(dev,"rsense", &pdata->rsense);
 	if (ret < 0)
 		pdata->rsense = 100;
 
@@ -5935,15 +5934,16 @@ static int max1720x_probe(struct i2c_client *client)
 	priv->driver_data = id->driver_data;
 	priv->modelgauge_address = client->addr;
 
-	if (client->dev.of_node) {
+	if (device_property_present(&client->dev, "nvm_reg")) {
 		priv->pdata = max1720x_parse_dt(&client->dev);
 
 		/* Get the nonvolatile address */
-		ret = of_property_read_u8(client->dev.of_node, "nvm_reg", &priv->nonvolatile_address);
+		ret = device_property_read_u8(&client->dev, "nvm_reg", &priv->nonvolatile_address);
 		if (ret)
 			return ret;
 
 	} else {
+		// TODO This has to be a bug
 		priv->pdata = client->dev.platform_data;
 		priv->nonvolatile_address = NONVOLATILE_DATA_I2C_ADDR;
 	}
