@@ -14,7 +14,7 @@
 #include <linux/power_supply.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
-#include <linux/mutex.h>
+#include <linux/property.h>
 
 /* --- Registers --- */
 #define REG_PATTERN_ID 0xE6
@@ -55,6 +55,10 @@
 #define RT2_REMOVABLE_V_OK BIT(1)
 #define RT2_INTERNAL_V_OK BIT(2)
 
+#define REMOVABLE_PACK_SLAVE_ADDR 0x76
+#define REMOVABLE_PACK_NVM_ADDR 0x4B
+#define REMOVABLE_PACK_RSENSE 25
+
 /* --- Driver state --- */
 struct northgate_hotswap_psy {
 	struct device *dev;
@@ -62,7 +66,17 @@ struct northgate_hotswap_psy {
 	struct i2c_client *client;
 	struct power_supply *psy;
 
+	// Cached Last Interrupt State
+	struct mutex fault_mutex;
+	u8 pack_removed;
+	u8 pack_installed;
+	u8 charger_fault;
+	u8 vint_not_valid;
+
+	// Removable Pack Handling
 	int removable_pack_connected;
+	struct i2c_client *battery_client; /* dynamically created */
+	struct work_struct hotswap_work;
 };
 
 /* --- Sysfs helpers with DEVICE_ATTR integrated --- */
@@ -93,19 +107,6 @@ struct northgate_hotswap_psy {
 
 /* --- Define attributes --- */
 
-/* F1 RO bits */
-NORTHGATE_HOTSWAP_BIT_SHOW(latched_hw_control, REG_LATCHED_FAULTS, LT_HW_CONTROL);
-static DEVICE_ATTR_RO(latched_hw_control);
-
-NORTHGATE_HOTSWAP_BIT_SHOW(latched_slow_charger, REG_LATCHED_FAULTS, LT_SLOW_CHARGER);
-static DEVICE_ATTR_RO(latched_slow_charger);
-
-NORTHGATE_HOTSWAP_BIT_SHOW(latched_pack_state_changed, REG_LATCHED_FAULTS, LT_PACK_STATE_CHANGED);
-static DEVICE_ATTR_RO(latched_pack_state_changed);
-
-NORTHGATE_HOTSWAP_BIT_SHOW(latched_internal_uvlo, REG_LATCHED_FAULTS, LT_INTERNAL_UVLO);
-static DEVICE_ATTR_RO(latched_internal_uvlo);
-
 /* F2 RO bits */
 NORTHGATE_HOTSWAP_BIT_SHOW(realtime_pack_connected, REG_REALTIME_STATUS, RT_PACK_CONNECTED);
 static DEVICE_ATTR_RO(realtime_pack_connected);
@@ -120,20 +121,6 @@ static DEVICE_ATTR_RW(use_internal_battery);
 NORTHGATE_HOTSWAP_BIT_SHOW(enable_slow_charger, REG_I2C_VIRTUAL_IN, VI_ENABLE_SLOW_CHARGER);
 NORTHGATE_HOTSWAP_BIT_STORE(enable_slow_charger, REG_I2C_VIRTUAL_IN, VI_ENABLE_SLOW_CHARGER);
 static DEVICE_ATTR_RW(enable_slow_charger);
-
-static ssize_t clear_fault_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct power_supply *psy = dev_get_drvdata(dev);
-	struct northgate_hotswap_psy *northgate = power_supply_get_drvdata(psy);
-	unsigned int val;
-
-	regmap_read(northgate->regmap, REG_I2C_VIRTUAL_IN, &val);
-	// Toggle the Clear bit
-	regmap_update_bits(northgate->regmap, REG_I2C_VIRTUAL_IN, VI_CLEAR_FAULT_EDGE, val ^ VI_CLEAR_FAULT_EDGE);
-
-	return count;
-}
-static DEVICE_ATTR_WO(clear_fault);
 
 /* F5 RO bits */
 NORTHGATE_HOTSWAP_BIT_SHOW(fet_internal_charge, REG_FET_STATUS, FET_INT_CHG);
@@ -160,25 +147,83 @@ static DEVICE_ATTR_RO(removable_voltage_ok);
 NORTHGATE_HOTSWAP_BIT_SHOW(internal_voltage_ok, REG_REALTIME_STATUS2, RT2_INTERNAL_V_OK);
 static DEVICE_ATTR_RO(internal_voltage_ok);
 
-/* --- Attribute array --- */
-static struct attribute *northgate_hotswap_attrs[] = { &dev_attr_latched_hw_control.attr,
-						       &dev_attr_latched_slow_charger.attr,
-						       &dev_attr_latched_pack_state_changed.attr,
-						       &dev_attr_latched_internal_uvlo.attr,
-						       &dev_attr_realtime_pack_connected.attr,
-						       &dev_attr_realtime_slow_charger_enabled.attr,
-						       &dev_attr_use_internal_battery.attr,
-						       &dev_attr_enable_slow_charger.attr,
-						       &dev_attr_clear_fault.attr,
-						       &dev_attr_fet_internal_charge.attr,
-						       &dev_attr_fet_internal_discharge.attr,
-						       &dev_attr_fet_removable_charge.attr,
-						       &dev_attr_fet_removable_discharge.attr,
-						       &dev_attr_internal_active.attr,
-						       &dev_attr_removable_active.attr,
-						       &dev_attr_removable_voltage_ok.attr,
-						       &dev_attr_internal_voltage_ok.attr,
-						       NULL };
+static ssize_t interrupt_clear_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct northgate_hotswap_psy *northgate = power_supply_get_drvdata(psy);
+	int ret;
+
+	ret = mutex_lock_interruptible(&northgate->fault_mutex);
+	if (ret)
+		return ret;
+
+	northgate->pack_installed = 0;
+	northgate->pack_removed = 0;
+	northgate->charger_fault = 0;
+	northgate->vint_not_valid = 0;
+	mutex_unlock(&northgate->fault_mutex);
+
+	return count;
+}
+static DEVICE_ATTR_WO(interrupt_clear);
+
+static ssize_t interrupt_pack_installed_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct northgate_hotswap_psy *northgate = power_supply_get_drvdata(psy);
+
+	return sysfs_emit(buf, "%d\n", northgate->pack_installed);
+}
+static DEVICE_ATTR_RO(interrupt_pack_installed);
+
+static ssize_t interrupt_pack_removed_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct northgate_hotswap_psy *northgate = power_supply_get_drvdata(psy);
+
+	return sysfs_emit(buf, "%d\n", northgate->pack_removed);
+}
+static DEVICE_ATTR_RO(interrupt_pack_removed);
+
+static ssize_t interrupt_charger_fault_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct northgate_hotswap_psy *northgate = power_supply_get_drvdata(psy);
+
+	return sysfs_emit(buf, "%d\n", northgate->charger_fault);
+}
+static DEVICE_ATTR_RO(interrupt_charger_fault);
+
+static ssize_t interrupt_vint_not_valid_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct northgate_hotswap_psy *northgate = power_supply_get_drvdata(psy);
+
+	return sysfs_emit(buf, "%d\n", northgate->vint_not_valid);
+}
+static DEVICE_ATTR_RO(interrupt_vint_not_valid);
+
+// clang-format off
+static struct attribute *northgate_hotswap_attrs[] = {
+	&dev_attr_realtime_pack_connected.attr,
+	&dev_attr_realtime_slow_charger_enabled.attr,
+	&dev_attr_use_internal_battery.attr,
+	&dev_attr_enable_slow_charger.attr,
+	&dev_attr_fet_internal_charge.attr,
+	&dev_attr_fet_internal_discharge.attr,
+	&dev_attr_fet_removable_charge.attr,
+	&dev_attr_fet_removable_discharge.attr,
+	&dev_attr_internal_active.attr,
+	&dev_attr_removable_active.attr,
+	&dev_attr_removable_voltage_ok.attr,
+	&dev_attr_internal_voltage_ok.attr,
+	&dev_attr_interrupt_clear.attr,
+	&dev_attr_interrupt_pack_installed.attr,
+	&dev_attr_interrupt_pack_removed.attr,
+	&dev_attr_interrupt_charger_fault.attr,
+	&dev_attr_interrupt_vint_not_valid.attr,
+	NULL };
+// clang-format on
 ATTRIBUTE_GROUPS(northgate_hotswap);
 
 static int northgate_hotswap_get_property(struct power_supply *psy, enum power_supply_property psp,
@@ -241,17 +286,94 @@ static int northgate_hotswap_removable_pack_connected(struct northgate_hotswap_p
 	return val;
 }
 
-/* --- Threaded IRQ handler --- */
+static const struct property_entry max1720x_swnode_props[] = { PROPERTY_ENTRY_U8("nvm_reg", REMOVABLE_PACK_NVM_ADDR),
+							       PROPERTY_ENTRY_U32("rsense", REMOVABLE_PACK_RSENSE),
+							       {} };
+
+static const struct software_node max1720x_swnode = {
+	.name = "max1720x-battery",
+	.properties = max1720x_swnode_props,
+};
+
+static void northgate_hotswap_work(struct work_struct *work)
+{
+	struct northgate_hotswap_psy *northgate = container_of(work, struct northgate_hotswap_psy, hotswap_work);
+
+	if (northgate->removable_pack_connected && !northgate->battery_client) {
+		/* Attach Pack */
+		struct i2c_board_info info = {
+			I2C_BOARD_INFO("max17320", REMOVABLE_PACK_SLAVE_ADDR),
+			.swnode = &max1720x_swnode,
+		};
+
+		northgate->battery_client = i2c_new_client_device(northgate->client->adapter, &info);
+		if (IS_ERR(northgate->battery_client)) {
+			dev_err(&northgate->client->dev, "northgate-hotswap failed to create max17320 client\n");
+			northgate->battery_client = NULL;
+			return;
+		}
+
+		dev_info(&northgate->client->dev, "northgate-hotswap attached\n");
+
+	} else if (!northgate->removable_pack_connected && northgate->battery_client) {
+		/* Remove Pack */
+		dev_info(&northgate->client->dev, "northgate-hotswap removed\n");
+
+		device_release_driver(&northgate->battery_client->dev);
+		i2c_unregister_device(northgate->battery_client);
+		northgate->battery_client = NULL;
+	}
+}
+
+static int northgate_hotswap_cache_and_clear_faults(struct northgate_hotswap_psy *northgate)
+{
+	// NOTE Mutex Lock is held by caller
+	unsigned int val;
+	int pack_connected;
+
+	// Check if Pack is Connected
+	pack_connected = northgate_hotswap_removable_pack_connected(northgate);
+
+	// Read Latched Faults
+	regmap_read(northgate->regmap, REG_LATCHED_FAULTS, &val);
+
+	// Cached Last Interrupt State
+	if (!!(val & LT_PACK_STATE_CHANGED)) {
+		if (pack_connected) {
+			// Pack is now connected
+			northgate->pack_installed |= 1;
+		} else {
+			// Pack isn't connected
+			northgate->pack_removed |= 1;
+		}
+	}
+	northgate->charger_fault |= !!(val & LT_SLOW_CHARGER);
+	northgate->vint_not_valid |= !!(val & LT_INTERNAL_UVLO);
+
+	// Read the Fault Bit and Toggle to Clear
+	regmap_read(northgate->regmap, REG_I2C_VIRTUAL_IN, &val);
+	regmap_update_bits(northgate->regmap, REG_I2C_VIRTUAL_IN, VI_CLEAR_FAULT_EDGE, val ^ VI_CLEAR_FAULT_EDGE);
+
+	return pack_connected;
+}
+
 static irqreturn_t northgate_hotswap_irq_thread(int irq, void *dev_id)
 {
 	struct northgate_hotswap_psy *northgate = dev_id;
-	int val;
+	int pack_connected;
 
-	val = northgate_hotswap_removable_pack_connected(northgate);
-	if (val >= 0) {
-		northgate->removable_pack_connected = val;
-		pr_info("northgate-hotswap installed: %d\n", val);
+	mutex_lock(&northgate->fault_mutex);
+
+	pack_connected = northgate_hotswap_cache_and_clear_faults(northgate);
+	if (pack_connected >= 0) {
+		if (pack_connected != northgate->removable_pack_connected) {
+			// Handle Attach/Remove Event
+			schedule_work(&northgate->hotswap_work);
+		}
+		northgate->removable_pack_connected = pack_connected;
 	}
+
+	mutex_unlock(&northgate->fault_mutex);
 
 	power_supply_changed(northgate->psy);
 
@@ -279,6 +401,8 @@ static int northgate_hotswap_probe(struct i2c_client *client)
 	northgate = devm_kzalloc(dev, sizeof(*northgate), GFP_KERNEL);
 	if (!northgate)
 		return -ENOMEM;
+
+	mutex_init(&northgate->fault_mutex);
 
 	northgate->dev = dev;
 	northgate->client = client;
@@ -309,7 +433,7 @@ static int northgate_hotswap_probe(struct i2c_client *client)
 		}
 	}
 
-	northgate->removable_pack_connected = northgate_hotswap_removable_pack_connected(northgate);
+	northgate->removable_pack_connected = northgate_hotswap_cache_and_clear_faults(northgate);
 
 	psy_cfg.drv_data = northgate;
 	psy_cfg.fwnode = dev_fwnode(dev);
@@ -318,8 +442,25 @@ static int northgate_hotswap_probe(struct i2c_client *client)
 	if (IS_ERR(northgate->psy))
 		return PTR_ERR(northgate->psy);
 
+	INIT_WORK(&northgate->hotswap_work, northgate_hotswap_work);
+	// Determine Initial State
+	schedule_work(&northgate->hotswap_work);
+
 	dev_info(dev, "northgate-hotswap loaded\n");
 	return 0;
+}
+
+static void northgate_hotswap_remove(struct i2c_client *client)
+{
+	struct northgate_hotswap_psy *northgate = i2c_get_clientdata(client);
+
+	cancel_work_sync(&northgate->hotswap_work);
+
+	if (northgate->battery_client) {
+		device_release_driver(&northgate->battery_client->dev);
+		i2c_unregister_device(northgate->battery_client);
+		northgate->battery_client = NULL;
+	}
 }
 
 static const struct i2c_device_id northgate_hotswap_id_table[] = { { "slg4ad48669m" }, {} };
@@ -335,6 +476,7 @@ MODULE_DEVICE_TABLE(of, northgate_hotswap_of_match);
 
 static struct i2c_driver northgate_hotswap_i2c_driver = {
 	.probe = northgate_hotswap_probe,
+	.remove = northgate_hotswap_remove,
 	.id_table = northgate_hotswap_id_table,
 	.driver = {
 		.name = "northgate-hotswap",
