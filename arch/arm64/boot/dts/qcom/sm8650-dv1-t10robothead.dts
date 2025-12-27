@@ -2094,13 +2094,14 @@
 	};
 
 	// Southgate/Northgate Secondary Hotswap Battery
-	max17320_hotswap@76 {
-		compatible  = "maxim,max17320";
-		status		= "okay";
-		reg         = <0x76>;
-		nvm_reg     = /bits/ 8 <0x4b>;
-		rsense      = <25>;      /* 100's of microOhms */
-	};
+	// NOTE This is handled dynamically by northgate_hotswap driver
+	// max17320_hotswap@76 {
+	//	compatible  = "maxim,max17320";
+	//	status		= "okay";
+	//	reg         = <0x76>;
+	//	nvm_reg     = /bits/ 8 <0x4b>;
+	//	rsense      = <25>;      /* 100's of microOhms */
+	// };
 
     // PADDLE EEPROM
     eeprom@50 {
