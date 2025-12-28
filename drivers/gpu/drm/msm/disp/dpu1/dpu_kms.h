@@ -113,6 +113,7 @@ struct dpu_kms {
 	struct drm_property *cac_prop;
 	enum cac_state cac_state_cached;
 	enum cac_state cac_state_cur;
+	bool cac_update_pending;
 	u32 cac_vig_lm_stage;	/* stage in LM to blend SSPP_VIG0~3 */
 	u32 cac_blob_id;
 

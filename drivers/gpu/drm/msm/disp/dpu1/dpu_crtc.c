@@ -836,6 +836,7 @@ void dpu_crtc_vblank_callback(struct drm_crtc *crtc)
 			dpu_kms->cac_state_cached = CAC_DISABLED;
 			dpu_kms->cac_state_cur = CAC_DISABLED;
 		}
+		dpu_kms->cac_update_pending = false;
 		drm_crtc_vblank_put(crtc);
 	}
 skip_cac_state:
@@ -1092,6 +1093,8 @@ static void dpu_crtc_atomic_begin(struct drm_crtc *crtc,
 {
 	struct dpu_crtc_state *cstate = to_dpu_crtc_state(crtc->state);
 	struct drm_encoder *encoder;
+	struct msm_drm_private *priv = crtc->dev->dev_private;
+	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
 
 	if (!crtc->state->enable) {
 		DRM_DEBUG_ATOMIC("crtc%d -> enable %d, skip atomic_begin\n",
@@ -1118,6 +1121,12 @@ static void dpu_crtc_atomic_begin(struct drm_crtc *crtc,
 	_dpu_crtc_blend_setup(crtc);
 
 	_dpu_crtc_setup_cp_blocks(crtc);
+
+	if (dpu_kms->cac_state_cur == CAC_ENABLED && dpu_kms->cac_update_pending) {
+		/* Update CAC blob while already enabled (per-frame updates) */
+		dpu_crtc_set_cac_blob(priv->kms, dpu_kms->cac_blobs);
+		dpu_kms->cac_update_pending = false;
+	}
 
 	/*
 	 * PP_DONE irq is only used by command mode for now.
@@ -2042,8 +2051,14 @@ crtc_atomic_set_property(struct drm_crtc *crtc,
 
 	memcpy(dpu_kms->cac_blobs, blob->data, blob->length);
 	drm_property_blob_put(blob);
-	if (dpu_kms->cac_state_cached != CAC_ENABLED)
+
+	if (dpu_kms->cac_state_cached == CAC_DISABLED) {
+		/* First time enabling CAC */
 		dpu_kms->cac_state_cached = CAC_ENABLING;
+	} else if (dpu_kms->cac_state_cur == CAC_ENABLED) {
+		/* CAC already enabled, update will be applied inside atomic_begin */
+		dpu_kms->cac_update_pending = true;
+	}
 	/* use the last 2 stage for hidden SSPP, it's DPU_STAGE_9/10 for now */
 	/* TODO: change max val per catalog */
 	dpu_kms->cac_vig_lm_stage = DPU_STAGE_MAX - 3;

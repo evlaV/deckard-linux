@@ -1348,6 +1348,7 @@ static int dpu_kms_init(struct drm_device *ddev)
 	dpu_kms->rpm_enabled = true;
 	dpu_kms->cac_state_cur = CAC_DISABLED;
 	dpu_kms->cac_state_cached = CAC_DISABLED;
+	dpu_kms->cac_update_pending = false;
 
 	return 0;
 }
