@@ -50,12 +50,13 @@ enum base_index {
 	BASE_CHG1 = 0,
 	BASE_CHG2 = 1,
 	BASE_MISC = 2,
+	BASE_COUNT = 3,
 };
 
 struct pm8550b_charger {
 	struct device *dev;
 	struct regmap *regmap;
-	u32 base[2];
+	u32 base[BASE_COUNT];
 
 	struct power_supply *psy;
 
@@ -989,7 +990,7 @@ static int qcom_pm8550b_charger_probe(struct platform_device *pdev)
 	chg->regmap = regmap;
 
 	/* Get the base register */
-	ret = of_property_read_u32_array(np, "reg", chg->base, 3);
+	ret = of_property_read_u32_array(np, "reg", chg->base, BASE_COUNT);
 	if (ret)
 		return ret;
 
