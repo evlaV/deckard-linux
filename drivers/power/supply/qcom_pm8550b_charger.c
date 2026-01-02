@@ -1090,7 +1090,7 @@ static int qcom_pm8550b_charger_probe(struct platform_device *pdev)
 	 * NOTE When we measure this current the divider seems to be closer to 57 than 60...
 	 * Not sure why this is. so all are currents are a little lower than this.
 	 */
-	pm8550b_charger_set_charge_current(chg, 1200000);
+	pm8550b_charger_set_charge_current(chg, 1000000);
 	pm8550b_charger_set_float_voltage(chg, 8900000);
 	pm8550b_charger_set_termination_current(chg, 200000);
 	termination_enable_set(chg, true);
