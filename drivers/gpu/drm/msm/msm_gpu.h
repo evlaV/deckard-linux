@@ -183,6 +183,7 @@ struct msm_gpu {
 	uint64_t elapsed_ns;
 
 	struct adreno_smmu_priv adreno_smmu;
+	struct adreno_smmu_priv lpac_adreno_smmu;
 
 	/* performance counters (hw & sw): */
 	spinlock_t perf_lock;
