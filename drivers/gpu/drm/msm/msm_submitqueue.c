@@ -210,6 +210,7 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_context *ctx,
 	struct msm_gpu_submitqueue *queue;
 	enum drm_sched_priority sched_prio;
 	extern int enable_preemption;
+	struct msm_ringbuffer *ring;
 	bool preemption_supported;
 	unsigned ring_nr, i;
 	int ret;
@@ -245,6 +246,16 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_context *ctx,
 			return ret;
 
 		queue = kzalloc(sizeof(*queue), GFP_KERNEL);
+
+		if (flags & MSM_SUBMITQUEUE_LPAC) {
+			ring_nr = priv->gpu->nr_rings;
+			ring = priv->gpu->lpac_rb;
+		} else {
+			ring = priv->gpu->rb[ring_nr];
+		}
+
+		if (!ring)
+			return -EINVAL;
 	}
 
 	if (!queue)
@@ -263,8 +274,7 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_context *ctx,
 	} else {
 		queue->ring_nr = ring_nr;
 
-		queue->entity = get_sched_entity(ctx, priv->gpu->rb[ring_nr],
-						 ring_nr, sched_prio);
+		queue->entity = get_sched_entity(ctx, ring, ring_nr, sched_prio);
 	}
 
 	if (IS_ERR(queue->entity)) {
