@@ -223,6 +223,7 @@ static void a6xx_set_pagetable(struct a6xx_gpu *a6xx_gpu,
 	struct drm_gpuvm *vm = msm_context_vm(submit->dev, ctx);
 	struct adreno_gpu *adreno_gpu = &a6xx_gpu->base;
 	phys_addr_t ttbr;
+	bool is_lpac = ring == a6xx_gpu->base.base.lpac_rb;
 	u32 asid;
 	u64 memptr = rbmemptr(ring, ttbr0);
 
@@ -240,19 +241,21 @@ static void a6xx_set_pagetable(struct a6xx_gpu *a6xx_gpu,
 		OUT_RING(ring, upper_32_bits(rbmemptr(ring, fence)));
 		OUT_RING(ring, submit->seqno - 1);
 
-		OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
-		OUT_RING(ring, CP_SET_THREAD_BOTH);
+		if (!is_lpac) {
+			OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
+			OUT_RING(ring, CP_SET_THREAD_BOTH);
 
-		/* Reset state used to synchronize BR and BV */
-		OUT_PKT7(ring, CP_RESET_CONTEXT_STATE, 1);
-		OUT_RING(ring,
-			 CP_RESET_CONTEXT_STATE_0_CLEAR_ON_CHIP_TS |
-			 CP_RESET_CONTEXT_STATE_0_CLEAR_RESOURCE_TABLE |
-			 CP_RESET_CONTEXT_STATE_0_CLEAR_BV_BR_COUNTER |
-			 CP_RESET_CONTEXT_STATE_0_RESET_GLOBAL_LOCAL_TS);
+			/* Reset state used to synchronize BR and BV */
+			OUT_PKT7(ring, CP_RESET_CONTEXT_STATE, 1);
+			OUT_RING(ring,
+				 CP_RESET_CONTEXT_STATE_0_CLEAR_ON_CHIP_TS |
+				 CP_RESET_CONTEXT_STATE_0_CLEAR_RESOURCE_TABLE |
+				 CP_RESET_CONTEXT_STATE_0_CLEAR_BV_BR_COUNTER |
+				 CP_RESET_CONTEXT_STATE_0_RESET_GLOBAL_LOCAL_TS);
 
-		OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
-		OUT_RING(ring, CP_SET_THREAD_BR);
+			OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
+			OUT_RING(ring, CP_SET_THREAD_BR);
+		}
 	}
 
 	if (!sysprof) {
@@ -457,6 +460,7 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 	struct msm_ringbuffer *ring = submit->ring;
+	bool is_lpac = ring == gpu->lpac_rb;
 	u64 timestamp_iova;
 	unsigned int i, ibs = 0;
 
@@ -475,13 +479,17 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	 * If preemption is enabled, then set the pseudo register for the save
 	 * sequence
 	 */
-	if (gpu->nr_rings > 1)
+	if (gpu->nr_rings > 1 && !is_lpac)
 		a6xx_emit_set_pseudo_reg(ring, a6xx_gpu, submit->queue);
 
 	get_stats_counter(ring, REG_A7XX_RBBM_PERFCTR_CP(0),
 		rbmemptr_stats(ring, index, cpcycles_start));
-	get_stats_counter(ring, REG_A6XX_CP_ALWAYS_ON_COUNTER,
-		rbmemptr_stats(ring, index, alwayson_start));
+	if (is_lpac)
+		get_stats_counter(ring, REG_A6XX_CP_ALWAYS_ON_COUNTER,
+			rbmemptr_stats(ring, index, alwayson_start));
+	else
+		get_stats_counter(ring, REG_A6XX_CP_ALWAYS_ON_CONTEXT,
+			rbmemptr_stats(ring, index, alwayson_start));
 
 	get_stats_counter(ring, REG_A6XX_CP_ALWAYS_ON_CONTEXT,
 		rbmemptr(ring, last_job_start_ctx));
@@ -540,17 +548,19 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	OUT_PKT4(ring, REG_A6XX_CP_SCRATCH_REG(2), 1);
 	OUT_RING(ring, submit->seqno);
 
-	OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
-	OUT_RING(ring, CP_SET_THREAD_BR);
+	if (!is_lpac) {
+		OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
+		OUT_RING(ring, CP_SET_THREAD_BR);
 
-	OUT_PKT7(ring, CP_EVENT_WRITE, 1);
-	OUT_RING(ring, CCU_INVALIDATE_DEPTH);
+		OUT_PKT7(ring, CP_EVENT_WRITE, 1);
+		OUT_RING(ring, CCU_INVALIDATE_DEPTH);
 
-	OUT_PKT7(ring, CP_EVENT_WRITE, 1);
-	OUT_RING(ring, CCU_INVALIDATE_COLOR);
+		OUT_PKT7(ring, CP_EVENT_WRITE, 1);
+		OUT_RING(ring, CCU_INVALIDATE_COLOR);
 
-	OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
-	OUT_RING(ring, CP_SET_THREAD_BV);
+		OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
+		OUT_RING(ring, CP_SET_THREAD_BV);
+	}
 
 	/*
 	 * Make sure the timestamp is committed once BV pipe is
@@ -579,16 +589,19 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	a6xx_gpu->last_seqno[ring->id] = submit->seqno;
 
 	/* write the ctx timestamp (for kgsl memstore) */
-	timestamp_iova = a6xx_gpu->shadow_iova + KGSL_MEMSTORE_OFFSET(submit->queue->id, eoptimestamp);
-	//OUT_PKT7(ring, CP_EVENT_WRITE, 4);
-	//OUT_RING(ring, CACHE_CLEAN | BIT(31) | BIT(27));
-	//OUT_RING(ring, lower_32_bits(timestamp_iova));
-	//OUT_RING(ring, upper_32_bits(timestamp_iova));
-	//OUT_RING(ring, submit->timestamp);
-	OUT_PKT7(ring, CP_MEM_WRITE, 3);
-	OUT_RING(ring, lower_32_bits(timestamp_iova));
-	OUT_RING(ring, upper_32_bits(timestamp_iova));
-	OUT_RING(ring, submit->timestamp);
+	if (!is_lpac) {
+		timestamp_iova = a6xx_gpu->shadow_iova + KGSL_MEMSTORE_OFFSET(submit->queue->id, eoptimestamp);
+		//OUT_PKT7(ring, CP_EVENT_WRITE, 4);
+		//OUT_RING(ring, CACHE_CLEAN | BIT(31) | BIT(27));
+		//OUT_RING(ring, lower_32_bits(timestamp_iova));
+		//OUT_RING(ring, upper_32_bits(timestamp_iova));
+		//OUT_RING(ring, submit->timestamp);
+		OUT_PKT7(ring, CP_MEM_WRITE, 3);
+		OUT_RING(ring, lower_32_bits(timestamp_iova));
+		OUT_RING(ring, upper_32_bits(timestamp_iova));
+		OUT_RING(ring, submit->timestamp);
+
+	}
 
 	OUT_PKT7(ring, CP_WAIT_MEM_WRITES, 0);
 
@@ -606,7 +619,7 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	OUT_RING(ring, 0x100); /* IFPC enable */
 
 	/* If preemption is enabled */
-	if (gpu->nr_rings > 1) {
+	if (gpu->nr_rings > 1 && !is_lpac) {
 		/* Yield the floor on command completion */
 		OUT_PKT7(ring, CP_CONTEXT_SWITCH_YIELD, 4);
 
@@ -634,7 +647,8 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	trace_msm_gpu_submit_flush(submit, read_gmu_ao_counter(a6xx_gpu), end - begin);
 
 	/* Check to see if we need to start preemption */
-	a6xx_preempt_trigger(gpu);
+	if (!is_lpac)
+		a6xx_preempt_trigger(gpu);
 }
 
 uint64_t a7xx_gpu_shadow_iova(struct msm_gpu *gpu)
@@ -1296,6 +1310,7 @@ static int a6xx_zap_shader_init(struct msm_gpu *gpu)
 		       A6XX_RBBM_INT_0_MASK_PM4CPINTERRUPT | \
 		       A6XX_RBBM_INT_0_MASK_CP_RB_DONE_TS | \
 		       A6XX_RBBM_INT_0_MASK_CP_CACHE_FLUSH_TS | \
+		       A6XX_RBBM_INT_0_MASK_CP_CACHE_FLUSH_TS_LPAC | \
 		       A6XX_RBBM_INT_0_MASK_RBBM_ATB_BUS_OVERFLOW | \
 		       A6XX_RBBM_INT_0_MASK_RBBM_HANG_DETECT | \
 		       A6XX_RBBM_INT_0_MASK_UCHE_OOB_ACCESS | \
@@ -2122,6 +2137,9 @@ static irqreturn_t a6xx_irq(struct msm_gpu *gpu)
 		a6xx_preempt_trigger(gpu);
 	}
 
+	if (status & A6XX_RBBM_INT_0_MASK_CP_CACHE_FLUSH_TS_LPAC)
+		msm_gpu_retire(gpu);
+
 	if (status & A6XX_RBBM_INT_0_MASK_CP_SW)
 		a6xx_preempt_irq(gpu);
 
@@ -2727,6 +2745,9 @@ static bool a6xx_progress(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
 	 * there was progress.
 	 */
 	if (to_adreno_gpu(gpu)->info->quirks & ADRENO_QUIRK_IFPC)
+		return true;
+
+	if (ring == gpu->lpac_rb)
 		return true;
 
 	cp_state = (struct msm_cp_state) {
