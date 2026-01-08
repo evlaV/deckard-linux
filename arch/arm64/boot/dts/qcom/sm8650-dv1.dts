@@ -2084,6 +2084,9 @@
         status      = "okay";
         label		= "core_eeprom";
         reg         = <0x50>;
+		pagesize    = <32>;
+		size        = <4096>;
+		address-width = <16>;
         wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
         vcc-supply  = <&vreg_l15b_1p8>;
     };

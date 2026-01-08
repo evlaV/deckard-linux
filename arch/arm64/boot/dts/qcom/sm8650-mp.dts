@@ -2118,6 +2118,9 @@
         status      = "okay";
         label		= "core_v2_eeprom";
         reg         = <0x50>;
+		pagesize    = <32>;
+		size        = <8192>;
+		address-width = <16>;
         wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
         vcc-supply  = <&vreg_l15b_1p8>;
     };
