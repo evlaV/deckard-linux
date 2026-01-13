@@ -100,7 +100,7 @@ static int drm_vrconsole_copy_simplefb(struct drm_vrconsole *dvrconsole,
 
 	drm_client_buffer_vunmap_local(scanout->buffer);
 
-	return drm_client_framebuffer_flush(scanout->buffer, &r);
+	return drm_client_buffer_flush(scanout->buffer, &r);
 }
 
 static int drm_vrconsole_setup_modeset(struct drm_vrconsole *dvrconsole,
@@ -112,7 +112,7 @@ static int drm_vrconsole_setup_modeset(struct drm_vrconsole *dvrconsole,
 	u32 height = dvrconsole->fb_height;
 	u32 format = DRM_FORMAT_XRGB8888;
 
-	scanout->buffer = drm_client_framebuffer_create(client, width, height, format);
+	scanout->buffer = drm_client_buffer_create_dumb(client, width, height, format);
 	if (IS_ERR(scanout->buffer)) {
 		drm_warn(client->dev, "drm_vrconsole can't create framebuffer %d %d %p4cc\n",
 			 width, height, &format);
@@ -184,7 +184,7 @@ static void drm_vrconsole_init_client(struct drm_vrconsole *dvrconsole)
 
 err_failed_commit:
 	for (i = 0; i < n_modeset; i++)
-		drm_client_framebuffer_delete(dvrconsole->scanout[i].buffer);
+		drm_client_buffer_delete(dvrconsole->scanout[i].buffer);
 
 err_nomodeset:
 	kfree(dvrconsole->scanout);
@@ -199,7 +199,7 @@ static void drm_vrconsole_free_scanout(struct drm_client_dev *client)
 	if (dvrconsole->n_scanout) {
 		for (i = 0; i < dvrconsole->n_scanout; i++) {
 			drm_client_buffer_vunmap_local(dvrconsole->scanout[i].buffer);
-			drm_client_framebuffer_delete(dvrconsole->scanout[i].buffer);
+			drm_client_buffer_delete(dvrconsole->scanout[i].buffer);
 		}
 		dvrconsole->n_scanout = 0;
 		kfree(dvrconsole->scanout);
@@ -312,7 +312,7 @@ static void drm_vrconsole_update(struct drm_vrconsole *dvrconsole,
 		r = DRM_RECT_INIT(dvrconsole->terminalBounds.min_x[neye]/10, dvrconsole->terminalBounds.min_y[neye]/10,
 				  dvrconsole->terminalBounds.max_x[neye]/10 - dvrconsole->terminalBounds.min_x[neye]/10,
 				  dvrconsole->terminalBounds.max_y[neye]/10 - dvrconsole->terminalBounds.min_y[neye]/10);
-		drm_client_framebuffer_flush(scanout->buffer, &r);
+		drm_client_buffer_flush(scanout->buffer, &r);
 	}
 
 	drm_client_buffer_vunmap_local(scanout->buffer);
