@@ -48,7 +48,6 @@
 		pm8550b_vbus: usb-vbus-regulator@2700 {
 			compatible = "qcom,pm8550b-vbus-reg";
 			status = "disabled";
-			regulator-always-on;
 			reg = <0x2700>;
 		};
 
