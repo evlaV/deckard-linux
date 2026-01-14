@@ -11,3 +11,7 @@
 &{/} {
 	model = "SM8650 Valve Deckard MP rev1 4slam 2et";
 };
+
+&panel {
+	low-fps-support;
+};
