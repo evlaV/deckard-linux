@@ -870,6 +870,12 @@ config REGULATOR_MP886X
 	help
 	  This driver supports the MP8869 voltage regulator.
 
+config REGULATOR_MPQ3367
+	tristate "MPS MPQ3367 6-Channel, Max.150mA/Ch Boost WLED"
+	depends on I2C
+	help
+	  This driver controls a MPS MPQ3367 regulator via I2C bus.
+
 config REGULATOR_MPQ7920
 	tristate "Monolithic MPQ7920 PMIC"
 	depends on I2C && OF
