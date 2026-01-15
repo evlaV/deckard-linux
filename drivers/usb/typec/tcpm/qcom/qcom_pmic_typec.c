@@ -52,9 +52,33 @@ static int qcom_pmic_typec_get_vbus(struct tcpc_dev *tcpc)
 static int qcom_pmic_typec_set_vbus(struct tcpc_dev *tcpc, bool on, bool sink)
 {
 	struct pmic_typec *tcpm = tcpc_to_tcpm(tcpc);
+	bool vbus_vsafe0v;
+	bool vbus;
 	int ret = 0;
 
 	mutex_lock(&tcpm->lock);
+	/*
+	 * check the status of vbus and see if it match internal state we can
+	 * can have a left over by previous boot stage for example,
+	 * if booting from usb, vbus is already set but vbus_enabled assumes
+	 * is always off after probe.
+	 * Also, we need to toggle it, because regulator core also refuse to
+	 * setup unbalanced disables.
+	 */
+	vbus = qcom_pmic_typec_port_get_vbus(tcpm->pmic_typec_port);
+	vbus_vsafe0v = qcom_pmic_typec_port_is_vbus_vsafe0v(tcpm->pmic_typec_port);
+
+	if (!tcpm->vbus_enabled && !vbus && !vbus_vsafe0v) {
+		dev_info(tcpm->dev, "vbus toggle for state sync\n");
+		ret = qcom_pmic_typec_port_set_vbus(tcpm->pmic_typec_port, true);
+		if (ret)
+			return ret;
+
+		ret = qcom_pmic_typec_port_set_vbus(tcpm->pmic_typec_port, false);
+		if (ret)
+			return ret;
+	}
+
 	if (tcpm->vbus_enabled == on)
 		goto done;
 
