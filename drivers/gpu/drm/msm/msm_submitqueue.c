@@ -292,8 +292,6 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_context *ctx,
 	spin_lock_init(&queue->idr_lock);
 	mutex_init(&queue->lock);
 
-	list_add_tail(&queue->node, &ctx->submitqueues);
-
 	queue->timestamp = 0;
 	queue->timestamp_retired = 0;
 	spin_lock_init(&queue->fence_lock);
@@ -324,6 +322,8 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_context *ctx,
 
 	if (id)
 		*id = queue->id;
+
+	list_add_tail(&queue->node, &ctx->submitqueues);
 
 	return 0;
 }
