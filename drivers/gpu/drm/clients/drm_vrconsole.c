@@ -786,7 +786,7 @@ void drm_vrconsole_register(struct drm_device *dev)
 	drm_client_register(&new->client);
 
 	/* TODO make it a module parameter */
-	ret = request_firmware_direct(&new->vrfont_fw, "RobotoMono-Bold.vrfont",
+	ret = request_firmware_direct(&new->vrfont_fw, "default.vrfont",
 				      dev->dev);
 	if (ret) {
 		drm_warn(dev, "failed to load vrfont (%d)\n", ret);
@@ -794,7 +794,7 @@ void drm_vrconsole_register(struct drm_device *dev)
 	}
 
 	/* TODO make it a module parameter */
-	ret = request_firmware_direct(&new->vrterminal_fw, "terminal_80x24.vrterminal",
+	ret = request_firmware_direct(&new->vrterminal_fw, "default.vrterminal",
 				      dev->dev);
 	if (ret) {
 		drm_warn(dev, "failed to load vrterminal (%d)\n", ret);
