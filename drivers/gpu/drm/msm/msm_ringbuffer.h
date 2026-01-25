@@ -41,6 +41,8 @@ struct msm_rbmemptrs {
 	volatile u32 perfcntr_fence;
 	volatile u64 last_job_start_ctx;
 	volatile u64 last_active_ctxcycles;
+	volatile u32 panic_mode;
+	volatile u32 panic_mode_ack;
 };
 
 struct msm_cp_state {
