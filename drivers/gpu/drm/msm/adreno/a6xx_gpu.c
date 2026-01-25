@@ -466,6 +466,8 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	bool is_lpac = ring == gpu->lpac_rb;
 	u64 timestamp_iova;
 	unsigned int i, ibs = 0;
+	u64 panic_mode_iova = rbmemptr(ring, panic_mode);
+	u64 panic_mode_ack_iova = rbmemptr(ring, panic_mode_ack);
 
 	adreno_check_and_reenable_stall(adreno_gpu);
 
@@ -499,6 +501,28 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 
 	OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
 	OUT_RING(ring, CP_SET_THREAD_BOTH);
+
+	/* if in panic_mode == 1 halt */
+	OUT_PKT7(ring, CP_WAIT_REG_MEM, 6);
+	OUT_RING(ring, CP_WAIT_REG_MEM_0_FUNCTION(WRITE_EQ)  |
+			CP_WAIT_REG_MEM_0_POLL(POLL_MEMORY));
+	OUT_RING(ring, CP_WAIT_REG_MEM_POLL_ADDR_LO(
+			lower_32_bits(panic_mode_iova)));
+	OUT_RING(ring, CP_WAIT_REG_MEM_POLL_ADDR_HI(upper_32_bits(panic_mode_iova)));
+	OUT_RING(ring, CP_WAIT_REG_MEM_3_REF(0x0));
+	OUT_RING(ring, CP_WAIT_REG_MEM_4_MASK(0x3));
+	OUT_RING(ring, CP_WAIT_REG_MEM_5_DELAY_LOOP_CYCLES(20));
+
+	/*
+	 * We are about to run user commands so signal that it is not safe to
+	 * recover .
+	 */
+	OUT_PKT7(ring, CP_MEM_WRITE, 3);
+	OUT_RING(ring, lower_32_bits(panic_mode_ack_iova));
+	OUT_RING(ring, upper_32_bits(panic_mode_ack_iova));
+	OUT_RING(ring, 0x0);
+
+	OUT_PKT7(ring, CP_WAIT_MEM_WRITES, 0);
 
 	OUT_PKT7(ring, CP_SET_MARKER, 1);
 	OUT_RING(ring, 0x101); /* IFPC disable */
@@ -614,6 +638,14 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	OUT_RING(ring, lower_32_bits(rbmemptr(ring, fence)));
 	OUT_RING(ring, upper_32_bits(rbmemptr(ring, fence)));
 	OUT_RING(ring, submit->seqno);
+
+	/* We are done with this submission so safe to recover */
+	OUT_PKT7(ring, CP_MEM_WRITE, 3);
+	OUT_RING(ring, lower_32_bits(panic_mode_ack_iova));
+	OUT_RING(ring, upper_32_bits(panic_mode_ack_iova));
+	OUT_RING(ring, 0x1);
+
+	OUT_PKT7(ring, CP_WAIT_MEM_WRITES, 0);
 
 	OUT_PKT7(ring, CP_THREAD_CONTROL, 1);
 	OUT_RING(ring, CP_SET_THREAD_BOTH);
@@ -1638,6 +1670,15 @@ static int hw_init(struct msm_gpu *gpu)
 	if (adreno_is_a7xx(adreno_gpu)) {
 		gpu_write64(gpu, REG_A7XX_CP_BV_RB_RPTR_ADDR,
 			    rbmemptr(gpu->rb[0], bv_rptr));
+	}
+
+	/* Initialize panic_mode{_ack} on all rings */
+	for (i = 0; i < gpu->nr_rings + !!gpu->lpac_rb; i++) {
+		struct msm_ringbuffer *ring = i < gpu->nr_rings ? gpu->rb[i] : gpu->lpac_rb;
+
+		ring->memptrs->panic_mode = 0x0;
+		/* When we start there is no work so safe to reset*/
+		ring->memptrs->panic_mode_ack = 0x1;
 	}
 
 	a6xx_preempt_hw_init(gpu);
