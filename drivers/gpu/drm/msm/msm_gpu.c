@@ -507,17 +507,64 @@ static void recover_worker(struct kthread_work *work)
 	struct drm_device *dev = gpu->dev;
 	struct msm_drm_private *priv = dev->dev_private;
 	struct msm_gem_submit *submit;
-	struct msm_ringbuffer *cur_ring = gpu->hung_ring ?
-		gpu->hung_ring : gpu->funcs->active_ring(gpu);
-	gpu->hung_ring = NULL;
+	struct msm_ringbuffer *cur_ring;
 	char *comm = NULL, *cmd = NULL;
 	unsigned int noreclaim_flag;
 	struct task_struct *task;
+	bool panic_ack_timeout = false;
 	int i;
 
 	mutex_lock(&gpu->lock);
 
 	DRM_DEV_ERROR(dev->dev, "%s: hangcheck recover!\n", gpu->name);
+
+	cur_ring = gpu->hung_ring ?
+			gpu->hung_ring : gpu->funcs->active_ring(gpu);
+
+	if (gpu->hung_ring) {
+		gpu->hung_ring = NULL;
+
+		/*
+		 * before doing anything make sure other rings are in a safe state to
+		 * reset.
+		 *
+		 * Set all rings in panic mode.
+		 */
+		for (i = 0; i < gpu->nr_rings + !!gpu->lpac_rb; i++) {
+			struct msm_ringbuffer *ring = i < gpu->nr_rings ? gpu->rb[i] : gpu->lpac_rb;
+
+			ring->memptrs->panic_mode = 0x1;
+		}
+
+		uint64_t begin, end;
+
+		begin = ktime_get_boottime_ns();
+
+		/* Busy wait for the other ring to ack it */
+		for (;;) {
+			bool acked = true;
+			for (i = 0; i < gpu->nr_rings + !!gpu->lpac_rb; i++) {
+				struct msm_ringbuffer *ring = i < gpu->nr_rings ? gpu->rb[i] : gpu->lpac_rb;
+
+				if (cur_ring == ring)
+					continue;
+
+				if (!ring->memptrs->panic_mode_ack)
+					acked = false;
+			}
+			if (acked)
+				break;
+
+			end = ktime_get_boottime_ns();
+
+			if ((end - begin) > priv->hangcheck_period * 1000000) {
+				panic_ack_timeout = true;
+				break;
+			}
+		}
+
+		end = ktime_get_boottime_ns();
+	}
 
 	submit = find_submit(cur_ring, cur_ring->memptrs->fence + 1);
 
@@ -525,8 +572,15 @@ static void recover_worker(struct kthread_work *work)
 	 * If the submit retired while we were waiting for the worker to run,
 	 * or waiting to acquire the gpu lock, then nothing more to do.
 	 */
-	if (!submit)
+	if (!submit) {
+		for (i = 0; i < gpu->nr_rings + !!gpu->lpac_rb; i++) {
+			struct msm_ringbuffer *ring = i < gpu->nr_rings ? gpu->rb[i] : gpu->lpac_rb;
+
+			ring->memptrs->panic_mode = 0x0;
+		}
+
 		goto out_unlock;
+	}
 
 	/* Increment the fault counts */
 	submit->queue->faults++;
