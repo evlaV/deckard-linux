@@ -706,7 +706,7 @@ static bool check_ring_timeout(struct msm_ringbuffer *ring, unsigned long timeou
 		end = ring->memptrs->last_active_ctxcycles;
 
 	if (end >= start)
-		return (end - start) < timeout;
+		return (end - start) > timeout;
 	else
 		return false;
 }
