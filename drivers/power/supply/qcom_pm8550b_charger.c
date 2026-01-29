@@ -1092,7 +1092,7 @@ static int qcom_pm8550b_charger_probe(struct platform_device *pdev)
 	 */
 	pm8550b_charger_set_charge_current(chg, 1000000);
 	pm8550b_charger_set_float_voltage(chg, 8900000);
-	pm8550b_charger_set_termination_current(chg, 200000);
+	pm8550b_charger_set_termination_current(chg, 135000);
 	termination_enable_set(chg, true);
 
 	/* Setup ISNS for QPH2 Charging with System Load */
