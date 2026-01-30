@@ -538,11 +538,19 @@ static int dpu_encoder_phys_vid_wait_for_commit_done(
 	if (!hw_ctl)
 		return 0;
 
+	/*
+	 * TODO: check intf type first before ignore the CWB merge_3d bit
+	 * phys_enc->hw_intf->cap->type == INTF_DSI or INTF_HDMI
+	 * Suppose we should care the bit for CWB intf.
+	 */
 	ret = wait_event_timeout(phys_enc->pending_kickoff_wq,
-		(hw_ctl->ops.get_flush_register(hw_ctl) == 0),
+		((hw_ctl->ops.get_flush_register(hw_ctl) & ~0x800000) == 0),
 		msecs_to_jiffies(50));
 	if (ret <= 0) {
-		DPU_ERROR("vblank timeout: %x\n", hw_ctl->ops.get_flush_register(hw_ctl));
+		DPU_ERROR("%s phys.split_role %d vblank timeout: %x\n",
+			  phys_enc->parent->name,
+			  phys_enc->split_role,
+			  hw_ctl->ops.get_flush_register(hw_ctl));
 		return -ETIMEDOUT;
 	}
 
