@@ -1865,6 +1865,8 @@
 		qcom,local-pid = <0>;
 		qcom,remote-pid = <2>;
 
+		status = "disabled";
+
 		smp2p_adsp_out: master-kernel {
 			qcom,entry-name = "master-kernel";
 			#qcom,smem-state-cells = <1>;
@@ -1891,6 +1893,8 @@
 		qcom,local-pid = <0>;
 		qcom,remote-pid = <5>;
 
+		status = "disabled";
+
 		smp2p_cdsp_out: master-kernel {
 			qcom,entry-name = "master-kernel";
 			#qcom,smem-state-cells = <1>;
@@ -1916,6 +1920,8 @@
 		qcom,smem = <435>, <428>;
 		qcom,local-pid = <0>;
 		qcom,remote-pid = <1>;
+
+		status = "disabled";
 
 		smp2p_modem_out: master-kernel {
 			qcom,entry-name = "master-kernel";
@@ -7752,6 +7758,77 @@
 					};
 				};
 			};
+		};
+
+		_cdsp: cdsp@32300000 {
+			compatible = "qcom,sm8650-hexagon";
+			reg = <0 0x32300000 0 0x50000>;
+			reg-names = "base";
+			clocks = <&gcc GCC_TURING_CFG_AHB_CLK>;
+			clock-names = "cfg_ahb";
+
+			interrupts-extended = <&ipcc IPCC_CLIENT_CDSP 0 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_CDSP 1 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_CDSP 2 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_CDSP 3 IRQ_TYPE_EDGE_RISING>;
+			mboxes = <&ipcc IPCC_CLIENT_CDSP 0>,
+				 <&ipcc IPCC_CLIENT_CDSP 1>,
+				 <&ipcc IPCC_CLIENT_CDSP 2>,
+				 <&ipcc IPCC_CLIENT_CDSP 3>;
+
+			interconnects = <&nsp_noc MASTER_CDSP_PROC QCOM_ICC_TAG_ALWAYS
+					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
+			interconnect-names = "mem";
+
+			iommus = <&apps_smmu 0xc00 0x0>, // CDSP
+				 <&apps_smmu 0xc20 0x0>; // UBWCDMA
+		};
+
+		adsp: adsp@6800000 {
+			compatible = "qcom,sm8650-hexagon";
+			reg = <0 0x06800000 0 0x50000>,
+			      <0 0x06eeb000 0 4>;
+			reg-names = "base", "evb_sel";
+
+			interrupts-extended = <&ipcc IPCC_CLIENT_LPASS 0 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_LPASS 1 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_LPASS 2 IRQ_TYPE_EDGE_RISING>,
+					      <&ipcc IPCC_CLIENT_LPASS 3 IRQ_TYPE_EDGE_RISING>;
+			mboxes = <&ipcc IPCC_CLIENT_LPASS 0>,
+				 <&ipcc IPCC_CLIENT_LPASS 1>,
+				 <&ipcc IPCC_CLIENT_LPASS 2>,
+				 <&ipcc IPCC_CLIENT_LPASS 3>;
+
+			clocks = <&aoncc LPASS_AON_CC_LPI_NOC_HS_CLK>,
+				 <&aoncc LPASS_AON_CC_Q6_AXIM_CLK>;
+			clock-names = "lpi_noc_hs", "q6_axim";
+
+
+			interconnects = <&lpass_lpicx_noc MASTER_LPASS_PROC QCOM_ICC_TAG_ALWAYS
+					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
+			interconnect-names = "mem";
+
+			iommus =  <&apps_smmu 0x1000 0x0>, // ADSP
+				  <&apps_smmu 0x1060 0x0>, // LPMLA_0 config ?
+				  <&apps_smmu 0x1068 0x0>, // LPMLA_0 act/wgt/out ?
+				  <&apps_smmu 0x10e4 0x0>, // ASC bus client 0
+				  <&apps_smmu 0x10e5 0x0>; // ASC bus client 1
+		};
+
+		cvp: cvp@ab00000 {
+			compatible = "qcom,sm8650-xtensa";
+			reg = <0 0x0ab00000 0 0xf0000>;
+			interrupts = <GIC_SPI 234 IRQ_TYPE_LEVEL_HIGH 0>;
+			clocks = <&gcc GCC_VIDEO_AXI1_CLK>,
+				 <&videocc VIDEO_CC_MVS1C_CLK>;
+			clock-names = "iface", "core";
+
+			iommus = <&apps_smmu 0x1920 0>, // nonpix? (firmware)
+				 <&apps_smmu 0x1922 0>; // firmware
+
+			power-domains = <&rpmhpd RPMHPD_MXC>,
+					<&rpmhpd RPMHPD_MMCX>;
+			required-opps = <&rpmhpd_opp_nom>, <&rpmhpd_opp_nom>;
 		};
 	};
 
