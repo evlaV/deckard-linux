@@ -8,6 +8,7 @@
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/phy/phy.h>
+#include <dt-bindings/usb/pd.h>
 #include "sm8650.dtsi"
 #include "pm8010.dtsi"
 #include "pm8550.dtsi"
@@ -200,6 +201,24 @@
 		vin-supply = <&vph_pwr>;
 	};
 
+	sbu-mux {
+		compatible = "gpio-sbu-mux";
+
+		enable-gpios = <&tlmm 86 GPIO_ACTIVE_LOW>;
+		select-gpios = <&tlmm 82 GPIO_ACTIVE_HIGH>;
+
+		mode-switch;
+		orientation-switch;
+
+		port {
+			sbu_mux_in: endpoint {
+				remote-endpoint = <&tcpm_sbu_out>;
+			};
+		};
+
+		// XXX: needs VREG_L05B_3P1, VREG_BOB2
+	};
+
 	/delete-node/ reserved-memory;
 
 	reserved-memory {
@@ -356,14 +375,6 @@
 			};
 		};
 	};
-
-	southgate_fg {
-		compatible = "deckard,southgate_fg";
-		status="okay";
-		io-channels = <&pmk8550_vadc PM8550B_ADC5_GEN3_VBAT_SNS_CHGR(7)>,
-					  <&pmk8550_vadc PM8550B_ADC5_GEN3_ICHG_FB(7)>;
-		io-channel-names = "vbat", "ibat";
-	};
 };
 
 
@@ -427,6 +438,20 @@
 	pcba_at_heat_sink_fins {
 		reg = <PM8550B_ADC5_GEN3_AMUX_THM4_USB_THERM_100K_PU(7)>;
 		label = "pcba_at_heat_sink_fins";
+		qcom,hw-settle-time = <200>;
+		qcom,ratiometric;
+	};
+
+	display_right_therm {
+		reg = <PM8550B_ADC5_GEN3_AMUX_THM3_SMB_TEMP_V_100K_PU(7)>;
+		label = "display_right_therm";
+		qcom,hw-settle-time = <200>;
+		qcom,ratiometric;
+	};
+
+	display_left_therm {
+		reg = <PMK8550_ADC5_GEN3_AMUX_THM6_GPIO5_100K_PU(0)>;
+		label = "display_left_therm";
 		qcom,hw-settle-time = <200>;
 		qcom,ratiometric;
 	};
@@ -948,6 +973,20 @@
 		reg         = <0x51>;
 		vcc-supply  = <&vreg_l15b_1p8>;
 	};
+
+	// Northgate/Enthusiast Hotswap Card Silego
+	northgate_hotswap: slg4ad48669m@18 {
+		compatible = "silego,northgate_hotswap";
+		reg = <0x18>;
+
+		interrupt-parent = <&pm8550b_gpios>;
+		interrupts = <10 IRQ_TYPE_LEVEL_HIGH>;
+
+		pinctrl-0 = <&strap_irq>;
+		pinctrl-names = "default";
+
+		status = "ok";
+	};
 };
 
 &i2c4 {
@@ -969,6 +1008,52 @@
 		wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
 		vcc-supply  = <&vreg_l15b_1p8>;
 	};
+
+    max34417_1: max34417@12 {
+        compatible = "maxim,max34417";
+        reg = <0x12>;
+        maxim,sense-resistor = <1>;
+        vdd-supply = <&vreg_l2b_3p0>;
+        vio-supply = <&vreg_l15b_1p8>;
+        status = "okay";
+
+        // CH 1 : Kryo APC0 Cores
+        // CH 2 : Kryo APC2 Cores
+        // CH 3 : Kryo APC1 Cores
+        // CH 4 : Tensor Processor – NSP1
+        // Note: both 1.8 and 3.0V rails are always on for other sensors
+    };
+
+    max34417_2: max34417@1a {
+        compatible = "maxim,max34417";
+        reg = <0x1a>;
+        maxim,sense-resistor = <1>;
+        vdd-supply = <&vreg_l2b_3p0>;
+        vio-supply = <&vreg_l15b_1p8>;
+        status = "okay";
+
+        // CH 1 : GFX Power
+        // CH 2 : Tensor Processor – NSP2
+        // CH 3 : Bob Power
+        // CH 4 : Unused
+        // Note: both 1.8 and 3.0V rails are always on for other sensors
+    };
+
+    // TODO enable verr ( varies based on common mode range )
+    max34417_3: max34417@10 {
+        compatible = "maxim,max34417";
+        reg = <0x10>;
+        maxim,sense-resistor = <1>;
+        vdd-supply = <&vreg_l2b_3p0>;
+        vio-supply = <&vreg_l15b_1p8>;
+        status = "okay";
+
+        // CH 1 : VPH
+        // CH 2 : S6C ~1.9V Subregulation
+        // CH 3 : S3C ~1.3V Subregulation
+        // CH 4 : S1C ~1V Subregulation
+        // Note: both 1.8 and 3.0V rails are always on for other sensors
+    }; 
 
 };
 
@@ -1374,9 +1459,14 @@
 };
 
 &usb_1 {
-	dr_mode = "peripheral";
+	dr_mode = "otg";
+	usb-role-switch;
 
 	status = "okay";
+};
+
+&usb_1_dwc3_hs {
+	remote-endpoint = <&pm8550b_role_switch_out>;
 };
 
 &usb_1_hsphy {

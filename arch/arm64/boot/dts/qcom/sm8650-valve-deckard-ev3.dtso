@@ -31,3 +31,13 @@
 		vcc-supply  = <&vreg_l15b_1p8>;
 	};
 };
+
+&pmk8550_vadc {
+	display_right_therm {
+		status = "disabled";
+	};
+
+	display_left_therm {
+		status = "disabled";
+	};
+};
