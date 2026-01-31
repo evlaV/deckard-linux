@@ -438,8 +438,14 @@ put_iova_spaces(struct drm_gem_object *obj, struct drm_gpuvm *vm,
 		bool close, const char *reason)
 {
 	struct drm_gpuvm_bo *vm_bo, *tmp;
-
+	
+	guard(mutex)(&(obj)->gpuva.lock); //debug
+	
 	msm_gem_assert_locked(obj);
+#if 0
+	struct list_head *head = &obj->gpuva.list;
+	if(obj->gpuva.nuked && close && !strcmp("vma_put",reason)) printk(KERN_INFO "put_iova_spaces: gpuva.list nuked already [%d][%d]!\n",list_empty(head),list_is_singular(head));
+#endif
 
 	drm_gem_for_each_gpuvm_bo_safe (vm_bo, tmp, obj) {
 		struct drm_gpuva *vma, *vmatmp;

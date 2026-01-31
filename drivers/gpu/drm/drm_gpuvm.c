@@ -1582,6 +1582,12 @@ drm_gpuvm_bo_destroy(struct kref *kref)
 	drm_gpuvm_bo_list_del(vm_bo, evict, lock);
 
 	drm_gem_gpuva_assert_lock_held(gpuvm, obj);
+#if 0	
+	if(!list_empty(&vm_bo->list.entry.gem)) 
+	{
+		obj->gpuva.nuked = true; //nuked non-empty list
+	}
+#endif		
 	list_del(&vm_bo->list.entry.gem);
 
 	if (ops && ops->vm_bo_free)

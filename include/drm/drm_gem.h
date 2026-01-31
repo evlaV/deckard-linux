@@ -426,6 +426,10 @@ struct drm_gem_object {
 		 * the &dma_resv lock should be used.
 		 */
 		struct mutex lock;
+
+		//debug gabe
+		bool nuked;
+
 	} gpuva;
 
 	/**
