@@ -989,6 +989,7 @@ static void csid_subdev_init(struct csid_device *csid)
 	csid->rx_dbg_attrs[1] = &csid->rx_dbg_stats_attr.attr;
 	csid->rx_dbg_attrs[2] = NULL;
 	snprintf(csid->rx_dbg_attr_group_name, sizeof(csid->rx_dbg_attr_group_name), "csid%d", csid->id);
+	sysfs_attr_init(&csid->rx_dbg_attr_group);
 	csid->rx_dbg_attr_group.name = csid->rx_dbg_attr_group_name;
 	csid->rx_dbg_attr_group.attrs = csid->rx_dbg_attrs;
 	ret = devm_device_add_group(csid->camss->dev, &csid->rx_dbg_attr_group);
