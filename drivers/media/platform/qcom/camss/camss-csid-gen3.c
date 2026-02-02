@@ -985,6 +985,8 @@ static void csid_subdev_init(struct csid_device *csid)
 	// Add attributes to enable/retrieve csi2 rx statistics
 	csid->rx_dbg_en_attr = (struct device_attribute)__ATTR_RW(rx_dbg_en);
 	csid->rx_dbg_stats_attr = (struct device_attribute)__ATTR_RO(rx_dbg_stats);
+	sysfs_attr_init(&csid->rx_dbg_en_attr.attr);
+	sysfs_attr_init(&csid->rx_dbg_stats_attr.attr);
 	csid->rx_dbg_attrs[0] = &csid->rx_dbg_en_attr.attr;
 	csid->rx_dbg_attrs[1] = &csid->rx_dbg_stats_attr.attr;
 	csid->rx_dbg_attrs[2] = NULL;
