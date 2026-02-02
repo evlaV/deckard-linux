@@ -456,6 +456,8 @@ static int lpm026m648c_unprepare(struct drm_panel *panel)
 	if (!ctx->prepared)
 		return 0;
 
+// OLED display does not use backlight drivers
+#if 0
 	// disable backlight drivers
 	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
 	if (ret) {
@@ -469,6 +471,7 @@ static int lpm026m648c_unprepare(struct drm_panel *panel)
 		DRM_DEV_ERROR(ctx->dev,
 			"regulator_bulk_disable failed for preboost%d\n", ret);
 	}
+#endif
 	
 	ctx->prepared = false;
 	return ret;
@@ -959,6 +962,8 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 		return ret;
 	}
 
+// OLED display does not use backlight drivers
+#if 0
 	for (i = 0; i < ARRAY_SIZE(ctx->preboost_drivers); i++)
 						ctx->preboost_drivers[i].supply = preboost_driver_names[i];
 
@@ -978,6 +983,7 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 		DRM_DEV_ERROR(ctx->dev, "Failed to get backlight supplies\n");
 		return ret;
 	}
+#endif
 
 	for (i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++)
 		ctx->lcd_bias_regulators[i].supply = lcd_bias_names[i];
