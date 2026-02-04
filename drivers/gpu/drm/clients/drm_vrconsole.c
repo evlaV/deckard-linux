@@ -35,7 +35,6 @@
 struct drm_vrconsole_scanout {
 	struct drm_client_buffer *buffer;
 	const struct font_desc *font;
-	bool mapped;
 };
 
 struct drm_vrconsole {
@@ -94,15 +93,12 @@ static int drm_vrconsole_copy_simplefb(struct drm_vrconsole *dvrconsole,
 	if (ret)
 		return ret;
 
-	scanout->mapped = true;
-
 	for (line = 0; line < fb->height; ++line)
 		iosys_map_memcpy_to(&map, fb->pitches[0] * line,
 			dvrconsole->fb_base + (dvrconsole->fb_stride * line),
 			min_t(unsigned int, fb->pitches[0], dvrconsole->fb_stride));
 
 	drm_client_buffer_vunmap_local(scanout->buffer);
-	scanout->mapped = false;
 
 	return drm_client_framebuffer_flush(scanout->buffer, &r);
 }
@@ -202,11 +198,8 @@ static void drm_vrconsole_free_scanout(struct drm_client_dev *client)
 
 	if (dvrconsole->n_scanout) {
 		for (i = 0; i < dvrconsole->n_scanout; i++) {
-			if(dvrconsole->scanout[i].mapped)
-			{
-				drm_client_buffer_vunmap_local(dvrconsole->scanout[i].buffer);
-				drm_client_framebuffer_delete(dvrconsole->scanout[i].buffer);
-			}
+			drm_client_buffer_vunmap_local(dvrconsole->scanout[i].buffer);
+			drm_client_framebuffer_delete(dvrconsole->scanout[i].buffer);
 		}
 		dvrconsole->n_scanout = 0;
 		kfree(dvrconsole->scanout);
@@ -275,8 +268,6 @@ static void drm_vrconsole_update(struct drm_vrconsole *dvrconsole,
 		return;
 	}
 
-	scanout->mapped = true;
-
 	pb.w = scanout->buffer->fb->width * scanout->buffer->fb->format->cpp[0];
 	pb.h = scanout->buffer->fb->height;
 	pb.stride = scanout->buffer->fb->pitches[0];
@@ -325,7 +316,6 @@ static void drm_vrconsole_update(struct drm_vrconsole *dvrconsole,
 	}
 
 	drm_client_buffer_vunmap_local(scanout->buffer);
-	scanout->mapped = false;
 }
 
 static void vrcon_terminal_update_work(struct work_struct *work)
