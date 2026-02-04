@@ -35,8 +35,13 @@
 /delete-node/ &remoteproc_mpss;
 
 / {
-	model = "Valve Deckard";
+	/* DSP Service needs "SM8650" in the model string */ 
+	model = "SM8650 Valve Deckard";
 	compatible = "valve,deckard", "qcom,sm8650";
+
+	/delete-node/ smp2p-adsp;
+	/delete-node/ smp2p-cdsp;
+	/delete-node/ smp2p-modem;
 
 	aliases {
 		serial0 = &uart15;
@@ -813,6 +818,13 @@
 
 &gpi_dma1 {
 	status = "okay";
+};
+
+// ADSP controls eye tracking cameras
+&adsp {
+	// AON CAM ADSP TEST: gpio102/104 to mclk function
+	pinctrl-names = "default";
+	pinctrl-0 = <&cam2_default &cam4_default>;
 };
 
 &gpu {
