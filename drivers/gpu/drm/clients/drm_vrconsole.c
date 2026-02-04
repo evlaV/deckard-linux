@@ -197,10 +197,8 @@ static void drm_vrconsole_free_scanout(struct drm_client_dev *client)
 	int i;
 
 	if (dvrconsole->n_scanout) {
-		for (i = 0; i < dvrconsole->n_scanout; i++) {
-			drm_client_buffer_vunmap_local(dvrconsole->scanout[i].buffer);
+		for (i = 0; i < dvrconsole->n_scanout; i++)
 			drm_client_buffer_delete(dvrconsole->scanout[i].buffer);
-		}
 		dvrconsole->n_scanout = 0;
 		kfree(dvrconsole->scanout);
 		dvrconsole->scanout = NULL;
