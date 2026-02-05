@@ -24,6 +24,8 @@
 #include <drm/display/drm_dsc_helper.h>
 
 //#define NO_DSC
+//Working for 2 & 4 slices; not 1
+#define DSC_SLICE_COUNT 4
 
 /* panel specific MIPI DSI CMD */
 #define LPM02648C_MF_CMD_ACCESS_PROTECT		0xb0
@@ -50,9 +52,9 @@
 #define BRIGHTNESS_MAX_120 367
 
 // Panel settings
-#define VFP		700
+//#define VFP		700
 #define VID_VS_DELAY	1112
-#define VBP		23
+//#define VBP		23
 #define GPO1_TES1_144_SHARP	150
 #define GPO1_TES1_120_SHARP	100
 #define GPO1_TES1_144_BOE	3435
@@ -157,38 +159,212 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 	return container_of(panel, struct lpm026m648c_ctx, panel);
 }
 
-static const struct drm_display_mode modes[1] = {
+//S oled:
+//VBP_M min: 6
+//VFP_M min: 8
+//VS min: 1
+//
+//Experiments w/
+//		.vsync_start = 1920 + VBP_M,
+//		.vsync_end = 1920 + VBP_M + 1,
+//		.vtotal = 1920 + VBP_M + 1 + VFP_M,
+
+//repeated last line from prev frame; missing at least 16 rows from end
+//#define VBP_P 7
+//#define VBP_M VBP_P
+//#define VBP_M ( VBP_P + 4 )
+//#define VBP_M ( VBP_P + 8 )
+
+//no display; dmesg warnings
+//#define VBP_P 7
+//#define VBP_M ( VBP_P - 4 )
+
+//repeated last line from prev frame; missing at least 16 rows from end
+//#define VBP_P 14
+//#define VBP_M VBP_P
+//#define VBP_M ( VBP_P + 4 )
+
+//repeated last line from prev frame; missing at least 16 rows from end
+//#define VBP_P 11
+//#define VBP_M ( VBP_P - 4 )
+
+//repeated last line from prev frame; missing at least 16 rows from end
+//#define VBP_P 11
+//#define VBP_M ( VBP_P - 4 )
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 4 )
+
+//repeated last line from prev frame; missing at least 16 rows from end
+//#define VBP_P (11 * 2)
+//#define VBP_M ( VBP_P / 2 - 4 )
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + VBP_P - VBP_M )
+
+//Increases shift away from start
+//#define VBP_P (100 * 2)
+//#define VBP_M ( VBP_P / 2 - 4 )
+
+//Repeated first line?  No... still repeated last line
+//#define VBP_P (5 * 2)
+//#define VBP_M ( VBP_P / 2 - 4 )
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + VBP_P + 1 - VBP_M )
+
+//no display; dmesg: wait for video done timed out
+//#define VBP_P (5 * 2)
+//#define VBP_M ( VBP_P / 2 - 4 )
+//#define VFP_P 34
+//#define VFP_M ( VFP_P + VBP_P - 34 - VBP_M )
+
+//no display; dmesg: wait for video done timed out
+//#define VBP_P (5 * 2)
+//#define VBP_M ( VBP_P / 2 - 4 )
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 4 )
+
+
+
+//Experiments w/ VBP & VFP swapped
+//		.vsync_start = 1920 + VFP_M,
+//		.vsync_end = 1920 + VFP_M + 1,
+//		.vtotal = 1920 + VFP_M + 1 + VBP_M,
+//Vertical stripe pattern and non-responsive panel
+//#define VBP_P (5 * 2)
+//#define VBP_M ( VBP_P / 2 - 4 )
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + VBP_P + 1 - VBP_M )
+//Vertical stripe pattern and non-responsive panel
+//#define VBP_P (6 * 2)				//12
+//#define VBP_M ( VBP_P / 2 - 4 - 1)		//1
+//#define VFP_P 17				//17
+//#define VFP_M ( VFP_P + VBP_P + 1 - VBP_M )	//29
+//[drm:dsi_cmds2buf_tx] *ERROR* wait for video done timed out
+//Using values calc'd in spreadsheet
+//#define VBP_P 12
+//#define VBP_M 2
+//#define VFP_P 18
+//#define VFP_M 13
+//[drm:dsi_cmds2buf_tx] *ERROR* wait for video done timed out
+//#define VBP_P 12
+//#define VBP_M 1
+//#define VFP_P 18
+//#define VFP_M 14
+//[drm:dsi_cmds2buf_tx] *ERROR* wait for video done timed out
+//#define VBP_P 12
+//#define VBP_M 8
+//#define VFP_P 14
+//#define VFP_M 14
+//Just try recreating previous timings that at least displayed something, but w/ VFP and VBP swapped
+//repeated last line from prev frame; missing at least 16 rows from end
+//#define VFP_P 7
+//#define VFP_M ( VFP_P + 4 )
+//#define VBP_P 17
+//#define VBP_M VBP_P
+
+//WORKS!
+//Need to also set vid_vs_delay in reg 0x3b to 0x9 for non-dsc and 0xa for dsc
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 4 )
+//#define VBP_P 17
+//#define VBP_M VBP_P
+//#define VID_VS_DLY 10
+//Works if reduce vid_vs_delay to 0x6
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 4 )
+//#define VBP_P 17
+//#define VBP_M ( VBP_P - 4 )
+//#define VID_VS_DLY 6
+//Doesn't work, and can't fix w/ manual vid_vs_dly adjustments
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 4 )
+//#define VBP_P 17
+//#define VBP_M ( VBP_P - 10 )
+//#define VID_VS_DLY 0
+//Doesn't work, but can fix w/ manual vid_vs_dly adj to 0x1
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 4 )
+//#define VBP_P 17
+//#define VBP_M ( VBP_P - 9 )
+//#define VID_VS_DLY 0
+//Doesn't work, but can fix w/ manual vid_vs_dly adj to 0x1
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 4 )
+//#define VBP_P 18
+//#define VBP_M ( VBP_P - 10 )
+//#define VID_VS_DLY 0
+//Doesn't work, and can't fix w/ manual vid_vs_dly adjustments
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 5 )
+//#define VBP_P 17
+//#define VBP_M ( VBP_P - 10 )
+//#define VID_VS_DLY 0
+//Doesn't work, and can't fix w/ manual vid_vs_dly adjustments
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 3 )
+//#define VBP_P 17
+//#define VBP_M ( VBP_P - 10 )
+//#define VID_VS_DLY 0
+//Doesn't work, and can't fix w/ manual vid_vs_dly adjustments
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 4 )
+//#define VBP_P 16
+//#define VBP_M ( VBP_P - 9 )
+//#define VID_VS_DLY 0
+//Works!
+//#define VFP_P 17
+//#define VFP_M ( VFP_P + 4 )	//21
+//#define VBP_P 17
+//#define VBP_M ( VBP_P - 9 )	//8
+//#define VID_VS_DLY 1
+
 #ifdef NO_DSC
-	{
-		.name = "1776x1920_60",
-		.clock =  (1776 + 20 + 8 + 28) * (1920 + 7 + 1 + 17) * 60 / 1000,
-		.hdisplay = 1776,
-		.hsync_start = (1776 + 20),
-		.hsync_end = (1776 + 20 + 8),
-		.htotal = (1776 + 20 + 8 + 28),
-		.vdisplay = 1920,
-		.vsync_start = 1920 + 7,
-		.vsync_end = 1920 + 7 + 1,
-		.vtotal = 1920 + 7 + 1 + 17,
-		.width_mm = 50,
-		.height_mm = 50,
-	}
+#define MODE_NAME "1776x1920_60"
+#define FPS 60
 #else
+//#define FPS 60
+#define MODE_NAME "1776x1920_90"
+#define FPS 90
+//TODO: 120 not working -- get DCS garbage and looks flickery
+//dmesg: dsi_cmds2buf_tx: cmd dma tx failed, type=0x6, data0=0x3b, len=4, ret=-110
+//#define MODE_NAME "1776x1920_120"
+//#define FPS 120
+#endif
+
+//App note recommendation:
+//Doesn't work
+//#define VFP_P 8
+//#define VFP_M 17
+//#define VBP_P 8
+//#define VBP_M 7
+//#define VID_VS_DLY 0
+
+//NOTE: VBP_M should not include VS
+#define VFP_P 17
+#define VFP_M 21
+#define VBP_P 17
+#define VBP_M 8
+#ifdef NO_DSC
+#define VID_VS_DLY 0
+#else
+#define VID_VS_DLY ( DSC_SLICE_COUNT / 2 )
+#endif
+
+static const struct drm_display_mode modes[1] = {
 	{
-		.name = "1776x1920_90",
-		.clock =  (1776 + 20 + 8 + 28) * (1920 + 7 + 1 + 17) * 90 / 1000,
+		.name = MODE_NAME,
+		.clock =  (1776 + 20 + 8 + 28) * (1920 + VFP_M + 1 + VBP_M) * FPS / 1000,
 		.hdisplay = 1776,
 		.hsync_start = (1776 + 20),
 		.hsync_end = (1776 + 20 + 8),
 		.htotal = (1776 + 20 + 8 + 28),
 		.vdisplay = 1920,
-		.vsync_start = 1920 + 7,
-		.vsync_end = 1920 + 7 + 1,
-		.vtotal = 1920 + 7 + 1 + 17,
+		.vsync_start = 1920 + VFP_M,
+		.vsync_end = 1920 + VFP_M + 1,
+		.vtotal = 1920 + VFP_M + 1 + VBP_M,
+
 		.width_mm = 50,
 		.height_mm = 50,
 	}
-#endif
 };
 
 #define lpm026m648c_dsi_write_seq(ctx, cmd, seq...)					\
@@ -235,8 +411,17 @@ static int dsi_populate_dsc_params(struct lpm026m648c_ctx *ctx)
 	dsc->initial_scale_value = drm_dsc_initial_scale_value(dsc);
     DRM_DEV_ERROR(ctx->dev, "dsc scale value %d\n", dsc->initial_scale_value);
 	dsc->line_buf_depth = dsc->bits_per_component + 1;
+	//dsc->line_buf_depth = dsc->bits_per_component + 2;	//Doesn't change reg value
+	//gets overwritten by drm_dsc_compute_rc_parameters()
+	//
+	//hrd_delay = DIV_ROUND_UP((rbs_min * 16), vdsc_cfg->bits_per_pixel);
+	//vdsc_cfg->rc_bits = (hrd_delay * vdsc_cfg->bits_per_pixel) / 16;
+	//vdsc_cfg->initial_dec_delay = hrd_delay - vdsc_cfg->initial_xmit_delay;
 
 	return drm_dsc_compute_rc_parameters(dsc);
+	//ret = drm_dsc_compute_rc_parameters(dsc);
+	//dsc->initial_dec_delay = 380;		//still didn't take... reg still reading back 0x1de
+	//return ret;
 }
 
 static int lpm026m648c_init_dsc_config(struct lpm026m648c_ctx *ctx)
@@ -245,14 +430,22 @@ static int lpm026m648c_init_dsc_config(struct lpm026m648c_ctx *ctx)
 		.dsc_version_major = 0x1,
 		.dsc_version_minor = 0x1,
 		.slice_height = 24,
-		.slice_width = 444,
-		.slice_count = 4,
+		//.slice_width = 444,
+		//.slice_count = 4,
+		//.slice_width = 888,	//Note: need to also change dsc_slice_per_pkt below
+		//.slice_count = 2,	//Larger slide width results in initial_dec_delay = 2BC = 700, which satisfies requirement of <= slice_wdith - 64, but still displaying garbage
+		.slice_width = 1776 / DSC_SLICE_COUNT,
+		.slice_count = DSC_SLICE_COUNT,
 		.bits_per_component = 8,
 		.bits_per_pixel = 8 << 4,
 		.block_pred_enable = true,
 
+		//.line_buf_depth = 8,
+		//.initial_dec_delay = 380,	//<= slice_with - 64 (444 - 64 = 380 (0x17C)) //can't set here... gets overwritten later
+
 		.pic_width = 1776,
 		.pic_height = 1920,
+
 	};
 
 	return dsi_populate_dsc_params(ctx);
@@ -313,7 +506,15 @@ static void dsi_write_oled_panel_on(struct drm_panel *panel)
 	// try forcing the panel dsc params ( but this won't match local settings )
     //Panel_VBP * 1/2 - 4
     // 8*1/2-4
-	lpm026m648c_dsi_write_seq(ctx, 0x3B, 0x00, 0x08, 0x00, 0x08, 0x00, 0x00, 0x06, 0x17, 0x05, 0x9F, 0x04, 0xC7, 0x03, 0xAF); // video mode
+	//lpm026m648c_dsi_write_seq(ctx, 0x3B, 0x00, 0x08, 0x00, 0x08, 0x00, 0x00, 0x06, 0x17, 0x05, 0x9F, 0x04, 0xC7, 0x03, 0xAF); // video mode
+	//lpm026m648c_dsi_write_seq(ctx, 0x3B, 0x00, VBP_P, 0x00, VFP_P, 0x00, 0x00, 0x06, 0x17, 0x05, 0x9F, 0x04, 0xC7, 0x03, 0xAF); // video mode
+	//Try setting VID_VS_DELAY0 = 16	//Vertical stripe pattern and non-responsive panel
+	//lpm026m648c_dsi_write_seq(ctx, 0x3B, 0x00, VBP_P, 0x00, VFP_P, 0x00, 0x10, 0x06, 0x17, 0x05, 0x9F, 0x04, 0xC7, 0x03, 0xAF); // video mode
+	//Try setting VID_VS_DELAY0 = 9
+	//Worked when manually adjusting: right panel reg 3b: 00 11 00 11 00 09 06 17 05 9f 04 c7 03 af
+	//Works!
+	lpm026m648c_dsi_write_seq(ctx, 0x3B, 0x00, VBP_P, 0x00, VFP_P, 0x00, VID_VS_DLY, 0x06, 0x17, 0x05, 0x9F, 0x04, 0xC7, 0x03, 0xAF); // video mode
+	//lpm026m648c_dsi_write_seq(ctx, 0x3B, 0x00, 0x0A, 0x00, 0x17, 0x00, 0x00, 0x06, 0x17, 0x05, 0x9F, 0x04, 0xC7, 0x03, 0xAF); // video mode
 	lpm026m648c_dsi_write_seq(ctx, 0x51, 0xFF); // full brightness
 	lpm026m648c_dsi_write_seq(ctx, 0x53, 0x20); // manual brightness, dimming off
 	lpm026m648c_dsi_write_seq(ctx, 0x26, 0x01); // default gamma set
@@ -1121,10 +1322,12 @@ skip_panel2:
 		goto err_panel_add;
 
 	ctx->dsi[0]->dsc = &ctx->dsc_cfg;
-	ctx->dsi[0]->dsc_slice_per_pkt = 4;
+	//ctx->dsi[0]->dsc_slice_per_pkt = 4;
+	ctx->dsi[0]->dsc_slice_per_pkt = DSC_SLICE_COUNT;
 	if (ctx->is_dual_panel) {
 		ctx->dsi[1]->dsc = &ctx->dsc_cfg;
-		ctx->dsi[1]->dsc_slice_per_pkt = 4;
+		//ctx->dsi[1]->dsc_slice_per_pkt = 4;
+		ctx->dsi[1]->dsc_slice_per_pkt = DSC_SLICE_COUNT;
 	}
 #endif
 

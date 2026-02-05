@@ -13,6 +13,9 @@
 #include "pmk8550.dtsi"
 #include "sm8650-el2.dtsi"
 
+//TODO: not working
+//#define SINGLE_PANEL 
+
 / {
 	model = "SM8650 EV2 dphy rev1 4slam 2et";
 	compatible = "qcom,sm8650-ev2", "qcom,sm8650";
@@ -1330,9 +1333,24 @@
 	vdda-supply = <&vreg_l3i_1p2>;
 	status = "okay";
 
+<<<<<<< HEAD
 	panel: panel@0 {
 		reg = <0>;
 		compatible = "deckard-panel";
+=======
+#ifndef SINGLE_PANEL
+	qcom,dual-dsi-mode;
+	qcom,master-dsi;
+#endif
+
+
+	panel: panel@0 {
+		reg = <0>;
+		compatible = "deckard-panel";
+#ifndef SINGLE_PANEL
+		dual-panel;
+#endif
+>>>>>>> 50ebdafb1b61 (Vertical timing and DDIC reg changes now working)
 		dphy;
 
 		pinctrl-0 = <&display_resx1>, <&display_resx2>, <&te_left_n>, <&te_right_n>;
@@ -1365,6 +1383,18 @@
 					remote-endpoint = <&mdss_dsi0_out>;
 				};
 			};
+<<<<<<< HEAD
+=======
+
+#ifndef SINGLE_PANEL
+			port@1 {
+				reg = <1>;
+				panel1_in: endpoint {
+					remote-endpoint = <&mdss_dsi1_out>;
+				};
+			};
+#endif
+>>>>>>> 50ebdafb1b61 (Vertical timing and DDIC reg changes now working)
 		};
 	};
 };
@@ -1380,6 +1410,32 @@
 	status = "okay";
 };
 
+<<<<<<< HEAD
+=======
+#ifndef SINGLE_PANEL
+&mdss_dsi1 {
+	vdda-supply = <&vreg_l3i_1p2>;
+	status = "okay";
+
+	qcom,dual-dsi-mode;
+
+	assigned-clocks = <&dispcc DISP_CC_MDSS_BYTE1_CLK_SRC>, <&dispcc DISP_CC_MDSS_PCLK1_CLK_SRC>;
+	assigned-clock-parents = <&mdss_dsi0_phy 0>, <&mdss_dsi0_phy 1>;
+};
+
+&mdss_dsi1_out {
+	remote-endpoint = <&panel1_in>;
+	data-lanes = <0 1 2 3>;
+};
+
+&mdss_dsi1_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+	status = "okay";
+	phy-type = <PHY_TYPE_DPHY>;
+};
+#endif
+
+>>>>>>> 50ebdafb1b61 (Vertical timing and DDIC reg changes now working)
 &pcie0 {
 	wake-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
 	perst-gpios = <&tlmm 94 GPIO_ACTIVE_LOW>;
