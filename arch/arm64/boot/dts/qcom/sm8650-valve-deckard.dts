@@ -817,6 +817,14 @@
 	};
 };
 
+&iris {
+	status = "okay";
+
+	video-firmware {
+		iommus = <&apps_smmu 0x1942 0x0000>;
+	};
+};
+
 &dispcc {
 	status = "okay";
 };
