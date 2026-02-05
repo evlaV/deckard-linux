@@ -1333,11 +1333,6 @@
 	vdda-supply = <&vreg_l3i_1p2>;
 	status = "okay";
 
-<<<<<<< HEAD
-	panel: panel@0 {
-		reg = <0>;
-		compatible = "deckard-panel";
-=======
 #ifndef SINGLE_PANEL
 	qcom,dual-dsi-mode;
 	qcom,master-dsi;
@@ -1350,7 +1345,6 @@
 #ifndef SINGLE_PANEL
 		dual-panel;
 #endif
->>>>>>> 50ebdafb1b61 (Vertical timing and DDIC reg changes now working)
 		dphy;
 
 		pinctrl-0 = <&display_resx1>, <&display_resx2>, <&te_left_n>, <&te_right_n>;
@@ -1383,8 +1377,6 @@
 					remote-endpoint = <&mdss_dsi0_out>;
 				};
 			};
-<<<<<<< HEAD
-=======
 
 #ifndef SINGLE_PANEL
 			port@1 {
@@ -1394,7 +1386,6 @@
 				};
 			};
 #endif
->>>>>>> 50ebdafb1b61 (Vertical timing and DDIC reg changes now working)
 		};
 	};
 };
@@ -1410,8 +1401,6 @@
 	status = "okay";
 };
 
-<<<<<<< HEAD
-=======
 #ifndef SINGLE_PANEL
 &mdss_dsi1 {
 	vdda-supply = <&vreg_l3i_1p2>;
@@ -1435,7 +1424,6 @@
 };
 #endif
 
->>>>>>> 50ebdafb1b61 (Vertical timing and DDIC reg changes now working)
 &pcie0 {
 	wake-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
 	perst-gpios = <&tlmm 94 GPIO_ACTIVE_LOW>;
