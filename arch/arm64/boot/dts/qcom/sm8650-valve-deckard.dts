@@ -1040,6 +1040,7 @@
 };
 
 &mdss {
+	iommu-defer-attach;
 	status = "okay";
 };
 
