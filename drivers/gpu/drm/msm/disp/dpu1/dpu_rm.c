@@ -245,6 +245,7 @@ static int _dpu_rm_reserve_cwb_mux_and_pingpongs(struct dpu_rm *rm,
 	int cwb_pp_start_idx = PINGPONG_CWB_0 - PINGPONG_0;
 	int cwb_pp_idx[MAX_BLOCKS];
 	int cwb_mux_idx[MAX_BLOCKS];
+	int cwb_mux_idx_start = 0;
 
 	/*
 	 * Reserve additional dedicated CWB PINGPONG blocks and muxes for each
@@ -255,7 +256,7 @@ static int _dpu_rm_reserve_cwb_mux_and_pingpongs(struct dpu_rm *rm,
 	 */
 	for (int i = 0; i < ARRAY_SIZE(rm->mixer_blks) &&
 	     cwb_mux_count < num_cwb_mux; i++) {
-		for (int j = 0; j < ARRAY_SIZE(rm->cwb_blks); j++) {
+		for (int j = cwb_mux_idx_start; j < ARRAY_SIZE(rm->cwb_blks); j++) {
 			/*
 			 * Odd LMs must be assigned to odd CWB muxes and even
 			 * LMs with even CWB muxes.
@@ -269,6 +270,12 @@ static int _dpu_rm_reserve_cwb_mux_and_pingpongs(struct dpu_rm *rm,
 			    i % 2 != j % 2)
 				continue;
 
+			/*
+			 * If the jth cwb is already allocated, start from the
+			 * next one in next loop. So that less loop occur and
+			 * more than 1 pair of cwb can be allocated.
+			 */
+			cwb_mux_idx_start = j + 1;
 			cwb_mux_idx[cwb_mux_count] = j;
 			cwb_pp_idx[cwb_mux_count] = j + cwb_pp_start_idx;
 			cwb_mux_count++;
