@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) 2026, Valve Software
+ */
+
+/dts-v1/;
+/plugin/;
+
+/* Deckard MP, ideally should stay empty, because sm8650-valve-deckard.dts targets MP */
+
+&{/} {
+	model = "SM8650 Valve Deckard MP rev1 4slam 2et";
+};
