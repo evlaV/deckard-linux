@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) 2026, Valve Software
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+
+/* Deckard DV2 */
+
+&{/} {
+	model = "SM8650 Valve Deckard DV2 rev1 4slam 2et";
+};
+
+&i2c5 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	// BOOT EEPROM
+	eeprom@50 {
+		compatible  = "atmel,24c32";
+		status      = "okay";
+		label       = "core_eeprom";
+		reg         = <0x50>;
+		pagesize    = <32>;
+		size        = <4096>;
+		address-width = <16>;
+		wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+		vcc-supply  = <&vreg_l15b_1p8>;
+	};
+};
