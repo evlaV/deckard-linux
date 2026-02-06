@@ -346,7 +346,17 @@ dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-hdk-rear-camera-card.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-hdk.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-mtp.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-qrd.dtb
+
+sm8650-ev3-dtbs	:= sm8650-valve-deckard.dtb sm8650-valve-deckard-ev3.dtbo
+sm8650-dv1-dtbs	:= sm8650-valve-deckard.dtb sm8650-valve-deckard-dv1.dtbo
+sm8650-dv2-dtbs	:= sm8650-valve-deckard.dtb sm8650-valve-deckard-dv2.dtbo
+sm8650-mp-dtbs	:= sm8650-valve-deckard.dtb sm8650-valve-deckard-mp.dtbo
+
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-valve-deckard.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev3.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-dv1.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-dv2.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-mp.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8750-mtp.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8750-qrd.dtb
 x1e001de-devkit-el2-dtbs	:= x1e001de-devkit.dtb x1-el2.dtbo
