@@ -116,6 +116,8 @@ struct dpu_kms {
 	bool cac_update_pending;
 	u32 cac_vig_lm_stage;	/* stage in LM to blend SSPP_VIG0~3 */
 	u32 cac_blob_id;
+	/* skip right half of framebuffer in quad-pipe writeback case */
+	bool skip_cwb_right;
 
 	/* reference count bandwidth requests, so we know when we can
 	 * release bandwidth.  Each atomic update increments, and frame-
