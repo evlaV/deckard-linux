@@ -53,7 +53,7 @@
 
 // Panel settings
 //#define VFP		700
-#define VID_VS_DELAY	1112
+//#define VID_VS_DELAY	1112
 //#define VBP		23
 #define GPO1_TES1_144_SHARP	150
 #define GPO1_TES1_120_SHARP	100
@@ -267,55 +267,55 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 //#define VFP_M ( VFP_P + 4 )
 //#define VBP_P 17
 //#define VBP_M VBP_P
-//#define VID_VS_DLY 10
+//#define VID_VS_DELAY 10
 //Works if reduce vid_vs_delay to 0x6
 //#define VFP_P 17
 //#define VFP_M ( VFP_P + 4 )
 //#define VBP_P 17
 //#define VBP_M ( VBP_P - 4 )
-//#define VID_VS_DLY 6
+//#define VID_VS_DELAY 6
 //Doesn't work, and can't fix w/ manual vid_vs_dly adjustments
 //#define VFP_P 17
 //#define VFP_M ( VFP_P + 4 )
 //#define VBP_P 17
 //#define VBP_M ( VBP_P - 10 )
-//#define VID_VS_DLY 0
+//#define VID_VS_DELAY 0
 //Doesn't work, but can fix w/ manual vid_vs_dly adj to 0x1
 //#define VFP_P 17
 //#define VFP_M ( VFP_P + 4 )
 //#define VBP_P 17
 //#define VBP_M ( VBP_P - 9 )
-//#define VID_VS_DLY 0
+//#define VID_VS_DELAY 0
 //Doesn't work, but can fix w/ manual vid_vs_dly adj to 0x1
 //#define VFP_P 17
 //#define VFP_M ( VFP_P + 4 )
 //#define VBP_P 18
 //#define VBP_M ( VBP_P - 10 )
-//#define VID_VS_DLY 0
+//#define VID_VS_DELAY 0
 //Doesn't work, and can't fix w/ manual vid_vs_dly adjustments
 //#define VFP_P 17
 //#define VFP_M ( VFP_P + 5 )
 //#define VBP_P 17
 //#define VBP_M ( VBP_P - 10 )
-//#define VID_VS_DLY 0
+//#define VID_VS_DELAY 0
 //Doesn't work, and can't fix w/ manual vid_vs_dly adjustments
 //#define VFP_P 17
 //#define VFP_M ( VFP_P + 3 )
 //#define VBP_P 17
 //#define VBP_M ( VBP_P - 10 )
-//#define VID_VS_DLY 0
+//#define VID_VS_DELAY 0
 //Doesn't work, and can't fix w/ manual vid_vs_dly adjustments
 //#define VFP_P 17
 //#define VFP_M ( VFP_P + 4 )
 //#define VBP_P 16
 //#define VBP_M ( VBP_P - 9 )
-//#define VID_VS_DLY 0
+//#define VID_VS_DELAY 0
 //Works!
 //#define VFP_P 17
 //#define VFP_M ( VFP_P + 4 )	//21
 //#define VBP_P 17
 //#define VBP_M ( VBP_P - 9 )	//8
-//#define VID_VS_DLY 1
+//#define VID_VS_DELAY 1
 
 #ifdef NO_DSC
 #define MODE_NAME "1776x1920_60"
@@ -336,7 +336,7 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 //#define VFP_M 17
 //#define VBP_P 8
 //#define VBP_M 7
-//#define VID_VS_DLY 0
+//#define VID_VS_DELAY 0
 
 //NOTE: VBP_M should not include VS
 #define VFP_P 17
@@ -344,9 +344,9 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 #define VBP_P 17
 #define VBP_M 8
 #ifdef NO_DSC
-#define VID_VS_DLY 0
+#define VID_VS_DELAY 0
 #else
-#define VID_VS_DLY ( DSC_SLICE_COUNT / 2 )
+#define VID_VS_DELAY ( DSC_SLICE_COUNT / 2 )
 #endif
 
 static const struct drm_display_mode modes[1] = {
@@ -512,7 +512,7 @@ static void dsi_write_oled_panel_on(struct drm_panel *panel)
 	//Try setting VID_VS_DELAY0 = 9
 	//Worked when manually adjusting: right panel reg 3b: 00 11 00 11 00 09 06 17 05 9f 04 c7 03 af
 	//Works!
-	lpm026m648c_dsi_write_seq(ctx, 0x3B, 0x00, VBP_P, 0x00, VFP_P, 0x00, VID_VS_DLY, 0x06, 0x17, 0x05, 0x9F, 0x04, 0xC7, 0x03, 0xAF); // video mode
+	lpm026m648c_dsi_write_seq(ctx, 0x3B, 0x00, VBP_P, 0x00, VFP_P, 0x00, VID_VS_DELAY, 0x06, 0x17, 0x05, 0x9F, 0x04, 0xC7, 0x03, 0xAF); // video mode
 	//lpm026m648c_dsi_write_seq(ctx, 0x3B, 0x00, 0x0A, 0x00, 0x17, 0x00, 0x00, 0x06, 0x17, 0x05, 0x9F, 0x04, 0xC7, 0x03, 0xAF); // video mode
 	lpm026m648c_dsi_write_seq(ctx, 0x51, 0xFF); // full brightness
 	lpm026m648c_dsi_write_seq(ctx, 0x53, 0x20); // manual brightness, dimming off
@@ -1052,6 +1052,7 @@ static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 	uint32_t vsync_to_photons_nsec, gpo1_tes1, frame_period_nsec;
 
+	/*
 	// set offset based on frame rate to optimize settling time vs latency
 	if ( modes[ctx->current_mode].vtotal == modes[MODE_144].vtotal ) {
 		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_144_SHARP : GPO1_TES1_144_BOE;
@@ -1083,6 +1084,9 @@ static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 		// 1/FPS + TES
 		vsync_to_photons_nsec = VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + frame_period_nsec + gpo1_tes1 * INTERNAL_LINE_TIME_NSEC;
 	}
+	*/
+	//TODO: revisit... for now, just zero out
+	vsync_to_photons_nsec = 0;
 	seq_printf(s, "%u\n", vsync_to_photons_nsec / 1000);
 	return 0;
 }
