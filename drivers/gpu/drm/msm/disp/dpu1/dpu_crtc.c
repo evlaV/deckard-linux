@@ -1581,8 +1581,6 @@ static struct msm_display_topology dpu_crtc_get_topology(
 	 */
 
 	num_rt_intf = topology.num_intf;
-	if (topology.cwb_enabled)
-		num_rt_intf--;
 
 	if ((mode->hdisplay > (MAX_HDISPLAY_SPLIT * num_rt_intf)) ||
 	    ((u64)mode->hdisplay * mode->vtotal * drm_mode_vrefresh(mode) >
@@ -1602,6 +1600,9 @@ static struct msm_display_topology dpu_crtc_get_topology(
 			topology.num_lm = min(2, dpu_kms->catalog->dsc_count);
 		topology.num_dsc = topology.num_lm;
 	}
+
+	if (topology.cwb_enabled)
+		topology.num_cwb = topology.num_lm;
 
 	if (crtc_state->ctm || crtc_state->gamma_lut)
 		topology.num_dspp = topology.num_lm;
