@@ -188,9 +188,18 @@ static void dpu_encoder_phys_wb_setup_fb(struct dpu_encoder_phys *phys_enc,
 		cdp_usage = DPU_PERF_CDP_USAGE_NRT;
 
 	wb_cfg->intf_mode = phys_enc->intf_mode;
-	wb_cfg->roi.x1 = 0;
-	wb_cfg->roi.x2 = phys_enc->cached_mode.hdisplay;
+
+	if( phys_enc->split_role == ENC_ROLE_SLAVE)
+		wb_cfg->roi.x1 = phys_enc->cached_mode.hdisplay / 2;
+	else
+		wb_cfg->roi.x1 = 0;
 	wb_cfg->roi.y1 = 0;
+
+	if (phys_enc->split_role == ENC_ROLE_MASTER)
+		wb_cfg->roi.x2 = phys_enc->cached_mode.hdisplay / 2;
+	else
+		wb_cfg->roi.x2 = phys_enc->cached_mode.hdisplay;
+
 	wb_cfg->roi.y2 = phys_enc->cached_mode.vdisplay;
 
 	if (hw_wb->ops.setup_roi)
@@ -206,6 +215,12 @@ static void dpu_encoder_phys_wb_setup_fb(struct dpu_encoder_phys *phys_enc,
 				     perf->cdp_cfg[cdp_usage].wr_enable);
 	}
 
+	/*
+	 * Assume FB is 32bpp format, and shift the address of 2nd half of WB
+	 * by hdisplay/2 in framebuffer.
+	 * TODO: convert to pixel offset in any register, WB_CROP_CTRL/OFFSET? */
+	if( phys_enc->split_role == ENC_ROLE_SLAVE)
+		wb_cfg->dest.plane_addr[0] += phys_enc->cached_mode.hdisplay * 2;
 	if (hw_wb->ops.setup_outaddress)
 		hw_wb->ops.setup_outaddress(hw_wb, wb_cfg);
 }
@@ -369,7 +384,12 @@ static void dpu_encoder_phys_wb_done_irq(void *arg)
 	atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
-	if (wb_enc->wb_conn)
+	/*
+	 * For writeback with dual HW WB, only master WB is needed to handle
+	 * high level task.
+	 */
+	if (wb_enc->wb_conn &&
+	    phys_enc->split_role != ENC_ROLE_SLAVE)
 		drm_writeback_signal_completion(wb_enc->wb_conn, 0);
 
 	/* Signal any waiting atomic commit thread */
@@ -430,7 +450,8 @@ static void _dpu_encoder_phys_wb_handle_wbdone_timeout(
 	/* request a ctl reset before the next kickoff */
 	phys_enc->enable_state = DPU_ENC_ERR_NEEDS_HW_RESET;
 
-	if (wb_enc->wb_conn)
+	if (wb_enc->wb_conn &&
+	    phys_enc->split_role != ENC_ROLE_SLAVE)
 		drm_writeback_signal_completion(wb_enc->wb_conn, 0);
 
 	dpu_encoder_frame_done_callback(phys_enc->parent, phys_enc, frame_event);
@@ -484,7 +505,8 @@ static void dpu_encoder_phys_wb_prepare_for_kickoff(
 	drm_conn = &wb_enc->wb_conn->base;
 	state = drm_conn->state;
 
-	if (wb_enc->wb_conn && wb_enc->wb_job)
+	if (wb_enc->wb_conn && wb_enc->wb_job &&
+	    phys_enc->split_role != ENC_ROLE_SLAVE)
 		drm_writeback_queue_job(wb_enc->wb_conn, state);
 
 	dpu_encoder_phys_wb_setup(phys_enc);
