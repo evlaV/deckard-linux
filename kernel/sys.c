@@ -158,7 +158,9 @@
 #ifndef PPC_SET_DEXCR_ASPECT
 # define PPC_SET_DEXCR_ASPECT(a, b, c)	(-EINVAL)
 #endif
-
+#ifndef ARM64_SET_UNALIGN_ATOMIC_CTL
+# define ARM64_SET_UNALIGN_ATOMIC_CTL(a)		(-EINVAL)
+#endif
 /*
  * this is where the system-wide overflow UID and GID are defined, for
  * architectures that now have 32-bit UID/GID but didn't in the past
@@ -2868,6 +2870,24 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 	case PR_FUTEX_HASH:
 		error = futex_hash_prctl(arg2, arg3, arg4);
 		break;
+	case PR_ARM64_SET_UNALIGN_ATOMIC:
+		error = ARM64_SET_UNALIGN_ATOMIC_CTL(arg2);
+		break;
+	case PR_GET_COMPAT_INPUT:
+		if (arg2 || arg3 || arg4 || arg5)
+			return -EINVAL;
+		error = current->compat_input;
+		break;
+	case PR_SET_COMPAT_INPUT:
+		if (arg3 || arg4 || arg5)
+			return -EINVAL;
+		if (arg2 == PR_SET_COMPAT_INPUT_DISABLE)
+			current->compat_input = false;
+		else if (arg2 == PR_SET_COMPAT_INPUT_ENABLE)
+			current->compat_input = true;
+		else
+			return -EINVAL;
+		break;		
 	default:
 		trace_task_prctl_unknown(option, arg2, arg3, arg4, arg5);
 		error = -EINVAL;
