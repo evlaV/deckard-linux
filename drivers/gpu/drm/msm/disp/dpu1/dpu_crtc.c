@@ -1591,6 +1591,9 @@ static struct msm_display_topology dpu_crtc_get_topology(
 	if (topology.cwb_enabled)
 		topology.num_cwb = topology.num_lm;
 
+	if (dpu_kms->skip_cwb_right == true)
+		topology.num_cwb = min(2, topology.num_lm);
+
 	if (crtc_state->ctm || crtc_state->gamma_lut)
 		topology.num_dspp = topology.num_lm;
 
