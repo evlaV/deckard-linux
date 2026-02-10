@@ -1518,6 +1518,7 @@
 
 		#address-cells = <1>;
 		#size-cells = <0>;
+		default-state = "keep";
 
 		led@1 {
 			reg = <1>;
