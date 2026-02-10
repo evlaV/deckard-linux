@@ -133,9 +133,10 @@ static void vfe_wm_stop(struct vfe_device *vfe, u8 wm)
 	writel_relaxed(0, vfe->base + VFE_BUS_WM_CFG(wm));
 }
 
-static void vfe_wm_update(struct vfe_device *vfe, u8 wm, u32 addr,
+static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
 			  struct vfe_line *line)
 {
+	u32 addr = buffer->addr[0];
 	wm = RDI_WM(wm); /* map to actual WM used (from wm=RDI index) */
 	writel_relaxed(addr, vfe->base + VFE_BUS_WM_IMAGE_ADDR(wm));
 }
@@ -207,8 +208,11 @@ static irqreturn_t vfe_isr(int irq, void *dev)
 			if (status & BUS_IRQ_MASK_0_RDI_RUP(vfe, i))
 				vfe_isr_reg_update(vfe, i);
 
-			if (status & BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i)))
-				vfe_buf_done(vfe, i);
+			if (status & BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i))) {
+				struct camss_buf_done_info buf_done_info;
+				memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
+				vfe_buf_done(vfe, i, &buf_done_info);
+			}
 		}
 	}
 
@@ -270,7 +274,7 @@ static void vfe_violation_read(struct vfe_device *vfe)
 	/* nop */
 }
 
-static void vfe_buf_done_480(struct vfe_device *vfe, int port_id)
+static void vfe_buf_done_480(struct vfe_device *vfe, int port_id, struct camss_buf_done_info *info)
 {
 	/* nop */
 }

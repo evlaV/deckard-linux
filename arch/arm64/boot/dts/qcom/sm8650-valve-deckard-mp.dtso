@@ -6,10 +6,22 @@
 /dts-v1/;
 /plugin/;
 
+#include <dt-bindings/gpio/gpio.h>
+
 /* Deckard MP, ideally should stay empty, because sm8650-valve-deckard.dts targets MP */
 
 &{/} {
 	model = "SM8650 Valve Deckard MP rev1 4slam 2et";
+};
+
+&cci2_i2c1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	cam3@1a {
+		mux-enable-gpios = <&tlmm 14 GPIO_ACTIVE_HIGH>;
+		mux-select-gpios = <&tlmm 111 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 &panel {
