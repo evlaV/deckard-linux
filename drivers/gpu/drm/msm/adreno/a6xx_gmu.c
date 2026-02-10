@@ -27,11 +27,7 @@ static void a6xx_gmu_fault(struct a6xx_gmu *gmu)
 	/* FIXME: add a banner here */
 	gmu->hung = true;
 
-	/* Turn off the hangcheck timer while we are resetting */
-	timer_delete(&gpu->hangcheck_timer);
-
-	/* Queue the GPU handler because we need to treat this as a recovery */
-	kthread_queue_work(gpu->worker, &gpu->recover_work);
+	msm_trigger_recovery(gpu);
 }
 
 static irqreturn_t a6xx_gmu_irq(int irq, void *data)
@@ -167,6 +163,10 @@ void a6xx_gmu_set_freq(struct msm_gpu *gpu, struct dev_pm_opp *opp,
 			bw_index |= AB_VOTE(clamp(tmp, 1, MAX_AB_VOTE));
 			bw_index |= AB_VOTE_ENABLE;
 		}
+
+		/* Add max AB vote */
+		if (bw_index)
+			bw_index |= (FIELD_PREP(GENMASK(31, 16), (0xFFFF - 1)) | FIELD_PREP(GENMASK(15, 8), 1));
 	}
 
 	gmu->current_perf_index = perf_index;
@@ -250,7 +250,7 @@ static bool a6xx_gmu_check_idle_level(struct a6xx_gmu *gmu)
 /* Wait for the GMU to get to its most idle state */
 int a6xx_gmu_wait_for_idle(struct a6xx_gmu *gmu)
 {
-	return spin_until(a6xx_gmu_check_idle_level(gmu));
+	return spin_until2(a6xx_gmu_check_idle_level(gmu));
 }
 
 static int a6xx_gmu_start(struct a6xx_gmu *gmu)

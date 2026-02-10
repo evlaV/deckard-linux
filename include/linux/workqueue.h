@@ -151,6 +151,11 @@ struct workqueue_attrs {
 	int nice;
 
 	/**
+	 * @nice: prio level
+	 */
+	int prio;
+
+	/**
 	 * @cpumask: allowed CPUs
 	 *
 	 * Work items in this workqueue are affine to these CPUs and not allowed
@@ -375,6 +380,7 @@ enum wq_flags {
 	WQ_HIGHPRI		= 1 << 4, /* high priority */
 	WQ_CPU_INTENSIVE	= 1 << 5, /* cpu intensive workqueue */
 	WQ_SYSFS		= 1 << 6, /* visible in sysfs, see workqueue_sysfs_register() */
+	WQ_SUPERHIGHPRI	= 1 << 7, /* super high priority */
 
 	/*
 	 * Per-cpu workqueues are generally preferred because they tend to
@@ -409,6 +415,8 @@ enum wq_flags {
 	__WQ_ORDERED		= 1 << 17, /* internal: workqueue is ordered */
 	__WQ_LEGACY		= 1 << 18, /* internal: create*_workqueue() */
 
+	__WQ_FORCE_ALLOW_SYSFS		= 1 << 19, /* internal: allow workqueue_sysfs_register when using __WQ_ORDERED */
+	
 	/* BH wq only allows the following flags */
 	__WQ_BH_ALLOWS		= WQ_BH | WQ_HIGHPRI | WQ_PERCPU,
 };
@@ -460,6 +468,7 @@ enum wq_consts {
 extern struct workqueue_struct *system_wq; /* use system_percpu_wq, this will be removed */
 extern struct workqueue_struct *system_percpu_wq;
 extern struct workqueue_struct *system_highpri_wq;
+extern struct workqueue_struct *system_superhighpri_wq;
 extern struct workqueue_struct *system_long_wq;
 extern struct workqueue_struct *system_unbound_wq;
 extern struct workqueue_struct *system_dfl_wq;
@@ -781,6 +790,8 @@ extern void __warn_flushing_systemwide_wq(void)
 	     _wq == system_percpu_wq) ||					\
 	    (__builtin_constant_p(_wq == system_highpri_wq) &&		\
 	     _wq == system_highpri_wq) ||				\
+		(__builtin_constant_p(_wq == system_superhighpri_wq) &&		\
+	     _wq == system_superhighpri_wq) ||				\
 	    (__builtin_constant_p(_wq == system_long_wq) &&		\
 	     _wq == system_long_wq) ||					\
 	    (__builtin_constant_p(_wq == system_dfl_wq) &&		\

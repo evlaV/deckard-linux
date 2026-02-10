@@ -52,8 +52,11 @@
 #define DPU_DEBUGFS_DIR "msm_dpu"
 #define DPU_DEBUGFS_HWMASKNAME "hw_log_mask"
 
-bool dpu_use_virtual_planes;
+bool dpu_use_virtual_planes = true;
 module_param(dpu_use_virtual_planes, bool, 0);
+
+bool dpu_use_planar_cac = true;
+module_param(dpu_use_planar_cac, bool, 0);
 
 static int dpu_kms_hw_init(struct msm_kms *kms);
 static void _dpu_kms_mmu_destroy(struct dpu_kms *dpu_kms);
@@ -304,6 +307,7 @@ static int dpu_kms_debugfs_init(struct msm_kms *kms, struct drm_minor *minor)
 	entry = debugfs_create_dir("debug", minor->debugfs_root);
 
 	debugfs_create_x32(DPU_DEBUGFS_HWMASKNAME, 0600, entry, p);
+	debugfs_create_u32("cac_enable", 0600, entry, &dpu_kms->cac_state_cached);
 
 	dpu_debugfs_danger_init(dpu_kms, entry);
 	dpu_debugfs_vbif_init(dpu_kms, entry);
@@ -875,6 +879,17 @@ static int _dpu_kms_drm_obj_init(struct dpu_kms *dpu_kms)
 			ret = PTR_ERR(crtc);
 			return ret;
 		}
+
+		if (dpu_use_planar_cac && i == 0) {
+			dpu_kms->cac_blob_id = -1;
+			dpu_kms->cac_prop = drm_property_create(dev, DRM_MODE_PROP_BLOB,
+								"CAC_BLOB", 0);
+			if(dpu_kms->cac_prop)
+				drm_object_attach_property(&crtc->base,
+							   dpu_kms->cac_prop, -1);
+			else
+				DPU_ERROR("Fail to create drm cac property");
+		}
 	}
 
 	/* All CRTCs are compatible with all encoders */
@@ -1208,6 +1223,12 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		goto err_pm_put;
 	}
 
+	if (dpu_use_planar_cac) {
+		rc = dpu_rm_reserve_cac_sspp(dpu_kms);
+		if (rc)
+			goto err_pm_put;
+	}
+
 	dpu_kms->hw_mdp = dpu_hw_mdptop_init(dev,
 					     dpu_kms->catalog->mdp,
 					     dpu_kms->mmio,
@@ -1323,6 +1344,8 @@ static int dpu_kms_init(struct drm_device *ddev)
 
 	pm_runtime_enable(&pdev->dev);
 	dpu_kms->rpm_enabled = true;
+	dpu_kms->cac_state_cur = CAC_DISABLED;
+	dpu_kms->cac_state_cached = CAC_DISABLED;
 
 	return 0;
 }

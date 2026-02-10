@@ -356,6 +356,12 @@
 			};
 		};
 	};
+
+	BACKLIGHT_PREBOOST: backlight_preboost {
+		compatible = "ti,tps61377";
+		en-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
+		pgood-gpio = <&tlmm 69 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 &apps_rsc {
@@ -816,6 +822,13 @@
 };
 
 &gpu {
+	/* Take in account SMMU aperture registers */
+	reg = <0x0 0x03d00000 0x0 0x61000>,
+	      <0x0 0x03d9e000 0x0 0x2000>,
+	      <0x0 0x03d61000 0x0 0x800>;
+
+	status = "okay";
+
 	/delete-node/ zap-shader;
 };
 
@@ -869,6 +882,87 @@
 
 &i2c4 {
 	status = "okay";
+
+	mp3317@28{
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "mps,mp3317";
+		reg = <0x28>;
+		en-gpios = <&tlmm 58 GPIO_ACTIVE_HIGH>;
+
+		mp3317,vout = <9500>; // 9.5V
+		mp3317,ovp-max = <0x0f>;
+		mp3317,tpwm = <0x0A>; // 5 msec
+		mp3317,iledl = <0x4ff>; // 100 mA
+		mp3317,iledr = <0x4ff>; // 100 mA
+		mp3317,hr = <0x4b>;
+		mp3317,step-hr = <0x41>;
+		mp3317,mode-ctl = <0x9E>;
+		mp3317,en-ctl = <0x9B>;
+
+		mp3317,label = "mp3317-scene-illum-ir";
+
+		mp3317,use-pm-ops = <0>; // disable pm ops, handled by display driver
+
+		status = "okay";
+	};
+
+	// right backlight
+	mp3317_right@29{
+		status = "okay";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "mps,mp3317";
+		reg = <0x29>;
+		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+
+		mp3317,vout = <18000>; // 18V
+		mp3317,ovp-max = <0x9f>;
+		mp3317,tpwm = <0x00>; // direct pwm
+		mp3317,iledl = <0x9ff>; // 100 mA
+		mp3317,iledr = <0x9ff>; // 100 mA
+		mp3317,hr = <0xf6>;
+		mp3317,step-hr = <0x41>;
+		mp3317,mode-ctl = <0xF7>;
+		mp3317,en-ctl = <0xBF>;
+
+		mp3317,label = "mp3317-backlight-right";
+
+		mp3317,use-pm-ops = <0>; // disable pm ops, handled by display driver
+
+		regulator {
+			backlight_right: backlight{
+				regulator-name = "backlight_right";
+			};
+		};
+	};
+
+	nex10000ub@3e{
+		compatible = "nexperia,nex10000ub";
+		reg = <0x3e>;
+
+		pinctrl-0 = <&display_avdd_en_r>, <&display_avee_en_r>;
+		pinctrl-names = "default";
+
+		enp-gpios = <&pm8550_gpios 8 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		regulators {
+			vpos_right: vpos{
+				regulator-name = "lcd_right_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5800000>;
+			};
+			vneg_right: vneg{
+				regulator-name = "lcd_right_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5800000>;
+			};
+		};
+	};
 };
 
 &i2c5 {
@@ -887,6 +981,154 @@
 		vcc-supply  = <&vreg_l15b_1p8>;
 	};
 
+	// left backlight
+	mp3317_left@29{
+		status = "okay";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "mps,mp3317";
+		reg = <0x29>;
+		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+
+		mp3317,vout = <18000>; // 18V
+		mp3317,ovp-max = <0x9f>;
+		mp3317,tpwm = <0x00>; // direct pwm
+		mp3317,iledl = <0x9ff>; // 100 mA
+		mp3317,iledr = <0x9ff>; // 100 mA
+		mp3317,hr = <0xf6>;
+		mp3317,step-hr = <0x41>;
+		mp3317,mode-ctl = <0xF7>;
+		mp3317,en-ctl = <0xBF>;
+
+		mp3317,label = "mp3317-backlight-left";
+
+		mp3317,use-pm-ops = <0>; // disable pm ops, handled by display driver
+
+		regulator {
+			backlight_left: backlight{
+				regulator-name = "backlight_left";
+			};
+		};
+	};
+
+	nex10000ub@3e{
+		compatible = "nexperia,nex10000ub";
+		reg = <0x3e>;
+
+		pinctrl-0 = <&display_avdd_en_l>, <&display_avee_en_l>;
+		pinctrl-names = "default";
+
+		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+	
+		regulators {
+			vpos_left: vpos{
+				regulator-name = "lcd_left_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5800000>;
+			};
+			vneg_left: vneg{
+				regulator-name = "lcd_left_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5800000>;
+			};
+		};
+	};
+};
+
+&mdss {
+	iommu-defer-attach;
+	status = "okay";
+};
+
+&mdss_mdp {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&vreg_l3i_1p2>;
+
+	qcom,dual-dsi-mode;
+	qcom,master-dsi;
+
+	status = "okay";
+
+	panel: panel@0 {
+		reg = <0>;
+		compatible = "deckard-panel";
+		dual-panel;
+
+		pinctrl-0 = <&display_resx1>, <&display_resx2>;
+		pinctrl-names = "default";
+
+		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
+			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
+
+		//Bias supplies enabled via GPIO
+		left-pos-supply = <&vpos_left>;
+		left-neg-supply = <&vneg_left>;
+		right-pos-supply = <&vpos_right>;
+		right-neg-supply = <&vneg_right>;
+
+		preboost-supply = <&BACKLIGHT_PREBOOST>;
+		backlight-left-supply = <&backlight_left>;
+		backlight-right-supply = <&backlight_right>;
+
+		vdda-supply = <&vreg_l12b_1p8>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				panel0_in: endpoint {
+					remote-endpoint = <&mdss_dsi0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				panel1_in: endpoint {
+					remote-endpoint = <&mdss_dsi1_out>;
+				};
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	remote-endpoint = <&panel0_in>;
+	data-lanes = <0 1 2>;
+};
+
+&mdss_dsi0_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+	phy-type = <PHY_TYPE_CPHY>;
+	status = "okay";
+};
+
+&mdss_dsi1 {
+	vdda-supply = <&vreg_l3i_1p2>;
+	status = "okay";
+
+	qcom,dual-dsi-mode;
+
+	assigned-clocks = <&dispcc DISP_CC_MDSS_BYTE1_CLK_SRC>, <&dispcc DISP_CC_MDSS_PCLK1_CLK_SRC>;
+	assigned-clock-parents = <&mdss_dsi0_phy 0>, <&mdss_dsi0_phy 1>;
+};
+
+&mdss_dsi1_out {
+	remote-endpoint = <&panel1_in>;
+	data-lanes = <0 1 2>;
+};
+
+&mdss_dsi1_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+	status = "okay";
+	phy-type = <PHY_TYPE_CPHY>;
 };
 
 &pcie0 {
