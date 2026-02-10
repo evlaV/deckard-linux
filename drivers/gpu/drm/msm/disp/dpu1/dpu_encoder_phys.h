@@ -301,9 +301,17 @@ static inline enum dpu_3d_blend_mode dpu_encoder_helper_get_3d_blend_mode(
 	dpu_cstate = to_dpu_crtc_state(phys_enc->parent->crtc->state);
 
 	/* Use merge_3d unless DSC MERGE topology is used */
-	if (phys_enc->split_role == ENC_ROLE_SOLO &&
-	    dpu_cstate->num_mixers == CRTC_DUAL_MIXERS &&
-	    !dpu_encoder_use_dsc_merge(phys_enc->parent))
+	/*
+	 * case 1: single physical encoder with 2 mixers
+	 * case 2: dual physical encoder with 4 mixers
+	 * case 3: dual physical encoder with 4 mixer but with 2 mixers to CWB
+	 */
+	if ((phys_enc->split_role == ENC_ROLE_SOLO &&
+	    (dpu_cstate->num_mixers == CRTC_DUAL_MIXERS) &&
+	    !dpu_encoder_use_dsc_merge(phys_enc->parent)) ||
+	   (phys_enc->split_role != ENC_ROLE_SOLO &&
+	    (dpu_cstate->num_mixers == 4) &&
+	    !dpu_encoder_use_dsc_merge(phys_enc->parent)))
 		return BLEND_3D_H_ROW_INT;
 
 	return BLEND_3D_NONE;
