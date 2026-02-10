@@ -62,6 +62,7 @@ struct msm_display_topology {
 	u32 num_intf;
 	u32 num_dspp;
 	u32 num_dsc;
+	u32 num_cwb;
 	int num_cdm;
 	bool cwb_enabled;
 };
