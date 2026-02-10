@@ -316,6 +316,17 @@ static const struct dpu_dsc_cfg sm8650_dsc[] = {
 
 static const struct dpu_wb_cfg sm8650_wb[] = {
 	{
+		.name = "wb_1", .id = WB_1,
+		.base = 0x64000, .len = 0x2c8,
+		.features = WB_SDM845_MASK,
+		.format_list = wb2_formats_rgb_yuv,
+		.num_formats = ARRAY_SIZE(wb2_formats_rgb_yuv),
+		.xin_id = 2,	/* TODO: just guess, to be confirmed */
+		.vbif_idx = VBIF_RT,
+		.maxlinewidth = 4096,
+		.intr_wb_done = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 1),
+	},
+	{
 		.name = "wb_2", .id = WB_2,
 		.base = 0x65000, .len = 0x2c8,
 		.features = WB_SDM845_MASK,
