@@ -1488,7 +1488,11 @@ static int lpg_add_led(struct lpg *lpg, struct device_node *np)
 	else
 		cdev->brightness = LED_OFF;
 
-	cdev->brightness_set_blocking(cdev, cdev->brightness);
+	if (!of_property_read_string(np, "default-state", &state) &&
+		!strcmp(state, "keep"))
+		dev_info(lpg->dev, "keeping led status\n");
+	else
+		cdev->brightness_set_blocking(cdev, cdev->brightness);
 
 	init_data.fwnode = of_fwnode_handle(np);
 
@@ -1550,9 +1554,6 @@ static int lpg_init_triled(struct lpg *lpg)
 	/* Configure power source */
 	if (lpg->triled_has_src_sel)
 		regmap_write(lpg->map, lpg->triled_base + TRI_LED_SRC_SEL, lpg->triled_src);
-
-	/* Default all outputs to off */
-	regmap_write(lpg->map, lpg->triled_base + TRI_LED_EN_CTL, 0);
 
 	return 0;
 }
