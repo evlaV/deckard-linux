@@ -526,7 +526,7 @@ static void dpu_kms_wait_for_commit_done(struct msm_kms *kms,
 		trace_dpu_kms_wait_for_commit_done(DRMID(crtc));
 		ret = dpu_encoder_wait_for_commit_done(encoder);
 		if (ret && ret != -EWOULDBLOCK) {
-			DPU_ERROR("wait for commit done returned %d\n", ret);
+			DPU_ERROR("wait for enc %s commit done returned %d\n", encoder->name, ret);
 			break;
 		}
 	}
@@ -717,37 +717,60 @@ static int _dpu_kms_initialize_hdmi(struct drm_device *dev,
 }
 
 static int _dpu_kms_initialize_writeback(struct drm_device *dev,
-		struct msm_drm_private *priv, struct dpu_kms *dpu_kms,
-		const u32 *wb_formats, int n_formats)
+		struct msm_drm_private *priv, struct dpu_kms *dpu_kms)
 {
 	struct drm_encoder *encoder = NULL;
 	struct msm_display_info info;
-	const enum dpu_wb wb_idx = WB_2;
+	const u32 *wb_formats;
+	int n_formats;
 	u32 maxlinewidth;
-	int rc;
+	int i, rc = 0;
 
-	memset(&info, 0, sizeof(info));
+	/*
+	 * We support following confiurations:
+	 * - Single WB
+	 * - Two independent WB
+	 * - Bonded WB0 and WB1
+	 */
+	for (i = 0; i < dpu_kms->catalog->wb_count; i++) {
+		/* Use 2 WB for DSI bonded case for now. */
+		/* TODO: decouple with DSI later to support dual WB in DP/HDMI case */
+		if (msm_dsi_is_bonded_dsi(priv->kms->dsi[i]) &&
+		    !msm_dsi_is_master_dsi(priv->kms->dsi[i]))
+			continue;
 
-	info.num_of_h_tiles = 1;
-	/* use only WB idx 2 instance for DPU */
-	info.h_tile_instance[0] = wb_idx;
-	info.intf_type = INTF_WB;
+		memset(&info, 0, sizeof(info));
+		info.intf_type = INTF_WB;
 
-	maxlinewidth = dpu_rm_get_wb(&dpu_kms->rm, info.h_tile_instance[0])->caps->maxlinewidth;
+		/* WB_2 is default one due to legacy support per Jessica. */
+		info.h_tile_instance[info.num_of_h_tiles++] = dpu_kms->catalog->wb[i].id;
+		/* TODO: to decouple with DSI for dual WB case. */
+		if (msm_dsi_is_bonded_dsi(priv->kms->dsi[i]))
+			info.h_tile_instance[info.num_of_h_tiles++] = dpu_kms->catalog->wb[i + 1].id;
 
-	encoder = dpu_encoder_init(dev, DRM_MODE_ENCODER_VIRTUAL, &info);
-	if (IS_ERR(encoder)) {
-		DPU_ERROR("encoder init failed for dsi display\n");
-		return PTR_ERR(encoder);
+		info.is_cmd_mode = false;
+
+		maxlinewidth = dpu_rm_get_wb(&dpu_kms->rm, info.h_tile_instance[i])->caps->maxlinewidth;
+		if (msm_dsi_is_bonded_dsi(priv->kms->dsi[i]))
+			maxlinewidth = 2 * maxlinewidth;
+
+		encoder = dpu_encoder_init(dev, DRM_MODE_ENCODER_VIRTUAL, &info);
+		if (IS_ERR(encoder)) {
+			DPU_ERROR("encoder init failed for writeback\n");
+			return PTR_ERR(encoder);
+		}
+
+		wb_formats = dpu_kms->catalog->wb[i].format_list;
+		n_formats = dpu_kms->catalog->wb[i].num_formats;
+		/* panic happens */
+		rc = dpu_writeback_init(dev, encoder, wb_formats, n_formats, maxlinewidth);
+		if (rc) {
+			DPU_ERROR("dpu_writeback_init, rc = %d\n", rc);
+			return rc;
+		}
 	}
 
-	rc = dpu_writeback_init(dev, encoder, wb_formats, n_formats, maxlinewidth);
-	if (rc) {
-		DPU_ERROR("dpu_writeback_init, rc = %d\n", rc);
-		return rc;
-	}
-
-	return 0;
+	return rc;
 }
 
 /**
@@ -763,7 +786,6 @@ static int _dpu_kms_setup_displays(struct drm_device *dev,
 				    struct dpu_kms *dpu_kms)
 {
 	int rc = 0;
-	int i;
 
 	rc = _dpu_kms_initialize_dsi(dev, priv, dpu_kms);
 	if (rc) {
@@ -783,19 +805,10 @@ static int _dpu_kms_setup_displays(struct drm_device *dev,
 		return rc;
 	}
 
-	/* Since WB isn't a driver check the catalog before initializing */
-	if (dpu_kms->catalog->wb_count) {
-		for (i = 0; i < dpu_kms->catalog->wb_count; i++) {
-			if (dpu_kms->catalog->wb[i].id == WB_2) {
-				rc = _dpu_kms_initialize_writeback(dev, priv, dpu_kms,
-						dpu_kms->catalog->wb[i].format_list,
-						dpu_kms->catalog->wb[i].num_formats);
-				if (rc) {
-					DPU_ERROR("initialize_WB failed, rc = %d\n", rc);
-					return rc;
-				}
-			}
-		}
+	rc = _dpu_kms_initialize_writeback(dev, priv, dpu_kms);
+	if (rc) {
+		DPU_ERROR("initialize_WB failed, rc = %d\n", rc);
+		return rc;
 	}
 
 	return rc;
