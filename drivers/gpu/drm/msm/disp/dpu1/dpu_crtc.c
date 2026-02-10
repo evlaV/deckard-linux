@@ -1527,8 +1527,6 @@ static struct msm_display_topology dpu_crtc_get_topology(
 	 */
 
 	num_rt_intf = topology.num_intf;
-	if (topology.cwb_enabled)
-		num_rt_intf--;
 
 	if (topology.num_dsc) {
 		topology.num_dsc = num_rt_intf * 2;
@@ -1540,6 +1538,9 @@ static struct msm_display_topology dpu_crtc_get_topology(
 	} else {
 		topology.num_lm = 1;
 	}
+
+	if (topology.cwb_enabled)
+		topology.num_cwb = topology.num_lm;
 
 	if (crtc_state->ctm)
 		topology.num_dspp = topology.num_lm;

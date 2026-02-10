@@ -241,7 +241,7 @@ static int _dpu_rm_reserve_cwb_mux_and_pingpongs(struct dpu_rm *rm,
 						 struct msm_display_topology *topology)
 {
 	int cwb_mux_count = 0;
-	int num_cwb_mux = min(2, topology->num_lm);
+	int num_cwb_mux = topology->num_cwb;
 	int cwb_pp_start_idx = PINGPONG_CWB_0 - PINGPONG_0;
 	int cwb_pp_idx[MAX_BLOCKS];
 	int cwb_mux_idx[MAX_BLOCKS];
@@ -254,7 +254,12 @@ static int _dpu_rm_reserve_cwb_mux_and_pingpongs(struct dpu_rm *rm,
 	 * TODO: add support reserving resources for platforms with no
 	 *       PINGPONG_CWB
 	 */
-	for (int i = 0; i < ARRAY_SIZE(rm->mixer_blks) &&
+	if (!topology->num_cwb) {
+		DPU_ERROR("invalid number of : %d\n", topology->num_cwb);
+		return -EINVAL;
+	}
+
+	for (int i = 0; i < ARRAY_SIZE(rm->cwb_blks) &&
 	     cwb_mux_count < num_cwb_mux; i++) {
 		for (int j = cwb_mux_idx_start; j < ARRAY_SIZE(rm->cwb_blks); j++) {
 			/*
