@@ -503,6 +503,10 @@ static void dpu_encoder_phys_wb_prepare_for_kickoff(
 		return;
 	}
 
+	if (phys_enc->dpu_kms->skip_cwb_right &&
+	    phys_enc->split_role == ENC_ROLE_SLAVE)
+		return;
+
 	drm_conn = &wb_enc->wb_conn->base;
 	state = drm_conn->state;
 
@@ -552,6 +556,12 @@ static void dpu_encoder_phys_wb_enable(struct dpu_encoder_phys *phys_enc)
 static void dpu_encoder_phys_wb_disable(struct dpu_encoder_phys *phys_enc)
 {
 	struct dpu_hw_wb *hw_wb = phys_enc->hw_wb;
+
+	/* do we need to skip this in half framebuffer hack mode? in case the
+	 * hack is enabled when WB is running? */
+	if (phys_enc->dpu_kms->skip_cwb_right &&
+	    phys_enc->split_role == ENC_ROLE_SLAVE)
+		return;
 
 	DPU_DEBUG("[wb:%d]\n", hw_wb->idx - WB_0);
 
