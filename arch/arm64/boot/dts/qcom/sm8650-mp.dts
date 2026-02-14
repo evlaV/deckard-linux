@@ -1043,6 +1043,10 @@
 	status = "okay";
 };
 
+&gpi_dma2 {
+	status = "okay";
+};
+
 
 &camss {
 	status = "okay";
