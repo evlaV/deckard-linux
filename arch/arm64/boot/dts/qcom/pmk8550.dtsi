@@ -78,6 +78,19 @@
 			};
 		};
 
+		pmk8550_sdam_3: nvram@7200 {
+			compatible = "qcom,spmi-sdam";
+			reg = <0x7200>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0 0x7200 0x100>;
+
+			pon_reason: pon-reason@69 {
+				reg = <0x69 0x1>;
+				bits = <0 8>;
+			};
+		};
+
 		pmk8550_vadc_hs: vadc@9100 {
 			compatible = "qcom,spmi-adc5-gen3-hs";
 			reg = <0x9100>;
