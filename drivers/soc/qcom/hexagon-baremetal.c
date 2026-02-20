@@ -16,6 +16,7 @@
 #include <linux/mailbox_client.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_opp.h>
+#include <linux/pm_runtime.h>
 
 #define QDSP6SS_VERSION 0x00
 
@@ -51,10 +52,13 @@ struct dsp {
 	struct clk_bulk_data *clks;
 	unsigned num_clks;
 	bool is_xtensa;
+	bool is_adsp;
+	bool is_cdsp;
 	u32 mem_phys;
 	u32 mem_size;
-	struct device *pds[2];
-	int perf[2];
+	struct device *pds[4];
+	int perf[4];
+	struct icc_path *dma_path;
 };
 
 struct dma_map {
@@ -398,8 +402,16 @@ static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 		writel(0, dsp->evb_sel);
 
 	// Only try to set src to QDSP6SSPLL for cDSP on 8650
-	if (!strcmp(dsp->miscdev.name, "cdsp"))
-	{
+	if (dsp->is_cdsp) {
+		dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
+		pm_runtime_get_sync(dsp->pds[0]);
+		dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
+		pm_runtime_get_sync(dsp->pds[1]);
+		dev_pm_genpd_set_performance_state(dsp->pds[2], dsp->perf[2]);
+		pm_runtime_get_sync(dsp->pds[2]);
+		dev_pm_genpd_set_performance_state(dsp->pds[3], dsp->perf[3]);
+		pm_runtime_get_sync(dsp->pds[3]);
+
 		writel(0x200, dsp->base + QDSP6SS_CORE_CFG_RCGR);
 		writel(1, dsp->base + QDSP6SS_CORE_CMD_RCGR);
 
@@ -408,6 +420,13 @@ static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 		writel(1, dsp->base + QDSP6SS_CORE_CBCR);
 
 		usleep_range(1000, 2000); // XXX
+	}
+
+	if (dsp->is_adsp) {
+		dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
+		pm_runtime_get_sync(dsp->pds[0]);
+		dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
+		pm_runtime_get_sync(dsp->pds[1]);
 	}
 
 	writel(boot_addr >> 4, dsp->base + QDSP6SS_RST_EVB);
@@ -469,6 +488,25 @@ static int dsp_shutdown(struct dsp *dsp)
 		writel(0, dsp->base +  QDSP6SS_SLEEP_CBCR);
 		writel(0, dsp->base +  QDSP6SS_CORE_CBCR);
 #endif
+
+		if (dsp->is_cdsp)  {
+			dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
+			pm_runtime_put(dsp->pds[0]);
+			dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
+			pm_runtime_put(dsp->pds[1]);
+			dev_pm_genpd_set_performance_state(dsp->pds[2], 0);
+			pm_runtime_put(dsp->pds[2]);
+			dev_pm_genpd_set_performance_state(dsp->pds[3], 0);
+			pm_runtime_put(dsp->pds[3]);
+		}
+
+		if (dsp->is_adsp) {
+			dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
+			pm_runtime_put(dsp->pds[0]);
+			dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
+			pm_runtime_put(dsp->pds[1]);
+
+		}
 	}
 
 	atomic_set(&dsp->booted, 0);
@@ -747,6 +785,10 @@ static int dsp_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	dsp->is_xtensa = of_device_is_compatible(dev->of_node, "qcom,sm8650-xtensa");
+	dsp->is_adsp = of_device_is_compatible(dev->of_node, "qcom,sm8650-hexagon") &&
+			!strcmp(dev->of_node->name, "adsp");
+	dsp->is_cdsp = of_device_is_compatible(dev->of_node, "qcom,sm8650-hexagon") &&
+			!strcmp(dev->of_node->name, "cdsp");
 
 	/* 36-bit dma address mask */
 	if (!dsp->is_xtensa) {
@@ -838,6 +880,48 @@ static int dsp_probe(struct platform_device *pdev)
 		if (dsp->perf[1] < 0)
 			return dsp->perf[1];
 	}
+	if (dsp->is_cdsp) {
+		dsp->pds[0] = dev_pm_domain_attach_by_name(dev, "cx");
+		if (IS_ERR_OR_NULL(dsp->pds[0]))
+			return PTR_ERR(dsp->pds[0]) ? : -ENODATA;
+		dsp->pds[1] = dev_pm_domain_attach_by_name(dev, "mxc");
+		if (IS_ERR_OR_NULL(dsp->pds[1]))
+			return PTR_ERR(dsp->pds[1]) ? : -ENODATA;
+		dsp->pds[2] = dev_pm_domain_attach_by_name(dev, "nsp");
+		if (IS_ERR_OR_NULL(dsp->pds[2]))
+			return PTR_ERR(dsp->pds[2]) ? : -ENODATA;
+		dsp->pds[3] = dev_pm_domain_attach_by_name(dev, "nsp2");
+		if (IS_ERR_OR_NULL(dsp->pds[3]))
+			return PTR_ERR(dsp->pds[3]) ? : -ENODATA;
+
+		dsp->perf[0] = of_get_required_opp_performance_state(dev->of_node, 0);
+		if (dsp->perf[0] < 0)
+			return dsp->perf[0];
+		dsp->perf[1] = of_get_required_opp_performance_state(dev->of_node, 1);
+		if (dsp->perf[1] < 0)
+			return dsp->perf[1];
+		dsp->perf[2] = of_get_required_opp_performance_state(dev->of_node, 2);
+		if (dsp->perf[2] < 0)
+			return dsp->perf[2];
+		dsp->perf[3] = of_get_required_opp_performance_state(dev->of_node, 3);
+		if (dsp->perf[3] < 0)
+			return dsp->perf[3];
+	}
+	if (dsp->is_adsp) {
+		dsp->pds[0] = dev_pm_domain_attach_by_name(dev, "lcx");
+		if (IS_ERR_OR_NULL(dsp->pds[0]))
+			return PTR_ERR(dsp->pds[0]) ? : -ENODATA;
+		dsp->pds[1] = dev_pm_domain_attach_by_name(dev, "lmx");
+		if (IS_ERR_OR_NULL(dsp->pds[1]))
+			return PTR_ERR(dsp->pds[1]) ? : -ENODATA;
+
+		dsp->perf[0] = of_get_required_opp_performance_state(dev->of_node, 0);
+		if (dsp->perf[0] < 0)
+			return dsp->perf[0];
+		dsp->perf[1] = of_get_required_opp_performance_state(dev->of_node, 1);
+		if (dsp->perf[1] < 0)
+			return dsp->perf[1];
+	}
 
 	if (dsp->is_xtensa)
     {
@@ -860,9 +944,8 @@ static int dsp_probe(struct platform_device *pdev)
 	WARN_ON(ret);
 
 	// XXX
-	if (!strcmp(dev->of_node->name, "cdsp"))
+	if (dsp->is_cdsp)
 	{
-		struct icc_path *dma_path;
 		void __iomem *turingcc = devm_ioremap(dev, 0x32008000, 0x20000);
 		WARN_ON(IS_ERR_OR_NULL(turingcc));
 
@@ -873,22 +956,20 @@ static int dsp_probe(struct platform_device *pdev)
 		writel_relaxed(1, turingcc + 0x414); // TURING_Q6SS_AHBS_AON_CBCR
 
 
-		dma_path = devm_of_icc_get(dev, "mem");
-		WARN_ON(IS_ERR(dma_path));
-
-		icc_set_bw(dma_path, 0, kBps_to_icc(1000*1000*50));
+		dsp->dma_path = devm_of_icc_get(dev, "mem");
+		WARN_ON(IS_ERR(dsp->dma_path));
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
 
 		// TURING_QDSP6SS_PLL_PLL_CM_PLL_LUCID_OLE
 		// Set it to use TURBO_L3 frequency - 1843.2 MHz
 		clk_pll_configure_lucid_ole(dsp->base + 0x40000, 1843200000);
 	}
 
-	if (!strcmp(dev->of_node->name, "adsp"))
+	if (dsp->is_adsp)
 	{
-		struct icc_path *dma_path = devm_of_icc_get(dev, "mem");
-		WARN_ON(IS_ERR(dma_path));
-
-		icc_set_bw(dma_path, 0, kBps_to_icc(1000*1000*50));
+		dsp->dma_path = devm_of_icc_get(dev, "mem");
+		WARN_ON(IS_ERR(dsp->dma_path));
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
 	}
 
 	return 0;
