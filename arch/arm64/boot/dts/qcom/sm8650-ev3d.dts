@@ -1470,7 +1470,7 @@
 	display_resx1: display_resx1-state {
 		pins = "gpio3";
 		function = "normal";
-		power-source = <1>; /* 1.8 V */
+		power-source = <0>; /* 1.8 V */
 	};
 
 	display_resx2: display_resx2-state {
