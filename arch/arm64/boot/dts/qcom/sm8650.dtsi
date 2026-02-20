@@ -8269,7 +8269,18 @@
 				 <&ipcc IPCC_CLIENT_CDSP 2>,
 				 <&ipcc IPCC_CLIENT_CDSP 3>;
 
-			/* power-domains = <&rpmhpd SM8250_CX>; */
+			power-domains = <&rpmhpd RPMHPD_CX>,
+					<&rpmhpd RPMHPD_MXC>,
+					<&rpmhpd RPMHPD_NSP>,
+					<&rpmhpd RPMHPD_NSP2>;
+			power-domain-names = "cx",
+					     "mxc",
+					     "nsp",
+					     "nsp2";
+			required-opps = <&rpmhpd_opp_nom>,
+					<&rpmhpd_opp_nom>,
+					<&rpmhpd_opp_nom>,
+					<&rpmhpd_opp_nom>;
 
 			interconnects = <&nsp_noc MASTER_CDSP_PROC 0 &mc_virt SLAVE_EBI1 0>;
 			interconnect-names = "mem";
@@ -8303,6 +8314,11 @@
 				 <&lpass_aoncc LPASS_AON_CC_Q6_AXIM_CLK>;
 			clock-names = "lpi_noc_hs", "q6_axim";
 
+			power-domains = <&rpmhpd RPMHPD_LCX>,
+					<&rpmhpd RPMHPD_LMX>;
+			power-domain-names = "lcx",
+					     "lmx";
+			required-opps = <&rpmhpd_opp_nom>, <&rpmhpd_opp_nom>;
 
 			interconnects = <&lpass_lpicx_noc MASTER_LPASS_PROC QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
