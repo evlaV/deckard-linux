@@ -34,6 +34,7 @@
 #include "wow.h"
 #include "debugfs_htt_stats.h"
 #include "coredump.h"
+#include "thermal.h"
 
 #define SM(_v, _f) (((_v) << _f##_LSB) & _f##_MASK)
 
@@ -845,6 +846,8 @@ struct ath12k {
 
 	s8 last_vdev_start_max_tx_power;
 	struct ath12k_pdev_rssi_offsets rssi_info;
+
+	struct ath12k_thermal thermal;
 };
 
 struct ath12k_hw {
