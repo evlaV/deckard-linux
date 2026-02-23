@@ -11,3 +11,5 @@ obj-$(CONFIG_QCOM_QSEECOM)	+= qcom_qseecom.o
 obj-$(CONFIG_QCOM_QSEECOM_UEFISECAPP) += qcom_qseecom_uefisecapp.o
 obj-$(CONFIG_QCOM_PAS)		+= qcom_pas.o
 obj-$(CONFIG_QCOM_PAS_TEE)	+= qcom_pas_tee.o
+# SPDX-License-Identifier: GPL-2.0-only
+obj-$(CONFIG_QTI_TZ_LOG)	+= tz_log.o

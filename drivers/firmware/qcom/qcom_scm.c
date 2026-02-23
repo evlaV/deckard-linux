@@ -2811,6 +2811,10 @@ static const struct kernel_param_ops minidump_dest_param_ops = {
 module_param_cb(minidump_dest, &minidump_dest_param_ops, NULL, 0644);
 MODULE_PARM_DESC(minidump_dest, "Minidump SRAM destination: usb (default) or storage");
 
+#ifdef CONFIG_QCOM_SCM_ADDON
+#include "qcom_scm_addon.c"
+#endif
+
 static int qcom_scm_probe(struct platform_device *pdev)
 {
 	struct qcom_tzmem_pool_config pool_config;
