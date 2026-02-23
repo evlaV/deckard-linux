@@ -129,6 +129,11 @@
 			compatible = "qcom,pshold";
 			reg = <0 0x0c264000 0 0x4>;
 		};
+
+		tz-log@14680720 {
+			compatible = "qcom,tz-log";
+			reg = <0 0x14680720 0 0x3000>;
+		};
 	};
 };
 
