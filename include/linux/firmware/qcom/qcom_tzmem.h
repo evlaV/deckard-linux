@@ -62,6 +62,17 @@ DEFINE_FREE(qcom_tzmem, void *, if (_T) qcom_tzmem_free(_T))
 
 phys_addr_t qcom_tzmem_to_phys(void *ptr);
 
+int32_t qcom_tzmem_deregister(uint64_t handle);
+
+int32_t qcom_tzmem_register(
+		phys_addr_t paddr,
+		size_t size,
+		uint32_t *ns_vmid_list,
+		uint32_t *ns_vm_perm_list,
+		uint32_t ns_vmid_num,
+		uint32_t tz_perm,
+		uint64_t *handle);
+
 #if IS_ENABLED(CONFIG_QCOM_TZMEM_MODE_SHMBRIDGE)
 int qcom_tzmem_shm_bridge_create(phys_addr_t paddr, size_t size, u64 *handle);
 void qcom_tzmem_shm_bridge_delete(u64 handle);

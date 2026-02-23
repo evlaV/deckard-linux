@@ -74,4 +74,12 @@ config QCOM_QSEECOM_UEFISECAPP
 	  Select Y here to provide access to EFI variables on the aforementioned
 	  platforms.
 
+config QTI_TZ_LOG
+	tristate "QTI Trust Zone (TZ) Log Driver"
+	depends on QCOM_TZMEM && PROC_FS && QCOM_SCM
+	help
+	  Provide debugging capability with a procfs interface for messages produced
+	  by the Secure code (Trust zone). These messages provide diagnostic information
+	  about TZ operations.
+
 endmenu
