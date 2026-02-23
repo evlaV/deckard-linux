@@ -178,6 +178,13 @@ config MTK_ADSP_IPC
 	  ADSP exists on some mtk processors.
 	  Client might use shared memory to exchange information with ADSP.
 
+config QCOM_SCM_ADDON
+	bool "Qualcomm SCM Addon Support"
+	depends on QCOM_SCM
+	help
+	  QCOM SCM addon provision APIs for client like kgsl, SHMBridge, etc,
+	  once enable it provides extra API via QCOM_SCM.
+
 config SYSFB
 	bool
 	select BOOT_VESA_SUPPORT
