@@ -24,6 +24,7 @@
 #include <drm/drm_fourcc.h>
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_print.h>
+#include <linux/suspend.h>
 
 #include "drm_client_internal.h"
 #include "drm_draw_internal.h"
@@ -841,6 +842,10 @@ void drm_vrconsole_register(struct drm_device *dev)
 	ret = input_register_handler(&new->input_handler);
 	if (ret)
 		drm_warn(dev, "failed to register input handler\n");
+
+	//dont block waiting for a VT switch when we go into suspend
+	drm_warn(dev, "vt switch on suspend ignored\n");
+	pm_set_vt_switch(0);
 
 	drm_dbg(dev, "Registered with vt\n");
 	return;
