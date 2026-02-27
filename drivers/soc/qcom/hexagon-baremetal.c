@@ -32,6 +32,9 @@
 #define QDSP6SS_BOOT_CMD 0x404
 #define QDSP6SS_BOOT_STATUS 0x408
 
+#define QDSP6SS_INTF_HALTREQ 0x2088
+#define QDSP6SS_INTF_HALTACK 0x208c
+
 #define QDSP6SS_RESET_CFG 0x2440
 #define QDSP6SS_RESET_CMD 0x2444
 #define QDSP6SS_RESET_STATUS 0x2448
@@ -477,6 +480,11 @@ static int dsp_shutdown(struct dsp *dsp)
 		dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
 		dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
 	} else {
+		writel(7, dsp->base + QDSP6SS_INTF_HALTREQ);
+		while (!readl(dsp->base + QDSP6SS_INTF_HALTACK)) usleep_range(1000,2000);
+		printk("haltack=%d\n", readl(dsp->base + QDSP6SS_INTF_HALTACK));
+		writel(0, dsp->base + QDSP6SS_INTF_HALTREQ);
+
 		writel(~0u, dsp->base +  QDSP6SS_RESET_CFG);
 		writel(1, dsp->base +  QDSP6SS_RESET_CMD);
 		usleep_range(10000, 20000); // XXX
