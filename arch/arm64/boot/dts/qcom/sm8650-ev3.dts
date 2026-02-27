@@ -14,6 +14,17 @@
 #include "pmk8550.dtsi"
 #include "sm8650-el2.dtsi"
 
+// make sure display/camera stuff isn't being used
+/delete-node/ &camss;
+/delete-node/ &camcc;
+/delete-node/ &cci0;
+/delete-node/ &cci1;
+/delete-node/ &cci2;
+/delete-node/ &icp;
+/delete-node/ &mdss;
+/delete-node/ &dispcc;
+/delete-node/ &usb_dp_qmpphy_dp_in;
+
 / {
 	model = "SM8650 EV3 rev1 4slam 2et";
 	compatible = "qcom,sm8650-ev3", "qcom,sm8650";
@@ -1023,15 +1034,17 @@
 	};
 };
 
+#if 0
 &dispcc {
 	status = "okay";
 };
+#endif
 
 &gpi_dma1 {
 	status = "okay";
 };
 
-
+#if 0
 &camss {
 	status = "okay";
 
@@ -1309,6 +1322,7 @@
 		};
 	};
 };
+#endif
 
 &gpu {
 	status = "okay";
@@ -1319,6 +1333,7 @@
 	status = "okay";
 };
 
+#if 0
 &mdss {
 	iommu-defer-attach;
 	status = "okay";
@@ -1410,6 +1425,7 @@
 	status = "okay";
 	phy-type = <PHY_TYPE_CPHY>;
 };
+#endif
 
 &pcie0 {
 	wake-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
@@ -2184,6 +2200,7 @@
 	};
 };
 
+#if 0
 &cci0_i2c0 { // "CCI_0"
 	// pinctrl-names = "default";
 	// pinctrl-0 = <&cam_sensor_mclk7_active>;
@@ -2256,6 +2273,7 @@
 		};
 	};
 };
+#endif
 
 &pm8550ve_gpios {
 	gpio-line-names =

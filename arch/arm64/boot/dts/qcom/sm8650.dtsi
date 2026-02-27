@@ -8224,7 +8224,15 @@
 			//interconnect-names = "mem";//, "dma";
 
 			iommus = <&apps_smmu 0xc00 0x0>, // CDSP
-				 <&apps_smmu 0xc20 0x0>; // UBWCDMA
+				 <&apps_smmu 0xc20 0x0>, // UBWCDMA
+				 <&apps_smmu 0x1c00 0x2>, // display
+				 <&apps_smmu 0x800 0x20>,
+				 <&apps_smmu 0x18a0 0x40>,
+				 <&apps_smmu 0x1860 0x00>;
+
+			pinctrl-names = "default";
+			pinctrl-0 = <&cam0_default &cam1_default &cam3_default
+				 &cam5_default &cam6_default &cam7_default>;
 
 			//core-max-rate = <1497600000>;
 		};
