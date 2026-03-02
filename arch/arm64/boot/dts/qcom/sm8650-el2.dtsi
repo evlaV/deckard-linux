@@ -307,7 +307,7 @@
 /* PON PBS reboot mode */
 
 &pmk8550_pon {
-	compatible = "qcom,pmk8350-el2-pon", "qcom,pmk8350-pon";
+	compatible = "qcom,pmk8350-el2-pon";
 };
 
 &gpu {
