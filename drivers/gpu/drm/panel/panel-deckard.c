@@ -1155,15 +1155,15 @@ static int panel_available_show(struct seq_file *s, void *data)
 }
 
 // RCLK = 32.5 MHz
-#define RCLK_PERIOD_NSEC ( 1000000/32500 )
-#define INTERNAL_LINE_TIME_NSEC  ( RTN * RCLK_PERIOD_NSEC )
-#define EXTERNAL_LINE_TIME_NSEC ( ( 1000000 * (uint32_t)modes[ctx->current_mode].htotal ) / ( (uint32_t)modes[ctx->current_mode].clock ) )
+#define RCLK_PERIOD_PSEC (uint64_t)( 1000000000/32500 )
+#define INTERNAL_LINE_TIME_PSEC  (uint64_t)( RTN * RCLK_PERIOD_PSEC )
+#define EXTERNAL_LINE_TIME_PSEC (uint64_t)( ( 1000000000 * (uint64_t)modes[ctx->current_mode].htotal ) / ( (uint64_t)modes[ctx->current_mode].clock ) )
 
 static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 {
 	struct drm_panel *panel = s->private;
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-	uint32_t vsync_to_photons_nsec, gpo1_tes1, frame_period_nsec;
+	uint64_t vsync_to_photons_psec, gpo1_tes1, frame_period_psec;
 
 	// set offset based on frame rate to optimize settling time vs latency
 	if ( modes[ctx->current_mode].vtotal == modes[MODE_144].vtotal ) {
@@ -1180,23 +1180,23 @@ static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 		|| ctx->current_mode == MODE_80
 		|| ctx->current_mode == MODE_90 ) {
 		// VID_VS_DELAY + TES
-		vsync_to_photons_nsec = VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + gpo1_tes1 * INTERNAL_LINE_TIME_NSEC;
+		vsync_to_photons_psec = VID_VS_DELAY * EXTERNAL_LINE_TIME_PSEC + gpo1_tes1 * INTERNAL_LINE_TIME_PSEC;
 	} else { // SHARP 120/144
 		switch ( ctx->current_mode )
 		{
 			case MODE_144:
-				frame_period_nsec = 1000000000 / 144;
+				frame_period_psec = 1000000000000 / 144;
 				break;
 			case MODE_120:
-				frame_period_nsec = 1000000000 / 120;
+				frame_period_psec = 1000000000000 / 120;
 				break;
 			default:
-				frame_period_nsec = 1000000000 / 120;
+				frame_period_psec = 1000000000000 / 120;
 		}
 		// 1/FPS + TES
-		vsync_to_photons_nsec = VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + frame_period_nsec + gpo1_tes1 * INTERNAL_LINE_TIME_NSEC;
+		vsync_to_photons_psec = VID_VS_DELAY * EXTERNAL_LINE_TIME_PSEC + frame_period_psec + gpo1_tes1 * INTERNAL_LINE_TIME_PSEC;
 	}
-	seq_printf(s, "%u\n", vsync_to_photons_nsec / 1000);
+	seq_printf(s, "%llu\n", vsync_to_photons_psec / 1000000);
 	return 0;
 }
 
