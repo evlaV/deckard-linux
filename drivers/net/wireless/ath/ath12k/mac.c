@@ -1074,8 +1074,7 @@ static int ath12k_mac_txpower_recalc(struct ath12k *ar)
 	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "txpower to set in hw %d\n",
 		   txpower / 2);
 
-	if ((pdev->cap.supported_bands & WMI_HOST_WLAN_2GHZ_CAP) &&
-	    ar->txpower_limit_2g != txpower) {
+	if ((pdev->cap.supported_bands & WMI_HOST_WLAN_2GHZ_CAP)) {
 		param = WMI_PDEV_PARAM_TXPOWER_LIMIT2G;
 		ret = ath12k_wmi_pdev_set_param(ar, param,
 						txpower, ar->pdev->pdev_id);
@@ -1084,8 +1083,7 @@ static int ath12k_mac_txpower_recalc(struct ath12k *ar)
 		ar->txpower_limit_2g = txpower;
 	}
 
-	if ((pdev->cap.supported_bands & WMI_HOST_WLAN_5GHZ_CAP) &&
-	    ar->txpower_limit_5g != txpower) {
+	if ((pdev->cap.supported_bands & WMI_HOST_WLAN_5GHZ_CAP)) {
 		param = WMI_PDEV_PARAM_TXPOWER_LIMIT5G;
 		ret = ath12k_wmi_pdev_set_param(ar, param,
 						txpower, ar->pdev->pdev_id);
