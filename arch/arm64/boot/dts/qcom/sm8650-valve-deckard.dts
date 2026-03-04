@@ -1102,6 +1102,8 @@
 	no-sdio;
 	no-mmc;
 
+	max-sd-hs-hz = <37000000>;
+
 	pinctrl-0 = <&sdc2_default>, <&sdc2_card_det_n>;
 	pinctrl-1 = <&sdc2_sleep>, <&sdc2_card_det_n>;
 	pinctrl-names = "default", "sleep";
