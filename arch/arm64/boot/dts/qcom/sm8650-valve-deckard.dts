@@ -222,6 +222,11 @@
 		// XXX: needs VREG_L05B_3P1, VREG_BOB2
 	};
 
+	dummy_reg: regulator-dummy {
+		compatible = "regulator-fixed";
+		regulator-name = "dummy-supply";
+	};
+
 	/delete-node/ reserved-memory;
 
 	reserved-memory {
@@ -384,8 +389,38 @@
 		en-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
 		pgood-gpio = <&tlmm 69 GPIO_ACTIVE_HIGH>;
 	};
+
+	FPGA_clk: FPGA_clk {
+		compatible = "fpga-clock";
+		#clock-cells = <0>;
+		clock-output-names = "fpga_clk";
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&FPGA_clk_default>;
+
+		clocks = <&gcc GCC_GP3_CLK>;
+		clock-frequency = <24000000>;
+		clock-names = "pinclk";
+	};
+
+	fpga: fpga {
+		compatible = "valve,fpga";
+
+		clocks = <&FPGA_clk>;
+		clock-names = "fpga_clk";
+		v1v1-supply = <&vreg_l2g_1p1>;
+		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
+	};
 };
 
+&fpga {
+	// Setup FPGA Userspace Pin States
+	pinctrl-0 = <&fpga_cready>, <&fpga_cs>, <&fpga_crst>, <&fpga_cdone>, <&fpga_rst>;
+	pinctrl-names = "default";
+
+	status = "okay";
+};
 
 &pmk8550_vadc {
 	// NOTE TODO REVISIT - There is some chance to lower interrupt usage slightly if these are converted to thermal zones and qcom,adc-tm-type is set appropriately..
@@ -928,6 +963,348 @@
 	// AON CAM ADSP TEST: gpio102/104 to mclk function
 	pinctrl-names = "default";
 	pinctrl-0 = <&cam2_default &cam4_default>;
+};
+
+&camss {
+	status = "okay";
+
+	vdda-csi01-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi24-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi35-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi01-1p2-supply = <&vreg_l3i_1p2>;
+	vdda-csi24-1p2-supply = <&vreg_l3i_1p2>;
+	vdda-csi35-1p2-supply = <&vreg_l3i_1p2>;
+
+	ports {
+		port@0 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csiphy0_ep: endpoint@0 {
+				reg = <0>;
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_6dof_l>;
+			};
+
+			csiphy0_combo_ep: endpoint@1 {
+				reg = <1>;
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&cam_6dof_ul>;
+			};
+		};
+
+		port@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csiphy1_ep: endpoint@0 {
+				reg = <0>;
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_6dof_r>;
+			};
+
+			csiphy1_combo_ep: endpoint@1 {
+				reg = <1>;
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&cam_6dof_ur>;
+			};
+		};
+
+#if 0
+		port@2 {
+			csiphy2_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&cam_et_l>;
+			};
+		};
+
+		port@4 {
+			csiphy4_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&cam_et_r>;
+			};
+		};
+#endif
+        port@3 {
+			reg = <3>;
+			csiphy3_ep: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&cam_pt_left>;
+			};
+		};
+
+		port@5 {
+			reg = <5>;
+			csiphy5_ep: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&cam_pt_right>;
+			};
+		};
+
+
+	};
+};
+
+&cci0 {
+	status = "okay";
+};
+
+&cci0_i2c1 {
+#if 0
+	sensor@60 {
+		compatible = "ovti,ov6211";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK4_CLK>;
+		reset-gpios = <&tlmm 7 GPIO_ACTIVE_LOW>;
+		pinctrl-0 = <&cam4_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l6n_2p8>;
+		DOVDD-supply = <&eyetck_dovdd_1v8>;
+		DVDD-supply = <&vreg_l1n_1p1>;
+
+		port {
+			cam_et_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&csiphy2_ep>;
+			};
+		};
+	};
+#endif
+};
+
+&cci1 {
+	pinctrl-0 = <&cci1_0_default>;
+	pinctrl-1 = <&cci1_0_sleep>;
+	status = "okay";
+};
+
+&cci1_i2c0 {
+#if 0
+	sensor@60 {
+		compatible = "ovti,ov6211";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK2_CLK>;
+		reset-gpios = <&tlmm 3 GPIO_ACTIVE_LOW>;
+		pinctrl-0 = <&cam2_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l6m_2p8>;
+		DOVDD-supply = <&eyetck_dovdd_1v8>;
+		DVDD-supply = <&vreg_l1m_1p1>;
+
+		port {
+			cam_et_r: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&csiphy4_ep>;
+			};
+		};
+	};
+#endif
+};
+
+&cci2 {
+	status = "okay";
+};
+
+&cci2_i2c0 {
+	clock-frequency = <400000>;
+
+	sensor@60 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		clock-names = "xclk";
+		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 123 GPIO_ACTIVE_HIGH>;
+		sensor-queue-index = <0>;
+		ircontrol-gpios = <&tlmm 200 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam1_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l3n_2p8>;
+		DOVDD-supply = <&vreg_6dof_1p8_l>;
+		DVDD-supply = <&vreg_6dof_1p2_l>;
+		id = "slam_left";
+
+		dual-i2c-available = <1>;
+		dual-i2c-main = <1>;
+		
+		port {
+			cam_6dof_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				link-frequencies = /bits/ 64 <500000000>;
+				remote-endpoint = <&csiphy0_ep>;
+			};
+		};
+	};
+
+	sensor@36 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x36>;
+		clocks = <&camcc CAM_CC_MCLK0_CLK>;
+		clock-names = "xclk";
+		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 121 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam0_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l3m_2p8>;
+		DOVDD-supply = <&vreg_6dof_1p8_r>;
+		DVDD-supply = <&vreg_6dof_1p2_r>;
+		id = "slam_right";
+		sensor-queue-index = <0>;
+
+		dual-i2c-available = <1>;
+		dual-i2c-main = <0>;
+		
+		port {
+			cam_6dof_r: endpoint {
+				data-lanes = <0 1>;
+				clock-lanes = <4>;
+				link-frequencies = /bits/ 64 <500000000>;
+				remote-endpoint = <&csiphy1_ep>;
+			};
+		};
+	};
+};
+
+&cci2_i2c1 {
+	clock-frequency = <400000>;
+
+	eeprom@50 {
+		compatible = "atmel,24c64";
+		reg = <0x50>;
+		pagesize = <32>;
+		size = <8192>;
+		address-width = <16>;
+		status = "okay";
+		vcc-supply = <&rgb_3v0_vout>;
+		label = "passthrough_cams_eeprom_left";
+	};
+
+	eeprom@53 {
+		compatible = "atmel,24c64";
+		reg = <0x53>;
+		pagesize = <32>;
+		size = <8192>;
+		address-width = <16>;
+		status = "okay";
+		vcc-supply = <&rgb_3v0_vout>;
+		label = "passthrough_cams_eeprom_right";
+	};
+
+	cam3@1a {
+		compatible = "arcimx616";
+
+		id = "passthrough_left";
+
+		reg = <0x1a>;
+
+
+		reset-gpios = <&tlmm 126 GPIO_ACTIVE_HIGH>;
+		detect-gpios = <&pm8550b_gpios 6 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam6_default>,<&cam7_default>;
+
+		clocks = <&camcc CAM_CC_MCLK7_CLK>,<&camcc CAM_CC_MCLK6_CLK>;
+		clock-names = "xclk","xclk2";
+
+		DOVDD-supply = <&rgb_3v0_vout>;
+		
+		// AVDD-supply = <&camera_2p8>;
+		// DVDD-supply = <&camera_1p2>;
+
+		port {
+			cam_pt_left: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&csiphy3_ep>;
+			};
+		};
+	};
+
+	cam4@10 {
+		compatible = "arcimx616";
+
+		id = "passthrough_right";
+
+		reg = <0x10>;
+
+		DOVDD-supply = <&dummy_reg>;
+
+		port {
+			cam_pt_right: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&csiphy5_ep>;
+			};
+		};
+	};
+
+	sensor@60 {
+		compatible = "ovti,og0ve10x";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		clock-names = "xclk";
+		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 28 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam3_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l4n_2p8>;
+		DOVDD-supply = <&vreg_6dof_1p8_ul>;
+		DVDD-supply = <&vreg_6dof_1p2_ul>;
+		sensor-queue-index = <1>;
+		id = "upper_left";
+	
+		dual-i2c-available = <1>;
+		dual-i2c-main = <1>;
+		
+		port {
+			cam_6dof_ul: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				link-frequencies = /bits/ 64 <500000000>;
+				remote-endpoint = <&csiphy0_combo_ep>;
+			};
+		};
+	};
+	
+	sensor@3e {
+		compatible = "ovti,og0ve10x";
+		reg = <0x3E>;
+		clocks = <&camcc CAM_CC_MCLK5_CLK>;
+		clock-names = "xclk";
+		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 68 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam5_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l4m_2p8>;
+		DOVDD-supply = <&vreg_6dof_1p8_ur>;
+		DVDD-supply = <&vreg_6dof_1p2_ur>;
+
+		sensor-queue-index = <1>;
+		id = "upper_right";
+
+		dual-i2c-available = <1>;
+		dual-i2c-main = <0>;
+
+		port {
+			cam_6dof_ur: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				link-frequencies = /bits/ 64 <500000000>;
+				remote-endpoint = <&csiphy1_combo_ep>;
+			};
+		};
+	};
 };
 
 &gpu {
@@ -1689,6 +2066,20 @@
 	clock-frequency = <32764>;
 };
 
+&spi0{
+	// Remove Hardware Chip Select
+	pinctrl-0 = <&qup_spi0_data_clk>;
+
+	status = "okay";
+
+	cspi@0 {
+		status = "okay";
+		compatible = "linux,spidev";
+		spi-max-frequency = <8000000>;
+		reg = <0>;
+	};
+};
+
 &tlmm {
 	gpio-line-names =
 		// GPIO000 - GPIO015
@@ -1715,6 +2106,113 @@
 		"",  "",  "te2_left",  "",  "nrf_reset",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO176 - GPIO189
 		"",  "",  "te2_right",  "",  "", "", "", "", "", "", "", "", "", "";
+
+	FPGA_clk_pins {
+		FPGA_clk_default: fpga_clk_default {
+			mux {
+				pins = "gpio88";
+				function = "gcc_gp3";
+			};
+			config {
+				pins = "gpio88";
+				drive-strength = <6>;
+				bias-pull-none; /* pull none */
+			};
+		};
+		FPGA_clk_active: fpga_clk_active {
+			mux {
+				pins = "gpio88";
+				function = "gcc_gp3";
+			};
+			config {
+				pins = "gpio88";
+				drive-strength = <2>; /* 2 mA */
+				bias-pull-none; /* pull none */
+			};
+		};
+		FPGA_clk_sleep: fpga_clk_sleep {
+			mux {
+				pins = "gpio88";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio88";
+				drive-strength = <2>; /* 2 mA */
+				bias-pull-down; /* pull down */
+			};
+		};
+	};
+
+	// FPGA Pins
+	fpga_rst: fpga_rst {
+		mux {
+			pins = "gpio7";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio7";
+			bias-disable = <0>;
+			drive-strength = <2>;
+			output-enable;
+			ouput-high;
+		};
+	};
+
+	fpga_cs: fpga_cs {
+		mux {
+			pins = "gpio35";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio35";
+			bias-disable = <0>;
+			drive-strength = <2>;
+			output-enable;
+			// active-low;
+			output-high;
+		};
+	};
+
+	fpga_crst: fpga_crst {
+		mux {
+			pins = "gpio39";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio39";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};
+
+	fpga_cdone: fpga_cdone {
+		mux {
+			pins = "gpio155";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio155";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};	
+
+	fpga_cready: fpga_cready {
+		mux {
+			pins = "gpio158";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio158";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};
 
 	bt_default: bt-default-state {
 		bt-en-pins {

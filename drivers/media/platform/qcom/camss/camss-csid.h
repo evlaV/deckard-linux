@@ -29,6 +29,26 @@
 
 #define CSID_RESET_TIMEOUT_MS 500
 
+// iocts needed to read/write to CSID/VFE registers
+#define VIDIOC_CSID_VFE_PRV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
+#define VIDIOC_CSID_VFE_PRV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
+#define VIDIOC_CSID_VFE_PRV_STATS_CFG _IO('V', BASE_VIDIOC_PRIVATE + 3)
+
+enum csid_vfe_private_register_type {
+	CSID_VFE_PRV_REG_TYPE_CSID = 0,
+	CSID_VFE_PRV_REG_TYPE_VFE = 1
+};
+struct csid_vfe_private_register {
+	enum csid_vfe_private_register_type type;
+	__u32 offset; // might be an offset from the csid or vfe base address depending on type
+	__u32 value;
+};
+
+struct csid_vfe_private_registers_config {
+	__u32 count;
+	struct csid_vfe_private_register __user *regs;
+};
+
 enum csid_testgen_mode {
 	CSID_PAYLOAD_MODE_DISABLED = 0,
 	CSID_PAYLOAD_MODE_INCREMENTING = 1,
@@ -70,6 +90,18 @@ struct csid_phy_config {
 	u32 lane_assign;
 	u32 en_vc;
 	u8 need_vc_update;
+};
+
+struct camss_buf_done_info {
+	u32 status; // reg
+	u64 sof_isp_ts_conv;
+	u64 eof_isp_ts_conv;
+	s64 isp_to_kernel_raw_ts_offset;
+	u64 sof_kernel_ts;
+	void* sensor_metadata_buffer_addr;
+	size_t sensor_metadata_buffer_size;
+	u64 last_delayed_regs_update_start_ts;
+	u64 last_delayed_regs_update_end_ts;
 };
 
 struct csid_device;
@@ -137,6 +169,15 @@ struct csid_hw_ops {
 	 * @is_clear: Indicate if it is clearing reg update or setting reg update
 	 */
 	void (*reg_update)(struct csid_device *csid, int port_id, bool is_clear);
+
+	void (*trigger_delayed_csid_vfe_register_update)(struct csid_device *csid, int port_id);
+
+	// Allow CSID and VFE registers read/write from userspace using ioctls
+	int (*set_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
+	int (*get_csid_vfe_registers)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
+	int (*set_csid_vfe_registers_delayed)(struct csid_device *csid, struct csid_vfe_private_registers_config* regs_config);
+	// Configure which of the additional ISP output (frameheader, statistics) is streamed and provided with the metadata buffers
+	long (*set_statistics_config)(struct csid_device *csid, u32 stats_cfg);
 };
 
 struct csid_subdev_resources {
@@ -166,6 +207,58 @@ struct csid_device {
 	struct v4l2_ctrl_handler ctrls;
 	struct v4l2_ctrl *testgen_mode;
 	const struct csid_subdev_resources *res;
+
+	bool power_on;
+
+	struct v4l2_subdev *capture_subdev;
+	size_t metadata_size;
+	void* (*get_metadata) (struct v4l2_subdev*, u8 vc);
+	void (*do_post_sof_work) (struct v4l2_subdev*, u64 sof_timestamp, u64 sof_isr_timestamp, u8 vc);
+
+	// keep track of sof per-path/stream otherwise non-synced stream going through the same csid won't have the right sof metadata
+	u64 path_cur_sof_isp_timestamp_converted[MSM_CSID_MAX_SRC_STREAMS];
+	u64 path_last_sof_kernel_ts[MSM_CSID_MAX_SRC_STREAMS];
+
+	// additional vc config
+	u32 multi_vcdt_en;
+	u32 multi_vcdt_vc;
+
+	// Delayed CSID/VFE register update date
+#define CSID_VFE_UPDATE_BUFFER_COUNT (2)
+#define CSID_VFE_UPDATE_BUFFER_MAX_NUM_REGISTERS (32 * 1024) // 32K registers seems resonnable, we can easily reach 5K when updating LUTs
+#define CSID_VFE_UPDATE_BUFFER_SIZE	(sizeof(struct csid_vfe_private_register) * CSID_VFE_UPDATE_BUFFER_MAX_NUM_REGISTERS)
+#define CSID_VFE_UPDATE_BUFFER_STATUS_AVAILABLE 			0 // new registers can be added through ioctl calls
+#define CSID_VFE_UPDATE_BUFFER_STATUS_READY 				1 // ready to be flushed to hardware on next frame completion
+#define CSID_VFE_UPDATE_BUFFER_STATUS_IN_USE 				2 // buffer is being flushed to hw registers
+	bool csid_vfe_regs_delayed_update_supported;
+	struct workqueue_struct *csid_vfe_regs_update_wq;
+	struct work_struct csid_vfe_regs_update_work;
+	atomic_t csid_vfe_regs_update_in_progress;
+	// Add buffers and status
+	void* csid_vfe_regs_update_buffers[CSID_VFE_UPDATE_BUFFER_COUNT];
+	u32 csid_vfe_regs_update_buffers_regs_count[CSID_VFE_UPDATE_BUFFER_COUNT];
+	atomic_t csid_vfe_regs_update_buffers_status[CSID_VFE_UPDATE_BUFFER_COUNT];
+	// Need atomic reg update timestamp read/write
+	atomic64_t last_csid_vfe_regs_update_start_ts;
+	atomic64_t last_csid_vfe_regs_update_end_ts;
+
+#define CSID_RX_DEBUG 1
+#if CSID_RX_DEBUG
+	bool rx_dbg_en;
+
+	// need to store attributes variables since we have one group per csid and want
+	// access the csid_device from attr_rx_stats_en/attr_rx_stats using container_of
+	char rx_dbg_attr_group_name[256];
+	struct attribute_group rx_dbg_attr_group;
+	struct attribute *rx_dbg_attrs[3];
+	struct device_attribute rx_dbg_en_attr;
+	struct device_attribute rx_dbg_stats_attr;
+
+	u64 last_frame_arrival_time;
+
+	// debug rx irq counters
+	u32 rx_dbg_irq_counters[32];
+#endif
 };
 
 struct camss_subdev_resources;
@@ -204,6 +297,9 @@ int msm_csid_register_entity(struct csid_device *csid,
 void msm_csid_unregister_entity(struct csid_device *csid);
 
 void msm_csid_get_csid_id(struct media_entity *entity, u8 *id);
+
+int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size, struct v4l2_subdev **sd);
+int get_post_sof_cb_address(struct media_entity *entity, u64 *addr);
 
 extern const char * const csid_testgen_modes[];
 
