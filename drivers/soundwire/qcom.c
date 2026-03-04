@@ -693,6 +693,7 @@ static irqreturn_t qcom_swrm_wake_irq_handler(int irq, void *dev_id)
 	struct qcom_swrm_ctrl *ctrl = dev_id;
 	int ret;
 
+#if 0
 	ret = pm_runtime_get_sync(ctrl->dev);
 	if (ret < 0 && ret != -EACCES) {
 		dev_err_ratelimited(ctrl->dev,
@@ -701,14 +702,15 @@ static irqreturn_t qcom_swrm_wake_irq_handler(int irq, void *dev_id)
 		pm_runtime_put_noidle(ctrl->dev);
 		return ret;
 	}
+#endif
 
 	if (ctrl->wake_irq > 0) {
 		if (!irqd_irq_disabled(irq_get_irq_data(ctrl->wake_irq)))
 			disable_irq_nosync(ctrl->wake_irq);
 	}
 
-	pm_runtime_mark_last_busy(ctrl->dev);
-	pm_runtime_put_autosuspend(ctrl->dev);
+	//pm_runtime_mark_last_busy(ctrl->dev);
+	//pm_runtime_put_autosuspend(ctrl->dev);
 
 	return IRQ_HANDLED;
 }
@@ -1297,6 +1299,9 @@ static int qcom_swrm_hw_params(struct snd_pcm_substream *substream,
 	struct sdw_stream_runtime *sruntime = ctrl->sruntime[dai->id];
 	int ret;
 
+	if (sruntime->state == SDW_STREAM_ENABLED)
+		return 0;
+
 	ret = qcom_swrm_stream_alloc_ports(ctrl, sruntime, params,
 					   substream->stream);
 	if (ret)
@@ -1310,6 +1315,9 @@ static int qcom_swrm_hw_free(struct snd_pcm_substream *substream,
 {
 	struct qcom_swrm_ctrl *ctrl = dev_get_drvdata(dai->dev);
 	struct sdw_stream_runtime *sruntime = ctrl->sruntime[dai->id];
+
+	if (sruntime->state == SDW_STREAM_ENABLED)
+		return 0;
 
 	qcom_swrm_stream_free_ports(ctrl, sruntime);
 	sdw_stream_remove_master(&ctrl->bus, sruntime);
@@ -1340,6 +1348,7 @@ static int qcom_swrm_startup(struct snd_pcm_substream *substream,
 	struct qcom_swrm_ctrl *ctrl = dev_get_drvdata(dai->dev);
 	int ret;
 
+#if 0
 	ret = pm_runtime_get_sync(ctrl->dev);
 	if (ret < 0 && ret != -EACCES) {
 		dev_err_ratelimited(ctrl->dev,
@@ -1348,6 +1357,7 @@ static int qcom_swrm_startup(struct snd_pcm_substream *substream,
 		pm_runtime_put_noidle(ctrl->dev);
 		return ret;
 	}
+#endif
 
 	return 0;
 }
@@ -1358,8 +1368,8 @@ static void qcom_swrm_shutdown(struct snd_pcm_substream *substream,
 	struct qcom_swrm_ctrl *ctrl = dev_get_drvdata(dai->dev);
 
 	swrm_wait_for_wr_fifo_done(ctrl);
-	pm_runtime_mark_last_busy(ctrl->dev);
-	pm_runtime_put_autosuspend(ctrl->dev);
+	//pm_runtime_mark_last_busy(ctrl->dev);
+	//pm_runtime_put_autosuspend(ctrl->dev);
 
 }
 
@@ -1508,6 +1518,7 @@ static int swrm_reg_show(struct seq_file *s_file, void *data)
 	struct qcom_swrm_ctrl *ctrl = s_file->private;
 	int reg, reg_val, ret;
 
+#if 0
 	ret = pm_runtime_get_sync(ctrl->dev);
 	if (ret < 0 && ret != -EACCES) {
 		dev_err_ratelimited(ctrl->dev,
@@ -1516,13 +1527,14 @@ static int swrm_reg_show(struct seq_file *s_file, void *data)
 		pm_runtime_put_noidle(ctrl->dev);
 		return ret;
 	}
+#endif
 
 	for (reg = 0; reg <= ctrl->max_reg; reg += 4) {
 		ctrl->reg_read(ctrl, reg, &reg_val);
 		seq_printf(s_file, "0x%.3x: 0x%.2x\n", reg, reg_val);
 	}
-	pm_runtime_mark_last_busy(ctrl->dev);
-	pm_runtime_put_autosuspend(ctrl->dev);
+	//pm_runtime_mark_last_busy(ctrl->dev);
+	//pm_runtime_put_autosuspend(ctrl->dev);
 
 
 	return 0;
@@ -1671,11 +1683,11 @@ static int qcom_swrm_probe(struct platform_device *pdev)
 		(ctrl->version >> 24) & 0xff, (ctrl->version >> 16) & 0xff,
 		ctrl->version & 0xffff);
 
-	pm_runtime_set_autosuspend_delay(dev, 3000);
-	pm_runtime_use_autosuspend(dev);
-	pm_runtime_mark_last_busy(dev);
-	pm_runtime_set_active(dev);
-	pm_runtime_enable(dev);
+	//pm_runtime_set_autosuspend_delay(dev, 3000);
+	//pm_runtime_use_autosuspend(dev);
+	//pm_runtime_mark_last_busy(dev);
+	//pm_runtime_set_active(dev);
+	//pm_runtime_enable(dev);
 
 #ifdef CONFIG_DEBUG_FS
 	ctrl->debugfs = debugfs_create_dir("qualcomm-sdw", ctrl->bus.debugfs);

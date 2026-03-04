@@ -28,15 +28,18 @@
 /delete-node/ &lpass_rxmacro;
 /delete-node/ &lpass_txmacro;
 /delete-node/ &lpass_wsamacro;
-/delete-node/ &lpass_vamacro;
-/delete-node/ &lpass_tlmm;
 /delete-node/ &remoteproc_adsp;
 /delete-node/ &remoteproc_cdsp;
 /delete-node/ &remoteproc_mpss;
 
 / {
-	model = "Valve Deckard";
+	/* DSP Service needs "SM8650" in the model string */ 
+	model = "SM8650 Valve Deckard";
 	compatible = "valve,deckard", "qcom,sm8650";
+
+	/delete-node/ smp2p-adsp;
+	/delete-node/ smp2p-cdsp;
+	/delete-node/ smp2p-modem;
 
 	aliases {
 		serial0 = &uart15;
@@ -821,6 +824,13 @@
 	status = "okay";
 };
 
+// ADSP controls eye tracking cameras
+&adsp {
+	// AON CAM ADSP TEST: gpio102/104 to mclk function
+	pinctrl-names = "default";
+	pinctrl-0 = <&cam2_default &cam4_default>;
+};
+
 &gpu {
 	/* Take in account SMMU aperture registers */
 	reg = <0x0 0x03d00000 0x0 0x61000>,
@@ -1165,6 +1175,89 @@
 	vdda-pll-supply = <&vreg_l3i_1p2>;
 
 	status = "okay";
+};
+
+&lpass_aoncc {
+	status = "okay";
+};
+
+&lpass_audiocc {
+	status = "okay";
+};
+
+&lpass_corecc {
+	status = "okay";
+};
+
+&lpass_hm {
+	status = "okay";
+};
+
+&lpass_wsa_lpaif {
+	status = "okay";
+	clocks = <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM0_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM1_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM2_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM3_CLK>;
+	memory-region = <&lpass_audio_lpm>;
+};
+
+&lpass_va_lpaif {
+	status = "okay";
+	clocks = <&lpass_aoncc LPASS_AON_CC_VA_MEM0_CLK>,
+		 <&lpass_audiocc LPASS_AUDIO_CC_CODEC_MEM0_CLK>; /* XXX: why does it need this clock */
+	memory-region = <&lpass_va_lpm>;
+};
+
+&lpass_core_lpaif {
+	status = "okay";
+};
+
+&lpass_vamacro {
+	clocks = <&lpass_aoncc LPASS_AON_CC_TX_MCLK_CLK>;
+	clock-names = "mclk";
+	pinctrl-0 = <&dmic01_default>;
+	pinctrl-names = "default";
+	vdd-micb-supply = <&vreg_l10b_1p8>;
+	qcom,dmic-sample-rate = <2400000>; /* or 3200000 */
+};
+
+&lpass_tlmm {
+	/delete-property/ clocks;
+	status = "okay";
+};
+
+#include "sm8650-deckard-sndcard.dtsi"
+
+&i2c_hub_8 {
+    /* MAX98390 */
+    right_spkr_i2s: speaker@38 {
+        compatible = "maxim,max98390";
+        reg = <0x38>;
+        maxim,temperature_calib = <1024>; // TODO
+        maxim,r0_calib = <100232>; // TODO
+        reset-gpios = <&tlmm 73 GPIO_ACTIVE_LOW>;
+        // irq-gpios = <&tlmm 186 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
+        #sound-dai-cells = <0>;
+        sound-name-prefix = "Speaker Right";
+    };
+
+    /* MAX98390 */
+    left_spkr_i2s: speaker@3d {
+        compatible = "maxim,max98390";
+        reg = <0x3d>;
+        maxim,temperature_calib = <1024>; // TODO
+        maxim,r0_calib = <100232>; // TODO
+        reset-gpios = <&tlmm 161 GPIO_ACTIVE_LOW>;
+        // irq-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
+        #sound-dai-cells = <0>;
+        sound-name-prefix = "Speaker Left";
+    };
+};
+
+// Disable Soundwire
+&wsa_swr_active {
+	status = "disabled";
 };
 
 &pcie1 {

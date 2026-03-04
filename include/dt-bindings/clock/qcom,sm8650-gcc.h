@@ -202,6 +202,9 @@
 #define GCC_GPLL3_AO						191
 #define GCC_GPLL4_AO						192
 #define GCC_GPLL6_AO						193
+#define GCC_LPASS_CFG_NOC_SWAY_CLK				194
+#define GCC_TURING_CFG_AHB_CLK					195
+#define GCC_TURING_Q6_AXI_CLK					196
 
 /* GCC resets */
 #define GCC_CAMERA_BCR						0
