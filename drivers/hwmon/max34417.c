@@ -19,16 +19,19 @@
 #include <linux/hwmon-sysfs.h>
 #include <linux/regulator/consumer.h>
 
-#define MAX34417_REG_UPDATE			0x00
-#define MAX34417_REG_CONTROL			0x01
-#define MAX34417_REG_ACC_COUNT			0x02
-#define MAX34417_REG_POWER_ACC_BASE		0x03
-#define MAX34417_REG_VOLTAGE_BASE		0x07
-#define MAX34417_REG_DEV_ID			0x0F
-#define MAX34417_DEV_ID				0x38
-#define MAX34417_DEV_ID_MASK			0x38
+#define MAX34417_REG_UPDATE                0x00
+#define MAX34417_REG_CONTROL               0x01
+#define MAX34417_REG_ACC_COUNT             0x02
+#define MAX34417_REG_POWER_ACC_BASE        0x03
+#define MAX34417_REG_VOLTAGE_BASE          0x07
+#define MAX34417_REG_DEV_ID                0x0F
+#define MAX34417_DEV_ID                    0x38
+#define MAX34417_DEV_ID_MASK               0x38
+#define MAX34417_REG_BULK_POWER_READOUT    0x10
+#define MAX34417_REG_BULK_VOLTAGE_READOUT  0x11
 
-#define MAX34417_REG_STAT_CTRL			0x01
+#define MAX34417_BULK_POWER_READOUT_LEN 	28
+#define MAX34417_BULK_VOLTAGE_READOUT_LEN 	8
 
 #define MAX34417_CHANNEL_COUNT			4
 
@@ -210,7 +213,7 @@ static ssize_t measurement_mode_store(struct device *dev,
 		new_cfg |= MAX34417_CAM_BITMASK;
 
 	err = i2c_smbus_write_byte_data(data->client,
-					MAX34417_REG_STAT_CTRL, new_cfg);
+					MAX34417_REG_CONTROL, new_cfg);
 	if (err)
 		goto error;
 
@@ -250,7 +253,7 @@ static ssize_t park_mode_store(struct device *dev,
 		new_cfg |= MAX34417_PARK_EN_MASK;
 
 	err = i2c_smbus_write_byte_data(data->client,
-					MAX34417_REG_STAT_CTRL, new_cfg);
+					MAX34417_REG_CONTROL, new_cfg);
 	if (err)
 		goto error;
 
@@ -313,7 +316,7 @@ static ssize_t park_value_store(struct device *dev,
 	new_cfg |= (mode) << MAX34417_PARK_VALUE_POS;
 
 	err = i2c_smbus_write_byte_data(data->client,
-					MAX34417_REG_STAT_CTRL, new_cfg);
+					MAX34417_REG_CONTROL, new_cfg);
 	if (err)
 		goto error;
 
@@ -381,7 +384,7 @@ static ssize_t slow_mode_store(struct device *dev,
 		new_cfg |= MAX34417_SLOW_BITMASK;
 
 	err = i2c_smbus_write_byte_data(data->client,
-					MAX34417_REG_STAT_CTRL, new_cfg);
+					MAX34417_REG_CONTROL, new_cfg);
 	if (err)
 		goto error;
 
@@ -593,12 +596,12 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 
 			if (data->config & MAX34417_CAM_BITMASK) {
 				cfg = i2c_smbus_read_byte_data(data->client,
-							       MAX34417_REG_STAT_CTRL);
+							       MAX34417_REG_CONTROL);
 				if (cfg & MAX34417_OVERFLOW_BITMASK) {
 					dev_err(dev, "Overflow on accumulator detected\n");
 					cfg &= ~(MAX34417_OVERFLOW_BITMASK);
 					err = i2c_smbus_write_byte_data(data->client,
-									MAX34417_REG_STAT_CTRL,
+									MAX34417_REG_CONTROL,
 									cfg);
 					if (err)
 						goto error;
@@ -723,7 +726,7 @@ static void max34417_remove(void *data)
 	const struct max34417_data *max31730 = data;
 	const struct i2c_client *client = max31730->client;
 
-	i2c_smbus_write_byte_data(client, MAX34417_REG_STAT_CTRL, 0);
+	i2c_smbus_write_byte_data(client, MAX34417_REG_CONTROL, 0);
 }
 
 static int max34417_probe(struct i2c_client *client)
@@ -805,7 +808,7 @@ static int max34417_probe(struct i2c_client *client)
     regval = i2c_smbus_read_byte_data(client, MAX34417_REG_DEV_ID);
 
 	/* Initializing in single shot measurement mode */
-	err = i2c_smbus_write_byte_data(client, MAX34417_REG_STAT_CTRL, 0xA0);
+	err = i2c_smbus_write_byte_data(client, MAX34417_REG_CONTROL, 0xA0);
 	if (err) {
 		dev_err(dev, "i2c write failed\n");
 		return err;
