@@ -817,6 +817,7 @@ struct ath12k_link_vif *ath12k_mac_get_arvif_by_vdev_id(struct ath12k_base *ab,
 
 	return NULL;
 }
+EXPORT_SYMBOL(ath12k_mac_get_arvif_by_vdev_id);
 
 struct ath12k *ath12k_mac_get_ar_by_vdev_id(struct ath12k_base *ab, u32 vdev_id)
 {

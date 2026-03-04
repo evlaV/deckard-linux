@@ -2729,12 +2729,8 @@ static size_t __iommu_unmap(struct iommu_domain *domain,
 		unmapped += unmapped_page;
 	}
 
-<<<<<<< HEAD
-	trace_unmap(orig_iova, size, unmapped);
-	iommu_debug_unmap_end(domain, orig_iova, size, unmapped);
-=======
 	trace_unmap(orig_iova, size, unmapped, domain->dev_name);
->>>>>>> 338f1fda8728 (TEMP DEBUG FOR ATH12K crash:  allow iommu filtering by device)
+	iommu_debug_unmap_end(domain, orig_iova, size, unmapped);
 	return unmapped;
 }
 
