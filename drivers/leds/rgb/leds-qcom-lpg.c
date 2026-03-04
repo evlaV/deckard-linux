@@ -875,8 +875,22 @@ static int lpg_brightness_mc_set(struct led_classdev *cdev,
 {
 	struct led_classdev_mc *mc = lcdev_to_mccdev(cdev);
 	struct lpg_led *led = container_of(mc, struct lpg_led, mcdev);
+	struct lpg_channel *chan;
+	int i;
 
 	mutex_lock(&led->lpg->lock);
+
+	/*
+	 * if we have any chanenl ramp_enabled we may just want
+	 * to switch the led colors that are enabled in the pattern
+	 * and not the pattern itself, or forced to give the pattern
+	 * again
+	 */
+	for (i = 0; i < led->num_channels; i++) {
+		chan = led->channels[i];
+		if (chan->ramp_enabled)
+			value = LED_FULL;
+	}
 
 	led_mc_calc_color_components(mc, value);
 	lpg_brightness_set(led, cdev, mc->subled_info);
@@ -891,10 +905,19 @@ static int lpg_blink_set(struct lpg_led *led,
 {
 	struct lpg_channel *chan;
 	unsigned int period;
+	unsigned int triled_enabled = 0;
 	unsigned int triled_mask = 0;
 	struct lpg *lpg = led->lpg;
+	struct led_classdev *cdev;
+	struct led_classdev_mc *mc;
+	struct mc_subled *info;
+	unsigned int intensity;
 	u64 duty;
 	int i;
+
+	cdev = &led->cdev;
+	mc = &led->mcdev;
+	info = mc->subled_info;
 
 	if (!*delay_on && !*delay_off) {
 		*delay_on = 500;
@@ -906,6 +929,17 @@ static int lpg_blink_set(struct lpg_led *led,
 
 	for (i = 0; i < led->num_channels; i++) {
 		chan = led->channels[i];
+		intensity = info[i].intensity;
+
+		triled_mask |= chan->triled_mask;
+
+		/* only setup and enable the leds that have intensity defined*/
+		if (!intensity)
+			continue;
+
+		/* if we never setup the brightness before do it now */
+		if (!info[i].brightness)
+			led_mc_calc_color_components(mc, LED_FULL);
 
 		lpg_calc_freq(chan, period);
 		lpg_calc_duty(chan, duty);
@@ -913,13 +947,13 @@ static int lpg_blink_set(struct lpg_led *led,
 		chan->enabled = true;
 		chan->ramp_enabled = false;
 
-		triled_mask |= chan->triled_mask;
+		triled_enabled |= chan->triled_mask;
 
 		lpg_apply(chan);
 	}
 
 	/* Enable triled lines */
-	triled_set(lpg, triled_mask, triled_mask);
+	triled_set(lpg, triled_mask, triled_enabled);
 
 	chan = led->channels[0];
 	duty = div_u64(chan->pwm_value * chan->period, LPG_RESOLUTION_9BIT);

@@ -227,6 +227,16 @@
 		regulator-name = "dummy-supply";
 	};
 
+	exp_vout_5v: regulator-exp-vout-5v {
+		compatible = "regulator-valve_5v_exp";
+		regulator-name = "exp_vout_5v";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		enable-gpio = <&pm8550vs_g_gpios 6 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		vin-supply = <&vph_pwr>;
+	};
+
 	/delete-node/ reserved-memory;
 
 	reserved-memory {
@@ -950,6 +960,14 @@
 	};
 };
 
+&iris {
+	status = "okay";
+
+	video-firmware {
+		iommus = <&apps_smmu 0x1942 0x0000>;
+	};
+};
+
 &dispcc {
 	status = "okay";
 };
@@ -1471,6 +1489,34 @@
 				regulator-max-microvolt = <5800000>;
 			};
 		};
+	};
+
+	/* FAN_I2C */
+	slg4ax46073v@8 {
+		compatible = "silego,slg4ax46073v";
+		reg = <0x08>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		//vdd-fan-1-supply = <&VBATT_2S>; not modeled in dts
+		fan-alert-gpios = <&tlmm 174 GPIO_ACTIVE_HIGH>;
+		en-gpio = <&tlmm 138 GPIO_ACTIVE_HIGH>;
+		bp-gpio = <&tlmm 139 GPIO_ACTIVE_HIGH>;
+
+		status = "ok";
+	};
+
+	/* 3D Hall Sensor I2C */
+	als31300@6c {
+		compatible = "allegro,als31300";
+		reg = <0x6c>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		vdd-hall-supply = <&vreg_l2b_3p0>;
+		//hall-alert-gpios = <&tlmm 65 GPIO_ACTIVE_LOW>; // Not Used
+
+		status = "okay";
 	};
 };
 
@@ -2077,6 +2123,48 @@
 		compatible = "linux,spidev";
 		spi-max-frequency = <8000000>;
 		reg = <0>;
+};
+
+// nRF SPI HID
+&spi10 {
+	status = "okay";
+
+	// L, on QUP2 SE2 L3 CS
+	// expansion, CS_2=gpio_15
+	hid@2 {
+		compatible = "hid-over-spi";
+		reg = <2>;
+		interrupts-extended = <&tlmm 69 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 70 GPIO_ACTIVE_LOW>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&l_spihid_default_state>;
+	};
+
+	// R, on QUP2 SE2 L6 CS
+	// mainboard, CS_1=gpio_13
+	hid@1 {
+		compatible = "hid-over-spi";
+		reg = <1>;
+		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 137 GPIO_ACTIVE_LOW>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&r_spihid_default_state>;
 	};
 };
 
@@ -2211,6 +2299,65 @@
 			pins = "gpio158";
 			bias-disable = <0>;
 			input-enable;
+		};
+	};
+
+	// nRF CS
+	qup_spi10_cs_nrf: qup-spi10-cs-state-nrf {
+		pins = "gpio13";
+		function = "qup2_se2";
+		drive-strength = <6>;
+		bias-disable;
+	};
+
+	// nRF SPI interrupt and reset pins
+
+	// expansion
+	l_spihid_default_state: l-spihid-default {
+		irq0-pins {
+			pins = "gpio69";
+			function = "gpio";
+			bias-pull-up;
+		};
+
+		reset0-pins {
+			pins = "gpio70";
+			function = "gpio";
+			drive-strength = <2>;
+			output-low;
+			bias-pull-down;
+		};
+	};
+
+	// host/mainboard
+	r_spihid_default_state: r-spihid-default {
+		irq0-pins {
+			pins = "gpio66";
+			function = "gpio";
+			bias-pull-up;
+		};
+
+		reset0-pins {
+			pins = "gpio137";
+			function = "gpio";
+			drive-strength = <2>;
+			output-low;
+			bias-pull-down;
+		};
+	};
+
+	nrf_host_rst_n: nrf_host_rst_n {
+		mux {
+			pins = "gpio164";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio164";
+			power-source = <1>; /* 1.8 V */
+			bias-disable = <0>;
+			output-enable;
+			output-low;
 		};
 	};
 
