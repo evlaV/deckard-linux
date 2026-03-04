@@ -125,7 +125,7 @@ static int msm_drm_init(struct device *dev, const struct drm_driver *drv,
 	INIT_LIST_HEAD(&priv->objects);
 	mutex_init(&priv->obj_lock);
 
-	/*
+	/*workqueu
 	 * Initialize the LRUs:
 	 */
 	mutex_init(&priv->lru.lock);
@@ -862,6 +862,7 @@ static const struct drm_driver msm_kms_driver = {
 	.postclose          = msm_postclose,
 	.dumb_create        = msm_gem_dumb_create,
 	.dumb_map_offset    = drm_gem_dumb_map_offset,
+	.gem_prime_import   = msm_gem_prime_import,
 	.gem_prime_import_sg_table = msm_gem_prime_import_sg_table,
 #ifdef CONFIG_DEBUG_FS
 	.debugfs_init       = msm_debugfs_init,

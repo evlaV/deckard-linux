@@ -307,6 +307,52 @@ static int msm_gem_show(struct seq_file *m, void *arg)
 	return 0;
 }
 
+static int msm_gemstat_show(struct seq_file *m, void *arg)
+{
+	struct drm_info_node *node = m->private;
+	struct drm_device *dev = node->minor->dev;
+	struct msm_drm_private *priv = dev->dev_private;
+	int ret;
+
+	ret = mutex_lock_interruptible(&priv->obj_lock);
+	if (ret)
+		return ret;
+
+	msm_gem_objects_total(&priv->objects, m);
+
+	mutex_unlock(&priv->obj_lock);
+
+	return 0;
+}
+
+static int msm_load_show(struct seq_file *m, void *arg)
+{
+	struct drm_info_node *node = m->private;
+	struct drm_device *dev = node->minor->dev;
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_gpu *gpu = priv->gpu;
+	uint64_t elapsed_gpu = gpu->elapsed_ns;
+	uint64_t elapsed_cpu = ktime_get_ns();
+	int load;
+	int ret;
+
+	ret = mutex_lock_interruptible(&priv->obj_lock);
+	if (ret)
+		return ret;
+
+	load = 100 * (elapsed_gpu - priv->load_state.last_gpu) /
+		(elapsed_cpu - priv->load_state.last_cpu);
+
+	seq_printf(m, "%d\n", load);
+
+	priv->load_state.last_gpu = elapsed_gpu;
+	priv->load_state.last_cpu = elapsed_cpu;
+
+	mutex_unlock(&priv->obj_lock);
+
+	return 0;
+}
+
 static int msm_mm_show(struct seq_file *m, void *arg)
 {
 	struct drm_info_node *node = m->private;
@@ -320,6 +366,8 @@ static int msm_mm_show(struct seq_file *m, void *arg)
 
 static struct drm_info_list msm_debugfs_list[] = {
 		{"gem", msm_gem_show},
+		{"gemstat", msm_gemstat_show},
+		{"load", msm_load_show},
 		{ "mm", msm_mm_show },
 };
 
@@ -363,6 +411,39 @@ int msm_debugfs_late_init(struct drm_device *dev)
 	return ret;
 }
 
+static int
+freq_get(void *data, u64 *val)
+{
+	struct drm_device *dev = data;
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_gpu *gpu = priv->gpu;
+	struct msm_gpu_devfreq *df = &gpu->devfreq;
+
+	/*
+	 * If the GPU is idle, use the shadow/saved freq to avoid
+	 * confusing devfreq (which is unaware that we are switching
+	 * to lowest freq until the device is active again)
+	 */
+	if (df->idle_freq)
+		*val = df->idle_freq;
+	else if (gpu->funcs->gpu_get_freq)
+		*val = gpu->funcs->gpu_get_freq(gpu);
+	else
+		*val = 0;
+
+	return 0;
+}
+
+static int
+freq_set(void *data, u64 val)
+{
+	return 0;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(freq_fops,
+			 freq_get, freq_set,
+			 "%llu\n");
+
 static void msm_debugfs_gpu_init(struct drm_minor *minor)
 {
 	struct drm_device *dev = minor->dev;
@@ -391,6 +472,8 @@ static void msm_debugfs_gpu_init(struct drm_minor *minor)
 
 	debugfs_create_u32("downdifferential",0600, gpu_devfreq,
 			   &priv->gpu_devfreq_config.downdifferential);
+
+	debugfs_create_file("current_freq", 0400, gpu_devfreq, dev, &freq_fops);
 }
 
 void msm_debugfs_init(struct drm_minor *minor)

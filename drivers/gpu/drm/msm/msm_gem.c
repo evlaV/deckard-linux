@@ -464,8 +464,12 @@ int msm_gem_prot(struct drm_gem_object *obj)
 	if (msm_obj->flags & MSM_BO_MAP_PRIV)
 		prot |= IOMMU_PRIV;
 
-	if (msm_obj->flags & MSM_BO_CACHED_COHERENT)
-		prot |= IOMMU_CACHE;
+ 	if (msm_obj->flags & MSM_BO_CACHED_COHERENT)
+ 		prot |= IOMMU_CACHE;
+	else if (prot == 1)
+		prot |= IOMMU_QCOM_SYS_CACHE;
+	else if (prot == 2)
+		prot |= IOMMU_USE_LLC_NWA;
 
 	return prot;
 }
@@ -1021,6 +1025,72 @@ void msm_gem_describe_objects(struct list_head *list, struct seq_file *m)
 		struct drm_gem_object *obj = &msm_obj->base;
 		seq_puts(m, "   ");
 		msm_gem_describe(obj, m, &stats);
+	}
+
+	seq_printf(m, "Total:     %4d objects, %9zu bytes\n",
+			stats.all.count, stats.all.size);
+	seq_printf(m, "Active:    %4d objects, %9zu bytes\n",
+			stats.active.count, stats.active.size);
+	seq_printf(m, "Resident:  %4d objects, %9zu bytes\n",
+			stats.resident.count, stats.resident.size);
+	seq_printf(m, "Purgeable: %4d objects, %9zu bytes\n",
+			stats.purgeable.count, stats.purgeable.size);
+	seq_printf(m, "Purged:    %4d objects, %9zu bytes\n",
+			stats.purged.count, stats.purged.size);
+}
+
+static inline void msm_gem_stats(struct drm_gem_object *obj, struct seq_file *m,
+		struct msm_gem_stats *stats)
+{
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+	struct dma_resv *robj = obj->resv;
+	struct msm_gem_vma *vma;
+	uint64_t off = drm_vma_node_start(&obj->vma_node);
+	const char *madv;
+
+	if (!msm_gem_trylock(obj))
+			return;
+
+	stats->all.count++;
+	stats->all.size += obj->size;
+
+	if (msm_gem_active(obj)) {
+		stats->active.count++;
+		stats->active.size += obj->size;
+	}
+
+	if (msm_obj->pages) {
+		stats->resident.count++;
+		stats->resident.size += obj->size;
+	}
+
+	switch (msm_obj->madv) {
+	case __MSM_MADV_PURGED:
+		stats->purged.count++;
+		stats->purged.size += obj->size;
+		madv = " purged";
+		break;
+	case MSM_MADV_DONTNEED:
+		stats->purgeable.count++;
+		stats->purgeable.size += obj->size;
+		madv = " purgeable";
+		break;
+	case MSM_MADV_WILLNEED:
+	default:
+		madv = "";
+		break;
+	}
+
+	msm_gem_unlock(obj);
+}
+
+void msm_gem_objects_total(struct list_head *list, struct seq_file *m) {
+	struct msm_gem_stats stats = {};
+	struct msm_gem_object *msm_obj;
+
+	list_for_each_entry(msm_obj, list, node) {
+		struct drm_gem_object *obj = &msm_obj->base;
+		msm_gem_stats(obj, m, &stats);
 	}
 
 	seq_printf(m, "Total:     %4d objects, %9zu bytes\n",

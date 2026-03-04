@@ -139,7 +139,7 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		newname = kasprintf(GFP_KERNEL, "qcom/%s", fwname);
 
 		ret = qcom_mdt_load(dev, fw, newname, pasid,
-				mem_region, mem_phys, mem_size, NULL);
+				    mem_region, mem_phys, mem_size, NULL);
 		kfree(newname);
 	}
 	if (ret)
@@ -177,8 +177,8 @@ int adreno_zap_shader_load(struct msm_gpu *gpu, u32 pasid)
 
 	/* We need SCM to be able to load the firmware */
 	if (!qcom_scm_is_available()) {
-		DRM_DEV_ERROR(&pdev->dev, "SCM is not available\n");
-		return -EPROBE_DEFER;
+		DRM_DEV_INFO_ONCE(&pdev->dev, "SCM is not available\n");
+		return -ENODEV;
 	}
 
 	return zap_shader_load_mdt(gpu, adreno_gpu->info->zapfw, pasid);
@@ -335,7 +335,8 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 		struct msm_gpu_fault_info fault_info = {};
 
 		/* Turn off the hangcheck timer to keep it from bothering us */
-		timer_delete(&gpu->hangcheck_timer);
+		for (int i = 0; i < gpu->nr_rings; i++)
+			timer_delete(&gpu->rb[i]->hangcheck_timer);
 
 		/* Let any concurrent GMU transactions know that the MMU may be
 		 * blocked for a while and they should wait on us.
@@ -651,6 +652,7 @@ int adreno_hw_init(struct msm_gpu *gpu)
 	VERB("%s", gpu->name);
 
 	if (adreno_gpu->info->family >= ADRENO_6XX_GEN1 &&
+	    qcom_scm_is_available() &&
 	    qcom_scm_set_gpu_smmu_aperture_is_available()) {
 		/* We currently always use context bank 0, so hard code this */
 		ret = qcom_scm_set_gpu_smmu_aperture(0);

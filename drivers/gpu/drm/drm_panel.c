@@ -430,6 +430,35 @@ void *__devm_drm_panel_alloc(struct device *dev, size_t size, size_t offset,
 }
 EXPORT_SYMBOL(__devm_drm_panel_alloc);
 
+/**
+ * drm_panel_get_modes - probe the available display modes of a panel
+ * @panel: DRM panel
+ * @connector: DRM connector
+ *
+ * The modes probed from the panel are automatically added to the connector
+ * that the panel is attached to.
+ *
+ * Return: The number of modes available from the panel on success, or 0 on
+ * failure (no modes).
+ */
+int drm_panel_mode_set(struct drm_panel *panel,
+			       const struct drm_display_mode *mode,
+			       const struct drm_display_mode *adjusted_mode)
+{
+	if (!panel)
+		return 0;
+
+	if (panel->funcs && panel->funcs->mode_set) {
+		int num;
+		num = panel->funcs->mode_set(panel, mode, adjusted_mode);
+		if (num > 0)
+			return num;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_panel_mode_set);
+
 #ifdef CONFIG_OF
 /**
  * of_drm_find_panel - look up a panel using a device tree node

@@ -31,3 +31,7 @@
 		vcc-supply  = <&vreg_l15b_1p8>;
 	};
 };
+
+&panel {
+	low-fps-support;
+};
