@@ -152,8 +152,8 @@ static void video_stop_streaming(struct vb2_queue *q)
 
 static const struct vb2_ops msm_video_vb2_q_ops = {
 	.queue_setup     = video_queue_setup,
-	.wait_prepare    = vb2_ops_wait_prepare,
-	.wait_finish     = vb2_ops_wait_finish,
+	//.wait_prepare    = vb2_ops_wait_prepare, // removed in v7.0
+	//.wait_finish     = vb2_ops_wait_finish, // removed in v7.0
 	//.buf_init        = video_buf_init,
 	.buf_prepare     = video_buf_prepare,
 	.buf_queue       = metadata_vb2_buf_queue,

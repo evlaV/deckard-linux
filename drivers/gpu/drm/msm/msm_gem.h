@@ -265,6 +265,7 @@ struct msm_gem_object {
 void msm_gem_vma_get(struct drm_gem_object *obj);
 void msm_gem_vma_put(struct drm_gem_object *obj);
 
+uint64_t msm_gem_mmap_offset(struct drm_gem_object *obj);
 int msm_gem_prot(struct drm_gem_object *obj);
 int msm_gem_pin_vma_locked(struct drm_gem_object *obj, struct drm_gpuva *vma);
 void msm_gem_unpin_locked(struct drm_gem_object *obj);

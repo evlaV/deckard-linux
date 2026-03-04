@@ -1064,7 +1064,7 @@
 
 &pm8550vs_g {
 	status = "okay";
-}
+};
 
 &pmk8550_rtc {
 	status = "okay";

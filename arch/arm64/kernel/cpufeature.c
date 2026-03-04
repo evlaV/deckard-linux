@@ -1463,15 +1463,6 @@ void update_cpu_features(int cpu,
 		cpacr_restore(cpacr);
 	}
 
-<<<<<<< HEAD
-	if (detect_ftr_has_mpam()) {
-		info->reg_mpamidr = read_cpuid(MPAMIDR_EL1);
-		taint |= check_update_ftr_reg(SYS_MPAMIDR_EL1, cpu,
-					info->reg_mpamidr, boot->reg_mpamidr);
-	}
-
-=======
->>>>>>> e06bbc42113b (Revert "arm64: cpufeature: discover CPU support for MPAM")
 	/*
 	 * The kernel uses the LDGM/STGM instructions and the number of tags
 	 * they read/write depends on the GMID_EL1.BS field. Check that the

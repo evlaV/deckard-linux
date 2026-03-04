@@ -802,7 +802,7 @@ static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
 			ath12k_err(ab,
 			   "dp_tx: arvif lookup failed for peer_id %d\n", ts->peer_id);
 			spin_unlock_bh(&ab->base_lock);
-			ieee80211_free_txskb(ath12k_ar_to_hw(ar), msdu);
+			ieee80211_free_txskb(ath12k_pdev_dp_to_hw(dp_pdev), msdu);
 			goto exit;
 		}
 
