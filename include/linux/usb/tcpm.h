@@ -130,6 +130,10 @@ enum tcpm_transmit_type {
  *		swap following Discover Identity on SOP' occurs.
  *		Return true when the TCPM is allowed to request a Vconn swap
  *		after Discovery Identity on SOP.
+ * @qcom_legacy_reset:
+ *		Optional; workaround for qcom pmic legacy cable detect on boot
+* @disable_pd:
+ *		Optional; disable pmic pdphy state machine
  */
 struct tcpc_dev {
 	struct fwnode_handle *fwnode;
@@ -170,6 +174,8 @@ struct tcpc_dev {
 	void (*check_contaminant)(struct tcpc_dev *dev);
 	bool (*cable_comm_capable)(struct tcpc_dev *dev);
 	bool (*attempt_vconn_swap_discovery)(struct tcpc_dev *dev);
+	int (*qcom_legacy_reset)(struct tcpc_dev *dev);
+	int (*disable_pd)(struct tcpc_dev *dev);
 };
 
 struct tcpm_port;
