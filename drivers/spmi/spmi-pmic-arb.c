@@ -2,8 +2,6 @@
 /*
  * Copyright (c) 2012-2015, 2017, 2021, The Linux Foundation. All rights reserved.
  */
-
-#include <linux/bitfield.h>
 #include <linux/bitmap.h>
 #include <linux/delay.h>
 #include <linux/err.h>
@@ -27,12 +25,12 @@
 #define PMIC_ARB_VERSION_V3_MIN		0x30000000
 #define PMIC_ARB_VERSION_V5_MIN		0x50000000
 #define PMIC_ARB_VERSION_V7_MIN		0x70000000
-#define PMIC_ARB_VERSION_V8_MIN		0x80000000
 #define PMIC_ARB_INT_EN			0x0004
 
 #define PMIC_ARB_FEATURES		0x0004
 #define PMIC_ARB_FEATURES_PERIPH_MASK	GENMASK(10, 0)
-#define PMIC_ARB_FEATURES_V8_PERIPH_MASK	GENMASK(12, 0)
+
+#define PMIC_ARB_FEATURES1		0x0008
 
 /* PMIC Arbiter channel registers offsets */
 #define PMIC_ARB_CMD			0x00
@@ -52,11 +50,9 @@
 #define SPMI_MAPPING_BIT_IS_1_RESULT(X)	(((X) >> 0) & 0xFF)
 
 #define SPMI_MAPPING_TABLE_TREE_DEPTH	16	/* Maximum of 16-bits */
-#define PMIC_ARB_MAX_PPID		BIT(13)
+#define PMIC_ARB_MAX_PPID		BIT(12) /* PPID is 12bit */
 #define PMIC_ARB_APID_VALID		BIT(15)
-#define PMIC_ARB_CHAN_IS_IRQ_OWNER_MASK	BIT(24)
-#define PMIC_ARB_V8_CHAN_IS_IRQ_OWNER_MASK	BIT(31)
-
+#define PMIC_ARB_CHAN_IS_IRQ_OWNER(reg)	((reg) & BIT(24))
 #define INVALID_EE				0xFF
 
 /* Ownership Table */
@@ -105,32 +101,25 @@ enum pmic_arb_channel {
 /* Maximum number of support PMIC peripherals */
 #define PMIC_ARB_MAX_PERIPHS		512
 #define PMIC_ARB_MAX_PERIPHS_V7		1024
-#define PMIC_ARB_MAX_PERIPHS_V8		8192
 #define PMIC_ARB_TIMEOUT_US		1000
 #define PMIC_ARB_MAX_TRANS_BYTES	(8)
 
 #define PMIC_ARB_APID_MASK		0xFF
-#define PMIC_ARB_PPID_MASK		GENMASK(11, 0)
-#define PMIC_ARB_V8_PPID_MASK		GENMASK(12, 0)
+#define PMIC_ARB_PPID_MASK		0xFFF
 
 /* interrupt enable bit */
 #define SPMI_PIC_ACC_ENABLE_BIT		BIT(0)
 
-#define HWIRQ_SID_MASK	GENMASK(28, 24)
-#define HWIRQ_PID_MASK	GENMASK(23, 16)
-#define HWIRQ_IRQID_MASK	GENMASK(15, 13)
-#define HWIRQ_APID_MASK	GENMASK(12, 0)
-
 #define spec_to_hwirq(slave_id, periph_id, irq_id, apid) \
-	(FIELD_PREP(HWIRQ_SID_MASK, (slave_id))  | \
-	 FIELD_PREP(HWIRQ_PID_MASK, (periph_id)) | \
-	 FIELD_PREP(HWIRQ_IRQID_MASK, (irq_id))  | \
-	 FIELD_PREP(HWIRQ_APID_MASK, (apid)))
+	((((slave_id) & 0xF)   << 28) | \
+	(((periph_id) & 0xFF)  << 20) | \
+	(((irq_id)    & 0x7)   << 16) | \
+	(((apid)      & 0x3FF) << 0))
 
-#define hwirq_to_sid(hwirq)  FIELD_GET(HWIRQ_SID_MASK, (hwirq))
-#define hwirq_to_per(hwirq)  FIELD_GET(HWIRQ_PID_MASK, (hwirq))
-#define hwirq_to_irq(hwirq)  FIELD_GET(HWIRQ_IRQID_MASK, (hwirq))
-#define hwirq_to_apid(hwirq) FIELD_GET(HWIRQ_APID_MASK, (hwirq))
+#define hwirq_to_sid(hwirq)  (((hwirq) >> 28) & 0xF)
+#define hwirq_to_per(hwirq)  (((hwirq) >> 20) & 0xFF)
+#define hwirq_to_irq(hwirq)  (((hwirq) >> 16) & 0x7)
+#define hwirq_to_apid(hwirq) (((hwirq) >> 0)  & 0x3FF)
 
 struct pmic_arb_ver_ops;
 
@@ -697,7 +686,7 @@ static void pmic_arb_chained_irq(struct irq_desc *desc)
 	int last = bus->max_apid;
 	/*
 	 * acc_offset will be non-zero for the secondary SPMI bus instance on
-	 * v7 and v8 controllers.
+	 * v7 controllers.
 	 */
 	int acc_offset = bus->base_apid >> 5;
 	u8 ee = pmic_arb->ee;
@@ -924,8 +913,7 @@ static int qpnpint_irq_domain_translate(struct irq_domain *d,
 		return -EINVAL;
 	if (fwspec->param_count != 4)
 		return -EINVAL;
-	if (intspec[0] > FIELD_MAX(HWIRQ_SID_MASK) || intspec[1] > FIELD_MAX(HWIRQ_PID_MASK) ||
-	    intspec[2] > FIELD_MAX(HWIRQ_IRQID_MASK))
+	if (intspec[0] > 0xF || intspec[1] > 0xFF || intspec[2] > 0x7)
 		return -EINVAL;
 
 	ppid = intspec[0] << 8 | intspec[1];
@@ -1183,7 +1171,7 @@ static int pmic_arb_read_apid_map_v5(struct spmi_pmic_arb_bus *bus)
 
 	/*
 	 * In order to allow multiple EEs to write to a single PPID in arbiter
-	 * version 5,7 and 8, there can be more than one APID mapped to each PPID.
+	 * version 5 and 7, there is more than one APID mapped to each PPID.
 	 * The owner field for each of these mappings specifies the EE which is
 	 * allowed to write to the APID.  The owner of the last (highest) APID
 	 * which has the IRQ owner bit set for a given PPID will receive
@@ -1195,17 +1183,6 @@ static int pmic_arb_read_apid_map_v5(struct spmi_pmic_arb_bus *bus)
 	 * APID = N to N+M-1 are assigned to the secondary bus
 	 * where N = number of APIDs supported by the primary bus and
 	 *       M = number of APIDs supported by the secondary bus
-	 *
-	 * In arbiter version 8, the APID numbering space is divided between
-	 * the SPMI buses according to this mapping:
-	 * APID = 0     to N-1       --> bus 0
-	 * APID = N     to N+M-1     --> bus 1
-	 * APID = N+M   to N+M+P-1   --> bus 2
-	 * APID = N+M+P to N+M+P+Q-1 --> bus 3
-	 * where N = number of APIDs supported by bus 0
-	 *       M = number of APIDs supported by bus 1
-	 *       P = number of APIDs supported by bus 2
-	 *       Q = number of APIDs supported by bus 3
 	 */
 	apidd = &bus->apid_data[bus->base_apid];
 	apid_max = bus->base_apid + bus->apid_count;
@@ -1213,11 +1190,12 @@ static int pmic_arb_read_apid_map_v5(struct spmi_pmic_arb_bus *bus)
 		offset = pmic_arb->ver_ops->apid_map_offset(i);
 		if (offset >= pmic_arb->core_size)
 			break;
-		regval = readl_relaxed(ppid_base + offset);
+
+		regval = readl_relaxed(pmic_arb->core + offset);
 		if (!regval)
 			continue;
-		ppid = (regval >> ppid_shift) & ppid_mask;
-		is_irq_ee = regval & irq_owner_mask;
+		ppid = (regval >> 8) & PMIC_ARB_PPID_MASK;
+		is_irq_ee = PMIC_ARB_CHAN_IS_IRQ_OWNER(regval);
 
 		regval = readl_relaxed(pmic_arb->ver_ops->apid_owner(bus, i));
 		apidd->write_ee = SPMI_OWNERSHIP_PERIPH2OWNER(regval);
@@ -1446,102 +1424,6 @@ static int pmic_arb_offset_v7(struct spmi_pmic_arb_bus *bus, u8 sid, u16 addr,
 	return offset;
 }
 
-static int pmic_arb_get_core_resources_v8(struct platform_device *pdev,
-					  void __iomem *core)
-{
-	struct spmi_pmic_arb *pmic_arb = platform_get_drvdata(pdev);
-
-	pmic_arb->apid_map = devm_platform_ioremap_resource_byname(pdev, "chnl_map");
-	if (IS_ERR(pmic_arb->apid_map))
-		return PTR_ERR(pmic_arb->apid_map);
-
-	pmic_arb->core = core;
-
-	pmic_arb->max_periphs = PMIC_ARB_MAX_PERIPHS_V8;
-
-	return pmic_arb_get_obsrvr_chnls_v2(pdev);
-}
-
-static int pmic_arb_get_bus_resources_v8(struct platform_device *pdev,
-					 struct device_node *node,
-					 struct spmi_pmic_arb_bus *bus)
-{
-	int index;
-
-	index = of_property_match_string(node, "reg-names", "chnl_owner");
-	if (index < 0) {
-		dev_err(&pdev->dev, "chnl_owner reg region missing\n");
-		return -EINVAL;
-	}
-
-	bus->apid_owner = devm_of_iomap(&pdev->dev, node, index, NULL);
-
-	return PTR_ERR_OR_ZERO(bus->apid_owner);
-}
-
-static int pmic_arb_read_apid_map_v8(struct spmi_pmic_arb_bus *bus)
-{
-	return _pmic_arb_read_apid_map(bus, bus->pmic_arb->apid_map,
-				       PMIC_ARB_V8_PPID_MASK, 0,
-				       PMIC_ARB_V8_CHAN_IS_IRQ_OWNER_MASK);
-}
-
-/*
- * Arbiter v8 supports up to 4 buses. Each bus will get a different apid count, read
- * from different registers.
- */
-static int pmic_arb_init_apid_v8(struct spmi_pmic_arb_bus *bus, int index)
-{
-	int ret = _pmic_arb_init_apid_v7(bus, index, 4,
-					 PMIC_ARB_FEATURES_V8_PERIPH_MASK);
-	if (ret)
-		return ret;
-
-	ret = pmic_arb_read_apid_map_v8(bus);
-	if (ret) {
-		dev_err(&bus->spmic->dev, "could not read APID->PPID mapping table, rc= %d\n",
-			ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-/*
- * v8 offset per ee and per apid for observer channels and per apid for
- * read/write channels.
- */
-static int pmic_arb_offset_v8(struct spmi_pmic_arb_bus *bus, u8 sid, u16 addr,
-			      enum pmic_arb_channel ch_type)
-{
-	struct spmi_pmic_arb *pmic_arb = bus->pmic_arb;
-	u16 apid;
-	int rc;
-	u32 offset = 0;
-	u16 ppid = (sid << 8) | (addr >> 8);
-
-	rc = pmic_arb->ver_ops->ppid_to_apid(bus, ppid);
-	if (rc < 0)
-		return rc;
-
-	apid = rc;
-	switch (ch_type) {
-	case PMIC_ARB_CHANNEL_OBS:
-		offset = 0x40000 * pmic_arb->ee + 0x20 * apid;
-		break;
-	case PMIC_ARB_CHANNEL_RW:
-		if (bus->apid_data[apid].write_ee != pmic_arb->ee) {
-			dev_err(&bus->spmic->dev, "disallowed SPMI write to sid=%u, addr=0x%04X\n",
-				sid, addr);
-			return -EPERM;
-		}
-		offset = 0x200 * apid;
-		break;
-	}
-
-	return offset;
-}
-
 static u32 pmic_arb_fmt_cmd_v1(u8 opc, u8 sid, u16 addr, u8 bc)
 {
 	return (opc << 27) | ((sid & 0xf) << 20) | (addr << 4) | (bc & 0x7);
@@ -1660,14 +1542,6 @@ pmic_arb_irq_clear_v7(struct spmi_pmic_arb_bus *bus, u16 n)
 	return pmic_arb->wr_base + 0x108 + 0x1000 * n;
 }
 
-static void __iomem *
-pmic_arb_irq_clear_v8(struct spmi_pmic_arb_bus *bus, u16 n)
-{
-	struct spmi_pmic_arb *pmic_arb = bus->pmic_arb;
-
-	return pmic_arb->wr_base + 0x108 + 0x200 * n;
-}
-
 static u32 pmic_arb_apid_map_offset_v2(u16 n)
 {
 	return 0x800 + 0x4 * n;
@@ -1683,12 +1557,6 @@ static u32 pmic_arb_apid_map_offset_v7(u16 n)
 	return 0x2000 + 0x4 * n;
 }
 
-static u32 pmic_arb_apid_map_offset_v8(u16 n)
-{
-	/* For v8, offset is from "chnl_map" base register, not "core". */
-	return 0x4 * n;
-}
-
 static void __iomem *
 pmic_arb_apid_owner_v2(struct spmi_pmic_arb_bus *bus, u16 n)
 {
@@ -1696,7 +1564,7 @@ pmic_arb_apid_owner_v2(struct spmi_pmic_arb_bus *bus, u16 n)
 }
 
 /*
- * For arbiter version 7 and 8, APID ownership table registers have independent
+ * For arbiter version 7, APID ownership table registers have independent
  * numbering space for each SPMI bus instance, so each is indexed starting from
  * 0.
  */
@@ -1704,12 +1572,6 @@ static void __iomem *
 pmic_arb_apid_owner_v7(struct spmi_pmic_arb_bus *bus, u16 n)
 {
 	return bus->cnfg + 0x4 * (n - bus->base_apid);
-}
-
-static void __iomem *
-pmic_arb_apid_owner_v8(struct spmi_pmic_arb_bus *bus, u16 n)
-{
-	return bus->apid_owner + 0x4 * (n - bus->base_apid);
 }
 
 static const struct pmic_arb_ver_ops pmic_arb_v1 = {
@@ -1790,23 +1652,6 @@ static const struct pmic_arb_ver_ops pmic_arb_v7 = {
 	.irq_clear		= pmic_arb_irq_clear_v7,
 	.apid_map_offset	= pmic_arb_apid_map_offset_v7,
 	.apid_owner		= pmic_arb_apid_owner_v7,
-};
-
-static const struct pmic_arb_ver_ops pmic_arb_v8 = {
-	.ver_str		= "v8",
-	.get_core_resources	= pmic_arb_get_core_resources_v8,
-	.get_bus_resources	= pmic_arb_get_bus_resources_v8,
-	.init_apid		= pmic_arb_init_apid_v8,
-	.ppid_to_apid		= pmic_arb_ppid_to_apid_v5,
-	.non_data_cmd		= pmic_arb_non_data_cmd_v2,
-	.offset			= pmic_arb_offset_v8,
-	.fmt_cmd		= pmic_arb_fmt_cmd_v2,
-	.owner_acc_status	= pmic_arb_owner_acc_status_v7,
-	.acc_enable		= pmic_arb_acc_enable_v8,
-	.irq_status		= pmic_arb_irq_status_v8,
-	.irq_clear		= pmic_arb_irq_clear_v8,
-	.apid_map_offset	= pmic_arb_apid_map_offset_v8,
-	.apid_owner		= pmic_arb_apid_owner_v8,
 };
 
 static const struct irq_domain_ops pmic_arb_irq_domain_ops = {

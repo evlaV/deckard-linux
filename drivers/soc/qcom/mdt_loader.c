@@ -292,7 +292,6 @@ static int __qcom_mdt_pas_init(struct device *dev, const struct firmware *fw,
 out:
 	return ret;
 }
-EXPORT_SYMBOL_GPL(qcom_mdt_pas_init);
 #endif
 
 static bool qcom_mdt_bins_are_split(const struct firmware *fw)
