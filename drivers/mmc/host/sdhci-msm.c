@@ -1250,6 +1250,36 @@ retry:
 	rc = msm_init_cm_dll(host);
 	if (rc)
 		return rc;
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] Dumping MCI Registers:\n", mmc_hostname(mmc));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_MCI_DATA_CNT (0x35c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x35c));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_MCI_STATUS   (0x324) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x324));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_MCI_FIFO_CNT (0x308) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x308));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_MCI_VERSION  (0x318) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x318));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_GENERICS     (0x320) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x320));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_TESTBUS_CFG  (0x32c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x32c));
+
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] Dumping Power Control Registers:\n", mmc_hostname(mmc));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_PWRCTL_STATUS (0x240) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x240));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_PWRCTL_MASK   (0x244) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x244));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_PWRCTL_CLEAR  (0x248) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x248));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_PWRCTL_CTL    (0x24c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x24c));
+
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] Dumping DLL & Vendor Registers:\n", mmc_hostname(mmc));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_SDCC_DEBUG    (0x358) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x358));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_DLL_CONFIG    (0x200) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x200));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_DLL_STATUS    (0x208) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x208));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_VENDOR_SPEC   (0x20c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x20c));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_VENDOR_ADMA0  (0x214) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x214));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_VENDOR_ADMA1  (0x218) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x218));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_VENDOR_FUNC2  (0x210) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x210));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_VENDOR_CAP0   (0x21c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x21c));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_VENDOR_CAP1   (0x220) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x220));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_DDR_200_CFG   (0x224) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x224));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_VENDOR_SPEC3  (0x250) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x250));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_DLL_CONFIG_2  (0x254) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x254));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_DLL_CONFIG_3  (0x258) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x258));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_DDR_CONFIG    (0x25c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x25c));
+	dev_err(mmc_dev(mmc), "%s: [before phase tune] CORE_DLL_USR_CTL   (0x388) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x388));
 
 	phase = 0;
 	do {
@@ -1301,6 +1331,37 @@ retry:
 		msm_host->saved_tuning_phase = phase;
 		dev_dbg(mmc_dev(mmc), "%s: Setting the tuning phase to %d\n",
 			 mmc_hostname(mmc), phase);
+
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] Dumping MCI Registers:\n", mmc_hostname(mmc));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_MCI_DATA_CNT (0x35c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x35c));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_MCI_STATUS (0x324) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x324));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_MCI_FIFO_CNT (0x308) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x308));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_MCI_VERSION (0x318) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x318));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_GENERICS (0x320) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x320));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_TESTBUS_CFG (0x32c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x32c));
+		
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] Dumping Power Control Registers:\n", mmc_hostname(mmc));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_PWRCTL_STATUS (0x240) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x240));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_PWRCTL_MASK (0x244) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x244));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_PWRCTL_CLEAR (0x248) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x248));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_PWRCTL_CTL (0x24c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x24c));
+		
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] Dumping DLL & Vendor Registers:\n", mmc_hostname(mmc));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_SDCC_DEBUG (0x358) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x358));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DLL_CONFIG (0x200) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x200));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DLL_STATUS (0x208) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x208));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_SPEC (0x20c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x20c));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_ADMA0 (0x214) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x214));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_ADMA1 (0x218) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x218));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_FUNC2 (0x210) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x210));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_CAP0 (0x21c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x21c));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_CAP1 (0x220) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x220));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DDR_200_CFG (0x224) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x224));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_SPEC3 (0x250) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x250));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DLL_CONFIG_2 (0x254) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x254));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DLL_CONFIG_3 (0x258) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x258));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DDR_CONFIG (0x25c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x25c));
+		dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DLL_USR_CTL (0x388) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x388));
 	} else {
 		if (--tuning_seq_cnt)
 			goto retry;
