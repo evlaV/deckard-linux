@@ -2339,6 +2339,7 @@ static int sdhci_msm_setup_vreg(struct sdhci_msm_host *msm_host,
 		 * on the core_ie of SDC2 Pads. SW write 1�b0
 		 * into the bit 15 of register TLMM_NORTH_SPARE.
 		 */
+//gabe
 #if 0
 		val = msm_spare_read(TLMM_NORTH_SPARE);
 		val &= ~TLMM_NORTH_SPARE_CORE_IE;
@@ -2365,6 +2366,7 @@ static int sdhci_msm_setup_vreg(struct sdhci_msm_host *msm_host,
 		 * on the core_ie of SDC2 Pads. SW write 1�b1
 		 * into the bit 15 of register TLMM_NORTH_SPARE.
 		 */
+//gabe		 
 #if 0
 		val = msm_spare_read(TLMM_NORTH_SPARE);
 		val |= TLMM_NORTH_SPARE_CORE_IE;
@@ -4393,6 +4395,7 @@ static void sdhci_msm_mmc_resume(void *unused, struct mmc_host *mmc, bool *resum
 
 static void sdhci_msm_clkgate_bus_delayed_work(struct work_struct *work)
 {
+//gabe
 #if 0
 	struct sdhci_msm_host *msm_host = container_of(work,
 			struct sdhci_msm_host, clk_gating_work.work);
@@ -5371,6 +5374,7 @@ static int sdhci_msm_suspend_late(struct device *dev)
 	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	sdhci_msm_log_str(msm_host, "Enter\n");
+//gabe	
 #if 0	
 	if (flush_delayed_work(&msm_host->clk_gating_work))
 		dev_dbg(dev, "%s Waited for clk_gating_work to finish\n",
