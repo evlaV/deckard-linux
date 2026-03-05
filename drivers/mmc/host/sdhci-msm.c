@@ -841,6 +841,11 @@ static int msm_init_cm_dll(struct sdhci_host *host,
 			mclk_freq = DIV_ROUND_CLOSEST_ULL((host->clock * 4),
 					xo_clk);
 
+		dev_err(mmc_dev(mmc), "%s: [DLL_DEBUG] config (0x254) = 0x%08x\n", mmc_hostname(mmc), config);
+		dev_err(mmc_dev(mmc), "%s: [DLL_DEBUG] mclk_freq = %u\n", mmc_hostname(mmc), mclk_freq);
+		dev_err(mmc_dev(mmc), "%s: [DLL_DEBUG] host_clock = %lu\n", mmc_hostname(mmc), (unsigned long)host->clock);
+		dev_err(mmc_dev(mmc), "%s: [DLL_DEBUG] xo_clk = %lu\n", mmc_hostname(mmc), (unsigned long)xo_clk);
+
 		config = readl_relaxed(host->ioaddr +
 				msm_offset->core_dll_config_2);
 		config &= ~(0xFF << 10);
