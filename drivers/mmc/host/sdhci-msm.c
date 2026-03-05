@@ -480,6 +480,7 @@ static void msm_set_clock_rate_for_bus_mode(struct sdhci_host *host,
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
+	struct mmc_ios curr_ios = host->mmc->ios;
 	struct clk *core_clk = msm_host->bulk_clks[0].clk;
 	unsigned long achieved_rate;
 	unsigned int desired_rate;
@@ -488,6 +489,12 @@ static void msm_set_clock_rate_for_bus_mode(struct sdhci_host *host,
 
 	mult = msm_get_clock_mult_for_bus_mode(host, clock, timing);
 	desired_rate = clock * mult;
+
+	if (curr_ios.timing == MMC_TIMING_SD_HS &&
+			msm_host->uses_level_shifter &&
+			!msm_host->enable_ext_fb_clk)
+		desired_rate = LEVEL_SHIFTER_HIGH_SPEED_FREQ;
+
 	rc = dev_pm_opp_set_rate(mmc_dev(host->mmc), desired_rate);
 	if (rc) {
 		pr_err("%s: Failed to set clock at rate %u at timing %d\n",
