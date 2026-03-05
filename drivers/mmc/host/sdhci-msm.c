@@ -1465,7 +1465,7 @@ retry:
 		if (!rc) {
 			/* Tuning is successful at this tuning point */
 			tuned_phases[tuned_phase_cnt++] = phase;
-			dev_dbg(mmc_dev(mmc), "%s: Found good phase = %d\n",
+			dev_err(mmc_dev(mmc), "%s: Found good phase = %d\n",
 				 mmc_hostname(mmc), phase);
 		}
 	} while (++phase < ARRAY_SIZE(tuned_phases));
@@ -1479,7 +1479,7 @@ retry:
 			 * That means we'll essentially be guessing and hoping
 			 * we get a good phase.  Better to try a few times.
 			 */
-			dev_dbg(mmc_dev(mmc), "%s: All phases valid; try again\n",
+			dev_err(mmc_dev(mmc), "%s: All phases valid; try again\n",
 				mmc_hostname(mmc));
 			if (--tuning_seq_cnt) {
 				tuned_phase_cnt = 0;
@@ -1502,7 +1502,7 @@ retry:
 		if (rc)
 			goto out;
 		msm_host->saved_tuning_phase = phase;
-		dev_dbg(mmc_dev(mmc), "%s: Setting the tuning phase to %d\n",
+		dev_err(mmc_dev(mmc), "%s: Setting the tuning phase to %d\n",
 			 mmc_hostname(mmc), phase);
 		dev_err(mmc_dev(mmc), "%s: [after phase tune] Dumping MCI Registers:\n", mmc_hostname(mmc)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_MCI_DATA_CNT (0x35c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x35c)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_MCI_STATUS   (0x324) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x324)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_MCI_FIFO_CNT (0x308) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x308)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_MCI_VERSION  (0x318) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x318)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_GENERICS     (0x320) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x320)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_TESTBUS_CFG  (0x32c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x32c)); dev_err(mmc_dev(mmc), "%s: [after phase tune] Dumping Power Control Registers:\n", mmc_hostname(mmc)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_PWRCTL_STATUS (0x240) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x240)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_PWRCTL_MASK   (0x244) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x244)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_PWRCTL_CLEAR  (0x248) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x248)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_PWRCTL_CTL    (0x24c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x24c)); dev_err(mmc_dev(mmc), "%s: [after phase tune] Dumping DLL & Vendor Registers:\n", mmc_hostname(mmc)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_SDCC_DEBUG    (0x358) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x358)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DLL_CONFIG    (0x200) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x200)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DLL_STATUS    (0x208) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x208)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_SPEC   (0x20c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x20c)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_ADMA0  (0x214) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x214)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_ADMA1  (0x218) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x218)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_FUNC2  (0x210) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x210)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_CAP0   (0x21c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x21c)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_CAP1   (0x220) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x220)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DDR_200_CFG   (0x224) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x224)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_VENDOR_SPEC3  (0x250) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x250)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DLL_CONFIG_2  (0x254) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x254)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DLL_CONFIG_3  (0x258) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x258)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DDR_CONFIG    (0x25c) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x25c)); dev_err(mmc_dev(mmc), "%s: [after phase tune] CORE_DLL_USR_CTL   (0x388) -> 0x%08x\n", mmc_hostname(mmc), readl(host->ioaddr + 0x388));
 		sdhci_msm_log_str(msm_host, "Setting the tuning phase to %d\n",
@@ -1511,7 +1511,7 @@ retry:
 		if (--tuning_seq_cnt)
 			goto retry;
 		/* Tuning failed */
-		dev_dbg(mmc_dev(mmc), "%s: No tuning point found\n",
+		dev_err(mmc_dev(mmc), "%s: No tuning point found\n",
 		       mmc_hostname(mmc));
 		sdhci_msm_log_str(msm_host, "No tuning point found\n");
 		rc = -EIO;
@@ -1626,7 +1626,7 @@ static void sdhci_msm_set_uhs_signaling(struct sdhci_host *host,
 		msm_host->calibration_done = false;
 	}
 
-	dev_dbg(mmc_dev(mmc), "%s: clock=%u uhs=%u ctrl_2=0x%x\n",
+	dev_err(mmc_dev(mmc), "%s: clock=%u uhs=%u ctrl_2=0x%x\n",
 		mmc_hostname(host->mmc), host->clock, uhs, ctrl_2);
 	sdhci_writew(host, ctrl_2, SDHCI_HOST_CONTROL2);
 
@@ -1705,7 +1705,7 @@ static int sdhci_msm_dt_parse_vreg_info(struct device *dev,
 	}
 
 	*vreg_data = vreg;
-	dev_dbg(dev, "%s: %s %s vol=[%d %d]uV, curr=[%d %d]uA\n",
+	dev_err(dev, "%s: %s %s vol=[%d %d]uV, curr=[%d %d]uA\n",
 		vreg->name, vreg->is_always_on ? "always_on," : "",
 		vreg->lpm_sup ? "lpm_sup," : "", vreg->low_vol_level,
 		vreg->high_vol_level, vreg->lpm_uA, vreg->hpm_uA);
@@ -1861,7 +1861,7 @@ static bool sdhci_msm_populate_pdata(struct device *dev,
 			msm_host->sup_ice_clk_cnt = ice_clk_table_len;
 			msm_host->ice_clk_max = msm_host->sup_ice_clk_table[0];
 			msm_host->ice_clk_min = msm_host->sup_ice_clk_table[1];
-			dev_dbg(dev, "ICE clock rates (Hz): max: %u min: %u\n",
+			dev_err(dev, "ICE clock rates (Hz): max: %u min: %u\n",
 				msm_host->ice_clk_max, msm_host->ice_clk_min);
 		}
 	}
@@ -2641,7 +2641,7 @@ static void sdhci_msm_handle_pwr_irq(struct sdhci_host *host, int irq)
 	if (io_level)
 		msm_host->curr_io_level = io_level;
 
-	dev_dbg(mmc_dev(mmc), "%s: %s: Handled IRQ(%d), irq_status=0x%x, ack=0x%x\n",
+	dev_err(mmc_dev(mmc), "%s: %s: Handled IRQ(%d), irq_status=0x%x, ack=0x%x\n",
 		mmc_hostname(msm_host->mmc), __func__, irq, irq_status,
 		irq_ack);
 
@@ -3651,8 +3651,8 @@ static struct sdhci_msm_bus_vote_data *sdhci_msm_get_bus_vote_data(struct device
 				&bvd->bw_vecs, &bvd->bw_vecs_size, 0);
 	if (ret) {
 		if (ret == -EINVAL) {
-			dev_dbg(dev, "No dt property of bus bw. voting defined!\n");
-			dev_dbg(dev, "Skipping Bus BW voting now!!\n");
+			dev_err(dev, "No dt property of bus bw. voting defined!\n");
+			dev_err(dev, "Skipping Bus BW voting now!!\n");
 			host->skip_bus_bw_voting = true;
 		}
 		goto out;
@@ -4546,7 +4546,7 @@ static void sdhci_msm_vote_pmqos(struct mmc_host *mmc, int cpu)
 
 	qcg = cpu_to_group(msm_host->sdhci_qos, cpu);
 	if (!qcg) {
-		dev_dbg(&msm_host->pdev->dev, "QoS group is undefined\n");
+		dev_err(&msm_host->pdev->dev, "QoS group is undefined\n");
 		return;
 	}
 
@@ -4556,7 +4556,7 @@ static void sdhci_msm_vote_pmqos(struct mmc_host *mmc, int cpu)
 	if (sdhci_msm_update_qos_constraints(qcg, QOS_PERF))
 		dev_err(&qcg->host->pdev->dev, "%s: update qos - failed\n",
 				__func__);
-	dev_dbg(&msm_host->pdev->dev, "Voted pmqos - cpu: %d\n", cpu);
+	dev_err(&msm_host->pdev->dev, "Voted pmqos - cpu: %d\n", cpu);
 }
 
 static unsigned int sdhci_msm_get_sup_clk_rate(struct sdhci_host *host,
@@ -4676,7 +4676,7 @@ static int sdhci_msm_setup_qos(struct sdhci_msm_host *msm_host)
 			goto free_mem;
 		}
 		qcg->initialized = true;
-		dev_dbg(&pdev->dev, "%s: qcg: 0x%08x | mask: 0x%08x\n",
+		dev_err(&pdev->dev, "%s: qcg: 0x%08x | mask: 0x%08x\n",
 				 __func__, qcg, qcg->mask);
 	}
 
@@ -4715,7 +4715,7 @@ static void sdhci_msm_qos_init(struct sdhci_msm_host *msm_host)
 
 	/* find numbers of qos child node present */
 	qr->num_groups = of_get_available_child_count(np);
-	dev_dbg(&pdev->dev, "num-groups: %d\n", qr->num_groups);
+	dev_err(&pdev->dev, "num-groups: %d\n", qr->num_groups);
 	if (!qr->num_groups) {
 		dev_err(&pdev->dev, "QoS groups undefined\n");
 		kfree(qr);
@@ -4737,7 +4737,7 @@ static void sdhci_msm_qos_init(struct sdhci_msm_host *msm_host)
 	for_each_available_child_of_node(np, group_node) {
 		err = of_property_read_u32(group_node, "mask", &mask);
 		if (err) {
-			dev_dbg(&pdev->dev, "Error reading group mask: %d\n",
+			dev_err(&pdev->dev, "Error reading group mask: %d\n",
 					err);
 			continue;
 		}
@@ -5187,7 +5187,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	}
 
 	host_version = readw_relaxed((host->ioaddr + SDHCI_HOST_VERSION));
-	dev_dbg(&pdev->dev, "Host Version: 0x%x Vendor Version 0x%x\n",
+	dev_err(&pdev->dev, "Host Version: 0x%x Vendor Version 0x%x\n",
 		host_version, ((host_version & SDHCI_VENDOR_VER_MASK) >>
 			       SDHCI_VENDOR_VER_SHIFT));
 
@@ -5196,7 +5196,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	core_major = (core_version & CORE_VERSION_MAJOR_MASK) >>
 		      CORE_VERSION_MAJOR_SHIFT;
 	core_minor = core_version & CORE_VERSION_MINOR_MASK;
-	dev_dbg(&pdev->dev, "MCI Version: 0x%08x, major: 0x%04x, minor: 0x%02x\n",
+	dev_err(&pdev->dev, "MCI Version: 0x%08x, major: 0x%04x, minor: 0x%02x\n",
 		core_version, core_major, core_minor);
 
 	if (core_major == 1 && core_minor >= 0x42)
