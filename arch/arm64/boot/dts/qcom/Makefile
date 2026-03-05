@@ -414,6 +414,7 @@ dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev2.dtb
 dtb-$(CONFIG_ARCH_QCOM) += sm8650-ev2-power.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev2-mte.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev3d.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev3dplano.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-ev3.dtb
 dtb-$(CONFIG_ARCH_QCOM) += sm8650-ev3-power.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sm8650-dv1.dtb
