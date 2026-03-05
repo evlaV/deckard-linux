@@ -2008,6 +2008,9 @@ static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 			mmc_hostname(host->mmc), __func__, req_type,
 			msm_host->curr_pwr_state, msm_host->curr_io_level);
 
+	sdhci_msm_log_str(msm_host, "request %d curr_pwr_state %x curr_io_level %x\n",
+				req_type, msm_host->curr_pwr_state,
+				msm_host->curr_io_level);
 	/*
 	 * The power interrupt will not be generated for signal voltage
 	 * switches if SWITCHABLE_SIGNALING_VOLTAGE in MCI_GENERICS is not set.
@@ -2068,6 +2071,8 @@ static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 
 	pr_debug("%s: %s: request %d done\n", mmc_hostname(host->mmc),
 			__func__, req_type);
+
+	sdhci_msm_log_str(msm_host, "request %d done\n", req_type);
 }
 
 /*
@@ -2506,6 +2511,9 @@ static void sdhci_msm_handle_pwr_irq(struct sdhci_host *host, int irq)
 			msm_offset->core_pwrctl_status);
 	irq_status &= INT_MASK;
 
+	sdhci_msm_log_str(msm_host, "Received IRQ(%d), irq_status=0x%x\n",
+			irq, irq_status);
+
 	msm_host_writel(msm_host, irq_status, host,
 			msm_offset->core_pwrctl_clear);
 
@@ -2636,6 +2644,9 @@ static void sdhci_msm_handle_pwr_irq(struct sdhci_host *host, int irq)
 	dev_dbg(mmc_dev(mmc), "%s: %s: Handled IRQ(%d), irq_status=0x%x, ack=0x%x\n",
 		mmc_hostname(msm_host->mmc), __func__, irq, irq_status,
 		irq_ack);
+
+	sdhci_msm_log_str(msm_host, "Handled IRQ(%d), irq_status=0x%x, ack=0x%x\n",
+			irq, irq_status, irq_ack);
 }
 
 static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
