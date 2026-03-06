@@ -342,6 +342,8 @@ static void icp_shutdown(struct icp_data *icp);
 static int icp_boot(struct icp_data *icp, struct icp_boot_config __user *cfg_uptr)
 {
 	struct icp_boot_config config;
+	int ret;
+
 	if(copy_from_user(&config, cfg_uptr, sizeof(struct icp_boot_config))) {
 		dev_err(icp->dev, "Failed to retrieve boot configuration from ioctl argument\n");
 		return -EINVAL;
@@ -350,7 +352,13 @@ static int icp_boot(struct icp_data *icp, struct icp_boot_config __user *cfg_upt
 	// Return an error if the ICP is already booted
 	if(atomic_xchg(&icp->booted, 1))
 		return -EBUSY;
+	
+	ret = clk_bulk_prepare_enable(icp->clk_cnt, icp->clks);
+	if (ret)
+		return ret;
 
+	icc_set_bw(icp->sf_dma_path, kBps_to_icc(0), kBps_to_icc(50*1000*1000));
+	icc_set_bw(icp->icp_dma_path, kBps_to_icc(0), kBps_to_icc(50*1000*1000));
 
 	writel_relaxed(0x3, icp->icp_base + ICP_WD0_CTRL); // enable watchdog
 	// ICP core reset
@@ -433,6 +441,12 @@ static void icp_shutdown(struct icp_data *icp)
 	// Disable WD0 while ICP is shut down otherwise watchdog 0 will complain about a page fault
 	// and we'll see the WD0_BITE in the OB_STATUS in our next attempt to boot
 	writel_relaxed(0x0, icp->icp_base + ICP_WD0_CTRL);
+
+	icc_set_bw(icp->sf_dma_path, kBps_to_icc(0), kBps_to_icc(0));
+	icc_set_bw(icp->icp_dma_path, kBps_to_icc(0), kBps_to_icc(0));
+
+	// Disable clocks
+	clk_bulk_disable(icp->clk_cnt, icp->clks);
 
 	atomic_set(&icp->booted, 0);
 }
@@ -708,8 +722,6 @@ static int icp_probe(struct platform_device *pdev)
 	if(IS_ERR(icp->icp_dma_path)) {
 		return PTR_ERR(icp->icp_dma_path);
 	}
-	icc_set_bw(icp->sf_dma_path, kBps_to_icc(0), kBps_to_icc(50*1000*1000));
-	icc_set_bw(icp->icp_dma_path, kBps_to_icc(0), kBps_to_icc(50*1000*1000));
 
 	// Get the hardware mutex used for synx (we could use another lock here since we manually create the DMA
 	// mapping for the ICP, we just need to give the right TCSR mutex register range)
@@ -753,7 +765,7 @@ static int icp_probe(struct platform_device *pdev)
 	set_clk_rate(icp, "bps_src", 785000000);
 	set_clk_rate(icp, "ipe_nps_src", 825000000);
 
-	ret = clk_bulk_prepare_enable(icp->clk_cnt, icp->clks);
+	ret = clk_bulk_prepare(icp->clk_cnt, icp->clks);
 	if (ret)
 		goto clk_setup_error;
 
@@ -784,7 +796,7 @@ misc_register_error:
 	iommu_detach_device(icp->iommu, dev);
 	iommu_domain_free(icp->iommu);
 iommu_error:
-	clk_bulk_disable_unprepare(icp->clk_cnt, icp->clks);
+	clk_bulk_unprepare(icp->clk_cnt, icp->clks);
 clk_setup_error:
 	put_power(icp);
 
@@ -813,7 +825,7 @@ static void icp_remove(struct platform_device *pdev)
 	devm_free_irq(dev, icp->ipcc_irq, icp);
 
 	// Disable clocks
-	clk_bulk_disable_unprepare(icp->clk_cnt, icp->clks);
+	clk_bulk_unprepare(icp->clk_cnt, icp->clks);
 
 	put_power(icp);
 }
@@ -829,8 +841,6 @@ static int icp_suspend(struct device *dev)
 		reset_ipe_bps_cores(icp);
 	}
 
-	// Disable clocks and release power
-	clk_bulk_disable_unprepare(icp->clk_cnt, icp->clks);
 	return pm_runtime_force_suspend(icp->dev);
 }
 
@@ -840,11 +850,7 @@ static int icp_resume(struct device *dev)
 	int ret;
 
 	// Resume power and clocks
-	ret = pm_runtime_force_resume(icp->dev);
-	if (ret)
-		return ret;
-
-	return clk_bulk_prepare_enable(icp->clk_cnt, icp->clks);
+	return pm_runtime_force_resume(icp->dev);
 }
 
 static const struct of_device_id icp_match_table[] = {
