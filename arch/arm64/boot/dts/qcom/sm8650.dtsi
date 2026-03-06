@@ -8265,6 +8265,7 @@
 			iommus =  <&apps_smmu 0x1000 0x0>, // ADSP
 				  <&apps_smmu 0x1060 0x0>, // LPMLA_0 config ?
 				  <&apps_smmu 0x1068 0x0>, // LPMLA_0 act/wgt/out ?
+				  <&apps_smmu 0x1080 0x0>, // LPMLA_1
 				  <&apps_smmu 0x10e4 0x0>, // ASC bus client 0
 				  <&apps_smmu 0x10e5 0x0>; // ASC bus client 1
 			//core-max-rate = <1401600000>;
