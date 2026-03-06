@@ -295,6 +295,7 @@ static int qcom_cpufreq_hw_read_lut(struct device *cpu_dev,
 
 	table[i].frequency = CPUFREQ_TABLE_END;
 	policy->freq_table = table;
+	policy->suspend_freq = table[0].frequency;
 	dev_pm_opp_set_sharing_cpus(cpu_dev, policy->cpus);
 
 	return 0;
@@ -605,6 +606,7 @@ static struct cpufreq_driver cpufreq_qcom_hw_driver = {
 	.name		= "qcom-cpufreq-hw",
 	.ready		= qcom_cpufreq_ready,
 	.set_boost	= cpufreq_boost_set_sw,
+	.suspend	= cpufreq_generic_suspend,
 };
 
 static unsigned long qcom_cpufreq_hw_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
