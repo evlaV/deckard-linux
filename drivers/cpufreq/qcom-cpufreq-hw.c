@@ -504,6 +504,22 @@ static int qcom_cpufreq_hw_cpu_online(struct cpufreq_policy *policy)
 static int qcom_cpufreq_hw_cpu_offline(struct cpufreq_policy *policy)
 {
 	struct qcom_cpufreq_data *data = policy->driver_data;
+	struct device *dev;
+	int ret;
+
+	dev = get_cpu_device(policy->cpu);
+	if (!dev)
+		return -ENODEV;
+
+	/* Set lowest freq */
+	ret = qcom_cpufreq_hw_target_index(policy, 0);
+	if (ret)
+		return ret;
+
+	/* Disable OPP to unvote the bus */
+	ret = dev_pm_opp_set_opp(dev, NULL);
+	if (ret)
+		return ret;
 
 	if (data->throttle_irq <= 0)
 		return 0;
