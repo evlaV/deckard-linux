@@ -21,7 +21,9 @@ static int dpu_wb_conn_get_modes(struct drm_connector *connector)
 	 * and source split support added lets limit the modes based on max_mixer_width
 	 * as 4K modes can then be supported.
 	 */
-	return drm_add_modes_noedid(connector, dpu_kms->catalog->caps->max_mixer_width,
+
+	/* TODO: Add dual-SSPP check to decide max_mixer_width or max_linewidth */
+	return drm_add_modes_noedid(connector, dpu_kms->catalog->caps->max_linewidth,
 			dev->mode_config.max_height);
 }
 
