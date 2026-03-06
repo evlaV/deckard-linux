@@ -43,9 +43,13 @@
 
 #define MAX34417_OVERFLOW_BITMASK		BIT(0)
 #define MAX34417_SLOW_BITMASK			BIT(1)
+#define MAX34417_PARK_0_MASK			BIT(2)
+#define MAX34417_PARK_1_MASK			BIT(3)
+#define MAX34417_PARK_EN_MASK			BIT(4)
 #define MAX34417_SMM_BITMASK			BIT(5)
 #define MAX34417_CAM_BITMASK			BIT(6)
-#define MAX34417_PARK_EN_MASK			BIT(4)
+#define MAX34417_MODE_BITMASK			BIT(7)
+
 #define MAX34417_PARK_VALUE_MASK		0x0C
 #define MAX34417_PARK_VALUE_POS			2
 
@@ -71,8 +75,8 @@ struct max34417_data {
 	u8 perr_verr;		/* Perr_Verr correction enable/disable */
 	u32 correction;		/* Power correction multiplier */
 	u8 accumulator_update_mode;
-    struct regulator	*vdd;
-    struct regulator    *vio;
+	struct regulator *vdd;
+	struct regulator *vio;
 	struct max34417_input inputs[MAX34417_CHANNEL_COUNT];
 };
 
@@ -132,7 +136,7 @@ static int max34417_calc_correction(const struct device *dev)
 		return -EINVAL;
 	}
 
-    dev_err(dev, "correction factor %d\n", data->correction);
+	dev_info(dev, "correction factor %d\n", data->correction);
 
 	return 0;
 }
@@ -353,11 +357,10 @@ static ssize_t accumulator_update_mode_show(struct device *dev,
 			       char *buf)
 {
 	const struct max34417_data *data = dev_get_drvdata(dev);
-	int err = 0;
 
 	if(data->accumulator_update_mode == 1)
 		return sprintf(buf, "auto\n");
-	
+
 	return sprintf(buf, "manual\n");
 }
 
@@ -367,7 +370,7 @@ static ssize_t accumulator_update_mode_store(struct device *dev,
 {
 	struct max34417_data *data = dev_get_drvdata(dev);
 	int mode, err;
-	
+
 	if (mutex_lock_interruptible(&data->update_lock))
 		return -ERESTARTSYS;
 
@@ -390,9 +393,8 @@ static ssize_t accumulator_update_show(struct device *dev,
 			       struct device_attribute *devattr,
 			       char *buf)
 {
-	const struct max34417_data *data = dev_get_drvdata(dev);
-	int err = 0;
 	unsigned int accumulator = 0;
+	int err = 0;
 
 	err = max34417_accumulator_read(dev,&accumulator);
 
@@ -416,10 +418,8 @@ static ssize_t accumulator_update_store(struct device *dev,
 	err = max34417_accumulator_update(dev,0,force_update);
 
 	mutex_unlock(&data->update_lock);
+
 	return count;
-error:
-	mutex_unlock(&data->update_lock);
-	return err;
 }
 
 static SENSOR_DEVICE_ATTR(measurement_mode, 0644,
@@ -520,13 +520,14 @@ static int max34417_channel_label_get(const void *drvdata, int channel, const ch
 
 static int max34417_accumulator_read(struct device *dev, unsigned int *acc_count)
 {
+	struct max34417_data *data = dev_get_drvdata(dev);
+	u8 buf[I2C_SMBUS_BLOCK_MAX] = { 0 };
 	int err = 0;
 	int regval;
-	u8 buf[I2C_SMBUS_BLOCK_MAX] = { 0 };
-	struct max34417_data *data = dev_get_drvdata(dev);
 
-	if(!data || !acc_count) goto error;
-	
+	if(!data || !acc_count)
+		goto error;
+
 	regval = i2c_smbus_read_i2c_block_data(data->client,
 						MAX34417_REG_ACC_COUNT,
 						4,
@@ -548,6 +549,8 @@ static int max34417_accumulator_read(struct device *dev, unsigned int *acc_count
 		goto error;
 	}
 
+	return 0;
+
 error:
 	return err;
 }
@@ -555,19 +558,18 @@ error:
 
 static int max34417_accumulator_update(struct device *dev, int channel, int force_update)
 {
-	int err = 0;
-	int update_needed = 0;
 	struct max34417_data *data = dev_get_drvdata(dev);
+	int update_needed = 0;
+	int normal_mode = 0;
 	int smm_mode = 0;
 	int cam_mode = 0;
-	int normal_mode = 0;
+	int err = 0;
 
-	if(!data) 
-	{
+	if(!data) {
 		err = -EINVAL;
 		goto error;
 	}
-	
+
 	if (data->config & MAX34417_SMM_BITMASK) 
 		smm_mode = 1;
 	else if (data->config & MAX34417_CAM_BITMASK)
@@ -627,12 +629,6 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 			err = max34417_accumulator_update(dev, channel, force_update);
 			if (err) goto error;
 
-            /*
-			regval = i2c_smbus_read_block_data(data->client,
-							   MAX34417_REG_VOLTAGE_BASE + channel,
-							   buf);
-            */
-
 			regval = i2c_smbus_read_i2c_block_data(data->client,
 							   MAX34417_REG_VOLTAGE_BASE + channel,
 							   3,
@@ -655,8 +651,8 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 			mutex_unlock(&data->update_lock);
 			return 0;
 		default:
-			err = -EINVAL;
-			goto error;
+			mutex_unlock(&data->update_lock);
+			return -EINVAL;
 		}
 	case hwmon_power:
 		switch (attr) {
@@ -677,22 +673,11 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 			err = max34417_accumulator_update(dev, channel, force_update);
 			if (err) goto error;
 
-			/*
-			regval = i2c_smbus_read_block_data(data->client,
-							   MAX34417_REG_ACC_COUNT, buf);
-			*/
-
 			err = max34417_accumulator_read(dev, &acc_count);
 			if (err) goto error;
 
 			memset(buf, 0, I2C_SMBUS_BLOCK_MAX);
 
-			/*
-			regval = i2c_smbus_read_block_data(data->client,
-							   MAX34417_REG_POWER_ACC_BASE + channel,
-							   buf);
-			*/
-			
 			regval = i2c_smbus_read_i2c_block_data(data->client,
 							   MAX34417_REG_POWER_ACC_BASE + channel,
 							   8,
@@ -713,16 +698,9 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 			power |= ((unsigned long long)buf[1] << 48UL);
 
 			if (data->perr_verr && acc_count >= 1000) {
-				/*
-				regval = i2c_smbus_read_block_data(data->client,
-								   MAX34417_REG_VOLTAGE_BASE + channel,
-								   buf);
-				*/
-				
 				regval = i2c_smbus_read_i2c_block_data(data->client,
-								   MAX34417_REG_VOLTAGE_BASE + channel,
-								   3,
-								   buf);
+							   MAX34417_REG_VOLTAGE_BASE + channel,
+							   3, buf);
 
 				if (regval < 0) {
 					dev_err(dev, "Could not read voltage data\n");
@@ -733,7 +711,8 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 				voltage_raw = ((unsigned int)buf[1] << 8);
 				voltage_raw |= ((unsigned int)buf[2]);
 
-				voltage = (voltage_raw >> 2) * MAX34417_VOLTAGE_CORRECTION_SCALE * 1000;
+				voltage = (voltage_raw >> 2) *
+						MAX34417_VOLTAGE_CORRECTION_SCALE * 1000;
 				voltage >>= MAX34417_VOLTAGE_FULL_SCALE_BITS;
 
 				if (voltage <= 2000) {
@@ -911,20 +890,11 @@ static int max34417_probe(struct i2c_client *client)
 	struct device *hwmon_dev;
 	struct max34417_data *data;
 	struct max34417_input *input;
+	char old_name[I2C_NAME_SIZE];
 	struct device_node *np;
 	u32 r_sense;
+	uint regval;
 	int err;
-    uint regval;
-	char old_name[I2C_NAME_SIZE];
-
-	/*---------------
-	if (!i2c_check_functionality(client->adapter,
-				     I2C_FUNC_SMBUS_BYTE |
-				     I2C_FUNC_SMBUS_BYTE_DATA |
-				     I2C_FUNC_SMBUS_WORD_DATA |
-				     I2C_FUNC_SMBUS_READ_BLOCK_DATA))
-		return -EIO;
-	----------------*/
 
 	data = devm_kzalloc(dev, sizeof(struct max34417_data), GFP_KERNEL);
 	if (!data)
@@ -945,16 +915,17 @@ static int max34417_probe(struct i2c_client *client)
 		return err;
 	}
 
-    data->vdd = devm_regulator_get(dev, "vdd");
+	data->vdd = devm_regulator_get(dev, "vdd");
 	if (IS_ERR(data->vdd)) {
-        dev_err(dev, "Failed to get vdd\n");
+		dev_err(dev, "Failed to get vdd\n");
 		return PTR_ERR(data->vdd);
-    }
-    data->vio = devm_regulator_get(dev, "vio");
+	}
+
+	data->vio = devm_regulator_get(dev, "vio");
 	if (IS_ERR(data->vio)) {
-        dev_err(dev, "Failed to get vio\n");
+		dev_err(dev, "Failed to get vio\n");
 		return PTR_ERR(data->vio);
-    };
+	};
 
 	for_each_child_of_node_scoped(np, child) {
 		u32 val;
@@ -998,10 +969,10 @@ static int max34417_probe(struct i2c_client *client)
 		return err;
 	}
 
-    // allow power up to complete
-    usleep_range(4000,5000);
+	// allow power up to complete
+	usleep_range(4000,5000);
 
-    regval = i2c_smbus_read_byte_data(client, MAX34417_REG_DEV_ID);
+	regval = i2c_smbus_read_byte_data(client, MAX34417_REG_DEV_ID);
 
 	/* Initializing in single shot measurement mode */
 	err = i2c_smbus_write_byte_data(client, MAX34417_REG_CONTROL, 0xA0);
@@ -1023,12 +994,10 @@ static int max34417_probe(struct i2c_client *client)
 		dev_err(dev, "devm add remove failed\n");
 		return err;
 	}
-	
+
 	strscpy(old_name, client->name, sizeof(old_name));
 	snprintf(client->name, sizeof(client->name), "%s_%x", old_name, client->addr);
 
-	//snprintf(client->name, I2C_NAME_SIZE, "%s_%x",client->name, client->addr);
-	
 	hwmon_dev = devm_hwmon_device_register_with_info(dev, client->name,
 							 data,
 							 &max34417_chip_info,
@@ -1041,15 +1010,6 @@ static int max34417_detect(struct i2c_client *client,
 			   struct i2c_board_info *info)
 {
 	int regval;
-
-	/*--------------------
-	if (!i2c_check_functionality(adapter,
-				     I2C_FUNC_SMBUS_BYTE |
-				     I2C_FUNC_SMBUS_BYTE_DATA |
-				     I2C_FUNC_SMBUS_WORD_DATA |
-				     I2C_FUNC_SMBUS_READ_BLOCK_DATA))
-		return -ENODEV;
-	--------------------*/
 
 	regval = i2c_smbus_read_byte_data(client, MAX34417_REG_DEV_ID);
 	if ((regval & MAX34417_DEV_ID_MASK) != MAX34417_DEV_ID)
