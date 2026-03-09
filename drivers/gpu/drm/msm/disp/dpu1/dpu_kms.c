@@ -291,6 +291,26 @@ static void dpu_debugfs_sspp_init(struct dpu_kms *dpu_kms, struct dentry *debugf
 	}
 }
 
+static ssize_t cac_blob_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct cac_blob (*blobs)[PLANAR_CAC_SSPP_VIG] = file->private_data;
+	return simple_read_from_buffer(user_buf, count, ppos, blobs, sizeof(*blobs));
+}
+
+static ssize_t cac_blob_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct cac_blob (*blobs)[PLANAR_CAC_SSPP_VIG] = file->private_data;
+	return simple_write_to_buffer(blobs, sizeof(*blobs), ppos, user_buf, count);
+}
+
+static const struct file_operations cac_blob_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = cac_blob_read,
+	.write = cac_blob_write,
+	.llseek = default_llseek,
+};
+
 static int dpu_kms_debugfs_init(struct msm_kms *kms, struct drm_minor *minor)
 {
 	struct dpu_kms *dpu_kms = to_dpu_kms(kms);
@@ -308,6 +328,8 @@ static int dpu_kms_debugfs_init(struct msm_kms *kms, struct drm_minor *minor)
 
 	debugfs_create_x32(DPU_DEBUGFS_HWMASKNAME, 0600, entry, p);
 	debugfs_create_u32("cac_enable", 0600, entry, &dpu_kms->cac_state_cached);
+	debugfs_create_file("cac_blob", 0600, entry, &dpu_kms->cac_blobs, &cac_blob_fops);
+	debugfs_create_bool("cac_update", 0600, entry, &dpu_kms->cac_update_pending);
 	debugfs_create_bool("skip_cwb_right", 0600, entry, &dpu_kms->skip_cwb_right);
 
 	dpu_debugfs_danger_init(dpu_kms, entry);
