@@ -124,6 +124,8 @@ static int misc_open(struct inode *inode, struct file *file)
 
 	mutex_lock(&misc_mtx);
 
+	pr_info("gabe misc_open: name=%s\n", file->f_path.dentry->d_name.name);
+
 	list_for_each_entry(iter, &misc_list, list) {
 		if (iter->minor != minor)
 			continue;

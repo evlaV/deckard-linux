@@ -792,6 +792,9 @@ static int dsp_probe(struct platform_device *pdev)
 	if (x++ < 3)
 		return -EPROBE_DEFER;
 
+	//HACK TO PREVENT KERNEL OOPS
+	return -EPROBE_DEFER;
+
 	dsp = devm_kzalloc(dev, sizeof(*dsp), GFP_KERNEL);
 	if (!dsp)
 		return -ENOMEM;
@@ -872,7 +875,12 @@ static int dsp_probe(struct platform_device *pdev)
 	dsp->miscdev.name = dev->of_node->name;
 	dsp->miscdev.fops = &dsp_fops;
 	dsp->miscdev.parent = dev;
-	ret = misc_register(&dsp->miscdev);
+
+	//this misc_register() call here being called will end up causing a kernel OOPS complaining about misc_open() invalid deref
+	//the misc_list variable in that function is not initialized properly or something
+	//essentially we probably should more properly handle the case where adsp / cdsp nodes don't load properly in the dts
+	ret = misc_register(&dsp->miscdev); 
+
 	if (ret)
 		return ret;
 
