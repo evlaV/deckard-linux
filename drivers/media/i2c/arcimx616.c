@@ -107,6 +107,7 @@ struct arcimx616_dev {
 	struct gpio_desc *detect_gpio;
 	struct gpio_desc *mux_enable;
 	struct gpio_desc *mux_select;
+	struct gpio_desc *strobe;
 	int irq;
 
 	struct delayed_work connect_work;      // For delayed "connected" notification
@@ -1330,6 +1331,12 @@ static int arcimx616_check_chip_id(struct arcimx616_dev *sensor)
 	 int led_chip_detected = arcimx616_aw9106_read_reg(sensor, 0x10, &led_chip_id);
 	 bool led_chip_valid = (led_chip_detected == 0 && led_chip_id == 0x23);
  
+	 // Read strobe state if available (right camera only)
+	 if (sensor->strobe) {
+		 int strobe_val = gpiod_get_value(sensor->strobe);
+		 dev_info(&sensor->i2c_client->dev, "Strobe GPIO state: %d\n", strobe_val);
+	 }
+
 	 // Determine if anything is connected
 	 bool any_connected = (led_chip_valid || sensor0Connected == 0 || sensor1Connected == 0);
  
@@ -1746,6 +1753,8 @@ static int arcimx616_probe(struct i2c_client *client)
 						     GPIOD_OUT_HIGH);
 	sensor->mux_select = devm_gpiod_get_optional(dev, "mux-select",
 						     GPIOD_OUT_HIGH);
+	sensor->strobe = devm_gpiod_get_optional(dev, "strobe",
+						     GPIOD_IN);
 	if(sensor->detect_gpio) {
 		dev_dbg(&client->dev, "detect GPIO found\n");
 		sensor->irq = gpiod_to_irq(sensor->detect_gpio);

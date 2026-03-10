@@ -2250,6 +2250,7 @@
 
 
 		reset-gpios = <&tlmm 126 GPIO_ACTIVE_HIGH>;
+		strobe-gpios = <&tlmm 90 GPIO_ACTIVE_HIGH>;
 		detect-gpios = <&pm8550b_gpios 6 GPIO_ACTIVE_HIGH>;
 		mux-enable-gpios = <&tlmm 14 GPIO_ACTIVE_HIGH>;
 		mux-select-gpios = <&tlmm 111 GPIO_ACTIVE_HIGH>;
