@@ -48,7 +48,7 @@
 
 // Brightness settings
 #define BRIGHTNESS_DEFAULT 256
-#define BRIGHTNESS_MAX_120 367
+#define BRIGHTNESS_MAX_120 459
 
 // Panel settings
 #define VFP		700
