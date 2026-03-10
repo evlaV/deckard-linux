@@ -792,6 +792,9 @@ static int dsp_probe(struct platform_device *pdev)
 	if (x++ < 3)
 		return -EPROBE_DEFER;
 
+	//HACK TO PREVENT KERNEL OOPS
+	return -EPROBE_DEFER;
+
 	dsp = devm_kzalloc(dev, sizeof(*dsp), GFP_KERNEL);
 	if (!dsp)
 		return -ENOMEM;
