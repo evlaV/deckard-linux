@@ -344,10 +344,17 @@ static void sdhci_msm_v5_variant_writel_relaxed(u32 val,
 	writel_relaxed(val, host->ioaddr + offset);
 }
 
-static unsigned int msm_get_clock_mult_for_bus_mode(struct sdhci_host *host,
-						    unsigned int clock,
-						    unsigned int timing)
+static void msm_get_clock_mult_for_bus_mode(struct sdhci_host *host,
+					    unsigned int clock,
+					    unsigned int timing,
+					    unsigned int *mult,
+					    unsigned int *div)
 {
+	if (timing == MMC_TIMING_UHS_SDR104)
+		*div = 2;
+	else
+		*div = 1;
+
 	/*
 	 * The SDHC requires internal clock frequency to be double the
 	 * actual clock that will be set for DDR mode. The controller
@@ -359,8 +366,9 @@ static unsigned int msm_get_clock_mult_for_bus_mode(struct sdhci_host *host,
 	    (timing == MMC_TIMING_MMC_HS400 &&
 	    clock == MMC_HS200_MAX_DTR) ||
 	    host->flags & SDHCI_HS400_TUNING)
-		return 2;
-	return 1;
+		*mult = 2;
+	else
+		*mult = 1;
 }
 
 static void msm_set_clock_rate_for_bus_mode(struct sdhci_host *host,
@@ -370,13 +378,13 @@ static void msm_set_clock_rate_for_bus_mode(struct sdhci_host *host,
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct clk *core_clk = msm_host->bulk_clks[0].clk;
+	unsigned int desired_rate, mult, div;
 	unsigned long achieved_rate;
-	unsigned int desired_rate;
-	unsigned int mult;
 	int rc;
 
-	mult = msm_get_clock_mult_for_bus_mode(host, clock, timing);
-	desired_rate = clock * mult;
+	msm_get_clock_mult_for_bus_mode(host, clock, timing, &mult, &div);
+	desired_rate = clock * mult / div;
+
 	rc = dev_pm_opp_set_rate(mmc_dev(host->mmc), desired_rate);
 	if (rc) {
 		pr_err("%s: Failed to set clock at rate %u at timing %d\n",
