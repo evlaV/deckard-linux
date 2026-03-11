@@ -1162,4 +1162,31 @@
 };
 #endif
 
-fw_setenv fdt_disable_soc_nodes "clock-controller@af00000,cvp@ab00000,display-subsystem@ae00000,clock-controller@ade0000,icp@ac00000,clock-controller@aaf0000,clock-controller@6e00000,clock-controller@6bc0000,clock-controller@3d90000,gmu@3d6a000,crypto@1d88000"
+//fw_setenv fdt_disable_soc_nodes ""
+//fw_setenv fdt_disable_soc_nodes "adsp@6800000,cdsp@32300000,clock-controller@af00000,cvp@ab00000,display-subsystem@ae00000,clock-controller@ade0000,icp@ac00000,clock-controller@aaf0000,clock-controller@6e00000,clock-controller@6bc0000,clock-controller@3d90000,gmu@3d6a000,crypto@1d88000,clock-controller@7b08000,clock-controller@7e00000,lpaif@6b80000,lpaif@6d00000,lpaif@7d00000,video-codec@aa00000,eud@88e0000,phy@88e3000,phy@88e8000,usb@a600000"
+
+//adsp: adsp@6800000
+//_cdsp: cdsp@32300000
+//dispcc: clock-controller@af00000
+//cvp: cvp@ab00000 
+//mdss: display-subsystem@ae00000 
+//camcc: clock-controller@ade0000
+//camss: isp@acb8000 
+//icp: icp@ac00000 
+//lpass_aoncc: clock-controller@6e00000 
+//lpass_audiocc: clock-controller@6bc0000 
+//gpucc: clock-controller@3d90000 
+//ice: crypto@1d88000 
+//lpass_hm: clock-controller@7e00000
+//lpass_corecc: clock-controller@7b08000
+//lpass_wsa_lpaif: lpaif@6b80000
+//lpass_va_lpaif: lpaif@6d00000
+//lpass_core_lpaif: lpaif@7d00000
+//eud: eud@88e0000
+//usb_1_hsphy: phy@88e3000
+//usb_dp_qmpphy: phy@88e8000
+//usb_1: usb@a600000
+//iris: video-codec@aa00000
+//videocc: clock-controller@aaf0000
+//ufs_mem_hc: ufshc@1d84000
+//ufs_mem_phy: phy@1d80000
