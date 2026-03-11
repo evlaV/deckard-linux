@@ -1022,6 +1022,96 @@
 	status = "okay";
 };
 
+
+&camss {
+	status = "okay";
+
+	vdda-csi01-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi24-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi35-0p9-supply = <&vreg_l2i_0p88>;
+	vdda-csi01-1p2-supply = <&vreg_l3i_1p2>;
+	vdda-csi24-1p2-supply = <&vreg_l3i_1p2>;
+	vdda-csi35-1p2-supply = <&vreg_l3i_1p2>;
+	
+
+	ports {
+		port@0 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csiphy0_ep: endpoint@0 {
+				reg = <0>;
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_6dof_l>;
+			};
+
+			csiphy0_combo_ep: endpoint@1 {
+				reg = <1>;
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&cam_6dof_ul>;
+			};
+		};
+
+		port@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csiphy1_ep: endpoint@0 {
+				reg = <0>;
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_6dof_r>;
+			};
+
+			csiphy1_combo_ep: endpoint@1 {
+				reg = <1>;
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				remote-endpoint = <&cam_6dof_ur>;
+			};
+		};
+
+#if 0
+		port@2 {
+			csiphy2_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&cam_et_l>;
+			};
+		};
+
+		port@4 {
+			csiphy4_ep: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&cam_et_r>;
+			};
+		};
+#endif
+        port@3 {
+			reg = <3>;
+			csiphy3_ep: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&cam_pt_left>;
+			};
+		};
+
+		port@5 {
+			reg = <5>;
+			csiphy5_ep: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&cam_pt_right>;
+			};
+		};
+
+
+	};
+};
+
 &cci0 {
 	status = "okay";
 };
@@ -1091,6 +1181,125 @@
 	status = "okay";
 };
 
+
+&cci2_i2c0 {
+	sensor@60 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		clock-names = "xclk";
+		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 123 GPIO_ACTIVE_HIGH>;
+		sensor-queue-index = <0>;
+		ircontrol-gpios = <&tlmm 200 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam1_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l3n_2p8>;
+		DOVDD-supply = <&vreg_6dof_1p8_l>;
+		DVDD-supply = <&vreg_6dof_1p2_l>;
+		id = "slam_left";
+
+		dual-i2c-available = <1>;
+		dual-i2c-main = <1>;
+		
+		port {
+			cam_6dof_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0 1>;
+				link-frequencies = /bits/ 64 <500000000>;
+				remote-endpoint = <&csiphy0_ep>;
+			};
+		};
+	};
+
+	sensor@36 {
+		compatible = "ovti,og01a1bx";
+		reg = <0x36>;
+		clocks = <&camcc CAM_CC_MCLK0_CLK>;
+		clock-names = "xclk";
+		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 121 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam0_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l3m_2p8>;
+		DOVDD-supply = <&vreg_6dof_1p8_r>;
+		DVDD-supply = <&vreg_6dof_1p2_r>;
+		id = "slam_right";
+		sensor-queue-index = <0>;
+
+		dual-i2c-available = <1>;
+		dual-i2c-main = <0>;
+		
+		port {
+			cam_6dof_r: endpoint {
+				data-lanes = <0 1>;
+				clock-lanes = <4>;
+				link-frequencies = /bits/ 64 <500000000>;
+				remote-endpoint = <&csiphy1_ep>;
+			};
+		};
+	};
+};
+
+&cci2_i2c1 {
+	clock-frequency = <400000>;
+	sensor@60 {
+		compatible = "ovti,og0ve10x";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		clock-names = "xclk";
+		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 28 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam3_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l4n_2p8>;
+		DOVDD-supply = <&vreg_6dof_1p8_ul>;
+		DVDD-supply = <&vreg_6dof_1p2_ul>;
+		sensor-queue-index = <1>;
+		id = "upper_left";
+	
+		dual-i2c-available = <1>;
+		dual-i2c-main = <1>;
+		
+		port {
+			cam_6dof_ul: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				link-frequencies = /bits/ 64 <500000000>;
+				remote-endpoint = <&csiphy0_combo_ep>;
+			};
+		};
+	};
+	
+	sensor@3e {
+		compatible = "ovti,og0ve10x";
+		reg = <0x3E>;
+		clocks = <&camcc CAM_CC_MCLK5_CLK>;
+		clock-names = "xclk";
+		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
+		strobe-gpios = <&tlmm 68 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&cam5_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l4m_2p8>;
+		DOVDD-supply = <&vreg_6dof_1p8_ur>;
+		DVDD-supply = <&vreg_6dof_1p2_ur>;
+
+		sensor-queue-index = <1>;
+		id = "upper_right";
+
+		dual-i2c-available = <1>;
+		dual-i2c-main = <0>;
+
+		port {
+			cam_6dof_ur: endpoint {
+				clock-lanes = <3>;
+				data-lanes = <2>;
+				link-frequencies = /bits/ 64 <500000000>;
+				remote-endpoint = <&csiphy1_combo_ep>;
+			};
+		};
+	};
+};
 
 // Master Hub required for Hub 7 and 8
 &i2c_master_hub_0 {
@@ -1692,7 +1901,54 @@
 		vcc-supply = <&rgb_3v0_vout>;
 		label = "passthrough_cams_eeprom_right";
     };
+	cam3@1a {
+		compatible = "arcimx616";
+
+		id = "passthrough_left";
+
+		reg = <0x1a>;
+
+
+		reset-gpios = <&tlmm 126 GPIO_ACTIVE_HIGH>;
+		detect-gpios = <&pm8550b_gpios 6 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam6_default>,<&cam7_default>;
+
+		clocks = <&camcc CAM_CC_MCLK7_CLK>,<&camcc CAM_CC_MCLK6_CLK>;
+		clock-names = "xclk","xclk2";
+
+		DOVDD-supply = <&rgb_3v0_vout>;
+		
+		// AVDD-supply = <&camera_2p8>;
+		// DVDD-supply = <&camera_1p2>;
+
+		port {
+			cam_pt_left: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&csiphy3_ep>;
+			};
+		};
+	};
+	cam4@10 {
+		compatible = "arcimx616";
+
+		id = "passthrough_right";
+
+		reg = <0x10>;
+
+		DOVDD-supply = <&dummy_reg>;
+
+		port {
+			cam_pt_right: endpoint {
+				clock-lanes = <2>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&csiphy5_ep>;
+			};
+		};
+	};
 };
+
 &pm8550ve_gpios {
 	gpio-line-names =
 		// GPIO01 - GPIO08
