@@ -672,8 +672,6 @@
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-
-			regulator-always-on; // XXX DMIC
 		};
 
 		vreg_l12b_1p8: ldo12 {

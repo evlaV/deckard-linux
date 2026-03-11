@@ -4,6 +4,7 @@
 		compatible = "qcom,lpass-sndcard";
 		//model = "SM8650-DECKARD";
 		model = "SM8250 LPASS"; // XXX soundsetup.sh looking for "SM8250"..
+		audio-routing = "VA DMIC0", "vdd-micb";
 
 		pinctrl-0 = <&i2s2_active>;
 		pinctrl-names = "default";
