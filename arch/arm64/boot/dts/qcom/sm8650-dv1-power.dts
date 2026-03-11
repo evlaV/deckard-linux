@@ -247,6 +247,29 @@
 	};
 
 
+// Enable to use DTS ETcam power
+#if 0
+	eyetck_dovdd_1v8: eyetck_dovdd_1v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "eyetck_dovdd_1v8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		enable-active-high;
+		gpio = <&tlmm 74 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_l5m_1p8>;
+	};
+#endif
+
+	exp_vout_5v: exp_vout_5v {
+		compatible = "regulator-valve_5v_exp";
+		regulator-name = "exp_vout_5v";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		enable-gpio = <&pm8550vs_g_gpios 6 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		vin-supply = <&vph_pwr>;
+	};
+
 	rgb_3v0_vout: rgb_3v0_vout {
 		compatible = "regulator-fixed";
 		regulator-name = "exp_rgb_3v0_vout";
@@ -336,12 +359,42 @@
 		};
 	};
 
+
+	FPGA_clk: FPGA_clk {
+		compatible = "fpga-clock";
+		#clock-cells = <0>;
+		clock-output-names = "fpga_clk";
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&FPGA_clk_default>;
+
+		clocks = <&gcc GCC_GP3_CLK>;
+		clock-frequency = <24000000>;
+		clock-names = "pinclk";
+	};
+
+	fpga: fpga {
+		compatible = "valve,fpga";
+
+		clocks = <&FPGA_clk>;
+		clock-names = "fpga_clk";
+		v1v1-supply = <&vreg_l2g_1p1>;
+		pwren-gpio = <&tlmm 75 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 &uart3 {
 	status = "okay";
 };
 
+&fpga {
+	// Setup FPGA Userspace Pin States
+	pinctrl-0 = <&fpga_cready>, <&fpga_cs>, <&fpga_crst>, <&fpga_cdone>, <&fpga_rst>;
+	pinctrl-names = "default";
+
+	status = "okay";
+};
 
 &apps_rsc {
     regulators-6 {
@@ -1362,6 +1415,61 @@
 		"",  "",  "te2_right",  "",  "", "", "", "", "", "", "", "", "", "";
 };
 
+&tlmm {
+	FPGA_clk_pins {
+		FPGA_clk_default: fpga_clk_default {
+			mux {
+				pins = "gpio88";
+				function = "gcc_gp3";
+			};
+			config {
+				pins = "gpio88";
+				drive-strength = <6>;
+				bias-pull-none; /* pull none */
+			};
+		};
+		FPGA_clk_active: fpga_clk_active {
+			mux {
+				pins = "gpio88";
+				function = "gcc_gp3";
+			};
+			config {
+				pins = "gpio88";
+				drive-strength = <2>; /* 2 mA */
+				bias-pull-none; /* pull none */
+			};
+		};
+		FPGA_clk_sleep: fpga_clk_sleep {
+			mux {
+				pins = "gpio88";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio88";
+				drive-strength = <2>; /* 2 mA */
+				bias-pull-down; /* pull down */
+			};
+		};
+	};
+
+	// Unused FGPA Sync pins that need to be driven low
+	fpga_cam0_frame_sync {
+		gpio-hog;
+		gpios = <124 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "fpga_cam0_frame_sync";
+	};
+
+	// Unused FGPA Sync pins that need to be driven low
+	fpga_cam1_frame_sync {
+		gpio-hog;
+		gpios = <110 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "fpga_cam1_frame_sync";
+	};
+};
+
+
 &i2c5 {
     // BOOT EEPROM
     eeprom@50 {
@@ -1512,7 +1620,19 @@
 		"",  "",  "",  "",  "",  "",  "",  "";
 };
 
+&spi0 {
+	status = "okay";
 
+	// Remove Hardware Chip Select
+	pinctrl-0 = <&qup_spi0_data_clk>;
+
+	fpga_cspi@0 {
+		status = "okay";
+		compatible = "linux,spidev";
+		spi-max-frequency = <11000000>;
+		reg = <0>;
+	};
+};
 
 
 &tlmm {
