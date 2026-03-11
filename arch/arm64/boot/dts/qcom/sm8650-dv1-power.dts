@@ -1301,6 +1301,10 @@
 	};
 };
 
+&gpu {
+	status = "okay";
+};
+
 // Master Hub required for Hub 7 and 8
 &i2c_master_hub_0 {
 	status = "okay";
