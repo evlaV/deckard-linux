@@ -1464,6 +1464,12 @@ static int a6xx_gmu_rpmh_bw_votes_init(struct adreno_gpu *adreno_gpu,
 				continue;
 			}
 
+			/* Set minimal bw for lowest OPP */
+			if (bcm_index == 1) {
+				data[bcm_index] = BCM_TCS_CMD(commit, true, 0, 1);
+				continue;
+			}
+
 			/* Multiply the bandwidth by the width of the connection */
 			peak = (u64)bw * le16_to_cpu(bcm_data[bcm_index]->width);
 			do_div(peak, bcm->buswidth);

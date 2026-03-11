@@ -870,7 +870,9 @@ int a6xx_hfi_send_prep_slumber(struct a6xx_gmu *gmu)
 {
 	struct a6xx_hfi_prep_slumber_cmd msg = { 0 };
 
-	/* TODO: should freq and bw fields be non-zero ? */
+	/* Use lowest OPP for slumber */
+	msg.freq = 1;
+	msg.bw = 1;
 
 	return a6xx_hfi_send_msg(gmu, HFI_H2F_MSG_PREPARE_SLUMBER, &msg,
 		sizeof(msg), NULL, 0);
