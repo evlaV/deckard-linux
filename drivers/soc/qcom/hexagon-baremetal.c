@@ -508,7 +508,7 @@ static int dsp_shutdown(struct dsp *dsp)
 			pm_runtime_put(dsp->pds[2]);
 			dev_pm_genpd_set_performance_state(dsp->pds[3], 0);
 			pm_runtime_put(dsp->pds[3]);
-			icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*50));
+			icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1));
 		}
 
 		if (dsp->is_adsp) {
@@ -516,7 +516,7 @@ static int dsp_shutdown(struct dsp *dsp)
 			pm_runtime_put(dsp->pds[0]);
 			dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
 			pm_runtime_put(dsp->pds[1]);
-			icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*50));
+			icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1));
 
 		}
 	}
@@ -1003,7 +1003,7 @@ static int dsp_suspend(struct device *dev)
 
 	if (atomic_read(&dsp->booted) &&
 	    (dsp->is_adsp || dsp->is_cdsp)) {
-		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*50));
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1));
 
 		if (dsp->is_cdsp)  {
 			dev_pm_genpd_set_performance_state(dsp->pds[0], 1);
