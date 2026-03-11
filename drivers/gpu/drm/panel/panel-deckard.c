@@ -300,9 +300,11 @@ static int update_vcom(struct lpm026m648c_ctx *ctx)
 {
 	u16 vcom_left, vcom_right;
 	u8 payload[3] = {0xd5, 0, 0};
+	u8 wpc_unlock[2] = {0xe5, 0x07};
+	u8 wpc_lock[2] = {0xe5, 0x00};
 	int ret = 0;
 	// TODO interpolate for other modes?
-	if ( ctx->current_mode == MODE_120 ) {
+	if ( ctx->current_mode == MODE_120 || ctx->current_mode == MODE_144 ) {
 		vcom_left = ctx->vcom120[0];
 		vcom_right = ctx->vcom120[1];
 	} else {
@@ -314,12 +316,16 @@ static int update_vcom(struct lpm026m648c_ctx *ctx)
 	if ( vcom_left ) {
 		payload[1] = ( vcom_left & 0xFF00 ) >> 8;
 		payload[2] = vcom_left & 0x00FF;
+		ret |= mipi_dsi_generic_write(ctx->dsi[0], wpc_unlock, 2);
 		ret |= mipi_dsi_generic_write(ctx->dsi[0], payload, 3);
+		ret |= mipi_dsi_generic_write(ctx->dsi[0], wpc_lock, 2);
 	}
 	if ( vcom_right ) {
 		payload[1] = ( vcom_right & 0xFF00 ) >> 8;
 		payload[2] = vcom_right & 0x00FF;
+		ret |= mipi_dsi_generic_write(ctx->dsi[1], wpc_unlock, 2);
 		ret |= mipi_dsi_generic_write(ctx->dsi[1], payload, 3);
+		ret |= mipi_dsi_generic_write(ctx->dsi[1], wpc_lock, 2);
 	}
 	if ( ret < 0 ) {
 		DRM_DEV_ERROR(ctx->dev, "Failed to set vcom ( %d )\n", ret);
@@ -445,6 +451,8 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 	if ( !ctx->dphy ) {
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x00);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x00);
+		// update vcom per starting mode
+		update_vcom(ctx);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DSI_CTL,
 					  0x20, 0x6b, 0x80, 0x06, 0x33, 0x9A, 0x00,
 					  0x1a, 0x7a);
