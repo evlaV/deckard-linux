@@ -247,6 +247,18 @@
 	};
 
 
+	rgb_3v0_vout: rgb_3v0_vout {
+		compatible = "regulator-fixed";
+		regulator-name = "exp_rgb_3v0_vout";
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3000000>;
+		gpio = <&tlmm 38 GPIO_ACTIVE_HIGH>;
+		detect-gpio = <&pm8550b_gpios 6 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&detect_n>;
+		enable-active-high;
+		vin-supply = <&vph_pwr>;
+	};
 
 	dummy_reg: regulator-dummy {
 		compatible = "regulator-fixed";
@@ -889,10 +901,58 @@
 	pinctrl-0 = <&cam2_default &cam4_default>;
 };
 
+&cci0_i2c1 {
+#if 0
+	sensor@60 {
+		compatible = "ovti,ov6211";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK4_CLK>;
+		reset-gpios = <&tlmm 7 GPIO_ACTIVE_LOW>;
+		pinctrl-0 = <&cam4_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l6n_2p8>;
+		DOVDD-supply = <&eyetck_dovdd_1v8>;
+		DVDD-supply = <&vreg_l1n_1p1>;
+
+		port {
+			cam_et_l: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&csiphy2_ep>;
+			};
+		};
+	};
+#endif
+};
+
 &cci1 {
 	pinctrl-0 = <&cci1_0_default>;
 	pinctrl-1 = <&cci1_0_sleep>;
 	status = "okay";
+};
+
+&cci1_i2c0 {
+#if 0
+	sensor@60 {
+		compatible = "ovti,ov6211";
+		reg = <0x60>;
+		clocks = <&camcc CAM_CC_MCLK2_CLK>;
+		reset-gpios = <&tlmm 3 GPIO_ACTIVE_LOW>;
+		pinctrl-0 = <&cam2_default>;
+		pinctrl-names = "default";
+		AVDD-supply = <&vreg_l6m_2p8>;
+		DOVDD-supply = <&eyetck_dovdd_1v8>;
+		DVDD-supply = <&vreg_l1m_1p1>;
+
+		port {
+			cam_et_r: endpoint {
+				clock-lanes = <4>;
+				data-lanes = <0>;
+				remote-endpoint = <&csiphy4_ep>;
+			};
+		};
+	};
+#endif
 };
 
 &cci2 {
@@ -1154,7 +1214,50 @@
 	clock-frequency = <32764>;
 };
 
+#ifndef NRF_UART
+// nRF SPI HID
+&spi10 {
+	status = "okay";
 
+	// L, on QUP2 SE2 L3 CS
+	// expansion, CS_2=gpio_15
+	hid@2 {
+		compatible = "hid-over-spi";
+		reg = <2>;
+		interrupts-extended = <&tlmm 69 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 70 GPIO_ACTIVE_LOW>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&l_spihid_default_state>;
+	};
+
+	// R, on QUP2 SE2 L6 CS
+	// mainboard, CS_1=gpio_13
+	hid@1 {
+		compatible = "hid-over-spi";
+		reg = <1>;
+		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 137 GPIO_ACTIVE_LOW>;
+		input-report-header-address = <0x1000>;
+		input-report-body-address = <0x1004>;
+		output-report-address = <0x2000>;
+		read-opcode = <0x0b>;
+		write-opcode = <0x02>;
+		hid-over-spi-flags = <0x00>;
+		post-power-on-delay-ms = <1>;
+		minimal-reset-delay-ms = <100>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&r_spihid_default_state>;
+	};
+};
+#endif
 
 &i2c4 {
 	status = "okay";
@@ -1362,10 +1465,47 @@
 		vcc-supply  = <&vreg_l15b_1p8>;
 	};
 
+	// Northgate/Enthusiast Hotswap Card Silego
+	northgate_hotswap: slg4ad48669m@18 {
+		compatible = "silego,northgate_hotswap";
+		reg = <0x18>;
 
+		interrupt-parent = <&pm8550b_gpios>;
+		interrupts = <10 IRQ_TYPE_LEVEL_HIGH>;
+
+		pinctrl-0 = <&strap_irq>;
+		pinctrl-names = "default";
+
+		status = "ok";
+	};
 };
 
+&cci0_i2c0 { // "CCI_0"
+	// pinctrl-names = "default";
+	// pinctrl-0 = <&cam_sensor_mclk7_active>;
+	clock-frequency = <400000>;
 
+	eeprom@50 {
+		compatible = "atmel,24c64";
+		reg = <0x50>;
+		pagesize = <32>;
+		size = <8192>;
+		address-width = <16>;
+		status = "okay";
+		vcc-supply = <&rgb_3v0_vout>;
+		label = "passthrough_cams_eeprom_left";
+    };
+	eeprom@53 {
+		compatible = "atmel,24c64";
+		reg = <0x53>;
+		pagesize = <32>;
+		size = <8192>;
+		address-width = <16>;
+		status = "okay";
+		vcc-supply = <&rgb_3v0_vout>;
+		label = "passthrough_cams_eeprom_right";
+    };
+};
 &pm8550ve_gpios {
 	gpio-line-names =
 		// GPIO01 - GPIO08
@@ -1374,8 +1514,143 @@
 
 
 
+
+&tlmm {
+	status = "okay";
+
+	// FPGA Pins
+	fpga_rst: fpga_rst {
+		mux {
+			pins = "gpio7";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio7";
+			bias-disable = <0>;
+			drive-strength = <2>;
+			output-enable;
+			ouput-high;
+		};
+	};
+
+	fpga_cs: fpga_cs {
+		mux {
+			pins = "gpio35";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio35";
+			bias-disable = <0>;
+			drive-strength = <2>;
+			output-enable;
+			// active-low;
+			output-high;
+		};
+	};
+
+	fpga_crst: fpga_crst {
+		mux {
+			pins = "gpio39";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio39";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};
+
+	fpga_cdone: fpga_cdone {
+		mux {
+			pins = "gpio155";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio155";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};	
+
+	fpga_cready: fpga_cready {
+		mux {
+			pins = "gpio158";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio158";
+			bias-disable = <0>;
+			input-enable;
+		};
+	};
+};
+
 // nRF Pins
 &tlmm {
+	// nRF CS
+	qup_spi10_cs_nrf: qup-spi10-cs-state-nrf {
+		pins = "gpio13";
+		function = "qup2_se2";
+		drive-strength = <6>;
+		bias-disable;
+	};
+
+	// nRF SPI interrupt and reset pins
+
+    	// expansion 
+	l_spihid_default_state: l-spihid-default {
+		irq0-pins {
+			pins = "gpio69";
+			function = "gpio";
+			bias-pull-up;
+		};
+
+		reset0-pins {
+			pins = "gpio70";
+			function = "gpio";
+			drive-strength = <2>;
+			output-low;
+			bias-pull-down;
+		};
+	};
+
+	// host/mainboard
+	r_spihid_default_state: r-spihid-default {
+		irq0-pins {
+			pins = "gpio66";
+			function = "gpio";
+			bias-pull-up;
+		};
+
+		reset0-pins {
+			pins = "gpio137";
+			function = "gpio";
+			drive-strength = <2>;
+			output-low;
+			bias-pull-down;
+		};
+	};
+
+	nrf_host_rst_n: nrf_host_rst_n {
+		mux {
+			pins = "gpio164";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio164";
+			power-source = <1>; /* 1.8 V */
+			bias-disable = <0>;
+			output-enable;
+			output-low;
+		};
+	};
+	
 	bt_default: bt-default-state {
 		bt-en-pins {
 			pins = "gpio17";
@@ -1476,51 +1751,22 @@
 	clock-frequency = <76800000>;
 };
 
-#if 0
-&mdss {
-	status = "disabled";
+&pmk8550_gpios {
+	pinctrl-0 = <&alt_sleep_clk_default>;
+	pinctrl-names = "default";
+
+	alt_sleep_clk {
+		alt_sleep_clk_default: alt_sleep_clk_default {
+			pins = "gpio3";
+			function = "func1";
+			input-disable;
+			output-enable;
+			bias-disable;
+			power-source = <0>;
+		};
+	};
 };
 
-&cvp {
-	status = "disabled";
-};
-
-&dispcc {
-	status = "disabled";
-};
-
-&camcc {
-	status = "disabled";
-};
-
-&videocc {
-	status = "disabled";
-};
-
-&lpass_aoncc {
-	status = "disabled";
-};
-
-&gpucc {
-	status = "disabled";
-};
-
-&gmu {
-	status = "disabled";
-};
-
-&ice {
-	status = "disabled";
-};
-
-&icp {
-	status = "disabled";
-};
-
-&lpass_audiocc {
-	status = "disabled";
-};
-#endif
 
 //fw_setenv fdt_disable_soc_nodes ""
 //fw_setenv fdt_disable_soc_nodes "adsp@6800000,cdsp@32300000,clock-controller@af00000,cvp@ab00000,display-subsystem@ae00000,clock-controller@ade0000,icp@ac00000,clock-controller@aaf0000,clock-controller@6e00000,clock-controller@6bc0000,clock-controller@3d90000,gmu@3d6a000,crypto@1d88000,clock-controller@7b08000,clock-controller@7e00000,lpaif@6b80000,lpaif@6d00000,lpaif@7d00000,video-codec@aa00000,eud@88e0000,phy@88e3000,phy@88e8000,usb@a600000"
