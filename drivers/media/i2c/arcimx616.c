@@ -1330,11 +1330,23 @@ static int arcimx616_check_chip_id(struct arcimx616_dev *sensor)
 	 u8 led_chip_id = 0;
 	 int led_chip_detected = arcimx616_aw9106_read_reg(sensor, 0x10, &led_chip_id);
 	 bool led_chip_valid = (led_chip_detected == 0 && led_chip_id == 0x23);
- 
+
 	 // Read strobe state if available (right camera only)
+	 // Only valid when reset is deasserted (high), so verify first
 	 if (sensor->strobe) {
-		 int strobe_val = gpiod_get_value(sensor->strobe);
-		 dev_info(&sensor->i2c_client->dev, "Strobe GPIO state: %d\n", strobe_val);
+		 bool reset_high = false;
+		 for (int i = 0; i < g_arcimx616_sensor_count; i++) {
+			 if (g_arcimx616_sensors[i] && g_arcimx616_sensors[i]->reset_gpio) {
+				 reset_high = gpiod_get_value(g_arcimx616_sensors[i]->reset_gpio) == 1;
+				 break;
+			 }
+		 }
+		 if (reset_high) {
+			 int strobe_val = gpiod_get_value(sensor->strobe);
+			 dev_info(&sensor->i2c_client->dev, "Strobe GPIO state: %d\n", strobe_val);
+		 } else {
+			 dev_info(&sensor->i2c_client->dev, "Skipping strobe read: reset not high\n");
+		 }
 	 }
 
 	 // Determine if anything is connected
@@ -1352,6 +1364,11 @@ static int arcimx616_check_chip_id(struct arcimx616_dev *sensor)
 		 if (sensor->mux_select) {
 			 gpiod_set_value_cansleep(sensor->mux_select, 1);
 			 dev_info(&sensor->i2c_client->dev, "Mux select GPIO set to high\n");
+			 	 // Read strobe state if available (right camera only)
+			if (sensor->strobe) {
+				int strobe_val = gpiod_get_value(sensor->strobe);
+				dev_info(&sensor->i2c_client->dev, "Strobe GPIO state: %d\n", strobe_val);
+			}
 		 }
 	 }
  
