@@ -1315,6 +1315,14 @@
 	status = "okay";
 };
 
+&mdss {
+	iommu-defer-attach;
+	status = "okay";
+};
+
+&mdss_mdp {
+	status = "okay";
+};
 
 &mdss_dsi0 {
 	vdda-supply = <&vreg_l3i_1p2>;
