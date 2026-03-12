@@ -1316,6 +1316,89 @@
 };
 
 
+&mdss_dsi0 {
+	vdda-supply = <&vreg_l3i_1p2>;
+	status = "okay";
+
+	qcom,dual-dsi-mode;
+	qcom,master-dsi;
+
+
+	panel: panel@0 {
+		reg = <0>;
+		compatible = "deckard-panel";
+		dual-panel;
+
+		pinctrl-0 = <&display_resx1>, <&display_resx2>;
+		pinctrl-names = "default";
+
+		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
+			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
+
+		//Bias supplies enabled via GPIO
+		left-pos-supply = <&vpos_left>;
+		left-neg-supply = <&vneg_left>;
+		right-pos-supply = <&vpos_right>;
+		right-neg-supply = <&vneg_right>;
+
+		preboost-supply = <&BACKLIGHT_PREBOOST>;
+		backlight-left-supply = <&backlight_left>;
+		backlight-right-supply = <&backlight_right>;
+
+		vdda-supply = <&vreg_l12b_1p8>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				panel0_in: endpoint {
+					remote-endpoint = <&mdss_dsi0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				panel1_in: endpoint {
+					remote-endpoint = <&mdss_dsi1_out>;
+				};
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	remote-endpoint = <&panel0_in>;
+	data-lanes = <0 1 2>;
+};
+
+&mdss_dsi0_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+	phy-type = <PHY_TYPE_CPHY>;
+	status = "okay";
+};
+
+&mdss_dsi1 {
+	vdda-supply = <&vreg_l3i_1p2>;
+	status = "okay";
+
+	qcom,dual-dsi-mode;
+
+	assigned-clocks = <&dispcc DISP_CC_MDSS_BYTE1_CLK_SRC>, <&dispcc DISP_CC_MDSS_PCLK1_CLK_SRC>;
+	assigned-clock-parents = <&mdss_dsi0_phy 0>, <&mdss_dsi0_phy 1>;
+};
+
+&mdss_dsi1_out {
+	remote-endpoint = <&panel1_in>;
+	data-lanes = <0 1 2>;
+};
+
+&mdss_dsi1_phy {
+	vdds-supply = <&vreg_l1i_0p88>;
+	status = "okay";
+	phy-type = <PHY_TYPE_CPHY>;
+};
+
 // For 1.8V operation on PM8550
 // VIN0 ( 0 ) for GPIO_01 to GPIO_04
 // VIN1 ( 1 ) for GPIO_05 to GPIO_12 ( except 7 )
