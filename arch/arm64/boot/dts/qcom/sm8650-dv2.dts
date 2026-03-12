@@ -2082,7 +2082,8 @@
 	vddpe-3v3-supply = <&vph_pwr>; // XXX
 
 	wake-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
-	perst-gpios = <&tlmm 97 GPIO_ACTIVE_LOW>;
+	// disable pcie gpio so we can set from userspace
+	//perst-gpios = <&tlmm 97 GPIO_ACTIVE_LOW>;
 
 	pinctrl-0 = <&pcie1_default_state>;
 	pinctrl-names = "default";
