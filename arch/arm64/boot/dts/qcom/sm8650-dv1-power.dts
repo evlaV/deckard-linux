@@ -438,6 +438,11 @@
 		};
 	};
 
+	BACKLIGHT_PREBOOST: backlight_preboost {
+		compatible = "ti,tps61377";
+		en-gpio = <&tlmm 79 GPIO_ACTIVE_HIGH>;
+		pgood-gpio = <&tlmm 69 GPIO_ACTIVE_HIGH>;
+	};
 
 	FPGA_clk: FPGA_clk {
 		compatible = "fpga-clock";
@@ -1622,11 +1627,107 @@
 		status = "okay";
 	};
 
+
+	// right backlight
+	mpq3367_right@38 {
+		compatible = "mps,mpq3367";
+		reg = <0x38>;
+		status = "okay";
+		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+		mode = "pwm";
+		regulator {
+			backlight_right: backlight{
+				regulator-name = "backlight_right";
+			};
+		};
+	};
+
+	mp3317@28{
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "mps,mp3317";
+		reg = <0x28>;
+		en-gpios = <&tlmm 58 GPIO_ACTIVE_HIGH>;
+
+		mp3317,vout = <9500>;
+		mp3317,ovp-max = <0x0f>;
+		mp3317,tpwm = <0x0A>;
+		mp3317,iledl = <0x4ff>;
+		mp3317,iledr = <0x4ff>;
+		mp3317,hr = <0x4b>;
+		mp3317,step-hr = <0x41>;
+		mp3317,mode-ctl = <0x9E>;
+		mp3317,en-ctl = <0x9B>;
+
+		mp3317,label = "mp3317-scene-illum-ir";
+
+		status = "okay";
+	};
+
+	nex10000ub@3e{
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "nexperia,nex10000ub";
+		reg = <0x3e>;
+		pinctrl-0 = <&display_avdd_en_r>, <&display_avee_en_r>;
+		pinctrl-names = "default";
+		enp-gpios = <&pm8550_gpios 8 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+		regulators {
+			vpos_right: vpos{
+				regulator-name = "lcd_right_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5800000>;
+			};
+			vneg_right: vneg{
+				regulator-name = "lcd_right_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5800000>;
+			};
+		};
+	};
 };
 
 &i2c5 {
 	status = "okay";
+	// left backlight
+	mpq3367_left@38 {
+		compatible = "mps,mpq3367";
+		reg = <0x38>;
+		status = "okay";
+		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+		mode = "pwm";
+		regulator {
+			backlight_left: backlight{
+				regulator-name = "backlight_left";
+			};
+		};
+	};
 
+	nex10000ub@3e{
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "nexperia,nex10000ub";
+		reg = <0x3e>;
+		pinctrl-0 = <&display_avdd_en_l>, <&display_avee_en_l>;
+		pinctrl-names = "default";
+		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
+		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+		regulators {
+			vpos_left: vpos{
+				regulator-name = "lcd_left_vpos";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5800000>;
+			};
+			vneg_left: vneg{
+				regulator-name = "lcd_left_vneg";
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5800000>;
+			};
+		};
+	};
 };
 
 &uart15 {
