@@ -1723,7 +1723,7 @@
 	mpq3367_right@38 {
 		compatible = "mps,mpq3367";
 		reg = <0x38>;
-		status = "okay";
+		status = "disabled";
 		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
 		mode = "pwm";
 		regulator {
@@ -1752,7 +1752,7 @@
 
 		mp3317,label = "mp3317-scene-illum-ir";
 
-		status = "okay";
+		status = "disabled";
 	};
 
 	nex10000ub@3e{
@@ -1764,7 +1764,7 @@
 		pinctrl-names = "default";
 		enp-gpios = <&pm8550_gpios 8 GPIO_ACTIVE_HIGH>;
 		enn-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
-		status = "okay";
+		status = "disabled";
 		regulators {
 			vpos_right: vpos{
 				regulator-name = "lcd_right_vpos";
@@ -1786,7 +1786,7 @@
 	mpq3367_left@38 {
 		compatible = "mps,mpq3367";
 		reg = <0x38>;
-		status = "okay";
+		status = "disabled";
 		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
 		mode = "pwm";
 		regulator {
@@ -1805,7 +1805,7 @@
 		pinctrl-names = "default";
 		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
 		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
-		status = "okay";
+		status = "disabled";
 		regulators {
 			vpos_left: vpos{
 				regulator-name = "lcd_left_vpos";
@@ -2424,6 +2424,7 @@
 //fw_setenv fdt_disable_soc_nodes "adsp@6800000,cdsp@32300000,clock-controller@af00000,cvp@ab00000,display-subsystem@ae00000,clock-controller@ade0000,icp@ac00000,clock-controller@aaf0000,clock-controller@6e00000,clock-controller@6bc0000,clock-controller@3d90000,gmu@3d6a000,crypto@1d88000,clock-controller@7b08000,clock-controller@7e00000,lpaif@6b80000,lpaif@6d00000,lpaif@7d00000,video-codec@aa00000,eud@88e0000,phy@88e3000,phy@88e8000,usb@a600000"
 //fw_setenv fdt_disable_soc_nodes "adsp@6800000,cdsp@32300000,cvp@ab00000,clock-controller@ade0000,icp@ac00000,clock-controller@aaf0000,clock-controller@7b08000,video-codec@aa00000,isp@acb8000,display-subsystem@ae00000"
 //fw_setenv fdt_disable_soc_nodes "adsp@6800000,cdsp@32300000,cvp@ab00000,clock-controller@ade0000,icp@ac00000,clock-controller@aaf0000,clock-controller@7b08000,video-codec@aa00000,isp@acb8000,display-subsystem@ae00000,display-controller@ae01000"
+//fw_setenv fdt_disable_soc_nodes "adsp@6800000,cdsp@32300000,cvp@ab00000,clock-controller@ade0000,icp@ac00000,clock-controller@aaf0000,clock-controller@7b08000,video-codec@aa00000,isp@acb8000,display-subsystem@ae00000,display-controller@ae01000,dsi@ae94000,dsi@ae96000"
 
 
 //adsp: adsp@6800000
@@ -2432,6 +2433,8 @@
 //cvp: cvp@ab00000 
 //mdss: display-subsystem@ae00000 
 //mdss_mdp: display-controller@ae01000
+//mdss_dsi0: dsi@ae94000
+//mdss_dsi1: dsi@ae96000
 //camcc: clock-controller@ade0000
 //camss: isp@acb8000 
 //icp: icp@ac00000 
