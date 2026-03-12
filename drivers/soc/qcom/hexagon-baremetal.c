@@ -793,7 +793,7 @@ static int dsp_probe(struct platform_device *pdev)
 		return -EPROBE_DEFER;
 
 	//HACK TO PREVENT KERNEL OOPS
-	return -EPROBE_DEFER;
+	//return -EPROBE_DEFER;
 
 	dsp = devm_kzalloc(dev, sizeof(*dsp), GFP_KERNEL);
 	if (!dsp)
@@ -805,6 +805,11 @@ static int dsp_probe(struct platform_device *pdev)
 	dsp->is_cdsp = of_device_is_compatible(dev->of_node, "qcom,sm8650-hexagon") &&
 			!strcmp(dev->of_node->name, "cdsp");
 
+	if(!dsp->is_adsp)
+	{
+		//HACK TO PREVENT KERNEL OOPS
+		return -EPROBE_DEFER;
+	}
 	/* 36-bit dma address mask */
 	if (!dsp->is_xtensa) {
 		ret = dma_set_mask_and_coherent(dev, 0xffffffffful);
