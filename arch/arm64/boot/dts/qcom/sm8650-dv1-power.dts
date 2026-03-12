@@ -1019,6 +1019,10 @@
 	};
 };
 
+&dispcc {
+	status = "okay";
+};
+
 &gpi_dma1 {
 	status = "okay";
 };
@@ -1723,7 +1727,7 @@
 	mpq3367_right@38 {
 		compatible = "mps,mpq3367";
 		reg = <0x38>;
-		status = "disabled";
+		status = "okay";
 		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
 		mode = "pwm";
 		regulator {
@@ -1752,7 +1756,7 @@
 
 		mp3317,label = "mp3317-scene-illum-ir";
 
-		status = "disabled";
+		status = "okay";
 	};
 
 	nex10000ub@3e{
@@ -1764,7 +1768,7 @@
 		pinctrl-names = "default";
 		enp-gpios = <&pm8550_gpios 8 GPIO_ACTIVE_HIGH>;
 		enn-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
-		status = "disabled";
+		status = "okay";
 		regulators {
 			vpos_right: vpos{
 				regulator-name = "lcd_right_vpos";
@@ -1786,7 +1790,7 @@
 	mpq3367_left@38 {
 		compatible = "mps,mpq3367";
 		reg = <0x38>;
-		status = "disabled";
+		status = "okay";
 		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
 		mode = "pwm";
 		regulator {
@@ -1805,7 +1809,7 @@
 		pinctrl-names = "default";
 		enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
 		enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
-		status = "disabled";
+		status = "okay";
 		regulators {
 			vpos_left: vpos{
 				regulator-name = "lcd_left_vpos";
