@@ -12179,8 +12179,8 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 	if (ahvif->vdev_type == WMI_VDEV_TYPE_STA)
 		reg_6ghz_power_mode = bss_conf->power_type;
 	else
-		/* For now, LPI is the only supported AP power mode */
-		reg_6ghz_power_mode = IEEE80211_REG_LPI_AP;
+		/* For now, VLP is the only supported AP power mode */
+		reg_6ghz_power_mode = IEEE80211_REG_VLP_AP;
 
 	reg_tpc_info->ap_power_type =
 		ath12k_reg_ap_pwr_convert(reg_6ghz_power_mode);
