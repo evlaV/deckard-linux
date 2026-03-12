@@ -2003,7 +2003,7 @@
         status      = "okay";
         label		= "core_eeprom";
         reg         = <0x50>;
-        p-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+        wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
         vcc-supply  = <&vreg_l15b_1p8>;
     };
 
