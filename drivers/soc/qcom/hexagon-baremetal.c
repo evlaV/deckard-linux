@@ -1015,21 +1015,10 @@ static int dsp_suspend(struct device *dev)
 
 	pr_info("%s:%d\n", __func__, __LINE__);
 
-	if (atomic_read(&dsp->booted) &&
-	    (dsp->is_adsp || dsp->is_cdsp)) {
+	if (atomic_read(&dsp->booted) && dsp->is_adsp) {
 		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*50));
-
-		if (dsp->is_cdsp)  {
-			dev_pm_genpd_set_performance_state(dsp->pds[0], 1);
-			dev_pm_genpd_set_performance_state(dsp->pds[1], 1);
-			dev_pm_genpd_set_performance_state(dsp->pds[2], 1);
-			dev_pm_genpd_set_performance_state(dsp->pds[3], 1);
-		}
-
-		if (dsp->is_adsp) {
-			dev_pm_genpd_set_performance_state(dsp->pds[0], 1);
-			dev_pm_genpd_set_performance_state(dsp->pds[1], 1);
-		}
+		dev_pm_genpd_set_performance_state(dsp->pds[0], 1);
+		dev_pm_genpd_set_performance_state(dsp->pds[1], 1);
 	}
 
 	return 0;
@@ -1041,20 +1030,10 @@ static int dsp_resume(struct device *dev)
 
 	pr_info("%s:%d\n", __func__, __LINE__);
 
-	if (atomic_read(&dsp->booted) &&
-	    (dsp->is_adsp || dsp->is_cdsp)) {
+	if (atomic_read(&dsp->booted) && dsp->is_adsp) {
 		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
-		if (dsp->is_cdsp) {
-			dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
-			dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
-			dev_pm_genpd_set_performance_state(dsp->pds[2], dsp->perf[2]);
-			dev_pm_genpd_set_performance_state(dsp->pds[3], dsp->perf[3]);
-		}
-
-		if (dsp->is_adsp) {
-			dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
-			dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
-		}
+		dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
+		dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
 	}
 
 	return 0;
