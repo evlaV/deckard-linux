@@ -108,6 +108,7 @@ static inline void qcom_branch_set_clk_en(struct regmap *regmap, u32 cbcr)
 
 extern const struct clk_ops clk_branch_ops;
 extern const struct clk_ops clk_branch2_ops;
+extern const struct clk_ops clk_branch2_gdsc_ops;
 extern const struct clk_ops clk_branch_simple_ops;
 extern const struct clk_ops clk_branch2_aon_ops;
 extern const struct clk_ops clk_branch2_mem_ops;

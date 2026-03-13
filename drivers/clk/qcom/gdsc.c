@@ -317,8 +317,8 @@ static int gdsc_disable(struct generic_pm_domain *domain)
 	int i;
 
 	/* Check associated clocks */
-	for (i = 0; i < sc->clks_count; ++i) {
-		if (clk_hw_is_enabled(sc->clks[i])) {
+	for (i = 0; i < sc->num_clks; ++i) {
+		if (sc->clks[i] && clk_hw_is_enabled(sc->clks[i])) {
 			WARN(1, "%s parent clock is still on\n", clk_hw_get_name(sc->clks[i]));
 			return -EBUSY;
 		}

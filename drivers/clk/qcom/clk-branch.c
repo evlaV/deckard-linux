@@ -134,9 +134,9 @@ static int clk_branch2_gdsc_enable(struct clk_hw *hw)
 {
 	struct clk_branch *br = to_clk_branch(hw);
 
-	if (br->gdsc && !gdsc_check_status(rcg->gdsc, GDSC_ON)) {
+	if (br->gdsc && !gdsc_check_status(br->gdsc, GDSC_ON)) {
 		WARN(1, "%s parent gdsc is off\n", clk_hw_get_name(hw));
-		return -BUSY;
+		return -EBUSY;
 	}
 
 	return clk_branch2_enable(hw);
@@ -196,7 +196,7 @@ const struct clk_ops clk_branch2_gdsc_ops = {
 	.disable = clk_branch2_disable,
 	.is_enabled = clk_is_enabled_regmap,
 };
-EXPORT_SYMBOL_GPL(clk_branch2_ops);
+EXPORT_SYMBOL_GPL(clk_branch2_gdsc_ops);
 
 const struct clk_ops clk_branch2_aon_ops = {
 	.enable = clk_branch2_enable,
