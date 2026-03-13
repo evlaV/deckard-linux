@@ -8,9 +8,118 @@
 #define __CFG80211_RDEV_OPS
 
 #include <linux/rtnetlink.h>
+#include <linux/bitops.h>
+#include <linux/compiler.h>
+#include <linux/printk.h>
+#include <linux/slab.h>
 #include <net/cfg80211.h>
 #include "core.h"
 #include "trace.h"
+
+extern int cfg80211_block_scans;				/* defined in core.c */
+
+#define CFG80211_SCAN_BLOCK_5GHZ	BIT(0)
+#define CFG80211_SCAN_BLOCK_6GHZ	BIT(1)
+
+static inline unsigned int cfg80211_scan_block_mask(void)
+{
+	switch(READ_ONCE(cfg80211_block_scans)) {
+		case 1:
+			return (CFG80211_SCAN_BLOCK_5GHZ | CFG80211_SCAN_BLOCK_6GHZ);
+			break;
+		case 5:
+			return CFG80211_SCAN_BLOCK_5GHZ;
+			break;
+		case 6:
+			return CFG80211_SCAN_BLOCK_6GHZ;
+			break;
+		default:
+			return 0;
+	}
+}
+
+
+static inline bool cfg80211_scan_chan_blocked(unsigned int mask,
+                                              const struct ieee80211_channel *chan)
+{
+	if (!chan)
+		return false;
+
+	if ((chan->band == NL80211_BAND_2GHZ) && (mask & CFG80211_SCAN_BLOCK_5GHZ))
+		return true;
+
+	if ((chan->band == NL80211_BAND_5GHZ) && (mask & CFG80211_SCAN_BLOCK_5GHZ))
+		return true;
+
+	if ((chan->band == NL80211_BAND_6GHZ) && (mask & CFG80211_SCAN_BLOCK_6GHZ))
+		return true;
+
+	return false;
+}
+
+
+static inline u32 cfg80211_scan_filter_channels(struct ieee80211_channel **channels,
+				       u32 n_channels, unsigned int mask)
+{
+	u32 i, j = 0;
+
+	for (i = 0; i < n_channels; i++) {
+		struct ieee80211_channel *chan = channels[i];
+
+		if (!cfg80211_scan_chan_blocked(mask, chan))
+			channels[j++] = chan;
+	}
+
+	return j;
+}
+
+/* 2 different signatures */
+static inline u32 cfg80211_scan_filter_req_channels(struct cfg80211_scan_request *req,
+					    unsigned int mask)
+{
+	req->n_channels = cfg80211_scan_filter_channels(req->channels, req->n_channels, mask);
+	return req->n_channels;
+}
+
+static inline u32
+cfg80211_sched_scan_filter_req_channels(struct cfg80211_sched_scan_request *req,
+				      unsigned int mask)
+{
+	req->n_channels = cfg80211_scan_filter_channels(req->channels, req->n_channels, mask);
+	return req->n_channels;
+}
+
+struct cfg80211_sched_scan_drop_work {
+	struct wiphy_work work;
+	u64 reqid;
+};
+
+static void cfg80211_sched_scan_drop_wk(struct wiphy *wiphy, struct wiphy_work *wk)
+{
+	struct cfg80211_sched_scan_drop_work *dwork =
+		container_of(wk, struct cfg80211_sched_scan_drop_work, work);
+
+	// runs as wiphy_work (wiphy mutex is held)
+	cfg80211_sched_scan_stopped_locked(wiphy, dwork->reqid);
+	kfree(dwork);
+}
+
+static inline int cfg80211_queue_sched_scan_drop(struct cfg80211_registered_device *rdev,
+					 u64 reqid)
+{
+	struct cfg80211_sched_scan_drop_work *dwork;
+
+	dwork = kzalloc(sizeof(*dwork), GFP_KERNEL);
+	if (!dwork)
+		return -ENOMEM;
+
+	dwork->reqid = reqid;
+	wiphy_work_init(&dwork->work, cfg80211_sched_scan_drop_wk);
+	wiphy_work_queue(&rdev->wiphy, &dwork->work);
+
+	return 0;
+}
+
 
 static inline int rdev_suspend(struct cfg80211_registered_device *rdev,
 			       struct cfg80211_wowlan *wowlan)
@@ -462,6 +571,33 @@ static inline int rdev_scan(struct cfg80211_registered_device *rdev,
 
 	if (WARN_ON_ONCE(!request->req.n_ssids && request->req.ssids))
 		return -EINVAL;
+	else {
+		unsigned int block_mask = cfg80211_scan_block_mask();
+		u32 orig_n_channels, new_n_channels;
+
+		orig_n_channels = request->req.n_channels;
+		if (block_mask && orig_n_channels) {
+			new_n_channels =
+				cfg80211_scan_filter_req_channels(&request->req, block_mask);
+
+			if (!new_n_channels) {
+				struct cfg80211_scan_info info = {
+					.aborted = false,
+				};
+
+				pr_info_ratelimited("cfg80211: dropping scan on %s (all channels blocked, mask=%#x)\n",
+						    wiphy_name(&rdev->wiphy), block_mask);
+				cfg80211_scan_done(&request->req, &info);
+				return 0;
+			}
+
+			if (new_n_channels != orig_n_channels)
+				pr_info_ratelimited("cfg80211: filtered scan on %s (%u->%u channels, blocked mask=%#x)\n",
+						    wiphy_name(&rdev->wiphy),
+						    orig_n_channels, new_n_channels,
+						    block_mask);
+		}
+	}
 
 	trace_rdev_scan(&rdev->wiphy, request);
 	ret = rdev->ops->scan(&rdev->wiphy, &request->req);
@@ -891,6 +1027,32 @@ rdev_sched_scan_start(struct cfg80211_registered_device *rdev,
 		      struct cfg80211_sched_scan_request *request)
 {
 	int ret;
+	unsigned int block_mask = cfg80211_scan_block_mask();
+
+	if (block_mask && request->n_channels) {
+		u32 orig_n_channels = request->n_channels;
+		u32 new_n_channels;
+
+		new_n_channels =
+			cfg80211_sched_scan_filter_req_channels(request, block_mask);
+
+		if (!new_n_channels) {
+			pr_info_ratelimited("cfg80211: dropping scheduled scan on %s (all channels blocked, mask=%#x)\n",
+					    wiphy_name(&rdev->wiphy), block_mask);
+
+			ret = cfg80211_queue_sched_scan_drop(rdev, request->reqid);
+			if (ret)
+				return ret;
+			return 0;
+		}
+
+		if (new_n_channels != orig_n_channels)
+			pr_info_ratelimited("cfg80211: filtered scheduled scan on %s (%u->%u channels, blocked mask=%#x)\n",
+					    wiphy_name(&rdev->wiphy),
+					    orig_n_channels, new_n_channels,
+					    block_mask);
+	}
+
 	trace_rdev_sched_scan_start(&rdev->wiphy, dev, request->reqid);
 	ret = rdev->ops->sched_scan_start(&rdev->wiphy, dev, request);
 	trace_rdev_return_int(&rdev->wiphy, ret);
