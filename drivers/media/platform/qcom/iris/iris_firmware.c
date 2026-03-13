@@ -148,7 +148,7 @@ static int iris_load_fw_to_memory(struct iris_core *core, const char *fw_name)
 				    pas_id, mem_virt, mem_phys, res_size, NULL);
 	else
 		ret = qcom_mdt_load_no_init(dev, firmware, fw_name,
-					    pas_id, mem_virt, mem_phys, res_size, NULL);
+					    mem_virt, mem_phys, res_size, NULL);
 
 	memunmap(mem_virt);
 err_release_fw:
