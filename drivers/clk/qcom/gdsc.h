@@ -75,8 +75,8 @@ struct gdsc {
 	const char 			*supply;
 	struct regulator		*rsupply;
 
-	struct clk_hw 			*clks;
-	unsigned int			clks_count;
+	struct clk_hw 			**clks;
+	unsigned int			num_clks;
 };
 
 enum gdsc_status {
