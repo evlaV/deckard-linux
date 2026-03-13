@@ -57,6 +57,10 @@ module_param(cfg80211_disable_40mhz_24ghz, bool, 0644);
 MODULE_PARM_DESC(cfg80211_disable_40mhz_24ghz,
 		 "Disable 40MHz support in the 2.4GHz band");
 
+int cfg80211_block_scans;
+module_param(cfg80211_block_scans, int, 0644);
+MODULE_PARM_DESC(cfg80211_block_scans, "block scan channels on 5/6 GHz bands (0=off, 1=both, 5=block 5, 6=block 6)");
+
 struct cfg80211_registered_device *cfg80211_rdev_by_wiphy_idx(int wiphy_idx)
 {
 	struct cfg80211_registered_device *result = NULL, *rdev;
