@@ -805,11 +805,17 @@ static int dsp_probe(struct platform_device *pdev)
 	dsp->is_cdsp = of_device_is_compatible(dev->of_node, "qcom,sm8650-hexagon") &&
 			!strcmp(dev->of_node->name, "cdsp");
 
-	if(!dsp->is_adsp)
+#if 0			
+	if( dsp->is_adsp || dsp->is_cdsp || dsp->is_xtensa)
+	{
+		printk(KERN_INFO "starting hexagon");
+	}
+	else
 	{
 		//HACK TO PREVENT KERNEL OOPS
 		return -EPROBE_DEFER;
 	}
+#endif		
 	/* 36-bit dma address mask */
 	if (!dsp->is_xtensa) {
 		ret = dma_set_mask_and_coherent(dev, 0xffffffffful);
