@@ -79,7 +79,17 @@ struct gdsc {
 	bool				needs_icc;
 	unsigned int			icc_path_index;
 	struct icc_path			*icc_path;
+
+	struct clk_hw 			**clks;
+	unsigned int			num_clks;
 };
+
+enum gdsc_status {
+	GDSC_OFF,
+	GDSC_ON
+};
+
+int gdsc_check_status(struct gdsc *sc, enum gdsc_status status);
 
 struct gdsc_desc {
 	struct device *dev;
