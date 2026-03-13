@@ -15,6 +15,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/reset-controller.h>
 #include <linux/slab.h>
+#include <linux/clk-provider.h>
 #include "gdsc.h"
 
 #define PWR_ON_MASK		BIT(31)
@@ -51,13 +52,8 @@
 
 #define domain_to_gdsc(domain) container_of(domain, struct gdsc, pd)
 
-enum gdsc_status {
-	GDSC_OFF,
-	GDSC_ON
-};
-
 /* Returns 1 if GDSC status is status, 0 if not, and < 0 on error */
-static int gdsc_check_status(struct gdsc *sc, enum gdsc_status status)
+int gdsc_check_status(struct gdsc *sc, enum gdsc_status status)
 {
 	unsigned int reg;
 	u32 val;
@@ -318,6 +314,15 @@ static int gdsc_disable(struct generic_pm_domain *domain)
 {
 	struct gdsc *sc = domain_to_gdsc(domain);
 	int ret;
+	int i;
+
+	/* Check associated clocks */
+	for (i = 0; i < sc->num_clks; ++i) {
+		if (sc->clks[i] && clk_hw_is_enabled(sc->clks[i])) {
+			WARN(1, "%s parent clock is still on\n", clk_hw_get_name(sc->clks[i]));
+			return -EBUSY;
+		}
+	}
 
 	if (sc->pwrsts == PWRSTS_ON)
 		return gdsc_assert_reset(sc);
