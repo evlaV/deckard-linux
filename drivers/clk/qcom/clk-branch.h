@@ -8,6 +8,7 @@
 #include <linux/clk-provider.h>
 
 #include "clk-regmap.h"
+#include "gdsc.h"
 
 /**
  * struct clk_branch - gating clock with status bit and dynamic hardware gating
@@ -34,6 +35,7 @@ struct clk_branch {
 #define BRANCH_HALT_ENABLE_VOTED	(BRANCH_HALT_ENABLE | BRANCH_VOTED)
 #define BRANCH_HALT_DELAY		2 /* No bit to check; just delay */
 #define BRANCH_HALT_SKIP		3 /* Don't check halt bit */
+	struct gdsc *gdsc;
 
 	struct clk_regmap clkr;
 };
@@ -106,6 +108,7 @@ static inline void qcom_branch_set_clk_en(struct regmap *regmap, u32 cbcr)
 
 extern const struct clk_ops clk_branch_ops;
 extern const struct clk_ops clk_branch2_ops;
+extern const struct clk_ops clk_branch2_gdsc_ops;
 extern const struct clk_ops clk_branch_simple_ops;
 extern const struct clk_ops clk_branch2_aon_ops;
 extern const struct clk_ops clk_branch2_mem_ops;
