@@ -1014,13 +1014,13 @@ static int dsp_suspend(struct device *dev)
 	struct dsp *dsp = dev_get_drvdata(dev);
 
 	pr_info("%s:%d\n", __func__, __LINE__);
-
+#if 0
 	if (atomic_read(&dsp->booted) && dsp->is_adsp) {
 		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*50));
 		dev_pm_genpd_set_performance_state(dsp->pds[0], 1);
 		dev_pm_genpd_set_performance_state(dsp->pds[1], 1);
 	}
-
+#endif
 	return 0;
 }
 
@@ -1029,13 +1029,13 @@ static int dsp_resume(struct device *dev)
 	struct dsp *dsp = dev_get_drvdata(dev);
 
 	pr_info("%s:%d\n", __func__, __LINE__);
-
+#if 0
 	if (atomic_read(&dsp->booted) && dsp->is_adsp) {
 		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
 		dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
 		dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
 	}
-
+#endif
 	return 0;
 }
 
