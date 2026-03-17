@@ -88,6 +88,7 @@ struct map_direct {
 #define DSP_IOCTL_MAP_DMABUF 	_IO('C', 4) /* 64-bit argument: low 32-bits dmabuf fd, high 32-bits VA */
 #define DSP_IOCTL_MAP_DIRECT 	_IOW('C', 5, struct map_direct)
 #define DSP_IOCTL_UNMAP 	_IO('C', 6) /* 32 bit va argument */
+#define DSP_IOCTL_HANDOVER 	_IO('C', 8) /* Signal to the driver the dsp has started, can unvote resources */
 
 // Dedicated ioctl for cvp boot to set registers inside kernel instead of userspace + using DSP_IOCTL_BOOT
 #define CVP_IOCTL_BOOT 	_IO('C', 7) /* argument ignored */
@@ -427,7 +428,7 @@ static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 
 	// Only try to set src to QDSP6SSPLL for cDSP on 8650
 	if (dsp->is_cdsp) {
-		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
+		icc_set_bw(dsp->dma_path, 0, UINT_MAX);
 		dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
 		pm_runtime_get_sync(dsp->pds[0]);
 		dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
@@ -448,7 +449,7 @@ static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 	}
 
 	if (dsp->is_adsp) {
-		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
+		icc_set_bw(dsp->dma_path, 0, UINT_MAX);
 		dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
 		pm_runtime_get_sync(dsp->pds[0]);
 		dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
@@ -545,6 +546,25 @@ static int dsp_shutdown(struct dsp *dsp)
 	atomic_set(&dsp->booted, 0);
 	return 0;
 }
+
+static int dsp_handover(struct dsp *dsp)
+{
+	if (atomic_read(&dsp->booted) == 0)
+		return -EINVAL;
+
+	if (dsp->is_cdsp)  {
+		// TODO
+	}
+
+	if (dsp->is_adsp) {
+		dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
+		dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
+		icc_set_bw(dsp->dma_path, 0, 0);
+	}
+
+	return 0;
+}
+
 
 static int dsp_open(struct inode *inode, struct file *file)
 {
@@ -748,6 +768,8 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	}
 	case DSP_IOCTL_UNMAP:
 		return dsp_unmap_by_va(dsp, arg);
+	case DSP_IOCTL_HANDOVER:
+		return dsp_handover(dsp);
 	default:
 		return -ENOTTY;
 	}
@@ -991,7 +1013,7 @@ static int dsp_probe(struct platform_device *pdev)
 
 		dsp->dma_path = devm_of_icc_get(dev, "mem");
 		WARN_ON(IS_ERR(dsp->dma_path));
-		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
+		icc_set_bw(dsp->dma_path, 0, UINT_MAX);
 
 		// TURING_QDSP6SS_PLL_PLL_CM_PLL_LUCID_OLE
 		// Set it to use TURBO_L3 frequency - 1843.2 MHz
@@ -1002,7 +1024,7 @@ static int dsp_probe(struct platform_device *pdev)
 	{
 		dsp->dma_path = devm_of_icc_get(dev, "mem");
 		WARN_ON(IS_ERR(dsp->dma_path));
-		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
+		icc_set_bw(dsp->dma_path, 0, UINT_MAX);
 	}
 
 	return 0;
@@ -1015,59 +1037,6 @@ static void dsp_remove(struct platform_device *pdev)
 	misc_deregister(&dsp->miscdev);
 	return;
 }
-
-static int dsp_suspend(struct device *dev)
-{
-	struct dsp *dsp = dev_get_drvdata(dev);
-
-	pr_info("%s:%d\n", __func__, __LINE__);
-
-	if (atomic_read(&dsp->booted) &&
-	    (dsp->is_adsp || dsp->is_cdsp)) {
-		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1));
-
-		if (dsp->is_cdsp)  {
-			dev_pm_genpd_set_performance_state(dsp->pds[0], 1);
-			dev_pm_genpd_set_performance_state(dsp->pds[1], 1);
-			dev_pm_genpd_set_performance_state(dsp->pds[2], 1);
-			dev_pm_genpd_set_performance_state(dsp->pds[3], 1);
-		}
-
-		if (dsp->is_adsp) {
-			dev_pm_genpd_set_performance_state(dsp->pds[0], 1);
-			dev_pm_genpd_set_performance_state(dsp->pds[1], 1);
-		}
-	}
-
-	return 0;
-}
-
-static int dsp_resume(struct device *dev)
-{
-	struct dsp *dsp = dev_get_drvdata(dev);
-
-	pr_info("%s:%d\n", __func__, __LINE__);
-
-	if (atomic_read(&dsp->booted) &&
-	    (dsp->is_adsp || dsp->is_cdsp)) {
-		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1000*1000*50));
-		if (dsp->is_cdsp) {
-			dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
-			dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
-			dev_pm_genpd_set_performance_state(dsp->pds[2], dsp->perf[2]);
-			dev_pm_genpd_set_performance_state(dsp->pds[3], dsp->perf[3]);
-		}
-
-		if (dsp->is_adsp) {
-			dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
-			dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
-		}
-	}
-
-	return 0;
-}
-
-static DEFINE_SIMPLE_DEV_PM_OPS(dsp_pm_ops, dsp_suspend, dsp_resume);
 
 static const struct of_device_id dsp_match_table[] = {
 	{ .compatible = "qcom,sm8650-hexagon" },
@@ -1082,7 +1051,6 @@ static struct platform_driver dsp_driver = {
 	.driver = {
 		.name = "dsp-sm8650",
 		.of_match_table = dsp_match_table,
-		.pm = pm_ptr(&dsp_pm_ops),
 	},
 };
 module_platform_driver(dsp_driver);
