@@ -1128,12 +1128,6 @@ int platform_pm_suspend(struct device *dev)
 	if (!drv)
 		return 0;
 
-	if (!strcmp(dev_name(dev), "89c000.serial") ||
-	    !strcmp(dev_name(dev), "a94000.i2c")) {
-		dev_warn(dev, "skipping suspend");
-		return 0;
-	}
-
 	if (drv->pm) {
 		if (drv->pm->suspend)
 			ret = drv->pm->suspend(dev);
@@ -1151,12 +1145,6 @@ int platform_pm_resume(struct device *dev)
 
 	if (!drv)
 		return 0;
-
-	if (!strcmp(dev_name(dev), "89c000.serial") ||
-	    !strcmp(dev_name(dev), "a94000.i2c")) {
-		dev_warn(dev, "skipping resume");
-		return 0;
-	}
 
 	if (drv->pm) {
 		if (drv->pm->resume)
