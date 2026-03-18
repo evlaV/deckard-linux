@@ -1553,6 +1553,9 @@ static int __maybe_unused dpu_runtime_resume(struct device *dev)
 
 	dpu_vbif_init_memtypes(dpu_kms);
 
+	if (dpu_kms->cac_state_cur == CAC_ENABLED)
+		dpu_kms->cac_update_pending = true;
+
 	drm_for_each_encoder(encoder, ddev)
 		dpu_encoder_virt_runtime_resume(encoder);
 
