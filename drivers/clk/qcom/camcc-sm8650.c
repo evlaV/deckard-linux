@@ -3215,7 +3215,7 @@ static struct gdsc cam_cc_titan_top_gdsc = {
 	},
 	.pwrsts = PWRSTS_OFF_ON,
     // ALWAYS_ON to work around random issues where IFE would be partially working after power-on (fail to stream frame headers)
-	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | ALWAYS_ON,
+	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
 };
 
 static struct gdsc cam_cc_bps_gdsc = {
@@ -3242,7 +3242,7 @@ static struct gdsc cam_cc_ife_0_gdsc = {
 	.pwrsts = PWRSTS_OFF_ON,
 	.parent = &cam_cc_titan_top_gdsc.pd,
     // ALWAYS_ON to work around random issues where IFE would be partially working after power-on (fail to stream frame headers)
-	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | ALWAYS_ON,
+	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
 };
 
 static struct gdsc cam_cc_ife_1_gdsc = {
@@ -3256,7 +3256,7 @@ static struct gdsc cam_cc_ife_1_gdsc = {
 	.pwrsts = PWRSTS_OFF_ON,
 	.parent = &cam_cc_titan_top_gdsc.pd,
     // ALWAYS_ON to work around random issues where IFE would be partially working after power-on (fail to stream frame headers)
-	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | ALWAYS_ON,
+	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
 };
 
 static struct gdsc cam_cc_ife_2_gdsc = {
@@ -3269,7 +3269,7 @@ static struct gdsc cam_cc_ife_2_gdsc = {
 	},
 	.pwrsts = PWRSTS_OFF_ON,
 	.parent = &cam_cc_titan_top_gdsc.pd,
-	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | ALWAYS_ON,
+	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
 };
 
 static struct gdsc cam_cc_ipe_0_gdsc = {
