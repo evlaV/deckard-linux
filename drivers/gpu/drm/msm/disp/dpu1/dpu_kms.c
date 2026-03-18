@@ -1524,9 +1524,6 @@ static int __maybe_unused dpu_runtime_suspend(struct device *dev)
 	struct msm_drm_private *priv = platform_get_drvdata(pdev);
 	struct dpu_kms *dpu_kms = to_dpu_kms(priv->kms);
 
-	if (dpu_kms->cac_state_cur == CAC_ENABLED)
-		dpu_crtc_disable_cac(priv->kms);
-
 	/* Drop the performance state vote */
 	dev_pm_opp_set_rate(dev, 0);
 	clk_bulk_disable_unprepare(dpu_kms->num_clocks, dpu_kms->clocks);
@@ -1555,9 +1552,6 @@ static int __maybe_unused dpu_runtime_resume(struct device *dev)
 	}
 
 	dpu_vbif_init_memtypes(dpu_kms);
-
-	if (dpu_kms->cac_state_cur == CAC_ENABLED)
-		dpu_kms->cac_update_pending = true;
 
 	drm_for_each_encoder(encoder, ddev)
 		dpu_encoder_virt_runtime_resume(encoder);

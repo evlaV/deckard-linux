@@ -44,6 +44,7 @@
 #define	CONVERT_S3_15(val) \
 	(((((u64)val) & ~BIT_ULL(63)) >> 17) & GENMASK_ULL(17, 0))
 
+static void dpu_crtc_disable_cac(struct msm_kms *kms);
 static void dpu_crtc_set_cac_blob(struct msm_kms *kms, struct cac_blob *cac);
 
 static struct dpu_kms *_dpu_crtc_get_kms(struct drm_crtc *crtc)
@@ -1927,7 +1928,7 @@ static void dpu_crtc_set_cac_blob(struct msm_kms *kms,
 	}
 }
 
-void dpu_crtc_disable_cac(struct msm_kms *kms)
+static void dpu_crtc_disable_cac(struct msm_kms *kms)
 {
 	struct dpu_hw_sspp *sspp;
 	struct dpu_kms *dpu_kms = to_dpu_kms(kms);
