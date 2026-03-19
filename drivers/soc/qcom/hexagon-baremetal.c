@@ -169,6 +169,13 @@ xtensa_boot(struct dsp *dsp)
 {
 	// Can this be called outside of booting the CVP?
 	bool is_cvp = true;
+	
+#define CVP_SS_BASE_OFFS			0x0
+#define CVP_SS_NUM_THREADS			4
+
+#define CVP_SS_IRQ_STATUS			(CVP_SS_BASE_OFFS + 0x0)
+#define CVP_SS_WD_IRQ_CLR			(CVP_SS_BASE_OFFS + 0x3c)
+#define CVP_SS_THREAD_DONE_CLR(x)	(CVP_SS_BASE_OFFS + 0x514 + 0x40 * (x))
 
 #define CVP_CPU_BASE_OFFS			0x000A0000
 
@@ -291,6 +298,20 @@ xtensa_boot(struct dsp *dsp)
 		if(readl_relaxed(dsp->base + 0xd0010)) {
 			writel_relaxed(0x1, dsp->base + 0xd0018); // IRIS_CPU_NOC_ERRORLOGGER_ERRCLR_LOW
 			writel_relaxed(0x1, dsp->base + 0xd0018); // needs to be set twice... otherwise doesn't take effect
+		}
+
+		// Clear interrupt/watchdog on the CVP_SS block if the SS_INTR bit is set (happens after invalid iova access issued by hardwares)
+		if(readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS) & 0x10) {
+			// Assert clear signal on all THREAD_DONE and watchdog IRQ registers, then deassert after a few ms
+			writel_relaxed(0xf, dsp->base + CVP_SS_WD_IRQ_CLR);
+			for(int i=0; i<CVP_SS_NUM_THREADS; i++)
+				writel_relaxed(0x1, dsp->base + CVP_SS_THREAD_DONE_CLR(i));
+
+			usleep_range(1000, 2000);
+
+			writel_relaxed(0x0, dsp->base + CVP_SS_WD_IRQ_CLR);
+			for(int i=0; i<CVP_SS_NUM_THREADS; i++)
+				writel_relaxed(0x0, dsp->base + CVP_SS_THREAD_DONE_CLR(i));
 		}
 
 		u32 post_recovery_status = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS);
