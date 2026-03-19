@@ -827,6 +827,7 @@ static int _disp_log_stats_v2(struct tzdbg_log_v2_t *log,
 	uint32_t wrap_start;
 	uint32_t wrap_end;
 	uint32_t wrap_cnt;
+	uint32_t offset;
 	int max_len;
 	int len = 0;
 	int i = 0;
@@ -840,7 +841,7 @@ static int _disp_log_stats_v2(struct tzdbg_log_v2_t *log,
 	else {
 		/* wrap counter has wrapped around, invalidate start position */
 		wrap_cnt = 2;
-}
+	}
 
 	if (wrap_cnt > 1) {
 		/* end position has wrapped around more than once, */
@@ -852,39 +853,18 @@ static int _disp_log_stats_v2(struct tzdbg_log_v2_t *log,
 		/* end position has overwritten start */
 		log_start->offset = (log->log_pos.offset + 1) % log_len;
 	}
-	pr_debug("diag_buf wrap = %u, offset = %u\n",
-		log->log_pos.wrap, log->log_pos.offset);
-
-	while (log_start->offset == log->log_pos.offset) {
-		/*
-		 * No data in ring buffer,
-		 * so we'll hang around until something happens
-		 */
-		unsigned long t = msleep_interruptible(50);
-
-		if (t != 0) {
-			/* Some event woke us up, so let's quit */
-			return 0;
-		}
-
-		if (buf_idx == TZDBG_LOG)
-			memcpy_fromio((void *)tzdbg.diag_buf, tzdbg.virt_iobase,
-						debug_rw_buf_size);
-
-	}
 
 	max_len = (count > debug_rw_buf_size) ? debug_rw_buf_size : count;
-
-	pr_debug("diag_buf wrap = %u, offset = %u\n",
-		log->log_pos.wrap, log->log_pos.offset);
 
 	/*
 	 *  Read from ring buff while there is data and space in return buff
 	 */
-	while ((log_start->offset != log->log_pos.offset) && (len < max_len)) {
-		tzdbg.disp_buf[i++] = log->log_buf[log_start->offset];
-		log_start->offset = (log_start->offset + 1) % log_len;
-		if (log_start->offset == 0)
+	offset = log_start->offset;
+
+	while ((offset != log->log_pos.offset) && (len < max_len)) {
+		tzdbg.disp_buf[i++] = log->log_buf[offset];
+		offset = (offset + 1) % log_len;
+		if (offset == 0)
 			++log_start->wrap;
 		++len;
 	}
@@ -893,6 +873,7 @@ static int _disp_log_stats_v2(struct tzdbg_log_v2_t *log,
 	 * return buffer to caller
 	 */
 	tzdbg.stat[buf_idx].data = tzdbg.disp_buf;
+
 	return len;
 }
 
@@ -1297,7 +1278,6 @@ static ssize_t tzdbg_fs_read_unencrypted(int tz_id, char __user *buf,
 		if (TZBSP_DIAG_MAJOR_VERSION_LEGACY <
 				(tzdbg.diag_buf->version >> 16)) {
 			len = _disp_tz_log_stats(count);
-			*offp = 0;
 		} else {
 			len = _disp_tz_log_stats_legacy();
 		}
