@@ -546,6 +546,7 @@ int vfe_enable_output_v2(struct vfe_line *line)
 	reinit_completion(&output->reg_update);
 
 	ops->vfe_wm_start(vfe, output->wm_idx[0], line);
+	ops->reg_update(vfe, line->id);
 
 	for (i = 0; i < 2; i++) {
 		output->buf[i] = vfe_buf_get_pending(output);
