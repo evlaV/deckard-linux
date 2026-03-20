@@ -1409,6 +1409,8 @@ static void ufs_qcom_set_caps(struct ufs_hba *hba)
 	if (host->hw_ver.major >= 0x7)
 		hba->caps |= UFSHCD_CAP_TX_EQUALIZATION;
 
+	hba->caps |= UFSHCD_CAP_TEMP_NOTIF;
+	
 	ufs_qcom_set_host_caps(hba);
 }
 
