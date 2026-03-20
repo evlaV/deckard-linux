@@ -1165,7 +1165,8 @@ static void ufs_qcom_set_caps(struct ufs_hba *hba)
 	hba->caps |= UFSHCD_CAP_WB_EN;
 	hba->caps |= UFSHCD_CAP_AGGR_POWER_COLLAPSE;
 	hba->caps |= UFSHCD_CAP_RPM_AUTOSUSPEND;
-
+	hba->caps |= UFSHCD_CAP_TEMP_NOTIF;
+	
 	ufs_qcom_set_host_caps(hba);
 }
 
