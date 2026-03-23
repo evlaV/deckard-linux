@@ -1040,7 +1040,6 @@ static void dsp_remove(struct platform_device *pdev)
 
 static const struct of_device_id dsp_match_table[] = {
 	{ .compatible = "qcom,sm8650-hexagon" },
-	{ .compatible = "qcom,sm8650-xtensa" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, dsp_match_table);
