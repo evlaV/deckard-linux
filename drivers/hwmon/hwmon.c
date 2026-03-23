@@ -54,6 +54,7 @@ struct hwmon_device_attribute {
 	u32 attr;
 	int index;
 	char name[MAX_SYSFS_ATTR_NAME_LENGTH];
+	char name_labeled[MAX_SYSFS_ATTR_NAME_LENGTH];
 };
 
 #define to_hwmon_attr(d) \
@@ -443,8 +444,13 @@ static ssize_t hwmon_attr_show(struct device *dev,
 	if (hattr->type != hwmon_energy64)
 		val64 = val;
 
-	trace_hwmon_attr_show(hwdev->name, hattr->index + hwmon_attr_base(hattr->type), hattr->name, val64);
-	
+	if (!strlen(hattr->name_labeled))
+		trace_hwmon_attr_show(hwdev->name, hattr->index + hwmon_attr_base(hattr->type),
+					hattr->name, val64);
+	else
+		trace_hwmon_attr_show(hwdev->name, hattr->index + hwmon_attr_base(hattr->type),
+					hattr->name_labeled, val64);
+
 	return sprintf(buf, "%lld\n", val64);
 }
 
@@ -465,8 +471,12 @@ static ssize_t hwmon_attr_show_string(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	trace_hwmon_attr_show_string(hwdev->name, hattr->index + hwmon_attr_base(type),
-				     hattr->name, s);
+	if (!strlen(hattr->name_labeled))
+		trace_hwmon_attr_show_string(hwdev->name, hattr->index + hwmon_attr_base(type),
+					     hattr->name, s);
+	else
+		trace_hwmon_attr_show_string(hwdev->name, hattr->index + hwmon_attr_base(type),
+					     hattr->name_labeled, s);
 
 	return sprintf(buf, "%s\n", s);
 }
@@ -491,8 +501,12 @@ static ssize_t hwmon_attr_store(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	trace_hwmon_attr_store(hwdev->name, hattr->index + hwmon_attr_base(hattr->type),
-			       hattr->name, (s64)val);
+	if (!strlen(hattr->name_labeled))
+		trace_hwmon_attr_store(hwdev->name, hattr->index + hwmon_attr_base(hattr->type),
+				       hattr->name, (s64)val);
+	else
+		trace_hwmon_attr_store(hwdev->name, hattr->index + hwmon_attr_base(hattr->type),
+				       hattr->name_labeled, (s64)val);
 
 	return count;
 }
@@ -508,6 +522,46 @@ static bool is_string_attr(enum hwmon_sensor_types type, u32 attr)
 	       (type == hwmon_fan && attr == hwmon_fan_label);
 }
 
+static const char *hwmon_channel_label_get(const struct hwmon_ops *ops,
+					    const void *drvdata,
+					    int channel)
+{
+	const char *label;
+	int ret;
+
+	if (!ops->channel_label_get)
+		return NULL;
+
+	ret = ops->channel_label_get(drvdata, channel, &label);
+	if (ret < 0)
+		return NULL;
+
+	return label;
+}
+
+static int hwmon_template_label(const char *template, char *template_label)
+{
+	const char *s = template;
+	char *format;
+	char *prefix;
+
+	if (!template_label)
+		return -EINVAL;
+
+	format = strstr(s, "%d");
+	if (!format)
+		return -EINVAL;
+
+	prefix = kstrndup(s, (format - s), GFP_KERNEL);
+	if (!prefix)
+		return -ENOMEM;
+
+	sprintf(template_label, "%s_%%s%s", prefix, format + 2);
+	kfree(prefix);
+
+	return 0;
+}
+
 static struct attribute *hwmon_genattr(const void *drvdata,
 				       enum hwmon_sensor_types type,
 				       u32 attr,
@@ -517,7 +571,9 @@ static struct attribute *hwmon_genattr(const void *drvdata,
 {
 	struct hwmon_device_attribute *hattr;
 	struct device_attribute *dattr;
+	char *template_label;
 	struct attribute *a;
+	const char *label;
 	umode_t mode;
 	const char *name;
 	bool is_string = is_string_attr(type, attr);
@@ -541,6 +597,16 @@ static struct attribute *hwmon_genattr(const void *drvdata,
 	} else {
 		scnprintf(hattr->name, sizeof(hattr->name), template,
 			  index + hwmon_attr_base(type));
+
+		label = hwmon_channel_label_get(ops, drvdata, index);
+		if (label) {
+			template_label = kzalloc(strlen(template) + 1, GFP_KERNEL);
+			hwmon_template_label(template, template_label);
+			scnprintf(hattr->name_labeled, sizeof(hattr->name_labeled), template_label,
+				  label);
+			kfree(template_label);
+		}
+
 		name = hattr->name;
 	}
 

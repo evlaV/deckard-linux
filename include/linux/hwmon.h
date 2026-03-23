@@ -418,6 +418,7 @@ struct hwmon_ops {
 	umode_t visible;
 	umode_t (*is_visible)(const void *drvdata, enum hwmon_sensor_types type,
 			      u32 attr, int channel);
+	int (*channel_label_get)(const void *drvdata, int channel, const char **str);
 	int (*read)(struct device *dev, enum hwmon_sensor_types type,
 		    u32 attr, int channel, long *val);
 	int (*read_string)(struct device *dev, enum hwmon_sensor_types type,
