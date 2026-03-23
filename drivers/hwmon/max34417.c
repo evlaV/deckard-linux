@@ -75,6 +75,9 @@ struct max34417_data {
 	struct max34417_input inputs[MAX34417_CHANNEL_COUNT];
 };
 
+static int max34417_accumulator_read(struct device *dev, unsigned int *acc_count);
+static int max34417_accumulator_update(struct device *dev, int channel);
+
 static long max34417_power_calc(const struct max34417_data *data,
 				unsigned long long raw_power, unsigned int acc_count)
 {
@@ -340,6 +343,38 @@ error:
 	return err;
 }
 
+static ssize_t accumulator_update_show(struct device *dev,
+			       struct device_attribute *devattr,
+			       char *buf)
+{
+	const struct max34417_data *data = dev_get_drvdata(dev);
+	unsigned int accumulator = 0;
+
+	max34417_accumulator_read(dev,&accumulator);
+
+	return sprintf(buf, "%d\n",accumulator);
+}
+
+static ssize_t accumulator_update_store(struct device *dev,
+			       struct device_attribute *devattr,
+			       const char *buf, size_t count)
+{
+	struct max34417_data *data = dev_get_drvdata(dev);
+	int mode, err;
+
+	if (mutex_lock_interruptible(&data->update_lock))
+		return -ERESTARTSYS;
+
+	//do accumulator update
+	max34417_accumulator_update(dev,0);
+
+	mutex_unlock(&data->update_lock);
+	return count;
+error:
+	mutex_unlock(&data->update_lock);
+	return err;
+}
+
 static SENSOR_DEVICE_ATTR(measurement_mode, 0644,
 	measurement_mode_show, measurement_mode_store, 0);
 
@@ -351,6 +386,9 @@ static SENSOR_DEVICE_ATTR(perr_verr_mode, 0644,
 
 static SENSOR_DEVICE_ATTR(park_value, 0644,
 		park_value_show, park_value_store, 0);
+
+static SENSOR_DEVICE_ATTR(accumulator_update, 0644,
+		accumulator_update_show, accumulator_update_store, 0);
 
 static const char * const slow_modes[] = {
 	"disabled", "enabled",
@@ -430,6 +468,80 @@ static int max34417_channel_label_get(const void *drvdata, int channel, const ch
 	return 0;
 }
 
+static int max34417_accumulator_read(struct device *dev, unsigned int *acc_count)
+{
+	int err = 0;
+	int regval;
+	u8 buf[I2C_SMBUS_BLOCK_MAX] = { 0 };
+	struct max34417_data *data = dev_get_drvdata(dev);
+
+	if(!data || !acc_count) goto error;
+	
+	regval = i2c_smbus_read_i2c_block_data(data->client,
+						MAX34417_REG_ACC_COUNT,
+						4,
+						buf);
+
+	if (regval < 0) {
+		dev_err(dev, "Could not read accumulator data\n");
+		err = -EIO;
+		goto error;
+	}
+
+	*acc_count = (unsigned int)buf[3];
+	*acc_count |= (unsigned int)buf[2] << 8UL;
+	*acc_count |= (unsigned int)buf[1] << 16UL;
+
+	if (*acc_count == 0) {
+		dev_err(dev, "Accumulator count is 0\n");
+		err = -EINVAL;
+		goto error;
+	}
+
+error:
+	return err;
+}
+
+static int max34417_accumulator_update(struct device *dev, int channel)
+{
+	int err = 0;
+	int update_needed = 0;
+	struct max34417_data *data = dev_get_drvdata(dev);
+	int smm_mode = 0;
+	int cam_mode = 0;
+	if(!data) 
+	{
+		err = -EINVAL;
+		goto error;
+	}
+	
+	if (data->config & MAX34417_SMM_BITMASK) 
+		smm_mode = 1;
+	else if (data->config & MAX34417_CAM_BITMASK)
+		cam_mode = 1;
+
+	if ( channel == 0 ) 
+	{
+		// only send update command for channel 0
+		// channel 0 must be read first, and then all other channels
+		// this allows us to save and align all channel measurements
+		update_needed = 1;
+	}
+
+	if( update_needed )
+	{
+		err = i2c_smbus_write_byte(data->client, MAX34417_REG_UPDATE);
+
+		if (err) goto error;
+
+		// Wait for accumulator update
+		usleep_range(1000, 2000);
+	}
+
+error:
+	return err;
+}
+
 static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 			 u32 attr, int channel, long *val)
 {
@@ -452,18 +564,8 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_in:
 		switch (attr) {
 		case hwmon_in_input:
-			// only send update command for channel 0
-			// channel 0 must be read first, and then all other channels
-			// this allows us to save and align all channel measurements
-			if ( channel == 0 ){
-				err = i2c_smbus_write_byte(data->client,
-							   MAX34417_REG_UPDATE);
-
-				if (err)
-					goto error;
-				// Wait for accumulator update
-				usleep_range(1000, 2000);
-			}
+			err = max34417_accumulator_update(dev, channel);
+			if (err) goto error;
 
             /*
 			regval = i2c_smbus_read_block_data(data->client,
@@ -512,43 +614,16 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 				goto error;
 			}
 
-			// only send update command for channel 0
-			// channel 0 must be read first, and then all other channels
-			// this allows us to save and align all channel measurements
-			if ( channel == 0 ){
-				err = i2c_smbus_write_byte(data->client,
-							   MAX34417_REG_UPDATE);
+			err = max34417_accumulator_update(dev, channel);
+			if (err) goto error;
 
-				if (err)
-					goto error;
-				// Wait for accumulator update
-				usleep_range(1000, 2000);
-			}
 			/*
 			regval = i2c_smbus_read_block_data(data->client,
 							   MAX34417_REG_ACC_COUNT, buf);
 			*/
-			
-			regval = i2c_smbus_read_i2c_block_data(data->client,
-							   MAX34417_REG_ACC_COUNT,
-							   4,
-							   buf);
 
-			if (regval < 0) {
-				dev_err(dev, "Could not read accumulator data\n");
-				err = -EIO;
-				goto error;
-			}
-
-			acc_count = (unsigned int)buf[3];
-			acc_count |= (unsigned int)buf[2] << 8UL;
-			acc_count |= (unsigned int)buf[1] << 16UL;
-
-			if (acc_count == 0) {
-				dev_err(dev, "Accumulator count is 0\n");
-				err = -EINVAL;
-				goto error;
-			}
+			err = max34417_accumulator_read(dev, &acc_count);
+			if (err) goto error;
 
 			memset(buf, 0, I2C_SMBUS_BLOCK_MAX);
 
@@ -752,6 +827,7 @@ static struct attribute *max34417_hwmon_attributes[] = {
 	&sensor_dev_attr_park_value.dev_attr.attr,
 	&sensor_dev_attr_perr_verr_mode.dev_attr.attr,
 	&sensor_dev_attr_slow_mode.dev_attr.attr,
+	&sensor_dev_attr_accumulator_update.dev_attr.attr,
 	NULL
 };
 
