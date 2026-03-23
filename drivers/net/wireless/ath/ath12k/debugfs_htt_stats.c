@@ -293,8 +293,18 @@ htt_print_tx_pdev_stats_cmn_tlv(const void *tag_buf, u16 tag_len,
 			 le32_to_cpu(htt_stats_buf->tx_active_dur_us_low));
 	len += scnprintf(buf + len, buf_len - len, "tx_active_dur_us_high = %u\n",
 			 le32_to_cpu(htt_stats_buf->tx_active_dur_us_high));
-	len += scnprintf(buf + len, buf_len - len, "fes_offsets_err_cnt = %u\n\n",
+	len += scnprintf(buf + len, buf_len - len, "fes_offsets_err_cnt = %u\n",
 			 le32_to_cpu(htt_stats_buf->fes_offsets_err_cnt));
+	len += scnprintf(buf + len, buf_len - len, "thermal_suspend_cnt = %u\n",
+			 le32_to_cpu(htt_stats_buf->thermal_suspend_cnt));
+	len += scnprintf(buf + len, buf_len - len, "dfs_suspend_cnt = %u\n",
+			 le32_to_cpu(htt_stats_buf->dfs_suspend_cnt));
+	len += scnprintf(buf + len, buf_len - len, "tx_abort_suspend_cnt = %u\n",
+			 le32_to_cpu(htt_stats_buf->tx_abort_suspend_cnt));
+	len += scnprintf(buf + len, buf_len - len, "tgt_specific_opaque_txq_suspend_info = %u\n",
+			 le32_to_cpu(htt_stats_buf->tgt_specific_opaque_txq_suspend_info));
+	len += scnprintf(buf + len, buf_len - len, "last_suspend_reason = %u\n\n",
+			 le32_to_cpu(htt_stats_buf->last_suspend_reason));
 
 	stats_req->buf_len = len;
 }
