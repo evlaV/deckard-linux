@@ -2101,6 +2101,26 @@
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
 
+		channel@0 {
+			reg = <0>;
+			label = "gfx";
+		};
+
+		channel@1 {
+			reg = <1>;
+			label = "nsp2";
+		};
+
+		channel@2 {
+			reg = <2>;
+			label = "bob";
+		};
+		
+		channel@3 {
+			reg = <3>;
+			label = "unused";
+		};
+
         // CH 1 : GFX Power
         // CH 2 : Tensor Processor – NSP2
         // CH 3 : Bob Power
