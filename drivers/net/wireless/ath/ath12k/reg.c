@@ -898,6 +898,11 @@ enum ath12k_reg_status ath12k_reg_validate_reg_info(struct ath12k_base *ab,
 		 * and return from here.
 		 */
 		ath12k_warn(ab, "Failed to set the requested Country regulatory setting\n");
+		ath12k_warn(ab, "Failed to set the requested Country regulatory setting country=%c%c status_code=%u ctry_code=%u reg_dmn_pair=%u\n",
+				reg_info->alpha2[0], reg_info->alpha2[1],
+				reg_info->status_code,
+				reg_info->ctry_code, reg_info->reg_dmn_pair);
+
 		return ATH12K_REG_STATUS_DROP;
 	}
 
