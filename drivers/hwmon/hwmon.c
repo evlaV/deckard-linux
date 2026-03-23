@@ -443,9 +443,8 @@ static ssize_t hwmon_attr_show(struct device *dev,
 	if (hattr->type != hwmon_energy64)
 		val64 = val;
 
-	trace_hwmon_attr_show(hattr->index + hwmon_attr_base(hattr->type),
-			      hattr->name, val64);
-
+	trace_hwmon_attr_show(hwdev->name, hattr->index + hwmon_attr_base(hattr->type), hattr->name, val64);
+	
 	return sprintf(buf, "%lld\n", val64);
 }
 
@@ -466,7 +465,7 @@ static ssize_t hwmon_attr_show_string(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	trace_hwmon_attr_show_string(hattr->index + hwmon_attr_base(type),
+	trace_hwmon_attr_show_string(hwdev->name, hattr->index + hwmon_attr_base(type),
 				     hattr->name, s);
 
 	return sprintf(buf, "%s\n", s);
@@ -492,7 +491,7 @@ static ssize_t hwmon_attr_store(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	trace_hwmon_attr_store(hattr->index + hwmon_attr_base(hattr->type),
+	trace_hwmon_attr_store(hwdev->name, hattr->index + hwmon_attr_base(hattr->type),
 			       hattr->name, (s64)val);
 
 	return count;
