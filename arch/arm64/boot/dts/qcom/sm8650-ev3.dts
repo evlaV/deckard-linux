@@ -2053,84 +2053,121 @@
 };
 
 &i2c5 {
-    // BOOT EEPROM
-    eeprom@50 {
-        compatible  = "atmel,24c32";
-        status      = "okay";
-        label		= "core_eeprom";
-        reg         = <0x50>;
+	// BOOT EEPROM
+	eeprom@50 {
+		compatible  = "atmel,24c32";
+		status      = "okay";
+		label		= "core_eeprom";
+		reg         = <0x50>;
 		pagesize    = <32>;
 		size        = <4096>;
 		address-width = <16>;
-        wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
-        vcc-supply  = <&vreg_l15b_1p8>;
-    };
+		wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+		vcc-supply  = <&vreg_l15b_1p8>;
+	};
 
-    max34417_1: max34417@12 {
-        compatible = "maxim,max34417";
-        reg = <0x12>;
-        maxim,sense-resistor = <1>;
-        vdd-supply = <&vreg_l2b_3p0>;
-        vio-supply = <&vreg_l15b_1p8>;
-        status = "okay";
+	max34417_1: max34417@12 {
+		compatible = "maxim,max34417";
+		reg = <0x12>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&vreg_l2b_3p0>;
+		vio-supply = <&vreg_l15b_1p8>;
+		status = "okay";
 
-        // CH 1 : Kryo APC0 Cores
-        // CH 2 : Kryo APC2 Cores
-        // CH 3 : Kryo APC1 Cores
-        // CH 4 : Tensor Processor – NSP1
-        // Note: both 1.8 and 3.0V rails are always on for other sensors
-    };
+		// CH 1 : Kryo APC0 Cores
+		// CH 2 : Kryo APC2 Cores
+		// CH 3 : Kryo APC1 Cores
+		// CH 4 : Tensor Processor – NSP1
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
+		input@0 {
+			reg = <0>;
+			label = "apc0";
+		};
 
-    max34417_2: max34417@1a {
-        compatible = "maxim,max34417";
-        reg = <0x1a>;
-        maxim,sense-resistor = <1>;
-        vdd-supply = <&vreg_l2b_3p0>;
-        vio-supply = <&vreg_l15b_1p8>;
-        status = "okay";
+		input@1 {
+			reg = <1>;
+			label = "apc1";
+		};
 
-		channel@0 {
+		input@2 {
+			reg = <2>;
+			label = "apc2";
+		};
+
+		input@3 {
+			reg = <3>;
+			label = "nsp1";
+		};
+	};
+
+	max34417_2: max34417@1a {
+		compatible = "maxim,max34417";
+		reg = <0x1a>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&vreg_l2b_3p0>;
+		vio-supply = <&vreg_l15b_1p8>;
+		status = "okay";
+
+		// CH 1 : GFX Power
+		// CH 2 : Tensor Processor – NSP2
+		// CH 3 : Bob Power
+		// CH 4 : Unused
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
+		input@0 {
 			reg = <0>;
 			label = "gfx";
 		};
 
-		channel@1 {
+		input@1 {
 			reg = <1>;
 			label = "nsp2";
 		};
 
-		channel@2 {
+		input@2 {
 			reg = <2>;
 			label = "bob";
 		};
-		
-		channel@3 {
+
+		input@3 {
 			reg = <3>;
 			label = "unused";
 		};
+	};
 
-        // CH 1 : GFX Power
-        // CH 2 : Tensor Processor – NSP2
-        // CH 3 : Bob Power
-        // CH 4 : Unused
-        // Note: both 1.8 and 3.0V rails are always on for other sensors
-    };
+	// TODO enable verr ( varies based on common mode range )
+	max34417_3: max34417@10 {
+		compatible = "maxim,max34417";
+		reg = <0x10>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&vreg_l2b_3p0>;
+		vio-supply = <&vreg_l15b_1p8>;
+		status = "okay";
 
-    // TODO enable verr ( varies based on common mode range )
-    max34417_3: max34417@10 {
-        compatible = "maxim,max34417";
-        reg = <0x10>;
-        maxim,sense-resistor = <1>;
-        vdd-supply = <&vreg_l2b_3p0>;
-        vio-supply = <&vreg_l15b_1p8>;
-        status = "okay";
+		// CH 1 : VPH
+		// CH 2 : S6C ~1.9V Subregulation
+		// CH 3 : S3C ~1.3V Subregulation
+		// CH 4 : S1C ~1V Subregulation
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
+		input@0 {
+			reg = <0>;
+			label = "vph";
+		};
 
-        // CH 1 : VPH
-        // CH 2 : S6C ~1.9V Subregulation
-        // CH 3 : S3C ~1.3V Subregulation
-        // CH 4 : S1C ~1V Subregulation
-        // Note: both 1.8 and 3.0V rails are always on for other sensors
-    }; 
+		input@1 {
+			reg = <1>;
+			label = "s6c";
+		};
+
+		input@2 {
+			reg = <2>;
+			label = "s3c";
+		};
+
+		input@3 {
+			reg = <3>;
+			label = "s1c";
+		};
+	};
 };
 
 // Custom Connector I2C ( Paddle Card )
