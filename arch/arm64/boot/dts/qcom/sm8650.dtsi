@@ -8284,16 +8284,34 @@
 			interrupts = <GIC_SPI 234 IRQ_TYPE_LEVEL_HIGH 0>;
 			// watchdog interrupt: 235
 			clocks = <&gcc GCC_VIDEO_AXI1_CLK>,
-				 <&videocc VIDEO_CC_MVS1C_CLK>;
-				 //<&videocc VIDEO_CC_MVS1_CLK>; controlled by fw
-			clock-names = "iface", "core";//, "vcodec0_core";
+				 <&videocc VIDEO_CC_MVS1C_CLK>,
+				 <&videocc VIDEO_CC_MVS1_CLK>;
+			clock-names = "iface", "core", "hw";
 
 			iommus = <&apps_smmu 0x1920 0>, // nonpix? (firmware)
 				 <&apps_smmu 0x1922 0>; // firmware
 
 			power-domains = <&rpmhpd RPMHPD_MXC>,
-					<&rpmhpd RPMHPD_MMCX>;
-			required-opps = <&rpmhpd_opp_nom>, <&rpmhpd_opp_nom>;
+				 	<&rpmhpd RPMHPD_MMCX>,
+					<&videocc VIDEO_CC_MVS1C_GDSC>,
+					<&videocc VIDEO_CC_MVS1_GDSC>;
+			required-opps = <&rpmhpd_opp_nom>, <&rpmhpd_opp_nom>,
+					<&rpmhpd_opp_nom>, <&rpmhpd_opp_nom>;
+			power-domain-names = "mxc",
+					     "mmcx",
+					     "ctrl",
+					     "hw";
+
+			interconnects = <&mmss_noc MASTER_VIDEO_PROC QCOM_ICC_TAG_ALWAYS
+					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
+			interconnect-names = "mem";
+
+			resets = <&gcc GCC_VIDEO_AXI1_CLK_ARES>,
+				 <&videocc VIDEO_CC_XO_CLK_ARES>,
+				 <&videocc VIDEO_CC_MVS1C_CLK_ARES>;
+			reset-names = "bus",
+				      "xo",
+				      "core";
 		};
 	};
 
