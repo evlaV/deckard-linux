@@ -76,7 +76,7 @@ struct max34417_data {
 };
 
 static int max34417_accumulator_read(struct device *dev, unsigned int *acc_count);
-static int max34417_accumulator_update(struct device *dev, int channel);
+static int max34417_accumulator_update(struct device *dev, int channel, int force_update);
 
 static long max34417_power_calc(const struct max34417_data *data,
 				unsigned long long raw_power, unsigned int acc_count)
@@ -348,11 +348,14 @@ static ssize_t accumulator_update_show(struct device *dev,
 			       char *buf)
 {
 	const struct max34417_data *data = dev_get_drvdata(dev);
+	int err = 0;
 	unsigned int accumulator = 0;
 
-	max34417_accumulator_read(dev,&accumulator);
+	err = max34417_accumulator_read(dev,&accumulator);
 
-	return sprintf(buf, "%d\n",accumulator);
+	if(err) accumulator = 0;
+
+	return sprintf(buf, "%d\n", accumulator);
 }
 
 static ssize_t accumulator_update_store(struct device *dev,
@@ -360,13 +363,14 @@ static ssize_t accumulator_update_store(struct device *dev,
 			       const char *buf, size_t count)
 {
 	struct max34417_data *data = dev_get_drvdata(dev);
-	int mode, err;
+	int err;
 
 	if (mutex_lock_interruptible(&data->update_lock))
 		return -ERESTARTSYS;
 
 	//do accumulator update
-	max34417_accumulator_update(dev,0);
+	int force_update = 1;
+	err = max34417_accumulator_update(dev,0,force_update);
 
 	mutex_unlock(&data->update_lock);
 	return count;
@@ -502,13 +506,16 @@ error:
 	return err;
 }
 
-static int max34417_accumulator_update(struct device *dev, int channel)
+
+static int max34417_accumulator_update(struct device *dev, int channel, int force_update)
 {
 	int err = 0;
 	int update_needed = 0;
 	struct max34417_data *data = dev_get_drvdata(dev);
 	int smm_mode = 0;
 	int cam_mode = 0;
+	int normal_mode = 0;
+
 	if(!data) 
 	{
 		err = -EINVAL;
@@ -520,15 +527,20 @@ static int max34417_accumulator_update(struct device *dev, int channel)
 	else if (data->config & MAX34417_CAM_BITMASK)
 		cam_mode = 1;
 
-	if ( channel == 0 ) 
+	normal_mode = !smm_mode && !cam_mode;
+
+	if ( smm_mode )
 	{
-		// only send update command for channel 0
-		// channel 0 must be read first, and then all other channels
-		// this allows us to save and align all channel measurements
-		update_needed = 1;
+		if( channel == 0 )
+		{
+			// only send update command for channel 0
+			// channel 0 must be read first, and then all other channels
+			// this allows us to save and align all channel measurements
+			update_needed = 1;
+		}
 	}
 
-	if( update_needed )
+	if( update_needed || force_update)
 	{
 		err = i2c_smbus_write_byte(data->client, MAX34417_REG_UPDATE);
 
@@ -551,6 +563,7 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 	unsigned int voltage, voltage_raw, voltage_adj, voltage_err;
 	unsigned long long power, current_fs;
 	u8 cfg;
+	int force_update = 0;
 
 	u8 buf[I2C_SMBUS_BLOCK_MAX] = { 0 };
 
@@ -564,7 +577,7 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_in:
 		switch (attr) {
 		case hwmon_in_input:
-			err = max34417_accumulator_update(dev, channel);
+			err = max34417_accumulator_update(dev, channel, force_update);
 			if (err) goto error;
 
             /*
@@ -614,7 +627,7 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 				goto error;
 			}
 
-			err = max34417_accumulator_update(dev, channel);
+			err = max34417_accumulator_update(dev, channel, force_update);
 			if (err) goto error;
 
 			/*
