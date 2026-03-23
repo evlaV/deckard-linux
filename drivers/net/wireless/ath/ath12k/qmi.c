@@ -3385,7 +3385,7 @@ static int ath12k_qmi_wlanfw_wlan_ini_send(struct ath12k_base *ab)
 	int ret;
 
 	req.enable_fwlog_valid = true;
-	req.enable_fwlog = 1;
+	req.enable_fwlog = IS_ENABLED(CONFIG_ATH12K_TRACING) ? 1 : 0;
 
 	ret = qmi_txn_init(&ab->qmi.handle, &txn,
 			   qmi_wlanfw_wlan_ini_resp_msg_v01_ei, &resp);
