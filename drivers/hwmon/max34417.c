@@ -828,6 +828,8 @@ static int max34417_probe(struct i2c_client *client)
 		return err;
 	}
 
+	snprintf(client->name, I2C_NAME_SIZE, "%s_%x",client->name, client->addr);
+	
 	hwmon_dev = devm_hwmon_device_register_with_info(dev, client->name,
 							 data,
 							 &max34417_chip_info,
