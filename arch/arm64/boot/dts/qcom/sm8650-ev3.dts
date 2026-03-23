@@ -2079,6 +2079,25 @@
         // CH 3 : Kryo APC1 Cores
         // CH 4 : Tensor Processor – NSP1
         // Note: both 1.8 and 3.0V rails are always on for other sensors
+		input@0 {
+			reg = <0>;
+			label = "apc0";
+		};
+
+		input@1 {
+			reg = <1>;
+			label = "apc1";
+		};
+
+		input@2 {
+			reg = <2>;
+			label = "apc2";
+		};
+
+		input@3 {
+			reg = <3>;
+			label = "nsp1";
+		};
     };
 
     max34417_2: max34417@1a {
@@ -2094,6 +2113,25 @@
         // CH 3 : Bob Power
         // CH 4 : Unused
         // Note: both 1.8 and 3.0V rails are always on for other sensors
+		input@0 {
+			reg = <0>;
+			label = "gfx";
+		};
+
+		input@1 {
+			reg = <1>;
+			label = "nsp2";
+		};
+
+		input@2 {
+			reg = <2>;
+			label = "bob";
+		};
+
+		input@3 {
+			reg = <3>;
+			label = "unused";
+		};
     };
 
     // TODO enable verr ( varies based on common mode range )
@@ -2110,6 +2148,25 @@
         // CH 3 : S3C ~1.3V Subregulation
         // CH 4 : S1C ~1V Subregulation
         // Note: both 1.8 and 3.0V rails are always on for other sensors
+		input@0 {
+			reg = <0>;
+			label = "vph";
+		};
+
+		input@1 {
+			reg = <1>;
+			label = "s6c";
+		};
+
+		input@2 {
+			reg = <2>;
+			label = "s3c";
+		};
+
+		input@3 {
+			reg = <3>;
+			label = "s1c";
+		};
     }; 
 };
 
