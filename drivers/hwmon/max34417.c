@@ -57,6 +57,12 @@ enum chip_id {
 	ID_MAX34417
 };
 
+struct max34417_input {
+	const char *label;
+	int shunt_resistor;
+	//TODO:
+};
+
 struct max34417_data {
 	struct i2c_client *client;
 	struct mutex update_lock;	/* Mutex for sync */
@@ -66,6 +72,7 @@ struct max34417_data {
 	u32 correction;		/* Power correction multiplier */
     struct regulator	*vdd;
     struct regulator    *vio;
+	struct max34417_input inputs[MAX34417_CHANNEL_COUNT];
 };
 
 static long max34417_power_calc(const struct max34417_data *data,
@@ -404,6 +411,17 @@ error:
 static SENSOR_DEVICE_ATTR(slow_mode, 0644,
 	slow_mode_show, slow_mode_store, 0);
 
+static int max34417_read_string(struct device *dev, enum hwmon_sensor_types type,
+			       u32 attr, int channel, const char **str)
+{
+	struct max34417_data *data = dev_get_drvdata(dev);
+	int index = channel - 1;
+
+	*str = data->inputs[index].label;
+
+	return 0;
+}
+
 static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 			 u32 attr, int channel, long *val)
 {
@@ -633,16 +651,22 @@ static int max34417_write(struct device *dev, enum hwmon_sensor_types type,
 	return -EOPNOTSUPP;
 }
 
-static umode_t max34417_is_visible(const void *data,
+static umode_t max34417_is_visible(const void *drvdata,
 				   enum hwmon_sensor_types type,
 				   u32 attr, int channel)
 {
+	const struct max34417_data *data = drvdata;
+	const struct max34417_input *input = NULL;
 	if (channel >= MAX34417_CHANNEL_COUNT)
 		return -EINVAL;
 
 	switch (type) {
 	case hwmon_in:
 		switch (attr) {
+		case hwmon_in_label:
+			if (channel - 1 < MAX34417_CHANNEL_COUNT)
+				input = &data->inputs[channel - 1];
+			return (input && input->label) ? 0444 : 0;
 		case hwmon_in_input:
 			return 0444;
 		default:
@@ -665,10 +689,10 @@ static umode_t max34417_is_visible(const void *data,
 }
 
 static const u32 max34417_in_config[] = {
-	HWMON_I_INPUT,
-	HWMON_I_INPUT,
-	HWMON_I_INPUT,
-	HWMON_I_INPUT,
+	HWMON_I_INPUT | HWMON_I_LABEL,
+	HWMON_I_INPUT | HWMON_I_LABEL,
+	HWMON_I_INPUT | HWMON_I_LABEL,
+	HWMON_I_INPUT | HWMON_I_LABEL,
 	0
 };
 
@@ -678,10 +702,10 @@ static const struct hwmon_channel_info max34417_in = {
 };
 
 static const u32 max34417_power_config[] = {
-	HWMON_P_INPUT | HWMON_P_AVERAGE,
-	HWMON_P_INPUT | HWMON_P_AVERAGE,
-	HWMON_P_INPUT | HWMON_P_AVERAGE,
-	HWMON_P_INPUT | HWMON_P_AVERAGE,
+	HWMON_P_INPUT | HWMON_P_AVERAGE | HWMON_P_LABEL,
+	HWMON_P_INPUT | HWMON_P_AVERAGE | HWMON_P_LABEL,
+	HWMON_P_INPUT | HWMON_P_AVERAGE | HWMON_P_LABEL,
+	HWMON_P_INPUT | HWMON_P_AVERAGE | HWMON_P_LABEL,
 	0
 };
 
@@ -699,6 +723,7 @@ static const struct hwmon_channel_info *max34417_info[] = {
 static const struct hwmon_ops max34417_hwmon_ops = {
 	.is_visible = max34417_is_visible,
 	.read = max34417_read,
+	.read_string = max34417_read_string,
 	.write = max34417_write,
 };
 
@@ -734,10 +759,12 @@ static int max34417_probe(struct i2c_client *client)
 	struct device *dev = &client->dev;
 	struct device *hwmon_dev;
 	struct max34417_data *data;
+	struct max34417_input *input;
 	struct device_node *np;
 	u32 r_sense;
 	int err;
     uint regval;
+	char old_name[I2C_NAME_SIZE];
 
 	/*---------------
 	if (!i2c_check_functionality(client->adapter,
@@ -777,6 +804,23 @@ static int max34417_probe(struct i2c_client *client)
         dev_err(dev, "Failed to get vio\n");
 		return PTR_ERR(data->vio);
     };
+
+	for_each_child_of_node_scoped(np, child) {
+		u32 val;
+		int ret = of_property_read_u32(child, "reg", &val);
+		if (ret) {
+			dev_err(dev, "missing reg property of %pOFn\n", child);
+			return ret;
+		} else if (val > MAX34417_CHANNEL_COUNT) {
+			dev_err(dev, "invalid reg %d of %pOFn\n", val, child);
+			return -EINVAL;
+		}
+
+		input = &data->inputs[val];
+
+		/* Save the connected input label if available */
+		of_property_read_string(child, "label", &input->label);
+	}
 
 	dev_set_drvdata(dev, data);
 
@@ -827,8 +871,11 @@ static int max34417_probe(struct i2c_client *client)
 		dev_err(dev, "devm add remove failed\n");
 		return err;
 	}
+	
+	strscpy(old_name, client->name, sizeof(old_name));
+	snprintf(client->name, sizeof(client->name), "%s_%x", old_name, client->addr);
 
-	snprintf(client->name, I2C_NAME_SIZE, "%s_%x",client->name, client->addr);
+	//snprintf(client->name, I2C_NAME_SIZE, "%s_%x",client->name, client->addr);
 	
 	hwmon_dev = devm_hwmon_device_register_with_info(dev, client->name,
 							 data,
