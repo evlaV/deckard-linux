@@ -415,9 +415,17 @@ static int max34417_read_string(struct device *dev, enum hwmon_sensor_types type
 			       u32 attr, int channel, const char **str)
 {
 	struct max34417_data *data = dev_get_drvdata(dev);
-	int index = channel - 1;
 
-	*str = data->inputs[index].label;
+	*str = data->inputs[channel].label;
+
+	return 0;
+}
+
+static int max34417_channel_label_get(const void *drvdata, int channel, const char **str)
+{
+	const struct max34417_data *data = drvdata;
+
+	*str = data->inputs[channel].label;
 
 	return 0;
 }
@@ -657,6 +665,7 @@ static umode_t max34417_is_visible(const void *drvdata,
 {
 	const struct max34417_data *data = drvdata;
 	const struct max34417_input *input = NULL;
+
 	if (channel >= MAX34417_CHANNEL_COUNT)
 		return -EINVAL;
 
@@ -665,7 +674,7 @@ static umode_t max34417_is_visible(const void *drvdata,
 		switch (attr) {
 		case hwmon_in_label:
 			if (channel - 1 < MAX34417_CHANNEL_COUNT)
-				input = &data->inputs[channel - 1];
+				input = &data->inputs[channel];
 			return (input && input->label) ? 0444 : 0;
 		case hwmon_in_input:
 			return 0444;
@@ -674,6 +683,10 @@ static umode_t max34417_is_visible(const void *drvdata,
 		}
 	case hwmon_power:
 		switch (attr) {
+		case hwmon_power_label:
+			if (channel - 1 < MAX34417_CHANNEL_COUNT)
+				input = &data->inputs[channel];
+			return (input && input->label) ? 0444 : 0;
 		case hwmon_power_input:
 		case hwmon_power_average:
 			return 0444;
@@ -722,6 +735,7 @@ static const struct hwmon_channel_info *max34417_info[] = {
 
 static const struct hwmon_ops max34417_hwmon_ops = {
 	.is_visible = max34417_is_visible,
+	.channel_label_get = max34417_channel_label_get,
 	.read = max34417_read,
 	.read_string = max34417_read_string,
 	.write = max34417_write,
