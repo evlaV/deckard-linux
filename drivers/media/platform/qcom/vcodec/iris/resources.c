@@ -211,7 +211,11 @@ static int init_reset_clocks(struct iris_core *core)
 	for (i = 0; i < (core->reset_count - 1); i++) {
 		rinfo = &core->reset_tbl[i];
 		rinfo->name = rst_tbl[i];
-		rinfo->rst = devm_reset_control_get(core->dev, rinfo->name);
+		/* Get the XO reset as acquirable reset to be shared with CVP */
+		if (!strcmp(rinfo->name, "xo"))
+			rinfo->rst = devm_reset_control_get_exclusive_released(core->dev, rinfo->name);
+		else
+			rinfo->rst = devm_reset_control_get(core->dev, rinfo->name);
 		if (IS_ERR(rinfo->rst)) {
 			dev_err(core->dev,
 				"%s: failed to get reset clock: %s\n", __func__, rinfo->name);
@@ -281,6 +285,54 @@ int vote_buses(struct iris_core *core, unsigned long bus_bw)
 	}
 
 	return ret;
+}
+
+int acquire_reset_control(struct iris_core *core, char *name)
+{
+	struct reset_info *rcinfo = NULL;
+	int ret = 0;
+	u32 i;
+
+	core->reset_count = core->platform_data->clk_rst_tbl_size;
+
+	for (i = 0; i < (core->reset_count - 1); i++) {
+		rcinfo = &core->reset_tbl[i];
+		if (!rcinfo->rst)
+			return -EINVAL;
+		if (strcmp(name, rcinfo->name))
+			continue;
+		ret = reset_control_acquire(rcinfo->rst);
+		if (ret) {
+			dev_err(core->dev, "acquire reset control failed. ret = %d\n", ret);
+			return ret;
+		}
+
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+int release_reset_control(struct iris_core *core, char *name)
+{
+	struct reset_info *rcinfo = NULL;
+	int ret = 0;
+	u32 i;
+
+	core->reset_count = core->platform_data->clk_rst_tbl_size;
+
+	for (i = 0; i < (core->reset_count - 1); i++) {
+		rcinfo = &core->reset_tbl[i];
+		if (!rcinfo->rst)
+			return -EINVAL;
+		if (strcmp(name, rcinfo->name))
+			continue;
+		reset_control_release(rcinfo->rst);
+
+		return 0;
+	}
+
+	return -EINVAL;
 }
 
 int deassert_reset_control(struct iris_core *core, char *name)

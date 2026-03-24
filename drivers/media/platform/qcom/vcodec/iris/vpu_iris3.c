@@ -379,15 +379,22 @@ static int power_off_iris3_controller(struct iris_core *core)
 	/* enable MVP NoC reset */
 	write_register_masked(core, AON_WRAPPER_MVP_NOC_CORE_SW_RESET, SW_RESET, SW_RESET);
 
+	ret = acquire_reset_control(core, "xo");
+	if (ret) {
+		dev_warn(core->dev, "failed to acquire xo reset ret %d\n", ret);
+		goto skip_xo_reset;
+	}
+
 	/* poll AON spare register bit0 to become zero with 50ms timeout */
-	ret = read_register_with_poll_timeout(core, AON_WRAPPER_SPARE, BIT(0), 0, 1000, 50000);
+	ret = read_register_with_poll_timeout(core, AON_WRAPPER_SPARE, BIT(1), 0, 1000, 50000);
 	if (ret) {
 		pr_debug("%s:%d timeout\n", __func__, __LINE__);
-		goto disable_power;
+		release_reset_control(core, "xo");
+		goto skip_xo_reset;
 	}
 
 	/* enable bit(1) to avoid cvp noc xo reset */
-	write_register_masked(core, AON_WRAPPER_SPARE, BIT(1), BIT(1));
+	write_register_masked(core, AON_WRAPPER_SPARE, BIT(0), BIT(0));
 
 	ret = assert_reset_control(core, "xo");
 	if (ret) {
@@ -404,7 +411,13 @@ static int power_off_iris3_controller(struct iris_core *core)
 		dev_err(core->dev, "deassert xo failed ret %d\n", ret);
 		ret = 0;
 	}
+	ret = release_reset_control(core, "xo");
+	if (ret) {
+		dev_err(core->dev, "release xo failed ret %d\n", ret);
+		ret = 0;
+	}
 
+skip_xo_reset:
 	/* Enable MVP NoC clock */
 	write_register_masked(core, AON_WRAPPER_MVP_NOC_CORE_CLK_CONTROL, 0, NOC_HALT);
 

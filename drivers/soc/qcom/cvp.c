@@ -451,7 +451,15 @@ static int cvp_setup_cvp_uc_region(struct cvp *cvp)
 
 static int cvp_set_registers(struct cvp *cvp)
 {
+	int ret;
+
 	writel(0, cvp->base + CVP_WRAPPER_CORE_CLOCK_CONFIG);
+
+	ret = reset_control_acquire(cvp->resets[RESET_XO]);
+	if (ret) {
+		dev_warn(cvp->miscdev.parent, "%s: failed to acquire XO reset\n", __func__);
+		return 0;
+	}
 
 	reset_control_assert(cvp->resets[RESET_XO]);
 
@@ -480,7 +488,8 @@ static int cvp_set_registers(struct cvp *cvp)
 	writel(0x3, cvp->base + CVP_NOC_CORE_ERR_MAINCTL_LOW_OFFS);
 	writel(0x1, cvp->base + CVP_NOC_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW);
 
-	reset_control_deassert(cvp->resets[RESET_XO]);	
+	reset_control_deassert(cvp->resets[RESET_XO]);
+	reset_control_release(cvp->resets[RESET_XO]);
 
 	return 0;
 }
@@ -668,12 +677,19 @@ static int cvp_power_off_controller(struct cvp *cvp)
 	reg = readl(cvp->base + CVP_AON_WRAPPER_CVP_NOC_CORE_SW_RESET);
 	writel(reg | BIT(0), cvp->base + CVP_AON_WRAPPER_CVP_NOC_CORE_SW_RESET);
 
+	ret = reset_control_acquire(cvp->resets[RESET_XO]);
+	if (ret) {
+		dev_warn(cvp->miscdev.parent, "%s: failed to acquire XO reset\n", __func__);
+		goto skip_xo_reset;
+	}
+
 	/* poll AON spare register bit1 to become zero with 50ms timeout */
 	ret = read_poll_timeout(readl, reg, (reg & BIT(1)) == 0, 1000, 50000, false,
 				cvp->base + CVP_AON_WRAPPER_SPARE);
 	if (ret) {
 		dev_warn(cvp->miscdev.parent, "AON_WRAPPER_SPARE timeout (%x)", reg);
-		goto disable_controller_power;
+		reset_control_release(cvp->resets[RESET_XO]);
+		goto skip_xo_reset;
 	}
 
 	reg = readl(cvp->base + CVP_AON_WRAPPER_SPARE);
@@ -693,6 +709,9 @@ static int cvp_power_off_controller(struct cvp *cvp)
 	reg = readl(cvp->base + CVP_AON_WRAPPER_SPARE);
 	writel(reg & ~BIT(0), cvp->base + CVP_AON_WRAPPER_SPARE);
 
+	reset_control_release(cvp->resets[RESET_XO]);
+
+skip_xo_reset:
 	/* Enable CVP NoC clock */
 	reg = readl(cvp->base + CVP_AON_WRAPPER_CVP_NOC_CORE_CLK_CONTROL);
 	writel(reg & ~BIT(0), cvp->base + CVP_AON_WRAPPER_CVP_NOC_CORE_CLK_CONTROL);
@@ -1039,8 +1058,6 @@ static irqreturn_t cvp_irq(int irq, void *data)
 	struct cvp *cvp = data;
 	u32 status;
 
-	pr_info("%s\n", __func__);
-
 	status = readl(cvp->base + CVP_WRAPPER_INTR_STATUS);
 	writel(1, cvp->base + CVP_CPU_CS_A2HSOFTINTCLR);
 
@@ -1124,7 +1141,7 @@ static int cvp_probe(struct platform_device *pdev)
 	cvp->resets[RESET_BUS] = devm_reset_control_get(dev, "bus");
 	if (IS_ERR(cvp->resets[RESET_BUS]))
 		return PTR_ERR(cvp->resets[RESET_BUS]);
-	cvp->resets[RESET_XO] = devm_reset_control_get(dev, "xo");
+	cvp->resets[RESET_XO] = devm_reset_control_get_exclusive_released(dev, "xo");
 	if (IS_ERR(cvp->resets[RESET_XO]))
 		return PTR_ERR(cvp->resets[RESET_XO]);
 	cvp->resets[RESET_CORE] = devm_reset_control_get(dev, "core");

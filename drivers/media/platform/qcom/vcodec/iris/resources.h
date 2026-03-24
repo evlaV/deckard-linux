@@ -39,6 +39,8 @@ struct reset_info {
 int power_domain_set_hwmode(struct iris_core *core, enum platform_pm_domain_type id, bool hwmode);
 int enable_power_domains(struct iris_core *core, enum platform_pm_domain_type id);
 int disable_power_domains(struct iris_core *core, enum platform_pm_domain_type id);
+int acquire_reset_control(struct iris_core *core, char *name);
+int release_reset_control(struct iris_core *core, char *name);
 int deassert_reset_control(struct iris_core *core, char *name);
 int assert_reset_control(struct iris_core *core, char *name);
 int unvote_buses(struct iris_core *core);
