@@ -70,6 +70,7 @@ struct max34417_data {
 	u8 config;			/* Sensor configuration */
 	u8 perr_verr;		/* Perr_Verr correction enable/disable */
 	u32 correction;		/* Power correction multiplier */
+	u8 accumulator_update_mode;
     struct regulator	*vdd;
     struct regulator    *vio;
 	struct max34417_input inputs[MAX34417_CHANNEL_COUNT];
@@ -150,6 +151,10 @@ static const char * const perr_verr_modes[] = {
 
 static const char * const park_values[] = {
 	"1", "2", "3", "4"
+};
+
+static const char * const accumulator_update_modes[] = {
+	"manual", "auto"
 };
 
 static ssize_t measurement_mode_show(struct device *dev,
@@ -343,6 +348,44 @@ error:
 	return err;
 }
 
+static ssize_t accumulator_update_mode_show(struct device *dev,
+			       struct device_attribute *devattr,
+			       char *buf)
+{
+	const struct max34417_data *data = dev_get_drvdata(dev);
+	int err = 0;
+
+	if(data->accumulator_update_mode == 1)
+		return sprintf(buf, "auto\n");
+	
+	return sprintf(buf, "manual\n");
+}
+
+static ssize_t accumulator_update_mode_store(struct device *dev,
+			       struct device_attribute *devattr,
+			       const char *buf, size_t count)
+{
+	struct max34417_data *data = dev_get_drvdata(dev);
+	int mode, err;
+	
+	if (mutex_lock_interruptible(&data->update_lock))
+		return -ERESTARTSYS;
+
+	mode = sysfs_match_string(accumulator_update_modes, buf);
+	if (mode < 0) {
+		err = mode;
+		goto error;
+	}
+
+	data->accumulator_update_mode = mode; //0=manual, 1=auto
+
+	mutex_unlock(&data->update_lock);
+	return count;
+error:
+	mutex_unlock(&data->update_lock);
+	return err;
+}
+
 static ssize_t accumulator_update_show(struct device *dev,
 			       struct device_attribute *devattr,
 			       char *buf)
@@ -393,6 +436,9 @@ static SENSOR_DEVICE_ATTR(park_value, 0644,
 
 static SENSOR_DEVICE_ATTR(accumulator_update, 0644,
 		accumulator_update_show, accumulator_update_store, 0);
+
+static SENSOR_DEVICE_ATTR(accumulator_update_mode, 0644,
+		accumulator_update_mode_show, accumulator_update_mode_store, 0);
 
 static const char * const slow_modes[] = {
 	"disabled", "enabled",
@@ -529,7 +575,8 @@ static int max34417_accumulator_update(struct device *dev, int channel, int forc
 
 	normal_mode = !smm_mode && !cam_mode;
 
-	if ( smm_mode )
+	//0=manual mode, 1=auto mode
+	if ( data->accumulator_update_mode == 1 )
 	{
 		if( channel == 0 )
 		{
@@ -841,6 +888,7 @@ static struct attribute *max34417_hwmon_attributes[] = {
 	&sensor_dev_attr_perr_verr_mode.dev_attr.attr,
 	&sensor_dev_attr_slow_mode.dev_attr.attr,
 	&sensor_dev_attr_accumulator_update.dev_attr.attr,
+	&sensor_dev_attr_accumulator_update_mode.dev_attr.attr,
 	NULL
 };
 
@@ -930,6 +978,7 @@ static int max34417_probe(struct i2c_client *client)
 	data->client = client;
 	data->rsense = r_sense;
 	data->perr_verr = 1; /* enabled by default */
+	data->accumulator_update_mode = 1; //auto mode
 	if (max34417_calc_correction(dev)) {
 		dev_err(dev, "Could not calculate power correction\n");
 		return -EINVAL;
