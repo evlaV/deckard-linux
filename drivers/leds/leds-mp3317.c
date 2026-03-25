@@ -1847,6 +1847,7 @@ static DEFINE_SIMPLE_DEV_PM_OPS(mp3317_leds_pm, mp3317_leds_suspend, mp3317_leds
 
 static int mp3317_reg_enable(struct regulator_dev *rdev)
 {
+	int ret = 0;
 	struct mp3317 *led = rdev_get_drvdata(rdev);
 
 	if ( led == NULL ) {
@@ -1856,7 +1857,12 @@ static int mp3317_reg_enable(struct regulator_dev *rdev)
 
 	gpiod_set_value(led->en_gpio, 1);
 	usleep_range(10000,20000);
-	deckard_config_mp3317(led);
+	ret = deckard_config_mp3317(led);
+	// retry a few times in case the i2c bus is busy coming out of suspend
+	for ( int i = 0; i < 10 && ret; i++ ) {
+		ret = deckard_config_mp3317(led);
+		usleep_range(2000,4000);
+	}
 
 	return 0;
 }
