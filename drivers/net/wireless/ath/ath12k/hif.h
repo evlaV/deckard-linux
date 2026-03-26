@@ -32,7 +32,15 @@ struct ath12k_hif_ops {
 	void (*get_ce_msi_idx)(struct ath12k_base *ab, u32 ce_id, u32 *msi_idx);
 	int (*panic_handler)(struct ath12k_base *ab);
 	void (*coredump_download)(struct ath12k_base *ab);
+	int (*target_crash)(struct ath12k_base *ab);
 };
+
+static inline int ath12k_hif_force_rddm(struct ath12k_base *ab)
+{
+	if (ab->hif.ops->target_crash)
+		return ab->hif.ops->target_crash(ab);
+	return 0;
+}
 
 static inline int ath12k_hif_map_service_to_pipe(struct ath12k_base *ab, u16 service_id,
 						 u8 *ul_pipe, u8 *dl_pipe)
