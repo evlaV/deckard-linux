@@ -657,3 +657,17 @@ void ath12k_mhi_coredump(struct mhi_controller *mhi_ctrl, bool in_panic)
 {
 	mhi_download_rddm_image(mhi_ctrl, in_panic);
 }
+
+int ath12k_mhi_force_rddm(struct ath12k_pci *ab_pci)
+{
+	struct ath12k_base *ab = ab_pci->ab;
+	int ret;
+
+	ret = mhi_force_rddm_mode(ab_pci->mhi_ctrl);
+	if (ret) {
+		ath12k_warn(ab, "failed to resume mhi: %d", ret);
+		return ret;
+	}
+
+	return 0;
+}
