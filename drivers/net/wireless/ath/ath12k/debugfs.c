@@ -9,6 +9,7 @@
 #include "debug.h"
 #include "debugfs.h"
 #include "debugfs_htt_stats.h"
+#include "hif.h"
 
 static ssize_t ath12k_write_simulate_radar(struct file *file,
 					   const char __user *user_buf,
@@ -83,6 +84,10 @@ ath12k_write_simulate_fw_crash(struct file *file,
 		ret = ath12k_wmi_force_fw_hang_cmd(ar,
 						   ATH12K_WMI_FW_HANG_ASSERT_TYPE,
 						   ATH12K_WMI_FW_HANG_DELAY);
+	} else if (!strcmp(buf, "mhi-rddm")) {
+		ath12k_info(ab, "force target rddm\n");
+		ath12k_hif_force_rddm(ab);
+		ret = 0;
 	} else {
 		return -EINVAL;
 	}
