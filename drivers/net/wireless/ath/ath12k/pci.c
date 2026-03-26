@@ -1510,6 +1510,14 @@ static int ath12k_pci_panic_handler(struct ath12k_base *ab)
 	return NOTIFY_OK;
 }
 
+static int ath12k_pci_force_rddm(struct ath12k_base *ab)
+{
+	struct ath12k_pci *ar_pci;
+
+	ar_pci = ath12k_pci_priv(ab);
+	return ath12k_mhi_force_rddm(ar_pci);
+}
+
 static const struct ath12k_hif_ops ath12k_pci_hif_ops = {
 	.start = ath12k_pci_start,
 	.stop = ath12k_pci_stop,
@@ -1531,6 +1539,7 @@ static const struct ath12k_hif_ops ath12k_pci_hif_ops = {
 #ifdef CONFIG_ATH12K_COREDUMP
 	.coredump_download = ath12k_pci_coredump_download,
 #endif
+	.target_crash = ath12k_pci_force_rddm,
 };
 
 static
