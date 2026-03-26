@@ -2594,7 +2594,7 @@
 };
 
 &eud {
-	status = "okay";
+	status = "disabled";
 	usb-role-switch;
 };
 
