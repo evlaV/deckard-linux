@@ -477,14 +477,14 @@ static struct uart_driver eud_uart_driver = {
 	.cons		= &eud_console,
 };
 
-static int __init eud_serial_console_init(void)
+static int __init __maybe_unused eud_serial_console_init(void)
 {
 	dump_stack();
 	register_console(&eud_console);
 	return 0;
 }
 
-console_initcall(eud_serial_console_init);
+//console_initcall(eud_serial_console_init);
 
 static irqreturn_t handle_eud_irq(int irq, void *data)
 {
