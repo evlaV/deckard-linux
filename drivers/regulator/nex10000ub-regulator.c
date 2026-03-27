@@ -15,6 +15,7 @@
 #include <linux/delay.h>
 
 #define NEX10000UB_MAX_VSEL             20
+#define NEX10000AUB_MAX_VSEL            25
 #define NEX10000UB_VOLTAGE_MIN          4000000
 #define NEX10000UB_STEP_100mV           100000
 
@@ -222,6 +223,36 @@ static const struct regulator_desc nex10000ub_regulator_desc[] = {
 	},
 };
 
+static const struct regulator_desc nex10000aub_regulator_desc[] = {
+	{
+		.name           = "ldo_vpos",
+		.of_match       = "vpos",
+		.id             = NEX10000UB_LDO_POS,
+		.ops            = &nex10000ub_regulator_voltage_table_ops,
+		.n_voltages     = NEX10000AUB_MAX_VSEL + 1,
+		.min_uV         = NEX10000UB_VOLTAGE_MIN,
+		.uV_step        = NEX10000UB_STEP_100mV,
+		.type           = REGULATOR_VOLTAGE,
+		.owner          = THIS_MODULE,
+		.vsel_reg       = NEX10000UB_REG_VOUT_POS,
+		.vsel_mask      = NEX10000UB_VOUT_MASK,
+	},
+	{
+		.name           = "ldo_vneg",
+		.of_match       = "vneg",
+		.id             = NEX10000UB_LDO_NEG,
+		.ops            = &nex10000ub_regulator_voltage_table_ops,
+		.n_voltages     = NEX10000AUB_MAX_VSEL + 1,
+		.min_uV         = NEX10000UB_VOLTAGE_MIN,
+		.uV_step        = NEX10000UB_STEP_100mV,
+		.type           = REGULATOR_VOLTAGE,
+		.owner          = THIS_MODULE,
+		.vsel_reg       = NEX10000UB_REG_VOUT_NEG,
+		.vsel_mask      = NEX10000UB_VOUT_MASK,
+	},
+};
+
+
 static bool nex10000ub_writeable_reg(struct device *dev, unsigned int reg)
 {
 	switch (reg) {
@@ -308,12 +339,18 @@ static int nex10000ub_probe(struct i2c_client *client)
 	struct device *dev = &client->dev;
 	struct nex10000ub_data *nex10000ub;
 	struct regulator_config config = { };
+	struct regulator_desc * nex10000_data;
 	unsigned int id;
 
 	struct of_regulator_match nex10000ub_matches[] = {
 		{ .name = "vpos",     .driver_data = (void *)NEX10000UB_LDO_POS},
 		{ .name = "vneg",     .driver_data = (void *)NEX10000UB_LDO_NEG},
 	};
+
+	nex10000_data = (struct regulator_desc *)i2c_get_match_data(client);
+	if ( !nex10000_data ) {
+		return -EINVAL;
+	}
 
 	nex10000ub = nex10000ub_parse_regulator_dt(dev, nex10000ub_matches, ARRAY_SIZE(nex10000ub_matches));
 	if ( !nex10000ub ) {
@@ -346,10 +383,10 @@ static int nex10000ub_probe(struct i2c_client *client)
 		config.driver_data = nex10000ub;
 		config.of_node = nex10000ub_matches[id].of_node;
 
-		nex10000ub->rdev[id] = devm_regulator_register(dev, &nex10000ub_regulator_desc[id], &config);
+		nex10000ub->rdev[id] = devm_regulator_register(dev, &nex10000_data[id], &config);
 		if (IS_ERR(nex10000ub->rdev[id])) {
 			dev_err(dev, "failed to register regulator %s\n",
-					nex10000ub_regulator_desc[id].name);
+					nex10000_data[id].name);
 			return PTR_ERR(nex10000ub->rdev[id]);
 		}
 	}
@@ -362,7 +399,8 @@ static int nex10000ub_probe(struct i2c_client *client)
 }
 
 static const struct of_device_id nex10000ub_of_match[] = {
-	{ .compatible = "nexperia,nex10000ub", },
+	{ .compatible = "nexperia,nex10000ub", .data = &nex10000ub_regulator_desc},
+	{ .compatible = "nexperia,nex10000aub", .data = &nex10000aub_regulator_desc},
 	{},
 };
 MODULE_DEVICE_TABLE(of, nex10000ub_of_match);
