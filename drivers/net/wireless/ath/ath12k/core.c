@@ -36,6 +36,45 @@ static char param_default_bdf[50] = "";
 module_param_string(default_bdf, param_default_bdf, sizeof(param_default_bdf), 0644);
 MODULE_PARM_DESC(default_bdf, "Name of BDF file to load if board_id is not set");
 
+static unsigned int ath12k_rx_reorder_timeout[WME_NUM_AC];
+static unsigned int ath12k_rx_reorder_timeout_num;
+module_param_array_named(rx_reorder_timeout, ath12k_rx_reorder_timeout, uint,
+			 &ath12k_rx_reorder_timeout_num, 0644);
+MODULE_PARM_DESC(rx_reorder_timeout,
+		 "RX reorder timeout in ms. Use one value for all ACs "
+		 "or four values BE,BK,VI,VO (0 means "
+		 "use driver defaults) Example: "
+		 "set all to 2: rx_reorder_timeout=2 "
+		 "set only VO to 2: rx_reorder_timeout=0,0,0,2");
+
+void ath12k_get_rx_reorder_timeout(u32 timeout[WME_NUM_AC])
+{
+	int i;
+
+	timeout[WME_AC_BE] = TARGET_RX_TIMEOUT_LO_PRI;
+	timeout[WME_AC_BK] = TARGET_RX_TIMEOUT_LO_PRI;
+	timeout[WME_AC_VI] = TARGET_RX_TIMEOUT_LO_PRI;
+	timeout[WME_AC_VO] = TARGET_RX_TIMEOUT_HI_PRI;
+
+	if (ath12k_rx_reorder_timeout_num == 1) {
+		for (i = 0; i < WME_NUM_AC; i++)
+			timeout[i] = ath12k_rx_reorder_timeout[0];
+	} else if (ath12k_rx_reorder_timeout_num == WME_NUM_AC) {
+		for (i = 0; i < WME_NUM_AC; i++)
+			if (ath12k_rx_reorder_timeout[i])
+				timeout[i] = ath12k_rx_reorder_timeout[i];
+	} else if (ath12k_rx_reorder_timeout_num != 0) {
+		pr_warn_once("ath12k: ignoring rx_reorder_timeout override: expected 1 or %u values\n",
+			     WME_NUM_AC);
+	}
+
+	pr_info_once("ath12k: rx reorder timeout BE=%u BK=%u VI=%u VO=%u\n",
+		     timeout[0],
+		     timeout[1],
+		     timeout[2],
+		     timeout[3]);
+}
+
 /* protected with ath12k_hw_group_mutex */
 static struct list_head ath12k_hw_group_list = LIST_HEAD_INIT(ath12k_hw_group_list);
 
