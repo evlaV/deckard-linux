@@ -9,6 +9,7 @@
 #include "../hif.h"
 #include "hal_tx.h"
 #include "hal_rx.h"
+#include "core.h"
 #include "hal_desc.h"
 #include "hal.h"
 
@@ -920,7 +921,10 @@ void ath12k_wifi7_hal_reo_hw_setup(struct ath12k_base *ab, u32 ring_hash_map)
 	struct ath12k_hal *hal = &ab->hal;
 
 	u32 reo_base = HAL_SEQ_WCSS_UMAC_REO_REG;
+	u32 timeout[WME_NUM_AC];
 	u32 val;
+
+	ath12k_get_rx_reorder_timeout(timeout);
 
 	val = ath12k_hif_read32(ab, reo_base + HAL_REO1_GEN_ENABLE);
 
@@ -939,13 +943,13 @@ void ath12k_wifi7_hal_reo_hw_setup(struct ath12k_base *ab, u32 ring_hash_map)
 	ath12k_hif_write32(ab, reo_base + HAL_REO1_MISC_CTRL_ADDR(hal), val);
 
 	ath12k_hif_write32(ab, reo_base + HAL_REO1_AGING_THRESH_IX_0(hal),
-			   HAL_DEFAULT_BE_BK_VI_REO_TIMEOUT_USEC);
+			   timeout[WME_AC_BE] * 1000);
 	ath12k_hif_write32(ab, reo_base + HAL_REO1_AGING_THRESH_IX_1(hal),
-			   HAL_DEFAULT_BE_BK_VI_REO_TIMEOUT_USEC);
+			   timeout[WME_AC_BK] * 1000);
 	ath12k_hif_write32(ab, reo_base + HAL_REO1_AGING_THRESH_IX_2(hal),
-			   HAL_DEFAULT_BE_BK_VI_REO_TIMEOUT_USEC);
+			   timeout[WME_AC_VI] * 1000);
 	ath12k_hif_write32(ab, reo_base + HAL_REO1_AGING_THRESH_IX_3(hal),
-			   HAL_DEFAULT_VO_REO_TIMEOUT_USEC);
+			   timeout[WME_AC_VO] * 1000);
 
 	ath12k_hif_write32(ab, reo_base + HAL_REO1_DEST_RING_CTRL_IX_2,
 			   ring_hash_map);
