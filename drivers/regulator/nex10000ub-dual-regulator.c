@@ -15,6 +15,7 @@
 #include <linux/delay.h>
 
 #define NEX10000UB_MAX_VSEL             20
+#define NEX10000AUB_MAX_VSEL            25
 #define NEX10000UB_VOLTAGE_MIN          4000000
 #define NEX10000UB_STEP_100mV           100000
 
@@ -275,6 +276,61 @@ static const struct regulator_desc nex10000ub_regulator_desc[] = {
 	},
 };
 
+static const struct regulator_desc nex10000aub_regulator_desc[] = {
+	{
+		.name           = "ldo_vposr",
+		.of_match       = "vpos_r",
+		.id             = NEX10000UB_LDO_POS_RIGHT,
+		.ops            = &nex10000ub_regulator_voltage_table_ops,
+		.n_voltages     = NEX10000AUB_MAX_VSEL + 1,
+		.min_uV         = NEX10000UB_VOLTAGE_MIN,
+		.uV_step        = NEX10000UB_STEP_100mV,
+		.type           = REGULATOR_VOLTAGE,
+		.owner          = THIS_MODULE,
+		.vsel_reg       = NEX10000UB_REG_VOUT_POS,
+		.vsel_mask      = NEX10000UB_VOUT_MASK,
+	},
+	{
+		.name           = "ldo_vnegr",
+		.of_match       = "vneg_r",
+		.id             = NEX10000UB_LDO_NEG_RIGHT,
+		.ops            = &nex10000ub_regulator_voltage_table_ops,
+		.n_voltages     = NEX10000AUB_MAX_VSEL + 1,
+		.min_uV         = NEX10000UB_VOLTAGE_MIN,
+		.uV_step        = NEX10000UB_STEP_100mV,
+		.type           = REGULATOR_VOLTAGE,
+		.owner          = THIS_MODULE,
+		.vsel_reg       = NEX10000UB_REG_VOUT_NEG,
+		.vsel_mask      = NEX10000UB_VOUT_MASK,
+	},
+	{
+		.name           = "ldo_vposl",
+		.of_match       = "vpos_l",
+		.id             = NEX10000UB_LDO_POS_LEFT,
+		.ops            = &nex10000ub_regulator_voltage_table_ops,
+		.n_voltages     = NEX10000AUB_MAX_VSEL + 1,
+		.min_uV         = NEX10000UB_VOLTAGE_MIN,
+		.uV_step        = NEX10000UB_STEP_100mV,
+		.type           = REGULATOR_VOLTAGE,
+		.owner          = THIS_MODULE,
+		.vsel_reg       = NEX10000UB_REG_VOUT_NEG,
+		.vsel_mask      = NEX10000UB_VOUT_MASK,
+	},
+	{
+		.name           = "ldo_vnegl",
+		.of_match       = "vneg_l",
+		.id             = NEX10000UB_LDO_NEG_LEFT,
+		.ops            = &nex10000ub_regulator_voltage_table_ops,
+		.n_voltages     = NEX10000AUB_MAX_VSEL + 1,
+		.min_uV         = NEX10000UB_VOLTAGE_MIN,
+		.uV_step        = NEX10000UB_STEP_100mV,
+		.type           = REGULATOR_VOLTAGE,
+		.owner          = THIS_MODULE,
+		.vsel_reg       = NEX10000UB_REG_VOUT_NEG,
+		.vsel_mask      = NEX10000UB_VOUT_MASK,
+	},
+};
+
 static struct nex10000ub_data *nex10000ub_parse_regulator_dt(
 		struct device *dev,
 		struct of_regulator_match *nex10000ub_matches, unsigned int num)
@@ -318,6 +374,7 @@ static int nex10000ub_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct nex10000ub_data *nex10000ub;
 	struct regulator_config config = { };
+	struct regulator_desc * nex10000_data;
 	unsigned int id, i;
 
 	static struct of_regulator_match nex10000ub_matches[] = {
@@ -326,6 +383,11 @@ static int nex10000ub_probe(struct platform_device *pdev)
 		{ .name = "vposl",     .driver_data = (void *)NEX10000UB_LDO_POS_LEFT},
 		{ .name = "vnegl",     .driver_data = (void *)NEX10000UB_LDO_NEG_LEFT},
 	};
+
+	nex10000_data = (struct regulator_desc *)device_get_match_data(dev);
+	if ( !nex10000_data ) {
+		return -EINVAL;
+	}
 
 	nex10000ub = nex10000ub_parse_regulator_dt(dev, nex10000ub_matches, ARRAY_SIZE(nex10000ub_matches));
 	if ( !nex10000ub ) {
@@ -361,10 +423,10 @@ static int nex10000ub_probe(struct platform_device *pdev)
 		config.driver_data = nex10000ub;
 		config.of_node = nex10000ub_matches[id].of_node;
 
-		nex10000ub->rdev[id] = devm_regulator_register(dev, &nex10000ub_regulator_desc[id], &config);
+		nex10000ub->rdev[id] = devm_regulator_register(dev, &nex10000_data[id], &config);
 		if (IS_ERR(nex10000ub->rdev[id])) {
 			dev_err(dev, "failed to register regulator %s\n",
-					nex10000ub_regulator_desc[id].name);
+					nex10000_data[id].name);
 			return PTR_ERR(nex10000ub->rdev[id]);
 		}
 	}
@@ -374,7 +436,8 @@ static int nex10000ub_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id nex10000ub_of_match[] = {
-	{ .compatible = "nexperia,dual-nex10000ub", },
+	{ .compatible = "nexperia,dual-nex10000ub", .data = &nex10000ub_regulator_desc},
+	{ .compatible = "nexperia,dual-nex10000aub", .data = &nex10000aub_regulator_desc},
 	{},
 };
 MODULE_DEVICE_TABLE(of, nex10000ub_of_match);

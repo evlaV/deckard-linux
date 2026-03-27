@@ -444,7 +444,7 @@
 
 	// lcd bias power supplies
 	LCD_BIAS: lcd_bias {
-		compatible = "nexperia,dual-nex10000ub";
+		compatible = "nexperia,dual-nex10000aub";
 		status = "okay";
 
 		pinctrl-0 = <&display_avdd_en>, <&display_avee_en>;
