@@ -2119,6 +2119,8 @@
         vdd-supply = <&vreg_l2b_3p0>;
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
+        #address-cells = <1>;
+        #size-cells = <0>;
 
         // CH 1 : Kryo APC0 Cores
         // CH 2 : Kryo APC2 Cores
@@ -2153,6 +2155,8 @@
         vdd-supply = <&vreg_l2b_3p0>;
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
+        #address-cells = <1>;
+        #size-cells = <0>;
 
         // CH 1 : GFX Power
         // CH 2 : Tensor Processor – NSP2
@@ -2188,7 +2192,9 @@
         vdd-supply = <&vreg_l2b_3p0>;
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
-
+        #address-cells = <1>;
+        #size-cells = <0>;
+	
         // CH 1 : VPH
         // CH 2 : S6C ~1.9V Subregulation
         // CH 3 : S3C ~1.3V Subregulation
