@@ -2462,6 +2462,7 @@ static const struct qcom_cc_desc cam_cc_x1e80100_desc = {
 	.num_resets = ARRAY_SIZE(cam_cc_x1e80100_resets),
 	.gdscs = cam_cc_x1e80100_gdscs,
 	.num_gdscs = ARRAY_SIZE(cam_cc_x1e80100_gdscs),
+	.cc_gdsc = &cam_cc_titan_top_gdsc,
 	.use_rpm = true,
 	.driver_data = &cam_cc_x1e80100_driver_data,
 };
