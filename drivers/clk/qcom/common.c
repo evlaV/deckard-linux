@@ -144,6 +144,11 @@ static void qcom_cc_gdsc_unregister(void *data)
 	gdsc_unregister(data);
 }
 
+static void qcom_cc_pm_genpd_unregister(void *data)
+{
+	pm_genpd_remove_device(data);
+}
+
 /*
  * Backwards compatibility with old DTs. Register a pass-through factor 1/1
  * clock to translate 'path' clk into 'name' clk and register the 'path'
@@ -423,6 +428,17 @@ int qcom_cc_really_probe(struct device *dev,
 	ret = devm_of_clk_add_hw_provider(dev, qcom_cc_clk_hw_get, cc);
 	if (ret)
 		goto put_rpm;
+
+	if (desc->use_rpm && desc->cc_gdsc) {
+		ret = pm_genpd_add_device(&desc->cc_gdsc->pd, dev);
+		if (ret)
+			goto put_rpm;
+
+		ret = devm_add_action_or_reset(dev, qcom_cc_pm_genpd_unregister,
+					       dev);
+		if (ret)
+			goto put_rpm;
+	}
 
 	ret = qcom_cc_icc_register(dev, desc);
 
