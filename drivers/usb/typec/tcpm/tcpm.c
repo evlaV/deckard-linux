@@ -5216,14 +5216,6 @@ static void run_state_machine(struct tcpm_port *port)
 			tcpm_set_state(port, SNK_READY, 0);
 			break;
 		}
-		/* Port can be left in bad state from previous boot if not
-		 * reset properly.  Execute a reset on first PD round to clear
-		 * bad states */
-		if ( port->do_legacy_reset ) {
-			tcpm_log(port, "Reset port on first PD negotiation");
-			port->tcpc->qcom_legacy_reset(port->tcpc);
-			port->do_legacy_reset = false;
-		}
 		/*
 		 * If VBUS has never been low, and we time out waiting
 		 * for source cap, try a soft reset first, in case we
@@ -5231,15 +5223,13 @@ static void run_state_machine(struct tcpm_port *port)
 		 * Do this only once.
 		 */
 		if (port->vbus_never_low) {
-			if ( port->tcpc->qcom_legacy_reset ) {
-				tcpm_log(port, "Vbus never low, attempting legacy cable reset");
-				port->tcpc->qcom_legacy_reset(port->tcpc);
-			}
 			port->vbus_never_low = false;
 			upcoming_state = SNK_SOFT_RESET;
 		} else {
 			if (!port->self_powered)
 				upcoming_state = SNK_WAIT_CAPABILITIES_TIMEOUT;
+			else if (port->do_legacy_reset)
+				upcoming_state = SNK_SOFT_RESET;
 			else
 				upcoming_state = hard_reset_state(port);
 		}
@@ -5546,10 +5536,20 @@ static void run_state_machine(struct tcpm_port *port)
 		break;
 	case SRC_SOFT_RESET_WAIT_SNK_TX:
 	case SNK_SOFT_RESET:
-		if (port->ams != NONE_AMS)
-			tcpm_ams_finish(port);
-		port->upcoming_state = SOFT_RESET_SEND;
-		tcpm_ams_start(port, SOFT_RESET_AMS);
+		/* Port can be left in bad state from previous boot if not
+		 * reset properly.  Execute a reset on first PD round to clear
+		 * bad states */
+		if (port->do_legacy_reset) {
+			tcpm_log(port, "Reset port on first PD negotiation");
+			port->tcpc->qcom_legacy_reset(port->tcpc);
+			port->do_legacy_reset = false;
+			port->upcoming_state = SNK_UNATTACHED;
+		} else {
+			if (port->ams != NONE_AMS)
+				tcpm_ams_finish(port);
+			port->upcoming_state = SOFT_RESET_SEND;
+			tcpm_ams_start(port, SOFT_RESET_AMS);
+		}
 		break;
 	case SOFT_RESET_SEND:
 		/*
