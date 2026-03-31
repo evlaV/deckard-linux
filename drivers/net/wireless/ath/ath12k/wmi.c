@@ -9350,8 +9350,7 @@ static void ath12k_update_stats_event(struct ath12k_base *ab, struct sk_buff *sk
 
 	ret = ath12k_wmi_pull_fw_stats(ab, skb, &stats);
 	if (ret) {
-		//ath12k_warn(ab, "failed to pull fw stats: %d\n", ret);
-		pr_warn_once("ath12k_warn (once): failed to pull fw stats: %d\n", ret);
+		ath12k_warn(ab, "failed to pull fw stats: %d\n", ret);
 		goto free;
 	}
 
