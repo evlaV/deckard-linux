@@ -5386,8 +5386,7 @@ int ath12k_mac_get_fw_stats(struct ath12k *ar,
 
 	time_left = wait_for_completion_timeout(&ar->fw_stats_complete, 1 * HZ);
 	if (!time_left) {
-		//ath12k_warn(ab, "time out while waiting for get fw stats\n");
-		pr_warn_once("ath12k_warn (once): time out while waiting for get fw stats\n");
+		ath12k_warn(ab, "time out while waiting for get fw stats\n");
 		return -ETIMEDOUT;
 	}
 
@@ -5399,8 +5398,7 @@ int ath12k_mac_get_fw_stats(struct ath12k *ar,
 	 */
 	time_left = wait_for_completion_timeout(&ar->fw_stats_done, 3 * HZ);
 	if (!time_left) {
-		//ath12k_warn(ab, "time out while waiting for fw stats done\n");
-		pr_warn_once("ath12k_warn (once): time out while waiting for fw stats done\n");
+		ath12k_warn(ab, "time out while waiting for fw stats done\n");
 		return -ETIMEDOUT;
 	}
 
