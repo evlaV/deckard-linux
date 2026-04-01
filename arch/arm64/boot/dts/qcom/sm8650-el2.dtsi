@@ -38,9 +38,8 @@
 			reg = <0 0x84a00000 0 0x100000>;
 			record-size = <0x40000>;
 			console-size = <0x40000>;
-			pmsg-size = <0x1000>;
+			pmsg-size = <0x4000>;
 			max_reason = <5>;
-			ecc-size = <16>;
 		};
 
 		aop_cmd_db_mem: aop-cmd-db@81c60000 {
