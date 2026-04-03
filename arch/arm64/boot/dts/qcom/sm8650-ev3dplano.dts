@@ -444,6 +444,7 @@
 
 	// lcd bias power supplies
 	LCD_BIAS: lcd_bias {
+		//Using AUB variant, which supports more voltages (and higher current)
 		compatible = "nexperia,dual-nex10000aub";
 		status = "okay";
 
@@ -1396,8 +1397,8 @@
 &mdss_dsi0_out {
 	remote-endpoint = <&panel0_in>;
 #ifdef CPHY_MOD
-	//data-lanes = <0 1 2>;
-	data-lanes = <2 1 0>; //Also need to swap 0C <-> 2C on adapter FPC
+	data-lanes = <0 1 2>;
+	//data-lanes = <2 1 0>; //Also need to swap 0C <-> 2C on adapter FPC
 #else
 	data-lanes = <0 1 2 3>;
 #endif
@@ -1427,8 +1428,8 @@
 &mdss_dsi1_out {
 	remote-endpoint = <&panel1_in>;
 #ifdef CPHY_MOD
-	//data-lanes = <0 1 2>;
-	data-lanes = <2 1 0>; //Also need to swap 0C <-> 2C on adapter FPC
+	data-lanes = <0 1 2>;
+	//data-lanes = <2 1 0>; //Also need to swap 0C <-> 2C on adapter FPC
 #else
 	data-lanes = <0 1 2 3>;
 #endif

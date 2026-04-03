@@ -23,7 +23,8 @@
 #include <drm/display/drm_dsc.h>
 #include <drm/display/drm_dsc_helper.h>
 
-//#define CPHY_DEBUG
+#define CPHY_DEBUG
+//#define NOLPM_AFTER_PREP
 
 // Panel settings
 #define BACKPLANE_HAA	3552
@@ -167,25 +168,37 @@ struct extmode_s {
 	u16			v_dummy;
 	plano_gscale_t	gscale;
 	plano_fscale_t	fscale;
+	bool		rowdouble_en;
 
 };
 
-#define MODE_CNT			16
+#define MODE_CNT			39
 
 //Each enable define may enable multiple modes, but they must all share the same DSC settings
 //TODO:  Currenly only the DSC settings of the first enabled mode are used when checking
 //  validity of all enabled modes. Modes requiring different DSC settings will be rejected
 //  after plano_get_modes tries to add them.
+//  Also, mixing non-DSC modes in w/ DSC mdoes won't work, as DSC settings will still apply
 //  So, for now, must be selective about which modes to enable at the same time
-#define GLOBAL_2X_MODE_EN			true
-#define GLOBAL_2X_NODSC_MODE_EN		false
-#define GLOBAL_1_5X_MODE_EN			false
-#define GLOBAL_1_5X_NODSC_MODE_EN	false
-#define FOVIAL_2_5X_MODE_EN			false
-#define FOVIAL_2_75X_MODE_EN		false
-#define FOVIAL_3_25X_MODE_EN		false
-#define TEST_MODE_EN				false
-#define LOW_BW_TEST_MODE_EN			false
+#define GLOBAL_2X_MODE_EN					true
+#define GLOBAL_2X_LOFPS_MODE_EN				false
+#define GLOBAL_2X_HIFPS_MODE_EN				false	//TEST ONLY -- not working
+#define GLOBAL_2X_LOBW_MODE_EN				false
+#define GLOBAL_2X_NODSC_MODE_EN				false
+#define GLOBAL_2X_HIBW_NODSC_MODE_EN		false
+#define GLOBAL_2X_HIFPS_NODSC_MODE_EN		false	//TEST ONLY -- not working
+#define GLOBAL_2X_ROWDOUBLE_MODE_EN			false
+#define GLOBAL_2X_ROWDOUBLE_NODSC_MODE_EN	false
+#define GLOBAL_1_5X_MODE_EN					false
+#define GLOBAL_1_5X_NODSC_MODE_EN			false
+#define GLOBAL_1_5X_HIBW_NODSC_MODE_EN		false
+#define FOVIAL_2_5X_MODE_EN					false	//WIP
+#define FOVIAL_2_75X_MODE_EN				false	//WIP
+#define FOVIAL_3_25X_MODE_EN				false	//WIP
+#define TEST_MODE_EN						false
+#define GLOBAL_1X_MODE_EN					false
+#define GLOBAL_1X_NODSC_MODE_EN				false	//WIP -- too wide
+#define GLOBAL_1X_ROWDOUBLE_MODE_EN			false
 
 //Will get converted to drm_display_mode later
 static struct extmode_s extmodes[MODE_CNT] = {
@@ -212,6 +225,32 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; 80Hz; DSC
+	{
+		.enabled =				GLOBAL_2X_MODE_EN,
+		.name =					"1776x1920_80",
+		.fps =					80,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
 	},
 	//2X global scaling; 72Hz; DSC
 	{
@@ -236,10 +275,36 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; row-doubling; 120Hz; DSC
+	{
+		.enabled =				GLOBAL_2X_ROWDOUBLE_MODE_EN,
+		.name =					"1776x960_120",
+		.fps =					120,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					960,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			2, //dsc_hslice_count / 2,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			true,
 	},
 	//2X global scaling; 60Hz; DSC
 	{
-		.enabled =				GLOBAL_2X_MODE_EN,
+		.enabled =				GLOBAL_2X_LOFPS_MODE_EN,
 		.name =					"1776x1920_60",
 		.fps =					60,
 		.haa =					1776,
@@ -260,10 +325,86 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; 100Hz; DSC
+	{
+		.enabled =				GLOBAL_2X_HIFPS_MODE_EN,
+		.name =					"1776x1920_100",
+		.fps =					100,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; 110Hz; DSC
+	{
+		.enabled =				GLOBAL_2X_HIFPS_MODE_EN,
+		.name =					"1776x1920_110",
+		.fps =					110,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; 120Hz; DSC
+	{
+		.enabled =				GLOBAL_2X_HIFPS_MODE_EN,
+		.name =					"1776x1920_120",
+		.fps =					120,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
 	},
 	//2X global scaling; 45Hz; DSC
 	{
-		.enabled =				GLOBAL_2X_MODE_EN,
+		.enabled =				GLOBAL_2X_LOBW_MODE_EN,
 		.name =					"1776x1920_45",
 		.fps =					45,
 		.haa =					1776,
@@ -284,11 +425,11 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
 	},
 	//2X global scaling; 30Hz; DSC
 	{
-		//.enabled =				GLOBAL_2X_MODE_EN,
-		.enabled =				LOW_BW_TEST_MODE_EN,
+		.enabled =				GLOBAL_2X_LOBW_MODE_EN,
 		.name =					"1776x1920_30",
 		.fps =					30,
 		.haa =					1776,
@@ -309,6 +450,32 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; 15Hz; DSC
+	{
+		.enabled =				GLOBAL_2X_LOBW_MODE_EN,
+		.name =					"1776x1920_15",
+		.fps =					15,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
 	},
 	//2X global scaling; 60Hz; No DSC
 	{
@@ -333,6 +500,132 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; 90Hz; No DSC
+	{
+		.enabled =				GLOBAL_2X_HIBW_NODSC_MODE_EN,
+		.name =					"1776x1920_90",
+		.fps =					90,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; 92Hz; No DSC
+	{
+		.enabled =				GLOBAL_2X_HIFPS_NODSC_MODE_EN,
+		.name =					"1776x1920_92",
+		.fps =					92,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; 95Hz; No DSC
+	{
+		.enabled =				GLOBAL_2X_HIFPS_NODSC_MODE_EN,
+		.name =					"1776x1920_95",
+		.fps =					95,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; 97Hz; No DSC
+	{
+		.enabled =				GLOBAL_2X_HIFPS_NODSC_MODE_EN,
+		.name =					"1776x1920_97",
+		.fps =					97,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//2X global scaling; 120Hz; Row doubling; No DSC
+	{
+		.enabled =				GLOBAL_2X_ROWDOUBLE_NODSC_MODE_EN,
+		.name =					"1776x960_120",
+		.fps =					120,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					960,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			true,
 	},
 	//Test mode:
 	//1.5X global scaling; 60Hz; No DSC
@@ -359,6 +652,7 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.v_dummy =				0,
 		.gscale =				GSCALE_1_5X,
 		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
 	},
 	//1.5X global scaling; 90Hz; DSC
 	//WIP:  Needs changes in drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c to handle fractional DSC width
@@ -441,12 +735,13 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		//.v_dummy =				0,
 		.gscale =				GSCALE_1_5X,
 		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
 	},
-	//1.5X global scaling; 60Hz; No DSC
+	//1.5X global scaling; 30Hz; No DSC
 	{
 		.enabled =				GLOBAL_1_5X_NODSC_MODE_EN,
-		.name =					"2368x2560_60",
-		.fps =					60,
+		.name =					"2368x2560_30",
+		.fps =					30,
 		.haa =					2368,
 		.hfp =					20,
 		.hs =					8,
@@ -478,6 +773,132 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.v_dummy =				0,
 		.gscale =				GSCALE_1_5X,
 		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 60Hz; No DSC
+	{
+		.enabled =				GLOBAL_1_5X_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_60",
+		.fps =					60,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 65Hz; No DSC
+	{
+		.enabled =				GLOBAL_1_5X_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_65",
+		.fps =					65,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 66Hz; No DSC
+	{
+		.enabled =				GLOBAL_1_5X_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_66",
+		.fps =					66,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 67Hz; No DSC
+	{
+		.enabled =				GLOBAL_1_5X_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_67",
+		.fps =					67,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 70Hz; No DSC
+	{
+		.enabled =				GLOBAL_1_5X_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_70",
+		.fps =					70,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
 	},
 	//2.5X Fovial scale; 45Hz; DSC
 	//Foveated and background size (per-panel): 1424x1536
@@ -507,13 +928,14 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.v_dummy =				0,
 		.gscale =				GSCALE_1X,
 		.fscale =				FSCALE_2_5X,
+		.rowdouble_en =			false,
 	},
 	//2.5X Fovial scale; 60Hz; DSC
 	//Foveated and background size (per-panel): 1424x1536
 	//TODO: WIP -- Not working yet
 	{
-		.enabled =				FOVIAL_2_5X_MODE_EN,
-		//.enabled =				false, //TEMP TEST
+		//.enabled =				FOVIAL_2_5X_MODE_EN,
+		.enabled =				false, //TEMP TEST
 		.name =					"1424x3072_60",	//Name for actual image area, or image area w/ dummy lines?
 		.fps =					60,
 		//.haa =					1424,
@@ -623,6 +1045,7 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.h_dummy =				3,
 		.dsc_vslice_height =	24,
 		.dsc_hslice_count =		2,
+		.rowdouble_en =			false,
 	},
 	//2.5X Fovial scale; 90Hz; DSC
 	//Foveated and background size (per-panel): 1424x1536
@@ -674,10 +1097,13 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.vbp_p =				23,
 		.vbp_m =				23,
 		.vid_vs_delay =			1536+23,
-		.haa =					1421,
-		.h_dummy =				3,
+		//.haa =					1421,
+		//.h_dummy =				3,
+		.haa =					1424,
+		.h_dummy =				0,
 		.dsc_vslice_height =	24,
 		.dsc_hslice_count =		2,
+		.rowdouble_en =			false,
 	},
 	//2.75X Fovial scale; 90Hz; DSC
 	//Foveated and background size (per-panel): 1292x1397
@@ -724,6 +1150,7 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		//.haa =					1292+1,	//+1 to be divisible by 3 for DSC compression
 		//.h_dummy =				1,	//+3 to be divisible by 2 for hslice
 		//.vid_vs_delay =			1397+23+19+2,	//vaa/2 + vbp + v_dummy/2 + 1 extra
+		.rowdouble_en =			false,
 	},
 	//2.75X Fovial scale; 60Hz; DSC
 	//Foveated and background size (per-panel): 1292x1397
@@ -803,6 +1230,7 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.hbp =					28,
 		.vfp_p =				24,
 		.vfp_m =				24+1008,
+		.rowdouble_en =			false,
 	},
 	//3.25X Fovial scale; 90Hz; DSC; horiz test; with padding
 	//Foveated and background size (per-panel): 1094x1182
@@ -843,6 +1271,7 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		//.v_dummy =				0,
 		.gscale =				GSCALE_1X,
 		.fscale =				FSCALE_3_25X,
+		.rowdouble_en =			false,
 	},
 	//3.25X Fovial scale; 90Hz; DSC; with padding
 	//Foveated and background size (per-panel): 1094x1182
@@ -882,6 +1311,221 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		//.v_dummy =				0,
 		.gscale =				GSCALE_1X,
 		.fscale =				FSCALE_3_25X,
+		.rowdouble_en =			false,
+	},
+	//full-res modes require quad-pipe operation -- each layer mixer limited to 2560 pixel width
+	//Works if override mode verification of hdsiplay to be 4*max_mixer_width rather than 2* (which is ok now due to quad-pipe?)
+	//
+	//1X no scaling; 60Hz; DSC
+	{
+		.enabled =				GLOBAL_1X_MODE_EN,
+		.name =					"3552x3840_60",
+		.fps =					60,
+		.haa =					3552,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					3840,
+		//.vfp_p =				17,	//g2x
+		.vfp_p =				29,
+		//.vfp_m =				21,	//g2x
+		.vfp_m =				33,
+		.vs =					1,
+		//.vbp_p =				17,	//g2x
+		.vbp_p =				28,
+		//.vbp_m =				8,	//g2x
+		.vbp_m =				19,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		//.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.vid_vs_delay =			1,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1X no scaling; 45Hz; DSC
+	{
+		.enabled =				GLOBAL_1X_MODE_EN,
+		.name =					"3552x3840_45",
+		.fps =					45,
+		.haa =					3552,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					3840,
+		//.vfp_p =				17,	//g2x
+		.vfp_p =				29,
+		//.vfp_m =				21,	//g2x
+		.vfp_m =				33,
+		.vs =					1,
+		//.vbp_p =				17,	//g2x
+		.vbp_p =				28,
+		//.vbp_m =				8,	//g2x
+		.vbp_m =				19,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		//.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.vid_vs_delay =			1,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1X no scaling; 72Hz; DSC
+	{
+		.enabled =				GLOBAL_1X_MODE_EN,
+		.name =					"3552x3840_72",
+		.fps =					72,
+		.haa =					3552,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					3840,
+		//.vfp_p =				17,	//g2x
+		.vfp_p =				29,
+		//.vfp_m =				21,	//g2x
+		.vfp_m =				33,
+		.vs =					1,
+		//.vbp_p =				17,	//g2x
+		.vbp_p =				28,
+		//.vbp_m =				8,	//g2x
+		.vbp_m =				19,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		//.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.vid_vs_delay =			1,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1X no scaling; 87Hz; DSC	 -- WIP -- failing... clk too high?
+	//  [drm:dpu_rm_reserve] ctl 1 caps 0x0
+	//  [drm:dpu_rm_reserve] ctl 1 match
+	{
+		//.enabled =				GLOBAL_1X_MODE_EN,
+		.enabled =				false,
+		.name =					"3552x3840_87",
+		.fps =					87,		//Can't do 90... 87 is 2.5Gbps / DPhy lane
+		.haa =					3552,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					3840,
+		//.vfp_p =				17,	//g2x
+		.vfp_p =				29,
+		//.vfp_m =				21,	//g2x
+		.vfp_m =				33,
+		.vs =					1,
+		//.vbp_p =				17,	//g2x
+		.vbp_p =				28,
+		//.vbp_m =				8,	//g2x
+		.vbp_m =				19,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		//.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.vid_vs_delay =			1,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1X no scaling; 20Hz; NO-DSC
+	{
+		.enabled =				GLOBAL_1X_NODSC_MODE_EN,
+		.name =					"3552x3840_20",
+		.fps =					20,
+		.haa =					3552,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					3840,
+		//.vfp_p =				17,	//g2x
+		.vfp_p =				29,
+		//.vfp_m =				21,	//g2x
+		.vfp_m =				33,
+		.vs =					1,
+		//.vbp_p =				17,	//g2x
+		.vbp_p =				28,
+		//.vbp_m =				8,	//g2x
+		.vbp_m =				19,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,	//dsc_hslice_count / 2,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1X no scaling; 30Hz; NO-DSC
+	{
+		.enabled =				GLOBAL_1X_NODSC_MODE_EN,
+		.name =					"3552x3840_30",
+		.fps =					30,
+		.haa =					3552,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					3840,
+		//.vfp_p =				17,	//g2x
+		.vfp_p =				29,
+		//.vfp_m =				21,	//g2x
+		.vfp_m =				33,
+		.vs =					1,
+		//.vbp_p =				17,	//g2x
+		.vbp_p =				28,
+		//.vbp_m =				8,	//g2x
+		.vbp_m =				19,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,	//dsc_hslice_count / 2,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1X no scaling; 120Hz; DSC; row-doubled
+	{
+		.enabled =				GLOBAL_1X_ROWDOUBLE_MODE_EN,
+		.name =					"3552x3840_120",
+		.fps =					120,
+		.haa =					3552,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		//.vfp_p =				17,	//g2x
+		.vfp_p =				29,
+		//.vfp_m =				21,	//g2x
+		.vfp_m =				33,
+		.vs =					1,
+		//.vbp_p =				17,	//g2x
+		.vbp_p =				28,
+		//.vbp_m =				8,	//g2x
+		.vbp_m =				19,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		//.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.vid_vs_delay =			1,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			true,
 	},
 };
 
@@ -907,6 +1551,7 @@ static int panel_read_show(struct seq_file *s, void *data);
 			mipi_dsi_dcs_write_buffer_multi(&dsi_ctx1, d, ARRAY_SIZE(d));	\
 		}									\
 	} while (0)
+
 
 #define BE16(x) (x)>>8, (x)&0xff
 #define LE16(x) (x)&0xff, (x)>>8
@@ -970,7 +1615,7 @@ static int plano_init_dsc_config(struct plano_ctx *ctx)
 	};
 
 	//TODO: get_modes getting called often, spamming dmesg... disable for now
-	//DRM_DEV_INFO(ctx->dev, "Initialized dsc_cfg w/ extmode[%d] %s\n", ctx->current_mode, extmodes[ctx->current_mode].name);   
+	DRM_DEV_INFO(ctx->dev, "Initialized dsc_cfg w/ extmode[%d] %s\n", ctx->current_mode, extmodes[ctx->current_mode].name);   
 
 	return dsi_populate_dsc_params(ctx);
 }
@@ -1114,6 +1759,32 @@ static void dsi_write_plano_panel_scaling(struct plano_ctx *ctx)
 	DRM_DEV_INFO(ctx->dev, "Wrote scaling reg to 0x%02x\n", val);
 }
 
+static void dsi_write_plano_panel_doubler(struct plano_ctx *ctx)
+{
+	if(extmodes[ctx->current_mode].rowdouble_en)
+	{
+		plano_dsi_write_seq(ctx, 0x61, 0x02);	//Doubler driving mode
+		plano_dsi_write_seq(ctx, 0xB0, 0x00);	//Manufacturer command (MC) access enable
+		plano_dsi_write_seq(ctx, 0xFF, 0x01);	//MC page 1
+		plano_dsi_write_seq(ctx, 0xEC, 0x20);	//OTP reload after sleep out turns off
+		plano_dsi_write_seq(ctx, 0xD6, 0x01);	//?
+		plano_dsi_write_seq(ctx, 0xFF, 0x01);	//MC Page 1
+		plano_dsi_write_seq(ctx, 0xF1, 0x14);	//?
+		plano_dsi_write_seq(ctx, 0xCB, 0x00, 0x00, 0x00, 0x01, 0x01, 0x02, 0x02,
+									   0x03, 0x03, 0x04, 0x00, 0x00, 0x00, 0x01,
+									   0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x0A,
+									   0x0A, 0x0A, 0x0B, 0x0B, 0x0C, 0x0C, 0x0D,
+									   0x0D, 0x0E, 0x0A, 0x0A, 0x0A, 0x0B, 0x0B,
+									   0x0C, 0x0C, 0x0D, 0x0D, 0x0E);	//?
+		plano_dsi_write_seq(ctx, 0xFF, 0x00);	//MC Page 0
+		DRM_DEV_INFO(ctx->dev, "Wrote row doubler regs\n");
+	}
+	else
+	{
+		plano_dsi_write_seq(ctx, 0x61, 0x00);	//Normal driving mode
+	}
+}
+
 static void dsi_write_plano_panel_video_control(struct plano_ctx *ctx)
 {
 	uint8_t vbp_p[2], vfp_p[2], vid_vs_delay[2];
@@ -1155,36 +1826,60 @@ static int dsi_write_plano_panel_setup(struct drm_panel *panel)
 	DRM_DEV_INFO(ctx->dev, "Configuring panel registers\n");
 
 #ifdef CPHY_DEBUG
+	ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
+	if (ctx->is_dual_panel)
+		ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
+#endif
+
 	//TODO: Is this right?  not working...
 	//  Using &panel instead crashes kernel and keeps headset from booting
 	struct seq_file s = {.private = panel};
 
 
-	ctx->panel_read_id = 0;
-	ctx->panel_read_reg_addr = 0x04;	//Display ID
+	ctx->panel_read_id = 1;
+	ctx->panel_read_reg_addr = 0x04;	//Display ID -- datasheet claims will return 0x0, but getting 0xE3
+	//ctx->panel_read_reg_addr = 0xDA;	//Panel ID -- app note claims will return 0xE3, but getting 0
 	ctx->panel_read_num_bytes = 1;
 	panel_read_show(&s, NULL);
 
 	u8 panel_id_exp = 0xE3;	//TODO: if continue to check, move to ctx
 	if(ctx->panel_read_data[0] != panel_id_exp)
 	{
-		DRM_DEV_ERROR(ctx->dev, "PanelID read of 0x%02X doesn't match expected 0x%02X \n", ctx->panel_read_data[0], panel_id_exp);
-		return -EINVAL;
-	}
+		DRM_DEV_ERROR(ctx->dev, "WARNING: PanelID 0x%02X doesn't match expected 0x%02X \n", ctx->panel_read_data[0], panel_id_exp);
+#ifdef CPHY_DEBUG
+		if(0)
+		{
+			DRM_DEV_INFO(ctx->dev, "Continuing to try to read PanelID reg to generate bus traffic for probing...\n");
+			while(ctx->panel_read_data[0] != panel_id_exp)
+			{
+				//TODO: Temp debug -- hammer on register to create CPHY traffic for probing
+				panel_read_show(&s, NULL);
+			}
+			return -EINVAL;
+		}
 #endif
+	}
+	else
+	{
+		DRM_DEV_INFO(ctx->dev, "PanelID 0x%02X matches expected 0x%02X \n", ctx->panel_read_data[0], panel_id_exp);
+	}
+
 
 	dsi_write_plano_panel_dsc(ctx);
 
 #ifdef CPHY_DEBUG
-	ctx->panel_read_id = 0;
+	ctx->panel_read_id = 1;
 	ctx->panel_read_reg_addr = 0x05;	//DSI error count
 	ctx->panel_read_num_bytes = 1;
 	panel_read_show(&s, NULL);
 
-	ctx->panel_read_id = 0;
-	ctx->panel_read_reg_addr = 0xF6;	//PPS
-	ctx->panel_read_num_bytes = 94;
-	panel_read_show(&s, NULL);
+	if(0)
+	{
+		ctx->panel_read_id = 1;
+		ctx->panel_read_reg_addr = 0xF6;	//PPS
+		ctx->panel_read_num_bytes = 94;
+		panel_read_show(&s, NULL);
+	}
 #endif
 
 	dsi_write_plano_panel_video_control(ctx);
@@ -1192,6 +1887,8 @@ static int dsi_write_plano_panel_setup(struct drm_panel *panel)
 	plano_dsi_write_seq(ctx, 0x51, 0xFF); // full brightness
 	plano_dsi_write_seq(ctx, 0x53, 0x20); // manual brightness, dimming off
 	plano_dsi_write_seq(ctx, 0x26, 0x01); // default gamma set
+
+	dsi_write_plano_panel_doubler(ctx);
 
 	dsi_write_plano_panel_scaling(ctx);
 
@@ -1278,11 +1975,13 @@ static int set_brightness(struct plano_ctx *ctx, u8 brightness,
 	DRM_DEV_INFO(ctx->dev, "Brightness set to 0x%02X (%d) using LPM\n", brightness, brightness);
 	*/
 
+#ifndef NOLPM_AFTER_PREP
 	//if (!ctx->dphy) {
 		ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
 		if (ctx->is_dual_panel)
 			ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
 	//}
+#endif
 	DRM_DEV_INFO(ctx->dev, "Brightness set to 0x%02X (%d)\n", brightness, brightness);
 	return 0;
 }
@@ -1304,6 +2003,7 @@ static int plano_power_on(struct plano_ctx *ctx)
 	usleep_range(10000, 20000);
 
 	// turn on AVDD
+	// Note: L & R share an enable line on EV2 and earlier
 	ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_POS].consumer);
 	ret |= regulator_enable(ctx->lcd_bias_regulators[RIGHT_POS].consumer);
 	if ( ret ) {
@@ -1359,6 +2059,7 @@ static int plano_power_off(struct plano_ctx *ctx)
 	usleep_range(1000, 2000);
 	*/
 	// turn off AVDD
+	// Note: L & R share an enable line on EV2 and earlier
 	ret = regulator_disable(ctx->lcd_bias_regulators[LEFT_POS].consumer);
 	ret |= regulator_disable(ctx->lcd_bias_regulators[RIGHT_POS].consumer);
 	if ( ret ) {
@@ -1372,6 +2073,7 @@ static int plano_power_off(struct plano_ctx *ctx)
 				      ctx->power_supplies);
 }
 
+//Set panel's sleep-in and power off regs.  Video should still be flowing at this point.
 static int plano_disable(struct drm_panel *panel)
 {
 	struct plano_ctx *ctx = panel_to_ctx(panel);
@@ -1395,6 +2097,7 @@ static int plano_disable(struct drm_panel *panel)
 	return 0;
 }
 
+//Turn off panel power supplies.  Panel should have already been disabled, and video stopped.
 static int plano_unprepare(struct drm_panel *panel)
 {
 	struct plano_ctx *ctx = panel_to_ctx(panel);
@@ -1420,6 +2123,7 @@ static int plano_unprepare(struct drm_panel *panel)
 	return ret;
 }
 
+//Set up panel power supplies and panel regs, but don't actually enable panel yet
 static int plano_prepare(struct drm_panel *panel)
 {
 	struct plano_ctx *ctx = panel_to_ctx(panel);
@@ -1483,7 +2187,7 @@ static int plano_prepare(struct drm_panel *panel)
 
 	ret = dsi_write_plano_panel_setup(panel);
 
-	DRM_DEV_INFO(ctx->dev, "mode[%d] %s (%d x %d @ %dHz)\n", ctx->current_mode, extmodes[ctx->current_mode].name, extmodes[ctx->current_mode].haa, extmodes[ctx->current_mode].vaa, extmodes[ctx->current_mode].fps); 
+	DRM_DEV_INFO(ctx->dev, "extmode[%d] %s (%d x %d @ %dHz)\n", ctx->current_mode, extmodes[ctx->current_mode].name, extmodes[ctx->current_mode].haa, extmodes[ctx->current_mode].vaa, extmodes[ctx->current_mode].fps); 
 	DRM_DEV_INFO(ctx->dev, "haa: %d; hfp: %d; hs: %d; hbp: %d; hdummy: %d; hdisplay: %d; htot: %d\n", extmodes[ctx->current_mode].haa, extmodes[ctx->current_mode].hfp, extmodes[ctx->current_mode].hs, extmodes[ctx->current_mode].hbp, extmodes[ctx->current_mode].h_dummy, extmodes[ctx->current_mode].mode.hdisplay, extmodes[ctx->current_mode].mode.htotal);
 	DRM_DEV_INFO(ctx->dev, "vaa: %d; vfp: %d; vs: %d; vbp: %d; vdummy: %d; vdisplay: %d; vtot: %d\n", extmodes[ctx->current_mode].vaa, extmodes[ctx->current_mode].vfp_m, extmodes[ctx->current_mode].vs, extmodes[ctx->current_mode].vbp_m, extmodes[ctx->current_mode].v_dummy, extmodes[ctx->current_mode].mode.vdisplay, extmodes[ctx->current_mode].mode.vtotal);
 
@@ -1493,7 +2197,11 @@ static int plano_prepare(struct drm_panel *panel)
 	DRM_DEV_INFO(ctx->dev, "dsc_en: %s; dsc_slice_height: %d; dsc_slice_count: %d\n", extmodes[ctx->current_mode].dsc_en ? "true" : "false", extmodes[ctx->current_mode].dsc_vslice_height, extmodes[ctx->current_mode].dsc_hslice_count);
 	DRM_DEV_INFO(ctx->dev, "Panel vfp: %d; vbp: %d; vid_vs_delay: %d\n", extmodes[ctx->current_mode].vfp_p, extmodes[ctx->current_mode].vbp_p, extmodes[ctx->current_mode].vid_vs_delay);
 
-
+#ifdef NOLPM_AFTER_PREP
+	ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
+	if (ctx->is_dual_panel)
+		ctx->dsi[1]->mode_flags &= ~MIPI_DSI_MODE_LPM;
+#endif
 
 
 	ctx->prepared = true;
@@ -1503,9 +2211,9 @@ static int plano_prepare(struct drm_panel *panel)
 	{
 		DRM_DEV_ERROR(ctx->dev, "Panel setup failed\n");
 		//TODO: temp debug -- bail w/ panel on to allow for additional register transactions
-#ifndef CPHY_DEBUG
+//#ifndef CPHY_DEBUG
 		goto power_off;
-#endif
+////#endif
 		return ret;
 	}
 
@@ -1544,6 +2252,9 @@ static const struct backlight_ops plano_bl_ops = {
 	.get_brightness = plano_bl_get_brightness,
 };
 
+//Should only do final steps of enabling the panel (sleep-out and power-on regs)
+//Called after host starts video stream
+//Setting up power supplies and panel registers should have already been done
 static int plano_enable(struct drm_panel *panel)
 {
 	struct plano_ctx *ctx = panel_to_ctx(panel);
@@ -1685,7 +2396,7 @@ static int plano_get_modes(struct drm_panel *panel,
 			drm_mode_probed_add(connector, mode);
 			//TODO: This is getting called many times and periodically?
 			//  disabled for now... too spammy
-			//DRM_DEV_INFO(ctx->dev, "Added mode[%d] %s (extmode[%d] %s): %d x %d @ %dHz; dsc: %s \n", n, mode->name, i, extmodes[i].mode.name, mode->hdisplay, mode->vdisplay, extmodes[i].fps, extmodes[i].dsc_en ? "on" : "off");
+			DRM_DEV_INFO(ctx->dev, "Added mode[%d] %s (extmode[%d] %s): %d x %d @ %dHz; dsc: %s \n", n, mode->name, i, extmodes[i].mode.name, mode->hdisplay, mode->vdisplay, extmodes[i].fps, extmodes[i].dsc_en ? "on" : "off");
 			n++;
 		}
 	}
@@ -1916,18 +2627,17 @@ static int panel_read_show(struct seq_file *s, void *data)
 	
 	if ( ret < 0 )
 	{
-		DRM_DEV_ERROR(ctx->dev, "failed to read panel %d reg %u\n", ctx->panel_read_id, ctx->panel_read_reg_addr);
+		DRM_DEV_ERROR(ctx->dev, "failed to read panel %d reg 0x%02X\n", ctx->panel_read_id, ctx->panel_read_reg_addr);
 		return ret;
 	}
 	else
 	{
 		for (i = 0; i < ctx->panel_read_num_bytes; i++) {
-			//TODO: where does seq_printf output?  Need to enable??
-			//seq_printf(s, "%02x ",  ctx->panel_read_data[i]);
-			DRM_DEV_INFO(ctx->dev, "%02x ",  ctx->panel_read_data[i]);
+			seq_printf(s, "%02x ",  ctx->panel_read_data[i]);
+			//DRM_DEV_INFO(ctx->dev, "%02x ",  ctx->panel_read_data[i]);
 		}
-		//seq_printf(s, "\n");
-		DRM_DEV_INFO(ctx->dev, "\n");
+		seq_printf(s, "\n");
+		//DRM_DEV_INFO(ctx->dev, "\n");
 		return 0;
 	}
 }
@@ -2094,6 +2804,7 @@ static irqreturn_t te_left_irq_handler(int irq, void *dev_id)
 	if(gpiod_get_value(ctx->te_gpios->desc[0]))
 	{
 		// turn on AVEE/ELVSS
+		// Note: L & R share an enable line on EV2 and earlier
 		ret = regulator_enable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
 		if ( ret ) {
 			dev_err(ctx->dev, "Could not enable left AVEE/ELVSS \n");
@@ -2113,6 +2824,7 @@ static irqreturn_t te_left_irq_handler(int irq, void *dev_id)
 	else
 	{
 		// turn off AVEE/ELVSS 
+		// Note: L & R share an enable line on EV2 and earlier
 		ret = regulator_disable(ctx->lcd_bias_regulators[LEFT_NEG].consumer);
 		if ( ret ) {
 			dev_err(ctx->dev, "Could not disable left AVEE\n");
@@ -2134,6 +2846,7 @@ static irqreturn_t te_right_irq_handler(int irq, void *dev_id)
 	if(gpiod_get_value(ctx->te_gpios->desc[1]))
 	{
 		// turn on AVEE/ELVSS
+		// Note: L & R share an enable line on EV2 and earlier
 		ret = regulator_enable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
 		if ( ret ) {
 			dev_err(ctx->dev, "Could not enable right AVEE/ELVSS \n");
@@ -2153,6 +2866,7 @@ static irqreturn_t te_right_irq_handler(int irq, void *dev_id)
 	else
 	{
 		// turn off AVEE/ELVSS 
+		// Note: L & R share an enable line on EV2 and earlier
 		ret = regulator_disable(ctx->lcd_bias_regulators[RIGHT_NEG].consumer);
 		if ( ret ) {
 			dev_err(ctx->dev, "Could not disable right AVEE\n");
@@ -2399,12 +3113,15 @@ skip_panel2:
 		}
 	}
 
-	DRM_DEV_INFO(ctx->dev, "Probed as %s w/ extmode[%d] %s (%d x %d @ %dHz\n", ctx->dphy ? "DPHY" : "CPHY", ctx->current_mode, extmodes[ctx->current_mode].name, extmodes[ctx->current_mode].mode.hdisplay, extmodes[ctx->current_mode].mode.vdisplay, extmodes[ctx->current_mode].fps);   
+	DRM_DEV_INFO(ctx->dev, "Probed as %s w/ extmode[%d] %s (%d x %d @ %dHz)\n", ctx->dphy ? "DPHY" : "CPHY", ctx->current_mode, extmodes[ctx->current_mode].name, extmodes[ctx->current_mode].mode.hdisplay, extmodes[ctx->current_mode].mode.vdisplay, extmodes[ctx->current_mode].fps);   
 
 #ifdef CPHY_DEBUG
-	//TODO: TEMP TEST -- added to allow for panel reg access w/o also starting video
-	DRM_DEV_ERROR(ctx->dev, "TEMP DEBUG: Preparing panel for immediate register read/write for debug\n");
-	plano_prepare(&ctx->panel);
+	if(0)
+	{
+		//TODO: TEMP TEST -- added to allow for panel reg access w/o also starting video
+		DRM_DEV_ERROR(ctx->dev, "TEMP DEBUG: Preparing panel for immediate register read/write for debug\n");
+		plano_prepare(&ctx->panel);
+	}
 #endif
 
 	return 0;

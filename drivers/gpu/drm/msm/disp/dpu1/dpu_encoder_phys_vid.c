@@ -133,9 +133,33 @@ static void drm_mode_to_intf_timing_params(
 		 * TODO: replace drm_dsc_get_bpp_int with logic to handle
 		 * fractional part if there is fraction
 		 */
+#define PLANO_DEV
+#ifndef PLANO_DEV
+		timing->width = timing->width * drm_dsc_get_bpp_int(dsc) / (dsc->bits_per_component * 3);
+#else
+		//TODO: In additional to fractional compression ratio, also need to handle fractional width if not an integer multiple of compression ratio
+		//i.e. for DSC 3:1, while 24bpp byte count is always divisible by 3, we're dealing with units of pixels here, so width / 3 need to be rounded up
+		u8 rem = timing->width % (dsc->bits_per_component * 3 / drm_dsc_get_bpp_int(dsc));
 		timing->width = timing->width * drm_dsc_get_bpp_int(dsc) /
-				(dsc->bits_per_component * 3);
-		timing->xres = timing->width;
+				//(dsc->bits_per_component * 3) + 1;	//TODO: TEMP TEST
+														//g1.5, xres=width-rem: works
+														//g1.5, xres=width: works
+													//f2.25, xres=width-rem:  video timeout
+													//f2.25, xres=width:  video timeout
+													//f2.75, xres=width-rem:  video timeout
+													//f2.75, xres=width:  video timeout
+				(dsc->bits_per_component * 3) + rem;	//TODO: is +rem correct?
+														//g1.5, xres=width-rem: works
+														//g1.5, xres=width: works
+													//f2.25, xres=width-rem:  video timeout
+													//f2.25, xres=width:  video timeout
+													//f2.75, xres=width-rem:  DSI errors
+													//f2.75, xres=width:  DSI errors
+		//timing->xres = timing->width;	//TODO: TEMP TEST
+		timing->xres = timing->width - rem;	//TODO: -rem, or keep same as width?
+
+		printk(KERN_INFO "DSC_DEBUG: drm_mode_to_intf_timing_params: dsc->bits_per_pixel: %d; drm_dsc_get_bpp_int: %d; dsc->bits_per_component: %d; width: %d\n", dsc->bits_per_pixel, drm_dsc_get_bpp_int(dsc), dsc->bits_per_component, timing->width);
+#endif
 	}
 }
 
