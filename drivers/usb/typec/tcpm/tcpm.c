@@ -5152,6 +5152,20 @@ static void run_state_machine(struct tcpm_port *port)
 				       port->timings.snk_bc12_cmpletion_time);
 		break;
 	case SNK_STARTUP:
+		/*
+		 * Port can be left in bad state from previous boot if not
+		 * reset properly.
+		 * Execute a reset on first PD round to clear bad states.
+		 */
+		if (port->tcpc->qcom_legacy_reset &&
+		    (port->do_legacy_reset || port->vbus_never_low)) {
+			port->do_legacy_reset = false;
+			port->vbus_never_low = false;
+			port->tcpc->qcom_legacy_reset(port->tcpc);
+			tcpm_set_state(port, SNK_SOFT_RESET, 0);
+			break;
+		}
+
 		opmode =  tcpm_get_pwr_opmode(port->polarity ?
 					      port->cc2 : port->cc1);
 		typec_set_pwr_opmode(port->typec_port, opmode);
@@ -5228,8 +5242,6 @@ static void run_state_machine(struct tcpm_port *port)
 		} else {
 			if (!port->self_powered)
 				upcoming_state = SNK_WAIT_CAPABILITIES_TIMEOUT;
-			else if (port->do_legacy_reset)
-				upcoming_state = SNK_SOFT_RESET;
 			else
 				upcoming_state = hard_reset_state(port);
 		}
@@ -5536,20 +5548,10 @@ static void run_state_machine(struct tcpm_port *port)
 		break;
 	case SRC_SOFT_RESET_WAIT_SNK_TX:
 	case SNK_SOFT_RESET:
-		/* Port can be left in bad state from previous boot if not
-		 * reset properly.  Execute a reset on first PD round to clear
-		 * bad states */
-		if (port->do_legacy_reset) {
-			tcpm_log(port, "Reset port on first PD negotiation");
-			port->tcpc->qcom_legacy_reset(port->tcpc);
-			port->do_legacy_reset = false;
-			port->upcoming_state = SNK_UNATTACHED;
-		} else {
-			if (port->ams != NONE_AMS)
-				tcpm_ams_finish(port);
-			port->upcoming_state = SOFT_RESET_SEND;
-			tcpm_ams_start(port, SOFT_RESET_AMS);
-		}
+		if (port->ams != NONE_AMS)
+			tcpm_ams_finish(port);
+		port->upcoming_state = SOFT_RESET_SEND;
+		tcpm_ams_start(port, SOFT_RESET_AMS);
 		break;
 	case SOFT_RESET_SEND:
 		/*
