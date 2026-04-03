@@ -221,7 +221,7 @@ static const struct regulator_ops nex10000ub_regulator_voltage_table_ops = {
 	.enable_time      = nex10000ub_regulator_enable_time,
 };
 
-static const struct regulator_desc nex10000ub_regulator_desc[] = {
+static struct regulator_desc nex10000ub_regulator_desc[] = {
 	{
 		.name           = "ldo_vposr",
 		.of_match       = "vpos_r",
@@ -376,6 +376,8 @@ static int nex10000ub_probe(struct platform_device *pdev)
 	struct regulator_config config = { };
 	struct regulator_desc * nex10000_data;
 	unsigned int id, i;
+
+	unsigned int max_vsel;
 
 	static struct of_regulator_match nex10000ub_matches[] = {
 		{ .name = "vposr",     .driver_data = (void *)NEX10000UB_LDO_POS_RIGHT},

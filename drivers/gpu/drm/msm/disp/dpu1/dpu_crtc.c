@@ -1739,11 +1739,16 @@ static enum drm_mode_status dpu_crtc_mode_valid(struct drm_crtc *crtc,
 	    mode->hdisplay > dpu_kms->catalog->caps->max_mixer_width)
 		return MODE_BAD_HVALUE;
 
+	//TODO: check for quad pipe support to allow for 4 * max_mixer_width
+
 	/*
 	 * max crtc width is equal to the max mixer width * 2 and max height is 4K
 	 */
 	return drm_mode_validate_size(mode,
-				      2 * dpu_kms->catalog->caps->max_mixer_width,
+						//Plano TEMP debug: allow validation to see what fails next
+						//If quad-pipe mode is working, then perhaps should be 4x anyways?
+				      4 * dpu_kms->catalog->caps->max_mixer_width,
+				      //2 * dpu_kms->catalog->caps->max_mixer_width,
 				      4096);
 }
 

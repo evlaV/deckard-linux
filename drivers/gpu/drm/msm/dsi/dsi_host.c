@@ -191,11 +191,57 @@ struct msm_dsi_host {
 
 static inline u32 dsi_read(struct msm_dsi_host *msm_host, u32 reg)
 {
-	return readl(msm_host->ctrl_base + reg);
+	//             MDSS BASE 0x0AE00000
+	//dsi MODULE OFFSET=MDSS+0x00096000 MAX=MDSS+0x00096FFF
+	//
+	//typedef u64 phys_addr_t;
+	//void __iomem *ctrl_base;
+	//phys_addr_t ctrl_size;
+	//
+	u32 data;
+	data = readl(msm_host->ctrl_base + reg);
+	//TODO: Temp Plano debug
+	struct device *dev = &msm_host->pdev->dev;
+	//base = ctrl_base - 4
+	//DBG("%s: Read DSI Base %p Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
+		//[drm:dsi_host_irq] dsi_read: Read DSI Base 00000000705528fb Reg 0xB0: 0x89888
+
+	DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base - 4, reg, data);
+		//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x896C5004 Reg 0xB0: 0x88888
+
+	//DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(msm_host->ctrl_base), reg, data);
+		//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x896C5004 Reg 0xB0: 0x89888
+		//                                           0x800000
+		//                                           0x096000
+		//                                           0x0000B0
+
+	//DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (*(u32 *)(msm_host->ctrl_base)), reg, data);
+		//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x173 Reg 0xB0: 0x88888
+
+	//DBG("%s: Read DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, (*(u64 *)(msm_host->ctrl_base)), reg, data);
+		//crashes: Unable to handle kernel paging request at virtual address ffffffc0896bd004
+
+	//DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(*(u64 *)(msm_host->ctrl_base)), reg, data);
+		//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x173 Reg 0xB0: 0x88888
+
+	//DBG("%s: Read DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
+		//[drm:dsi_host_irq] dsi_write: Writing DSI Base 0xFFFFFFC0896BD004 Reg 0xB0: 0x89888
+
+	return data;
 }
 
 static inline void dsi_write(struct msm_dsi_host *msm_host, u32 reg, u32 data)
 {
+	//TODO: Temp Plano debug
+	struct device *dev = &msm_host->pdev->dev;
+	//DBG("%s: Writing DSI Base %p Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
+	DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base - 4, reg, data);
+	//DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(msm_host->ctrl_base), reg, data);
+	//DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (*(u32 *)(msm_host->ctrl_base)), reg, data);
+	//DBG("%s: Writing DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, (*(u64 *)(msm_host->ctrl_base)), reg, data);
+	//DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(*(u64 *)(msm_host->ctrl_base)), reg, data);
+	//DBG("%s: Writing DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
+
 	writel(data, msm_host->ctrl_base + reg);
 }
 
@@ -721,7 +767,7 @@ static void dsi_intr_ctrl(struct msm_dsi_host *msm_host, u32 mask, int enable)
 	else
 		intr &= ~mask;
 
-	DBG("intr=%x enable=%d", intr, enable);
+	DBG("mask=0x%08x intr=0x%08x enable=%d", mask, intr, enable);
 
 	dsi_write(msm_host, REG_DSI_INTR_CTRL, intr);
 	raw_spin_unlock_irqrestore(&msm_host->intr_lock, flags);
@@ -839,7 +885,8 @@ static void dsi_ctrl_enable(struct msm_dsi_host *msm_host,
 
 	data = 0;
 	/* Always assume dedicated TE pin */
-	data |= DSI_TRIG_CTRL_TE;
+	//Plano: no TE :(
+	//data |= DSI_TRIG_CTRL_TE;
 	data |= DSI_TRIG_CTRL_MDP_TRIGGER(TRIGGER_NONE);
 	data |= DSI_TRIG_CTRL_DMA_TRIGGER(TRIGGER_SW);
 	data |= DSI_TRIG_CTRL_STREAM(msm_host->channel);
@@ -1634,6 +1681,9 @@ static int dsi_cmds2buf_tx(struct msm_dsi_host *msm_host,
 		return -EINVAL;
 	}
 
+	DBG("%s: Ch %d type=0x%02X, DataID=0x%02X len=%d\n",
+			__func__, msg->channel, msg->type, (*(u8 *)(msg->tx_buf)), len);
+
 	ret = dsi_cmd_dma_tx(msm_host, len);
 	if (ret < 0) {
 		pr_err("%s: cmd dma tx failed, type=0x%x, data0=0x%x, len=%d, ret=%d\n",
@@ -1655,7 +1705,8 @@ static void dsi_err_worker(struct work_struct *work)
 	u32 status = msm_host->err_work_state;
 
 	//gabe disable this since it is super spammy
-	//pr_err_ratelimited("%s: status=%x\n", __func__, status);
+	//TODO: Plano: re-enabled to understand Fovial DSI errors
+	pr_err_ratelimited("%s: status=%x\n", __func__, status);
 	if (status & DSI_ERR_STATE_MDP_FIFO_UNDERFLOW)
 		dsi_sw_reset(msm_host);
 
@@ -1677,6 +1728,7 @@ static void dsi_ack_err_status(struct msm_dsi_host *msm_host)
 		/* Writing of an extra 0 needed to clear error bits */
 		dsi_write(msm_host, REG_DSI_ACK_ERR_STATUS, 0);
 		msm_host->err_work_state |= DSI_ERR_STATE_ACK;
+		pr_err_ratelimited("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1689,6 +1741,7 @@ static void dsi_timeout_status(struct msm_dsi_host *msm_host)
 	if (status) {
 		dsi_write(msm_host, REG_DSI_TIMEOUT_STATUS, status);
 		msm_host->err_work_state |= DSI_ERR_STATE_TIMEOUT;
+		pr_err_ratelimited("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1705,6 +1758,8 @@ static void dsi_dln0_phy_err(struct msm_dsi_host *msm_host)
 			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP1)) {
 		dsi_write(msm_host, REG_DSI_DLN0_PHY_ERR, status);
 		msm_host->err_work_state |= DSI_ERR_STATE_DLN0_PHY;
+		//TODO: Plano: added to understand CPHY DSI errors
+		pr_err_ratelimited("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1721,6 +1776,7 @@ static void dsi_fifo_status(struct msm_dsi_host *msm_host)
 		if (status & DSI_FIFO_STATUS_CMD_MDP_FIFO_UNDERFLOW)
 			msm_host->err_work_state |=
 					DSI_ERR_STATE_MDP_FIFO_UNDERFLOW;
+		pr_err_ratelimited("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1734,6 +1790,7 @@ static void dsi_status(struct msm_dsi_host *msm_host)
 		dsi_write(msm_host, REG_DSI_STATUS0, status);
 		msm_host->err_work_state |=
 			DSI_ERR_STATE_INTERLEAVE_OP_CONTENTION;
+		pr_err_ratelimited("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1746,6 +1803,7 @@ static void dsi_clk_status(struct msm_dsi_host *msm_host)
 	if (status & DSI_CLK_STATUS_PLL_UNLOCKED) {
 		dsi_write(msm_host, REG_DSI_CLK_STATUS, status);
 		msm_host->err_work_state |= DSI_ERR_STATE_PLL_UNLOCKED;
+		pr_err_ratelimited("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1931,6 +1989,7 @@ static int dsi_host_parse_lane_data(struct msm_dsi_host *msm_host,
 
 		if (j == num_lanes) {
 			msm_host->dlane_swap = i;
+			DRM_DEV_INFO(dev, "Using first %d entries of lane_map[%d]: (%d, %d, %d, %d)\n", num_lanes, i, swap[0], swap[1], swap[2], swap[3]);
 			return 0;
 		}
 	}
@@ -2103,6 +2162,10 @@ int msm_dsi_host_init(struct msm_dsi *msm_dsi)
 				     "%s: unable to identify DSI host index\n",
 				     __func__);
 
+	//Plano debug
+	//Not showing up in dmesg...
+	//DBG("Dsi Host %d ctrl_base = 0x%0X + 0x%0X = 0x%0X", msm_host->id, msm_host->ctrl_base, cfg->io_offset, msm_host->ctrl_base + cfg->io_offset);
+	DRM_DEV_INFO(&pdev->dev, "Dsi Host %d ctrl_base = 0x%0X + 0x%0X = 0x%0X", msm_host->id, msm_host->ctrl_base, cfg->io_offset, msm_host->ctrl_base + cfg->io_offset);
 	/* fixup base address by io offset */
 	msm_host->ctrl_base += cfg->io_offset;
 
@@ -2680,14 +2743,27 @@ enum drm_mode_status msm_dsi_host_check_dsc(struct mipi_dsi_host *host,
 {
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 	struct drm_dsc_config *dsc = msm_host->dsc;
+#define PLANO_DEV
+#ifndef PLANO_DEV
 	int pic_width = mode->hdisplay;
 	int pic_height = mode->vdisplay;
+#else
+	//TODO: vdisplay needs to be multiple of slice?  Or just dsc->pic_height?
+	// Seems to be working w/ validation against dsc->slice_height
+	int pic_width = dsc->pic_width;
+	int pic_height = dsc->pic_height;
+#endif
 
 	if (!msm_host->dsc)
 		return MODE_OK;
 
 	if (is_bonded_dsi)
+#ifndef PLANO_DEV
 		pic_width = mode->hdisplay / 2;
+#else
+		//TODO: use dsc->pic_width here too?
+		pic_width /= 2;
+#endif
 
 	if (pic_width % dsc->slice_width) {
 		pr_err("DSI: pic_width %d has to be multiple of slice %d\n",
@@ -2700,6 +2776,14 @@ enum drm_mode_status msm_dsi_host_check_dsc(struct mipi_dsi_host *host,
 		       pic_height, dsc->slice_height);
 		return MODE_V_ILLEGAL;
 	}
+
+	/*
+	if (dsc->pic_height % dsc->slice_height) {
+		pr_err("DSI: dsc->pic_height %d has to be multiple of slice %d\n",
+		       dsc->pic_height, dsc->slice_height);
+		return MODE_V_ILLEGAL;
+	}
+	*/
 
 	return MODE_OK;
 }
