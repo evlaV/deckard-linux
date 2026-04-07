@@ -608,7 +608,11 @@ void qcom_pmic_typec_pdphy_stop(struct pmic_typec_pdphy *pmic_typec_pdphy)
 	for (i = 0; i < pmic_typec_pdphy->nr_irqs; i++)
 		disable_irq(pmic_typec_pdphy->irq_data[i].irq);
 
+	qcom_pmic_typec_pdphy_set_pd_rx(pmic_typec_pdphy, false);
 	qcom_pmic_typec_pdphy_reset_on(pmic_typec_pdphy);
+	regmap_write(pmic_typec_pdphy->regmap,
+			   pmic_typec_pdphy->base + USB_PDPHY_EN_CONTROL_REG, 0);
+	qcom_pmic_typec_pdphy_set_roles(pmic_typec_pdphy, 0, 0);
 
 	regulator_disable(pmic_typec_pdphy->vdd_pdphy);
 }
