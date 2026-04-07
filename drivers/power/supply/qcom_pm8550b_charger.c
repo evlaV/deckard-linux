@@ -8,8 +8,6 @@
 #include <linux/regmap.h>
 #include <linux/power_supply.h>
 
-// TODO Add ship mode interface
-
 #define UPPER_8_BITS(data) (((data) >> 8) & 0xFF)
 #define LOWER_8_BITS(data) ((data) & 0xFF)
 
@@ -557,6 +555,11 @@ static void charging_pause_set(struct pm8550b_charger *chg, bool pause)
 	}
 }
 
+static int charging_ship_mode_set(struct pm8550b_charger *chg)
+{
+	return regmap_write(chg->regmap, chg->base[BASE_BATIF] + BATIF_SHIP_MODE, 1);
+}
+
 static ssize_t charging_pause_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct power_supply *psy = dev_get_drvdata(dev);
@@ -837,6 +840,27 @@ static ssize_t qph2_show(struct device *dev, struct device_attribute *attr, char
 	return sysfs_emit(buf, "%d\n", !!(reg & CHGR2_INT_CHG_PATH_STS_MASK));
 }
 
+static ssize_t ship_mode_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct pm8550b_charger *chg = power_supply_get_drvdata(psy);
+	bool enable = false;
+	int ret;
+
+	if (!chg->regmap)
+		return 0;
+
+	ret = kstrtobool(buf, &enable);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (enable)
+		charging_ship_mode_set(chg);
+
+	return count;
+}
+
 // TODO
 // auto_recharge_threshold - TODO Should this be in userspace?
 // auto recharge enabled?
@@ -851,6 +875,7 @@ static DEVICE_ATTR_RW(termination_enable);
 static DEVICE_ATTR_RW(qph2_allow);
 static DEVICE_ATTR_WO(qph2_resume);
 static DEVICE_ATTR_RO(qph2);
+static DEVICE_ATTR_WO(ship_mode);
 
 static struct attribute *pm8550b_battery_attrs[] = {
 	&dev_attr_aicl_status.attr,
@@ -863,6 +888,7 @@ static struct attribute *pm8550b_battery_attrs[] = {
 	&dev_attr_qph2_allow.attr,
 	&dev_attr_qph2_resume.attr,
 	&dev_attr_qph2.attr,
+	&dev_attr_ship_mode.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(pm8550b_battery);
