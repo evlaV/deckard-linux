@@ -139,6 +139,8 @@
 #define BATIF_JEITA_COLD_AFP_MSB (0x8E)
 #define BATIF_JEITA_COLD_AFP_LSB (0x8F)
 
+#define BATIF_SHIP_MODE (0x52)
+
 // TODO Revisit Force Pulse Skip Mode
 
 enum chgr_charge_status {
