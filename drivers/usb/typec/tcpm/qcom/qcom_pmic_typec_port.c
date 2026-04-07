@@ -523,12 +523,6 @@ int qcom_pmic_typec_port_start(struct pmic_typec_port *pmic_typec_port,
 	if (ret)
 		goto done;
 
-	/* start in TRY_SNK mode */
-	ret = regmap_write(pmic_typec_port->regmap,
-			   pmic_typec_port->base + TYPEC_MODE_CFG_REG, EN_TRY_SNK);
-	if (ret)
-		goto done;
-
 	/* Configure VCONN for software control */
 	ret = regmap_update_bits(pmic_typec_port->regmap,
 				 pmic_typec_port->base + TYPEC_VCONN_CONTROL_REG,
@@ -541,6 +535,14 @@ int qcom_pmic_typec_port_start(struct pmic_typec_port *pmic_typec_port,
 	ret = regmap_update_bits(pmic_typec_port->regmap,
 				 pmic_typec_port->base + TYPEC_EXIT_STATE_CFG_REG,
 				 mask, mask);
+	if (ret)
+		goto done;
+
+	qcom_pmic_typec_port_disable_cc(pmic_typec_port);
+
+	/* start in TRY_SNK mode */
+	ret = regmap_write(pmic_typec_port->regmap,
+			   pmic_typec_port->base + TYPEC_MODE_CFG_REG, EN_TRY_SNK);
 	if (ret)
 		goto done;
 
@@ -559,6 +561,10 @@ void qcom_pmic_typec_port_stop(struct pmic_typec_port *pmic_typec_port)
 
 	for (i = 0; i < pmic_typec_port->nr_irqs; i++)
 		disable_irq(pmic_typec_port->irq_data[i].irq);
+
+	qcom_pmic_typec_port_set_vbus(pmic_typec_port, false);
+	qcom_pmic_typec_port_set_vconn(pmic_typec_port, false);
+	qcom_pmic_typec_port_disable_cc(pmic_typec_port);
 }
 
 struct pmic_typec_port *qcom_pmic_typec_port_alloc(struct device *dev)
@@ -619,8 +625,6 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 		if (ret)
 			return ret;
 	}
-
-	qcom_pmic_typec_port_legacy_cable_reset(pmic_typec_port);
 
 	return 0;
 }
