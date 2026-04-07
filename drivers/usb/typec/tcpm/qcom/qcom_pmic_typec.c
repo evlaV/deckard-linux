@@ -220,8 +220,6 @@ static int qcom_pmic_typec_init(struct tcpc_dev *tcpc)
 	return 0;
 }
 
-#include "qcom_pmic_charger.c"
-
 static int qcom_pmic_typec_probe(struct platform_device *pdev)
 {
 	struct pmic_typec *tcpm;
@@ -324,8 +322,6 @@ static int qcom_pmic_typec_probe(struct platform_device *pdev)
 					  tcpm->tcpm_port);
 	if (ret)
 		goto fwnode_remove;
-
-	qcom_pmic_charger_init(regmap);
 
 	return 0;
 
