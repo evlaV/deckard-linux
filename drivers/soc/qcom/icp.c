@@ -411,7 +411,7 @@ static int icp_boot(struct icp_data *icp, struct icp_boot_config __user *cfg_upt
 	}
 
 	u32 fw_version = readl_relaxed(icp->icp_base + ICP_GP_REG(1)); // icp fw version
-	dev_warn(icp->dev, "ICP boot succeeded (firmware version: %u.%u.%u)\n", (fw_version&0xff000000)>>24, (fw_version&0x00ff0000)>>16, fw_version&0xffff); 
+	dev_dbg(icp->dev, "ICP boot succeeded (firmware version: %u.%u.%u)\n", (fw_version&0xff000000)>>24, (fw_version&0x00ff0000)>>16, fw_version&0xffff); 
 
 	return 0;
 }
@@ -427,7 +427,8 @@ static void icp_shutdown(struct icp_data *icp)
 		cnt--;
 	}
 	if(!cnt) {
-		dev_err(icp->dev, "ICP core did not enter standby state during shutdown \n");
+		// Not critical, this can happen if the ICP is currently processing or waiting for a fence to be signaled
+		dev_dbg(icp->dev, "ICP core did not enter standby state during shutdown \n");
 	}
 
 	// Disable ICP
