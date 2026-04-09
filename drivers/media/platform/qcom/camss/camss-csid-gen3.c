@@ -411,9 +411,11 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 
 	if (!enable) {
 		csid_reset(csid);
-		struct camss_buf_done_info buf_done_info;
-		memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
-		camss_buf_done(csid->camss, csid->id, 0, &buf_done_info);
+		// Commented out as this doesn't seem needed: the call is directly ignored by vfe_buf_done_880 
+		// with an error message since the vfe have already stopped streaming when this is called
+		// struct camss_buf_done_info buf_done_info;
+		// memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
+		// camss_buf_done(csid->camss, csid->id, 0, &buf_done_info);
 		usleep_range(10000, 20000);
 
 		// Reset regs update buffers and status to make sure no pending buffer gets flushed in a new streaming session
