@@ -1184,6 +1184,34 @@ static void og01a1b_set_power_off(struct og01a1b_dev *sensor)
 	clk_disable_unprepare(sensor->xclk);
 }
 
+static int og01a1b_read_otp_once(struct og01a1b_dev *sensor, u8 *otp_data);
+
+/* Read OTP into cache if not already valid. Non-fatal on failure. */
+static void og01a1b_fill_otp_cache_locked(struct og01a1b_dev *sensor)
+{
+	int ret;
+
+	if (sensor->otp_valid)
+		return;
+
+	ret = og01a1b_write_reg(sensor, 0x100, 0x01);
+	if (ret) {
+		dev_err(&sensor->i2c_client->dev,
+			"OTP: failed to start sensor: %d\n", ret);
+		return;
+	}
+	usleep_range(5000, 5100);
+
+	ret = og01a1b_read_otp_once(sensor, sensor->otp_data);
+	if (ret) {
+		dev_err(&sensor->i2c_client->dev,
+			"OTP: read failed: %d\n", ret);
+		return;
+	}
+
+	sensor->otp_valid = true;
+}
+
 static int og01a1b_set_power(struct og01a1b_dev *sensor, bool on)
 {
 	int ret = 0;
@@ -1192,6 +1220,9 @@ static int og01a1b_set_power(struct og01a1b_dev *sensor, bool on)
 		ret = og01a1b_set_power_on(sensor);
 		if (ret)
 			return ret;
+
+		/* Fill OTP cache before restore_mode() touches the register map */
+		og01a1b_fill_otp_cache_locked(sensor);
 
 		ret = og01a1b_restore_mode(sensor);
 		if (ret)
@@ -1961,14 +1992,14 @@ static ssize_t otp_show(struct device *dev,
             return sizeof(sensor->otp_data);
 		}
 
-		/* Check if sensor is currently powered on (being used by something else) */
+		/* Can't do a clean OTP read while the register map is loaded */
 		if (sensor->power_count > 0) {
-			dev_err(dev, "Cannot read OTP while sensor is powered on (power_count=%d)\n", sensor->power_count);
+			dev_err(dev, "Cannot read OTP while sensor is powered on (power_count=%d)\n",
+				sensor->power_count);
 			mutex_unlock(&sensor->lock);
 			return -EBUSY;
 		}
 
-		/* Lazy read: Power on sensor and read OTP for the first time */		
 		ret = og01a1b_set_power_on(sensor);
 		if (ret) {
 			dev_err(dev, "Failed to power on sensor for OTP read: %d\n", ret);
@@ -1976,29 +2007,24 @@ static ssize_t otp_show(struct device *dev,
 			return ret;
 		}
 
-		/* Start sensor for OTP reading */
 		ret = og01a1b_write_reg(sensor, 0x100, 0x01);
 		if (ret) {
 			dev_err(dev, "Failed to start sensor for OTP read: %d\n", ret);
 			goto power_off;
 		}
-		
+
 		usleep_range(5000, 5100);
-		
-		/* Read OTP data */
+
 		ret = og01a1b_read_otp_once(sensor, sensor->otp_data);
 		if (ret) {
 			dev_err(dev, "Failed to read OTP data: %d\n", ret);
 			goto power_off;
 		}
 
-		/* Mark as valid and cache the result */
 		sensor->otp_valid = true;
-		/* Power off sensor */
 		og01a1b_set_power_off(sensor);
 		mutex_unlock(&sensor->lock);
 
-		/* Return the cached data */
 		memcpy(buf, sensor->otp_data, sizeof(sensor->otp_data));
 		return sizeof(sensor->otp_data);
 
@@ -2008,10 +2034,52 @@ power_off:
 		return ret;
 }
 
+static ssize_t otp_valid_show(struct device *dev,
+			     struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
+	bool valid;
+
+	mutex_lock(&sensor->lock);
+	valid = sensor->otp_valid;
+	mutex_unlock(&sensor->lock);
+
+	return sysfs_emit(buf, "%d\n", valid);
+}
+
+static ssize_t otp_valid_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
+	unsigned int val;
+	int ret;
+
+	ret = kstrtouint(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val != 0)
+		return -EINVAL;
+
+	mutex_lock(&sensor->lock);
+	sensor->otp_valid = false;
+	memset(sensor->otp_data, 0, sizeof(sensor->otp_data));
+	mutex_unlock(&sensor->lock);
+
+	return count;
+}
+
 static DEVICE_ATTR_RO(otp);
+static DEVICE_ATTR_RW(otp_valid);
 
 static struct attribute *og01a1b_dev_attrs[] = {
 	&dev_attr_otp.attr,
+	&dev_attr_otp_valid.attr,
 	NULL,
 };
 static const struct attribute_group og01a1b_attr_group = {
