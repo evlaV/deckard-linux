@@ -71,8 +71,13 @@ static int video_mbus_to_pix_mp(const struct v4l2_mbus_framefmt *mbus,
 }
 
 /*
- * Helper functions to identify and manage CSIPHY devices
+ * Helper functions to identify and manage CSID and CSIPHY devices
  */
+static bool is_csid_subdev(struct v4l2_subdev *subdev)
+{
+	return strstr(subdev->name, "csid") != NULL;
+}
+
 static bool is_csiphy_subdev(struct v4l2_subdev *subdev)
 {
 	return strstr(subdev->name, "csiphy") != NULL;
@@ -392,8 +397,15 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 			csiphy_increment_lanes_enable_count(subdev);
 			
 			if (!should_stream) {
-				dev_info(video->camss->dev, "Skipping already streaming CSIPHY subdev %s when starting video pipeline %s\n", subdev->name, vdev->name);
+				dev_dbg(video->camss->dev, "Skipping already streaming CSIPHY subdev %s when starting video pipeline %s\n", subdev->name, vdev->name);
 			}
+		}
+		else if (is_csid_subdev(subdev) && v4l2_subdev_is_streaming(subdev)) {
+			// Don't start CSID subdevs and its parent nodes more than once (forbidden by v4l2-subdev).
+			// This is required to avoid V4L2 warnings spam when streaming through multiple RDIs of a CSID 
+			// since video devices are linked to the same CSID subdev by the chain: msm_vfe0_videoX -> msm_vfe0_rdiX -> msm_csid0
+			dev_dbg(video->camss->dev, "Skipping already streaming CSID subdev %s and parent nodes when starting video pipeline %s\n", subdev->name, vdev->name);
+			break;
 		}
 
 		if (should_stream) {
@@ -467,8 +479,17 @@ static void video_stop_streaming(struct vb2_queue *q)
 			csiphy_decrement_lanes_enable_count(subdev);
 			
 			if (!should_stream) {
-				dev_info(video->camss->dev, "Skipping already idle CSIPHY subdev %s when stopping video pipeline %s\n", subdev->name, vdev->name);
+				dev_dbg(video->camss->dev, "Skipping currently in use CSIPHY subdev %s when stopping video pipeline %s\n", subdev->name, vdev->name);
 			}
+		}
+		else if (is_csid_subdev(subdev) && !v4l2_subdev_is_streaming(subdev)) {
+			// Stop the CSID when the first media pipeline requests it. Required because CSIDs halts all output paths
+			// at once during streamoff and presently is done indepently of VFE lines and stopping only when the use
+			// count is reduced to 0 could lead the hardware to attempt streaming to already unmapped buffers belonging 
+			// to stopped VFE lines.
+			// Like for the stream_on case, this is only a concern for cases where multiple RDI paths of a CSID/VFE pair are used.
+			dev_dbg(video->camss->dev, "Skipping already idle CSID subdev %s and parent nodes when stopping video pipeline %s\n", subdev->name, vdev->name);
+			break;
 		}
 
 		if (should_stream) {
