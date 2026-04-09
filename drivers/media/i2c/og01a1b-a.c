@@ -230,6 +230,7 @@ struct og01a1b_dev {
 
 	bool otp_valid;
 	u8 otp_data[256];
+	bool skip_regmap;
 };
 
 struct og01a1b_dev* sensors[4];
@@ -1224,9 +1225,14 @@ static int og01a1b_set_power(struct og01a1b_dev *sensor, bool on)
 		/* Fill OTP cache before restore_mode() touches the register map */
 		og01a1b_fill_otp_cache_locked(sensor);
 
-		ret = og01a1b_restore_mode(sensor);
-		if (ret)
-			goto power_off;
+		if (!sensor->skip_regmap) {
+			dev_info(&sensor->i2c_client->dev, "Applying register map from kernel\n");
+			ret = og01a1b_restore_mode(sensor);
+			if (ret)
+				goto power_off;
+		} else {
+			dev_info(&sensor->i2c_client->dev, "skip_regmap set, skipping kernel register map\n");
+		}
 
 	} else {
 		og01a1b_set_power_off(sensor);
@@ -2074,12 +2080,43 @@ static ssize_t otp_valid_store(struct device *dev,
 	return count;
 }
 
+static ssize_t skip_regmap_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct v4l2_subdev *sd = dev_get_drvdata(dev);
+	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
+
+	return sysfs_emit(buf, "%d\n", sensor->skip_regmap);
+}
+
+static ssize_t skip_regmap_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct v4l2_subdev *sd = dev_get_drvdata(dev);
+	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
+	bool val;
+	int ret;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+
+	mutex_lock(&sensor->lock);
+	sensor->skip_regmap = val;
+	mutex_unlock(&sensor->lock);
+
+	return count;
+}
+
 static DEVICE_ATTR_RO(otp);
 static DEVICE_ATTR_RW(otp_valid);
+static DEVICE_ATTR(skip_regmap, 0664, skip_regmap_show, skip_regmap_store);
 
 static struct attribute *og01a1b_dev_attrs[] = {
 	&dev_attr_otp.attr,
 	&dev_attr_otp_valid.attr,
+	&dev_attr_skip_regmap.attr,
 	NULL,
 };
 static const struct attribute_group og01a1b_attr_group = {
