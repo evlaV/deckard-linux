@@ -304,6 +304,30 @@ struct mhi_controller_config {
 };
 
 /**
+ * struct mhi_timesync - MHI time synchronization structure
+ * @time_reg: Points to address of Timesync register
+ * @ts_mutex: Mutex for synchronization
+ */
+struct mhi_timesync {
+	void __iomem *time_reg;
+	struct mutex ts_mutex;
+};
+
+/**
+ * struct mhi_timesync_info - MHI time sync info structure
+ * @t_host_pre: Pre host soc time
+ * @t_host_post: Post host soc time
+ * @t_dev_lo: Mhi device time of lower dword
+ * @t_dev_hi: Mhi device time of higher dword
+ */
+struct mhi_timesync_info {
+	ktime_t t_host_pre;
+	ktime_t t_host_post;
+	u32 t_dev_lo;
+	u32 t_dev_hi;
+};
+
+/**
  * struct mhi_controller - Master MHI controller structure
  * @name: Device name of the MHI controller
  * @cntrl_dev: Pointer to the struct device of physical bus acting as the MHI
@@ -340,6 +364,7 @@ struct mhi_controller_config {
  * @mhi_event: MHI event ring configurations table
  * @mhi_cmd: MHI command ring configurations table
  * @mhi_ctxt: MHI device context, shared memory between host and device
+ * @tsc_timesync: MHI TSC timesync
  * @pm_mutex: Mutex for suspend/resume operation
  * @pm_lock: Lock for protecting MHI power management state
  * @timeout_ms: Timeout in ms for state transitions
@@ -417,6 +442,8 @@ struct mhi_controller {
 	struct mhi_event *mhi_event;
 	struct mhi_cmd *mhi_cmd;
 	struct mhi_ctxt *mhi_ctxt;
+
+	struct mhi_timesync *tsc_timesync;
 
 	struct mutex pm_mutex;
 	rwlock_t pm_lock;
@@ -796,4 +823,14 @@ bool mhi_queue_is_full(struct mhi_device *mhi_dev, enum dma_data_direction dir);
  */
 int mhi_get_channel_doorbell_offset(struct mhi_controller *mhi_cntrl, u32 *chdb_offset);
 
+/**
+ * mhi_get_remote_tsc_time_sync - get external soc time relative to local soc
+ * time pre and post using MMIO method.
+ * @mhi_dev: Device associated with the channels
+ * @time: mhi_timesync_info to get device time details
+ *
+ * Returns:
+ * 0 for success, error code for failure
+ */
+int mhi_get_remote_tsc_time_sync(struct mhi_device *mhi_dev, struct mhi_timesync_info *time);
 #endif /* _MHI_H_ */

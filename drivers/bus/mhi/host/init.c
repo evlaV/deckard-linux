@@ -497,6 +497,30 @@ static int mhi_find_capability(struct mhi_controller *mhi_cntrl, u32 capability)
 	return 0;
 }
 
+static int mhi_init_tsc_timesync(struct mhi_controller *mhi_cntrl)
+{
+	struct device *dev = &mhi_cntrl->mhi_dev->dev;
+	struct mhi_timesync *mhi_tsc_tsync;
+	u32 time_offset;
+	int ret;
+
+	time_offset = mhi_find_capability(mhi_cntrl, MHI_CAP_ID_TSC_TIME_SYNC);
+	if (!time_offset)
+		return -ENXIO;
+
+	mhi_tsc_tsync = devm_kzalloc(dev, sizeof(*mhi_tsc_tsync), GFP_KERNEL);
+	if (!mhi_tsc_tsync)
+		return -ENOMEM;
+
+	mhi_cntrl->tsc_timesync = mhi_tsc_tsync;
+	mutex_init(&mhi_tsc_tsync->ts_mutex);
+
+	/* save time_offset for obtaining time via MMIO register reads */
+	mhi_tsc_tsync->time_reg = mhi_cntrl->regs + time_offset;
+
+	return 0;
+}
+
 int mhi_init_mmio(struct mhi_controller *mhi_cntrl)
 {
 	u32 val;
@@ -633,6 +657,10 @@ int mhi_init_mmio(struct mhi_controller *mhi_cntrl)
 		dev_err(dev, "Unable to write MHICFG register\n");
 		return ret;
 	}
+
+	ret = mhi_init_tsc_timesync(mhi_cntrl);
+	if (ret)
+		dev_dbg(dev, "TSC Time synchronization init failure\n");
 
 	return 0;
 }

@@ -15,6 +15,15 @@ extern const struct bus_type mhi_bus_type;
 #define MHI_SOC_RESET_REQ_OFFSET			0xb0
 #define MHI_SOC_RESET_REQ				BIT(0)
 
+/*
+ * With ASPM enabled, the link may enter a low power state, requiring
+ * a wake-up sequence. Use a short burst of back-to-back reads to
+ * transition the link to the active state. Based on testing,
+ * 4 iterations are necessary to ensure reliable wake-up without
+ * excess latency.
+ */
+#define MHI_NUM_BACK_TO_BACK_READS			4
+
 struct mhi_ctxt {
 	struct mhi_event_ctxt *er_ctxt;
 	struct mhi_chan_ctxt *chan_ctxt;

@@ -1626,3 +1626,77 @@ int mhi_get_channel_doorbell_offset(struct mhi_controller *mhi_cntrl, u32 *chdb_
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mhi_get_channel_doorbell_offset);
+
+static int mhi_get_remote_time(struct mhi_controller *mhi_cntrl, struct mhi_timesync *mhi_tsync,
+			       struct mhi_timesync_info *time)
+{
+	struct device *dev = &mhi_cntrl->mhi_dev->dev;
+	int ret, i;
+
+	if (!mhi_tsync && !mhi_tsync->time_reg) {
+		dev_err(dev, "Time sync is not supported\n");
+		return -EINVAL;
+	}
+
+	if (unlikely(MHI_PM_IN_ERROR_STATE(mhi_cntrl->pm_state))) {
+		dev_err(dev, "MHI is not in active state, pm_state:%s\n",
+			to_mhi_pm_state_str(mhi_cntrl->pm_state));
+		return -EIO;
+	}
+
+	/* bring to M0 state */
+	ret = mhi_device_get_sync(mhi_cntrl->mhi_dev);
+	if (ret)
+		return ret;
+
+	guard(mutex)(&mhi_tsync->ts_mutex);
+	mhi_cntrl->runtime_get(mhi_cntrl);
+
+	/*
+	 * time critical code to fetch device time, delay between these two steps
+	 * should be deterministic as possible.
+	 */
+	preempt_disable();
+	local_irq_disable();
+
+	time->t_host_pre = ktime_get_real();
+
+	/*
+	 * To ensure the PCIe link is in L0 when ASPM is enabled, perform series
+	 * of back-to-back reads. This is necessary because the link may be in a
+	 * low-power state (e.g., L1 or L1ss), and need to be forced it to
+	 * transition to L0.
+	 */
+	for (i = 0; i < MHI_NUM_BACK_TO_BACK_READS; i++) {
+		ret = mhi_read_reg(mhi_cntrl, mhi_tsync->time_reg,
+				   TSC_TIMESYNC_TIME_LOW_OFFSET, &time->t_dev_lo);
+
+		ret = mhi_read_reg(mhi_cntrl, mhi_tsync->time_reg,
+				   TSC_TIMESYNC_TIME_HIGH_OFFSET, &time->t_dev_hi);
+	}
+
+	time->t_host_post = ktime_get_real();
+
+	local_irq_enable();
+	preempt_enable();
+
+	mhi_cntrl->runtime_put(mhi_cntrl);
+
+	mhi_device_put(mhi_cntrl->mhi_dev);
+
+	return 0;
+}
+
+int mhi_get_remote_tsc_time_sync(struct mhi_device *mhi_dev, struct mhi_timesync_info *time)
+{
+	struct mhi_controller *mhi_cntrl = mhi_dev->mhi_cntrl;
+	struct mhi_timesync *mhi_tsc_tsync = mhi_cntrl->tsc_timesync;
+	int ret;
+
+	ret = mhi_get_remote_time(mhi_cntrl, mhi_tsc_tsync, time);
+	if (ret)
+		dev_err(&mhi_dev->dev, "Failed to get TSC Time Sync value:%d\n", ret);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(mhi_get_remote_tsc_time_sync);
