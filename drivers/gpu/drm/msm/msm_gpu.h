@@ -267,6 +267,8 @@ struct msm_gpu {
 	uint32_t suspend_count;
 
 	struct msm_gpu_state *crashstate;
+	char *devcd_saved_buffer;
+	ssize_t devcd_size;
 
 	/* True if the hardware supports expanded apriv (a650 and newer) */
 	bool hw_apriv;
@@ -743,34 +745,6 @@ static inline void msm_submitqueue_put(struct msm_gpu_submitqueue *queue)
 {
 	if (queue)
 		kref_put(&queue->ref, msm_submitqueue_destroy);
-}
-
-static inline struct msm_gpu_state *msm_gpu_crashstate_get(struct msm_gpu *gpu)
-{
-	struct msm_gpu_state *state = NULL;
-
-	mutex_lock(&gpu->lock);
-
-	if (gpu->crashstate) {
-		kref_get(&gpu->crashstate->ref);
-		state = gpu->crashstate;
-	}
-
-	mutex_unlock(&gpu->lock);
-
-	return state;
-}
-
-static inline void msm_gpu_crashstate_put(struct msm_gpu *gpu)
-{
-	mutex_lock(&gpu->lock);
-
-	if (gpu->crashstate) {
-		if (gpu->funcs->gpu_state_put(gpu->crashstate))
-			gpu->crashstate = NULL;
-	}
-
-	mutex_unlock(&gpu->lock);
 }
 
 static inline void msm_trigger_recovery(struct msm_gpu *gpu) {

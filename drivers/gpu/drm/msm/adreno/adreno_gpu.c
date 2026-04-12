@@ -265,6 +265,7 @@ void adreno_check_and_reenable_stall(struct adreno_gpu *adreno_gpu)
 	spin_lock_irqsave(&priv->fault_stall_lock, flags);
 	if (!priv->stall_enabled &&
 			ktime_after(ktime_get(), priv->stall_reenable_time) &&
+			!READ_ONCE(gpu->devcd_saved_buffer) &&
 			!READ_ONCE(gpu->crashstate)) {
 		struct msm_mmu *mmu = to_msm_vm(gpu->vm)->mmu;
 
@@ -289,6 +290,7 @@ int adreno_fault_handler(struct msm_gpu *gpu, unsigned long iova, int flags,
 	struct msm_mmu *mmu = to_msm_vm(gpu->vm)->mmu;
 	const char *type = "UNKNOWN";
 	bool do_devcoredump = info && (info->fsr & ARM_SMMU_FSR_SS) &&
+		!READ_ONCE(gpu->devcd_saved_buffer) &&
 		!READ_ONCE(gpu->crashstate);
 	unsigned long irq_flags;
 
