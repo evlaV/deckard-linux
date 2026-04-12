@@ -175,17 +175,12 @@ int msm_gpu_hw_init(struct msm_gpu *gpu)
 }
 
 #ifdef CONFIG_DEV_COREDUMP
-static ssize_t msm_gpu_devcoredump_read(char *buffer, loff_t offset,
-		size_t count, void *data, size_t datalen)
+static ssize_t __coredump_print(char *buffer, struct msm_gpu_state *state, loff_t offset,
+		size_t count, void *data)
 {
 	struct msm_gpu *gpu = data;
 	struct drm_print_iterator iter;
 	struct drm_printer p;
-	struct msm_gpu_state *state;
-
-	state = msm_gpu_crashstate_get(gpu);
-	if (!state)
-		return 0;
 
 	iter.data = buffer;
 	iter.offset = 0;
@@ -205,16 +200,57 @@ static ssize_t msm_gpu_devcoredump_read(char *buffer, loff_t offset,
 
 	gpu->funcs->show(gpu, state, &p);
 
-	msm_gpu_crashstate_put(gpu);
-
 	return count - iter.remain;
+}
+
+
+static void coredump_print(struct msm_gpu *gpu, struct msm_gpu_state *state)
+{
+	//without writing to anything, check size of devcoredump to get size for allocation
+	gpu->devcd_size = __coredump_print(NULL, state, 0, INT_MAX, (void*)gpu); 
+
+	//now allocate and write the contents into a buffer
+	gpu->devcd_saved_buffer = kvmalloc(gpu->devcd_size, GFP_KERNEL);
+	ssize_t devcd_size_count_read;
+	devcd_size_count_read = __coredump_print(gpu->devcd_saved_buffer, state, 0, gpu->devcd_size, (void*)gpu); 
+}
+	
+static ssize_t msm_gpu_devcoredump_read(char *buffer, loff_t offset, size_t count, void *data, size_t datalen)
+{
+	struct msm_gpu *gpu = data;
+
+	if (!gpu->devcd_saved_buffer)
+	{
+		guard(mutex)(&gpu->lock);
+
+		if (!gpu->crashstate)
+			return 0;
+
+		coredump_print(gpu, gpu->crashstate);
+		if (gpu->funcs->gpu_state_put(gpu->crashstate))
+			gpu->crashstate = NULL;
+	}
+
+	ssize_t remain = gpu->devcd_size - offset;
+	ssize_t read_count = 0;
+	if( remain > 0 && gpu->devcd_size > 0 )
+	{
+		read_count = remain > count ? count : remain;
+
+		//printk(KERN_INFO "msm_gpu devcd: offset = %d, count = %d, remain = %d", offset, count, remain);
+
+		memcpy(buffer, gpu->devcd_saved_buffer + offset, read_count);
+	}
+
+	return read_count;
 }
 
 static void msm_gpu_devcoredump_free(void *data)
 {
 	struct msm_gpu *gpu = data;
-
-	msm_gpu_crashstate_put(gpu);
+	kvfree(gpu->devcd_saved_buffer);
+	gpu->devcd_saved_buffer = NULL;
+	gpu->devcd_size = 0;
 }
 
 static void msm_gpu_crashstate_get_bo(struct msm_gpu_state *state,
@@ -371,7 +407,7 @@ static void msm_gpu_crashstate_capture(struct msm_gpu *gpu,
 		return;
 
 	/* Only save one crash state at a time */
-	if (gpu->crashstate)
+	if (gpu->crashstate || gpu->devcd_saved_buffer)
 		return;
 
 	state = gpu->funcs->gpu_state_get(gpu);
