@@ -447,7 +447,7 @@ static void icp_shutdown(struct icp_data *icp)
 	icc_set_bw(icp->icp_dma_path, kBps_to_icc(0), kBps_to_icc(0));
 
 	// Disable clocks
-	clk_bulk_disable(icp->clk_cnt, icp->clks);
+	clk_bulk_disable_unprepare(icp->clk_cnt, icp->clks);
 
 	atomic_set(&icp->booted, 0);
 }
@@ -624,8 +624,7 @@ static int set_power(struct icp_data* icp)
 
 	for (i=0; i < icp->genpd_num; i++) {
 		icp->genpd_link[i] = device_link_add(dev, icp->genpd[i],
-											   DL_FLAG_STATELESS | DL_FLAG_PM_RUNTIME |
-											   DL_FLAG_RPM_ACTIVE);
+											   DL_FLAG_STATELESS | DL_FLAG_PM_RUNTIME);
 		if (icp->genpd_link[i] == NULL) {
 			ret = -EINVAL;
 			goto link_add_error;
@@ -766,10 +765,6 @@ static int icp_probe(struct platform_device *pdev)
 	set_clk_rate(icp, "bps_src", 785000000);
 	set_clk_rate(icp, "ipe_nps_src", 825000000);
 
-	ret = clk_bulk_prepare(icp->clk_cnt, icp->clks);
-	if (ret)
-		goto clk_setup_error;
-
 	// IOMMU
 	icp->iommu = iommu_paging_domain_alloc(dev);
 	ret = iommu_attach_device(icp->iommu, dev);
@@ -797,7 +792,6 @@ misc_register_error:
 	iommu_detach_device(icp->iommu, dev);
 	iommu_domain_free(icp->iommu);
 iommu_error:
-	clk_bulk_unprepare(icp->clk_cnt, icp->clks);
 clk_setup_error:
 	put_power(icp);
 
@@ -825,9 +819,6 @@ static void icp_remove(struct platform_device *pdev)
 	devm_free_irq(dev, icp->icp_irq, icp);
 	devm_free_irq(dev, icp->ipcc_irq, icp);
 
-	// Disable clocks
-	clk_bulk_unprepare(icp->clk_cnt, icp->clks);
-
 	put_power(icp);
 }
 
@@ -848,7 +839,6 @@ static int icp_suspend(struct device *dev)
 static int icp_resume(struct device *dev)
 {
 	struct icp_data *icp = dev_get_drvdata(dev);
-	int ret;
 
 	// Resume power and clocks
 	return pm_runtime_force_resume(icp->dev);
