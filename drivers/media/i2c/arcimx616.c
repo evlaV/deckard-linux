@@ -1097,6 +1097,7 @@ static void arcimx616_set_power_off(struct arcimx616_dev *sensor)
 	regulator_bulk_disable(arcimx616_NUM_SUPPLIES, sensor->supplies);
 
 	clk_disable_unprepare(sensor->xclk);
+	clk_disable_unprepare(sensor->xclk2);
 
 	if(sensor->reset_gpio == NULL) {
 		return ;
