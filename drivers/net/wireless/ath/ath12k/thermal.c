@@ -17,8 +17,12 @@ static ssize_t ath12k_thermal_temp_show(struct device *dev,
 					char *buf)
 {
 	struct ath12k *ar = dev_get_drvdata(dev);
+	struct ath12k_hw_group *ag = ath12k_ab_to_ag(ar->ab);
 	unsigned long time_left;
 	int ret, temperature;
+
+	if (!test_bit(ATH12K_GROUP_FLAG_REGISTERED, &ag->flags))
+		return -ESHUTDOWN;
 
 	guard(wiphy)(ath12k_ar_to_hw(ar)->wiphy);
 
