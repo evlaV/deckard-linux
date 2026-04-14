@@ -322,6 +322,26 @@ static void qcom_pcie_perst_deassert(struct qcom_pcie *pcie)
 	__qcom_pcie_perst_assert(pcie, false);
 }
 
+static ssize_t link_reset_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct qcom_pcie *pcie = dev_get_drvdata(dev);
+	bool val;
+	int ret;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+	if (!val)
+		return -EINVAL;
+
+	qcom_pcie_perst_assert(pcie);
+	qcom_pcie_perst_deassert(pcie);
+	return count;
+}
+static DEVICE_ATTR_WO(link_reset);
+
 static int qcom_pcie_start_link(struct dw_pcie *pci)
 {
 	struct qcom_pcie *pcie = to_qcom_pcie(pci);
@@ -2139,6 +2159,12 @@ static int qcom_pcie_probe(struct platform_device *pdev)
 
 	if (pcie->mhi)
 		qcom_pcie_init_debugfs(pcie);
+
+	if (of_property_read_bool(dev->of_node, "link-reset-sysfs")) {
+		ret = device_create_file(dev, &dev_attr_link_reset);
+		if (ret)
+			dev_warn(dev, "failed to create link_reset sysfs attr: %d\n", ret);
+	}
 
 	return 0;
 
