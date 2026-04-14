@@ -2100,6 +2100,7 @@
 
 	wake-gpios = <&tlmm 99 GPIO_ACTIVE_HIGH>;
 	perst-gpios = <&tlmm 97 GPIO_ACTIVE_LOW>;
+	link-reset-sysfs;
 
 	pinctrl-0 = <&pcie1_default_state>;
 	pinctrl-names = "default";
