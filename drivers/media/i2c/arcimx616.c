@@ -107,6 +107,7 @@ struct arcimx616_dev {
 	struct gpio_desc *detect_gpio;
 	struct gpio_desc *mux_enable;
 	struct gpio_desc *mux_select;
+	struct gpio_desc *strobe;
 	int irq;
 
 	struct delayed_work connect_work;      // For delayed "connected" notification
@@ -114,11 +115,14 @@ struct arcimx616_dev {
     bool connect_work_scheduled;          // Whether we have scheduled the delayed work
     bool connected;                       // Whether we are currently in the "connected" state
 
+    int debounce_cnt;
+    bool debounce_sensor0_ok;
+    bool debounce_sensor1_ok;
+    bool debounce_led_ok;
+    bool debounce_settling;
+
 	/* lock to protect all members below */
 	struct mutex lock;
-
-	void __iomem *base;
-	u32 offset;
 
 	const struct arcimx616_mode_info* current_mode;
 
@@ -845,6 +849,18 @@ static int arcimx616_aw9106_read_reg(struct arcimx616_dev *sensor, u8 reg, u8 *v
     return 0;
 }
 
+static int arcimx616_aw9106_check_chip_id(struct arcimx616_dev *sensor)
+{
+	int ret = 0;
+	u8 led_chip_id = 0;
+	ret = arcimx616_aw9106_read_reg(sensor, 0x10, &led_chip_id);
+
+	if (!ret && led_chip_id != 0x23)
+		ret = -ENXIO;
+
+	return ret;
+}
+
 /**
  * arcimx616_aw9106_set_leds - Example function to control two "RGB groups" of AW9106C
  * @sensor:        The arcimx616_dev
@@ -1258,16 +1274,6 @@ static int arcimx616_s_power(struct v4l2_subdev *sd, int on)
 
 	struct i2c_client *client = sensor->i2c_client;
 	
-	if(client->addr == 0x10) {
-		sensor->base = devm_ioremap(sd->dev, 0xacc3000, 0xacc3000 + 0xd000);
-	}
-	else {
-		sensor->base = devm_ioremap(sd->dev, 0xacb4000, 0xacb4000 + 0xd000);	
-	}
-	if (IS_ERR(sensor->base)) {
-		dev_err(&client->dev, "could not map memory\n");
-	}
-	
 	dev_dbg(&client->dev, "calling s_power with on:%d",on);
 	mutex_lock(&sensor->lock);
 
@@ -1305,51 +1311,64 @@ static int arcimx616_check_chip_id(struct arcimx616_dev *sensor)
 	return ret;
 }
 
-/**
- * arcimx616_check_and_set_mux - Check camera/LED connectivity and set mux appropriately
- * @sensor: The arcimx616_dev structure
- * 
- * Checks if either camera or the LED driver are connected via I2C.
- * Sets the mux_select GPIO appropriately (assumes mux_enable is already low).
- * 
- * Returns true if any device (camera or LED) is connected, false otherwise.
- */
- static bool arcimx616_check_and_set_mux(struct arcimx616_dev *sensor)
- {
-	 int sensor0Connected = -ENODEV;
-	 int sensor1Connected = -ENODEV;
- 
-	 // Check sensors only if they're registered
-	 if (g_arcimx616_sensor_count > 0 && g_arcimx616_sensors[0])
-		 sensor0Connected = arcimx616_check_chip_id(g_arcimx616_sensors[0]);
-	 if (g_arcimx616_sensor_count > 1 && g_arcimx616_sensors[1])
-		 sensor1Connected = arcimx616_check_chip_id(g_arcimx616_sensors[1]);
- 
-	 // Check if we can identify the LED chip
-	 u8 led_chip_id = 0;
-	 int led_chip_detected = arcimx616_aw9106_read_reg(sensor, 0x10, &led_chip_id);
-	 bool led_chip_valid = (led_chip_detected == 0 && led_chip_id == 0x23);
- 
-	 // Determine if anything is connected
-	 bool any_connected = (led_chip_valid || sensor0Connected == 0 || sensor1Connected == 0);
- 
-	 // Set mux_select based on what's connected
-	 // If LED chip is valid OR either camera is connected: set mux_select to low (RGB cams)
-	 // Otherwise: set mux_select to high
-	 if (any_connected) {
-		 if (sensor->mux_select) {
-			 gpiod_set_value_cansleep(sensor->mux_select, 0);
-			 dev_info(&sensor->i2c_client->dev, "Mux select GPIO set to low\n");
-		 }
-	 } else {
-		 if (sensor->mux_select) {
-			 gpiod_set_value_cansleep(sensor->mux_select, 1);
-			 dev_info(&sensor->i2c_client->dev, "Mux select GPIO set to high\n");
-		 }
-	 }
- 
-	 return any_connected;
- }
+struct arcimx616_probe_result {
+	bool sensor0_ok;
+	bool sensor1_ok;
+	bool led_ok;
+	bool strobe_active;
+};
+
+static void arcimx616_probe_sources(struct arcimx616_dev *sensor,
+				    struct arcimx616_probe_result *out)
+{
+	int sensor0Connected = -ENODEV;
+	int sensor1Connected = -ENODEV;
+
+	if (g_arcimx616_sensor_count > 0 && g_arcimx616_sensors[0])
+		sensor0Connected = arcimx616_check_chip_id(g_arcimx616_sensors[0]);
+	if (g_arcimx616_sensor_count > 1 && g_arcimx616_sensors[1])
+		sensor1Connected = arcimx616_check_chip_id(g_arcimx616_sensors[1]);
+
+	out->sensor0_ok = (sensor0Connected == 0);
+	out->sensor1_ok = (sensor1Connected == 0);
+	out->led_ok     = (arcimx616_aw9106_check_chip_id(sensor) == 0);
+	out->strobe_active = false;
+
+	bool any_connected = out->led_ok || out->sensor0_ok || out->sensor1_ok;
+
+	if (any_connected) {
+		if (sensor->mux_select) {
+			gpiod_set_value_cansleep(sensor->mux_select, 0);
+			dev_info(&sensor->i2c_client->dev, "Mux select GPIO set to low\n");
+		}
+	} else {
+		if (sensor->mux_select) {
+			gpiod_set_value_cansleep(sensor->mux_select, 1);
+			dev_info(&sensor->i2c_client->dev, "Mux select GPIO set to high\n");
+		}
+
+		if (sensor->strobe) {
+			bool reset_high = sensor->reset_gpio &&
+					  gpiod_get_value(sensor->reset_gpio) == 1;
+			if (reset_high) {
+				int strobe_val = gpiod_get_value(sensor->strobe);
+				dev_info(&sensor->i2c_client->dev, "Strobe GPIO state: %d\n", strobe_val);
+				if (strobe_val)
+					out->strobe_active = true;
+			} else {
+				dev_info(&sensor->i2c_client->dev, "Skipping strobe read: reset not high\n");
+			}
+		}
+	}
+}
+
+static bool arcimx616_check_and_set_mux(struct arcimx616_dev *sensor)
+{
+	struct arcimx616_probe_result r;
+
+	arcimx616_probe_sources(sensor, &r);
+	return r.led_ok || r.sensor0_ok || r.sensor1_ok;
+}
 
 
 static int arcimx616_s_stream(struct v4l2_subdev *sd, int enable)
@@ -1402,32 +1421,13 @@ static long arcimx616_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, vo
 	switch(cmd)
 	{
 		case VIDIOC_PRIV_G_CONNECTED:
-			if (sensor->detect_gpio) {
-				// Check if physically plugged in
-				bool plugged_in = (gpiod_get_value(sensor->detect_gpio) == 0);
-				if (plugged_in) {
-					// Power on and check I2C connectivity
-					arcimx616_set_power(sensor, true);
-					// Ensure mux enable is low before checking
-					if (sensor->mux_enable) {
-						gpiod_set_value_cansleep(sensor->mux_enable, 0);
-					}
-					// Check and set mux, returns true if any device detected
-					bool i2c_connected = arcimx616_check_and_set_mux(sensor);
-					*a = i2c_connected;
-					sensor->connected = i2c_connected;
-					arcimx616_set_power(sensor, false);
-				} else {
-					*a = false;
-					sensor->connected = false;
-				}
-			} else {
-				*a = sensor->connected;
-			}
-			if(connected_override == false) {
-				*a = false;
+			// Detection runs in arcimx616_connect_work_fn; just read the cached state.
+			if (sensor->detect_gpio &&
+			    gpiod_get_value(sensor->detect_gpio) != 0)
 				sensor->connected = false;
-			}
+			if (!connected_override)
+				sensor->connected = false;
+			*a = sensor->connected;
 			break;
 		case VIDIOC_PRIV_S_CONNECTED:
 			if(sensor->connected != (unsigned long)arg) {
@@ -1564,80 +1564,102 @@ static int arcimx616_get_regulators(struct arcimx616_dev *sensor)
 
 
 
+static void arcimx616_reset_debounce_state(struct arcimx616_dev *sensor)
+{
+	sensor->debounce_cnt = 0;
+	sensor->debounce_sensor0_ok = false;
+	sensor->debounce_sensor1_ok = false;
+	sensor->debounce_led_ok = false;
+	sensor->debounce_settling = false;
+}
+
 static void arcimx616_connect_work_fn(struct work_struct *work)
 {
-    struct arcimx616_dev *sensor =
-        container_of(to_delayed_work(work), struct arcimx616_dev, connect_work);
+	struct arcimx616_dev *sensor =
+		container_of(to_delayed_work(work), struct arcimx616_dev, connect_work);
 
-    static bool first_stage = true;
+	const int debounce_num_connection_tests = 5;
+	const int debounce_connection_tests_delay = HZ/10;
+	const int debounce_settle_display_delay = HZ/2;
+	struct arcimx616_probe_result cur;
 
-    if (!sensor->detect_gpio) {
-        dev_dbg(&sensor->i2c_client->dev, "No detect GPIO found\n");
-        return;
-    }
+	if (!sensor->detect_gpio) {
+		dev_dbg(&sensor->i2c_client->dev, "No detect GPIO found\n");
+		return;
+	}
 
+	if (gpiod_get_value(sensor->detect_gpio) != 0) {
+		dev_info(&sensor->i2c_client->dev, "Accessory canceled connect during debounce\n");
+		goto halt_connection_work;
+	}
 
-    /* Check if still connected */
-    if (gpiod_get_value(sensor->detect_gpio) == 0) {
-        if (first_stage) {
-            // First stage - turn on power and LEDs
-			arcimx616_set_power(sensor, true);
+	if (sensor->debounce_settling) {
+		bool i2c_ever_seen = sensor->debounce_led_ok ||
+				     sensor->debounce_sensor0_ok ||
+				     sensor->debounce_sensor1_ok;
 
-			int left_sensor_index = g_arcimx616_sensors[0]->is_left_sensor ? 0 : 1;
-			int right_sensor_index = left_sensor_index == 0 ? 1 : 0;
+		if (arcimx616_aw9106_check_chip_id(sensor) == 0)
+			arcimx616_aw9106_set_leds(sensor, 0, 0, 0, 0, 0, 0, false, false, false);
+		arcimx616_set_power(sensor, false);
 
-			int left_sensor_connected = arcimx616_check_chip_id(g_arcimx616_sensors[left_sensor_index]);
-			int right_sensor_connected = arcimx616_check_chip_id(g_arcimx616_sensors[right_sensor_index]);
-
-			// Check if we can identify the LED chip
-			u8 led_chip_id = 0;
-			int led_chip_detected = arcimx616_aw9106_read_reg(sensor, 0x10, &led_chip_id);
-			bool led_chip_valid = (led_chip_detected == 0 && led_chip_id == 0x23);
-
-			if (led_chip_valid) {
-				arcimx616_aw9106_set_leds(sensor, 	left_sensor_connected != 0 ? 255 : 0, 
-												left_sensor_connected == 0 ? 255 : 0, 
-												0, 
-												right_sensor_connected != 0 ? 255 : 0, 
-												right_sensor_connected == 0 ? 255 : 0,
-												0,
-												true, true, true);
-			}
-            
-            // Schedule LED power off and user space notification after 500ms
-            first_stage = false;
-            schedule_delayed_work(&sensor->connect_work, HZ/2);
-
-			// Set mux enable low and check connectivity to set mux select appropriately
-			if (sensor->mux_enable) {
-				gpiod_set_value_cansleep(sensor->mux_enable, 0);
-				dev_info(&sensor->i2c_client->dev, "Mux enable GPIO set to low\n");
-			}
-			arcimx616_check_and_set_mux(sensor);
-            return;
-        } else {
-            // Second stage - turn off LEDs and power, then signal connected if still plugged
-            // Check if we can identify the LED chip before trying to turn off LEDs
-			u8 led_chip_id = 0;
-			int led_chip_detected = arcimx616_aw9106_read_reg(sensor, 0x10, &led_chip_id);
-			if (led_chip_detected == 0 && led_chip_id == 0x23) {
-				arcimx616_aw9106_set_leds(sensor, 0, 0, 0, 0, 0, 0, false, false, false);
-			}
-            arcimx616_set_power(sensor, false);
-
+		if (i2c_ever_seen) {
 			sensor->connected = true;
 			struct v4l2_event ev = {0};
 			ev.type = V4L2_EVENT_SENSOR_CONNECTED;
-			v4l2_event_queue(sensor->sd.devnode, &ev);            
-        }
-    } else {
-        dev_info(&sensor->i2c_client->dev, "Accessory canceled connect during debounce\n");
-    }
-    // Reset for next time and clear scheduled flag
-    first_stage = true;
-    spin_lock(&sensor->irq_lock);
-    sensor->connect_work_scheduled = false;
-    spin_unlock(&sensor->irq_lock);
+			v4l2_event_queue(sensor->sd.devnode, &ev);
+		}
+		goto halt_connection_work;
+	}
+
+	if (sensor->debounce_cnt == 0) {
+		arcimx616_set_power(sensor, true);
+		if (sensor->mux_enable)
+			gpiod_set_value_cansleep(sensor->mux_enable, 0);
+	}
+
+	arcimx616_probe_sources(sensor, &cur);
+	sensor->debounce_sensor0_ok    |= cur.sensor0_ok;
+	sensor->debounce_sensor1_ok    |= cur.sensor1_ok;
+	sensor->debounce_led_ok        |= cur.led_ok;
+
+	/* Loopback: leave power on, IRQ powers off on unplug. */
+	if (cur.strobe_active) {
+		dev_info(&sensor->i2c_client->dev,
+			 "Frunky loopback detected; leaving sensor power on until unplug\n");
+		goto halt_connection_work;
+	}
+
+	int left_sensor_index = g_arcimx616_sensors[0]->is_left_sensor ? 0 : 1;
+	int right_sensor_index = left_sensor_index == 0 ? 1 : 0;
+	bool left_ok  = (left_sensor_index  == 0) ? cur.sensor0_ok : cur.sensor1_ok;
+	bool right_ok = (right_sensor_index == 0) ? cur.sensor0_ok : cur.sensor1_ok;
+
+	if (cur.led_ok) {
+		arcimx616_aw9106_set_leds(sensor,
+			left_ok  ? 0 : 255, left_ok  ? 255 : 0, 0,
+			right_ok ? 0 : 255, right_ok ? 255 : 0, 0,
+			true, true, true);
+	}
+
+	bool both_sensors_green = cur.sensor0_ok && cur.sensor1_ok;
+
+	if (!both_sensors_green &&
+	    sensor->debounce_cnt < debounce_num_connection_tests) {
+		sensor->debounce_cnt++;
+		schedule_delayed_work(&sensor->connect_work, debounce_connection_tests_delay);
+		return;
+	}
+
+	/* Hold LEDs 500ms before finalize; next invocation takes the settle branch. */
+	sensor->debounce_settling = true;
+	schedule_delayed_work(&sensor->connect_work, debounce_settle_display_delay);
+	return;
+
+halt_connection_work:
+	arcimx616_reset_debounce_state(sensor);
+	spin_lock(&sensor->irq_lock);
+	sensor->connect_work_scheduled = false;
+	spin_unlock(&sensor->irq_lock);
 }
 
 
@@ -1655,16 +1677,21 @@ static irqreturn_t gpio_handler(int irq, void *ident)
             schedule_delayed_work(&sensor->connect_work, HZ/4); // 250ms
         }
     } else {
-
-		/* Immediately turn off power on ALL ARCIMX616 sensors: */
-    	arcimx616_power_off_all_sensors();
         // state == 1 => unplugged
         // Cancel any scheduled connect
         if (sensor->connect_work_scheduled) {
+			// Delayed work can lock irq_lock, release it to make sure work can complete if started
+			spin_unlock(&sensor->irq_lock);
             cancel_delayed_work_sync(&sensor->connect_work);
+			spin_lock(&sensor->irq_lock);
             sensor->connect_work_scheduled = false;
+			/* Cancel may have pre-empted halt_connection_work. */
+			arcimx616_reset_debounce_state(sensor);
             dev_info(&sensor->i2c_client->dev, "Debounce: canceled connect.\n");
         }
+
+		/* Turn off power on ALL ARCIMX616 sensors after delayed work is stopped to ensure power isn't left on */
+    	arcimx616_power_off_all_sensors();
 
         // If we were connected, send disconnected event immediately
         if (sensor->connected) {
@@ -1746,6 +1773,8 @@ static int arcimx616_probe(struct i2c_client *client)
 						     GPIOD_OUT_HIGH);
 	sensor->mux_select = devm_gpiod_get_optional(dev, "mux-select",
 						     GPIOD_OUT_HIGH);
+	sensor->strobe = devm_gpiod_get_optional(dev, "strobe",
+						     GPIOD_IN);
 	if(sensor->detect_gpio) {
 		dev_dbg(&client->dev, "detect GPIO found\n");
 		sensor->irq = gpiod_to_irq(sensor->detect_gpio);
@@ -1853,20 +1882,15 @@ static int arcimx616_probe(struct i2c_client *client)
 	/* Initialize the power off work */
 	INIT_WORK(&power_off_work, arcimx616_power_off_all_work_fn);
 
-	/* Check if detect_gpio is low (something plugged in) during probe */
+	// Something plugged in at probe time: use the same async path as the IRQ
 	if (sensor->detect_gpio && gpiod_get_value(sensor->detect_gpio) == 0) {
-		dev_dbg(&client->dev, "Accessory detected during probe, checking connectivity\n");
-		// Power on to check I2C connectivity
-		arcimx616_set_power(sensor, true);
-		// Set mux enable low
-		if (sensor->mux_enable) {
-			gpiod_set_value_cansleep(sensor->mux_enable, 0);
-			dev_dbg(&client->dev, "Mux enable GPIO set to low during probe\n");
+		dev_dbg(&client->dev, "Accessory detected during probe, scheduling async connect\n");
+		spin_lock(&sensor->irq_lock);
+		if (!sensor->connect_work_scheduled) {
+			sensor->connect_work_scheduled = true;
+			schedule_delayed_work(&sensor->connect_work, HZ/4);
 		}
-		// Check connectivity and set mux select appropriately
-		arcimx616_check_and_set_mux(sensor);
-		// Power off
-		arcimx616_set_power(sensor, false);
+		spin_unlock(&sensor->irq_lock);
 	}
 
 	return 0;
