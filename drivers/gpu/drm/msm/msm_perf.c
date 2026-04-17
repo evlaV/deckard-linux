@@ -201,7 +201,10 @@ static int perf_now_show(struct seq_file *m, void *v)
 	struct msm_drm_private *priv = perf->dev->dev_private;
 	struct msm_gpu *gpu = priv->gpu;
 
-	seq_printf(m, "%3d.%d\n", gpu->gpu_usage / 100, gpu->gpu_usage % 100);
+	if(gpu)
+	{
+		seq_printf(m, "%3d.%d\n", gpu->gpu_usage / 100, gpu->gpu_usage % 100);
+	}
 
 	return 0;
 }
