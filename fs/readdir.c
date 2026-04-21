@@ -150,9 +150,16 @@ EXPORT_SYMBOL(iterate_dir);
 static int verify_dirent_name(const char *name, int len)
 {
 	if (len <= 0 || len >= PATH_MAX)
+	{
+		pr_info_once("invalid dirent: len=%d name='%.*s'\n", len, len, name);
 		return -EIO;
+	}
+
 	if (memchr(name, '/', len))
+	{
+		pr_info_once("invalid dirent with slash: len=%d name='%.*s'\n", len, len, name);
 		return -EIO;
+	}
 	return 0;
 }
 
