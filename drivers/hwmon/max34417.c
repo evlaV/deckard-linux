@@ -326,7 +326,7 @@ static ssize_t park_value_store(struct device *dev,
 		return -ERESTARTSYS;
 
 	mode = sysfs_match_string(park_values, buf);
-	if (mode <= 0 && mode > 4) {
+	if (mode <= 0 || mode > 4) {
 		err = mode;
 		goto error;
 	}
