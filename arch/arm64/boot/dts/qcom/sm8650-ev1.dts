@@ -1781,6 +1781,7 @@
         compatible = "maxim,max34417";
         reg = <0x12>;
         maxim,sense-resistor = <1>;
+	maxim,accumulator-group-id = <0>;
         vdd-supply = <&vreg_l2b_3p0>;
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
@@ -1796,6 +1797,7 @@
         compatible = "maxim,max34417";
         reg = <0x1a>;
         maxim,sense-resistor = <1>;
+	maxim,accumulator-group-id = <0>;
         vdd-supply = <&vreg_l2b_3p0>;
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
