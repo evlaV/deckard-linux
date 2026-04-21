@@ -53,6 +53,11 @@
 #define MAX34417_PARK_VALUE_MASK		0x0C
 #define MAX34417_PARK_VALUE_POS			2
 
+#define MAX34417_GROUP_INVALID		0xffffffff
+
+static LIST_HEAD(max34417_instances);
+static DEFINE_MUTEX(max34417_instances_lock);
+
 /* Addresses scanned */
 static const unsigned short max34417_i2c_addrs[] = { 0x10, 0x12, 0x14,
 		0x16, 0x18, 0x1A, 0x1C, 0x1E, I2C_CLIENT_END };
@@ -69,6 +74,7 @@ struct max34417_input {
 
 struct max34417_data {
 	struct i2c_client *client;
+	struct device *hwmon_dev;
 	struct mutex update_lock;	/* Mutex for sync */
 	u8 rsense;			/* Sense Resistor value in Ohms */
 	u8 config;			/* Sensor configuration */
@@ -78,6 +84,8 @@ struct max34417_data {
 	struct regulator *vdd;
 	struct regulator *vio;
 	struct max34417_input inputs[MAX34417_CHANNEL_COUNT];
+	struct list_head group_instances;
+	u32 group_id;
 };
 
 static int max34417_accumulator_read(struct device *dev, unsigned int *acc_count);
@@ -422,6 +430,99 @@ static ssize_t accumulator_update_store(struct device *dev,
 	return count;
 }
 
+static ssize_t accumulator_group_id_store(struct device *dev,
+					struct device_attribute *devattr,
+					const char *buf, size_t count)
+{
+	struct max34417_data *data = dev_get_drvdata(dev);
+	struct max34417_data *d, *dt;
+	int group_id;
+	int ret = 0;
+
+	ret = kstrtoint(buf, 0, &group_id);
+	if (ret < 0)
+		return -EINVAL;
+
+	mutex_lock(&max34417_instances_lock);
+	data->group_id = group_id;
+
+	list_for_each_entry_safe_reverse(d, dt, &max34417_instances, group_instances) {
+		if (d == data) {
+			if (data->group_id == MAX34417_GROUP_INVALID)
+				list_del_init(&data->group_instances);
+			ret = count;
+			goto unlock_out;
+		}
+	}
+
+	if (data->group_id != MAX34417_GROUP_INVALID)
+		list_add_tail(&data->group_instances, &max34417_instances);
+
+	ret = count;
+
+unlock_out:
+	mutex_unlock(&max34417_instances_lock);
+
+	return ret;
+}
+
+static ssize_t accumulator_group_id_show(struct device *dev,
+				struct device_attribute *devattr,
+				char *buf)
+{
+	const struct max34417_data *data = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%d\n", data->group_id);
+}
+
+static ssize_t accumulator_group_update_store(struct device *dev,
+					struct device_attribute *devattr,
+					const char *buf, size_t count)
+{
+	struct max34417_data *data = dev_get_drvdata(dev);
+	struct max34417_data *d;
+	struct device *hwmon_dev;
+	int enable;
+	int ret = 0;
+
+	ret = kstrtoint(buf, 0, &enable);
+	if (ret < 0)
+		return -EINVAL;
+
+	if (!enable)
+		return count;
+
+	if (mutex_lock_interruptible(&max34417_instances_lock))
+		return -EAGAIN;
+
+	list_for_each_entry(d, &max34417_instances, group_instances) {
+		/* update only the ones with the same group_id */
+		if (data->group_id == d->group_id) {
+			hwmon_dev = d->hwmon_dev;
+			dev_info(hwmon_dev, "going to update group id: %d\n", data->group_id);
+			if (mutex_lock_interruptible(&d->update_lock))
+				return -ERESTARTSYS;
+			ret = max34417_accumulator_update(hwmon_dev, 0, 1);
+			if (ret)
+				dev_err(hwmon_dev, "Failed to update accumulator\n");
+			mutex_unlock(&d->update_lock);
+		}
+	}
+
+	mutex_unlock(&max34417_instances_lock);
+
+	return count;
+}
+
+static ssize_t accumulator_group_update_show(struct device *dev,
+				struct device_attribute *devattr,
+				char *buf)
+{
+	const struct max34417_data *data = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%d\n", data->group_id);
+}
+
 static SENSOR_DEVICE_ATTR(measurement_mode, 0644,
 	measurement_mode_show, measurement_mode_store, 0);
 
@@ -438,15 +539,21 @@ static SENSOR_DEVICE_ATTR(accumulator_update, 0644,
 		accumulator_update_show, accumulator_update_store, 0);
 
 static SENSOR_DEVICE_ATTR(accumulator_update_mode, 0644,
-		accumulator_update_mode_show, accumulator_update_mode_store, 0);
+	accumulator_update_mode_show, accumulator_update_mode_store, 0);
+
+static SENSOR_DEVICE_ATTR(accumulator_group_id, 0644,
+	accumulator_group_id_show, accumulator_group_id_store, 0);
+
+static SENSOR_DEVICE_ATTR(accumulator_group_update, 0644,
+	accumulator_group_update_show, accumulator_group_update_store, 0);
 
 static const char * const slow_modes[] = {
 	"disabled", "enabled",
 };
 
 static ssize_t slow_mode_show(struct device *dev,
-			      struct device_attribute *devattr,
-			      char *buf)
+		struct device_attribute *devattr,
+		char *buf)
 {
 	const struct max34417_data *data = dev_get_drvdata(dev);
 
@@ -457,8 +564,8 @@ static ssize_t slow_mode_show(struct device *dev,
 }
 
 static ssize_t slow_mode_store(struct device *dev,
-			       struct device_attribute *devattr,
-			       const char *buf, size_t count)
+		struct device_attribute *devattr,
+		const char *buf, size_t count)
 {
 	struct max34417_data *data = dev_get_drvdata(dev);
 	int mode, err;
@@ -479,7 +586,7 @@ static ssize_t slow_mode_store(struct device *dev,
 		new_cfg |= MAX34417_SLOW_BITMASK;
 
 	err = i2c_smbus_write_byte_data(data->client,
-					MAX34417_REG_CONTROL, new_cfg);
+			MAX34417_REG_CONTROL, new_cfg);
 	if (err)
 		goto error;
 
@@ -497,10 +604,10 @@ error:
 }
 
 static SENSOR_DEVICE_ATTR(slow_mode, 0644,
-	slow_mode_show, slow_mode_store, 0);
+		slow_mode_show, slow_mode_store, 0);
 
 static int max34417_read_string(struct device *dev, enum hwmon_sensor_types type,
-			       u32 attr, int channel, const char **str)
+		u32 attr, int channel, const char **str)
 {
 	struct max34417_data *data = dev_get_drvdata(dev);
 
@@ -529,9 +636,9 @@ static int max34417_accumulator_read(struct device *dev, unsigned int *acc_count
 		goto error;
 
 	regval = i2c_smbus_read_i2c_block_data(data->client,
-						MAX34417_REG_ACC_COUNT,
-						4,
-						buf);
+			MAX34417_REG_ACC_COUNT,
+			4,
+			buf);
 
 	if (regval < 0) {
 		dev_err(dev, "Could not read accumulator data\n");
@@ -604,7 +711,7 @@ error:
 }
 
 static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
-			 u32 attr, int channel, long *val)
+		u32 attr, int channel, long *val)
 {
 	struct max34417_data *data = dev_get_drvdata(dev);
 	int err, regval;
@@ -868,6 +975,8 @@ static struct attribute *max34417_hwmon_attributes[] = {
 	&sensor_dev_attr_slow_mode.dev_attr.attr,
 	&sensor_dev_attr_accumulator_update.dev_attr.attr,
 	&sensor_dev_attr_accumulator_update_mode.dev_attr.attr,
+	&sensor_dev_attr_accumulator_group_id.dev_attr.attr,
+	&sensor_dev_attr_accumulator_group_update.dev_attr.attr,
 	NULL
 };
 
@@ -878,8 +987,17 @@ __ATTRIBUTE_GROUPS(max34417_hwmon);
 
 static void max34417_remove(void *data)
 {
-	const struct max34417_data *max31730 = data;
+	struct max34417_data *max31730 = data;
 	const struct i2c_client *client = max31730->client;
+	struct max34417_data *d, *dt;
+
+
+	mutex_lock(&max34417_instances_lock);
+	list_for_each_entry_safe_reverse(d, dt, &max34417_instances, group_instances) {
+		if (d == max31730)
+			list_del_init(&d->group_instances);
+	}
+	mutex_unlock(&max34417_instances_lock);
 
 	i2c_smbus_write_byte_data(client, MAX34417_REG_CONTROL, 0);
 }
@@ -893,6 +1011,7 @@ static int max34417_probe(struct i2c_client *client)
 	char old_name[I2C_NAME_SIZE];
 	struct device_node *np;
 	u32 r_sense;
+	u32 group_id;
 	uint regval;
 	int err;
 
@@ -942,6 +1061,17 @@ static int max34417_probe(struct i2c_client *client)
 
 		/* Save the connected input label if available */
 		of_property_read_string(child, "label", &input->label);
+	}
+
+	err = of_property_read_u32(np, "maxim,accumulator-group-id", &group_id);
+	if (!err) {
+		dev_info(dev, "Add device to accumulator group_id: %d\n", group_id);
+		data->group_id = group_id;
+		mutex_lock(&max34417_instances_lock);
+		list_add_tail(&data->group_instances, &max34417_instances);
+		mutex_unlock(&max34417_instances_lock);
+	} else {
+		data->group_id = MAX34417_GROUP_INVALID;
 	}
 
 	dev_set_drvdata(dev, data);
@@ -1002,7 +1132,12 @@ static int max34417_probe(struct i2c_client *client)
 							 data,
 							 &max34417_chip_info,
 							 max34417_hwmon_groups);
-	return PTR_ERR_OR_ZERO(hwmon_dev);
+	if (IS_ERR(hwmon_dev))
+		return PTR_ERR(hwmon_dev);
+
+	data->hwmon_dev = hwmon_dev;
+
+	return 0;
 }
 
 /* Return 0 if detection is successful, -ENODEV otherwise */
