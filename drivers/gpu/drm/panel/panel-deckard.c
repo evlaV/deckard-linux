@@ -108,9 +108,9 @@ typedef enum
 typedef enum
 {
 	MODE_120 = 0,
+	MODE_144,
 	MODE_90,
 	MODE_80,
-	MODE_144,
 	MODE_72,
 } lpm026m648c_modes_t;
 
@@ -153,49 +153,26 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 	return container_of(panel, struct lpm026m648c_ctx, panel);
 }
 
+// Display modes are set based on a 701361 kHz pixel clock.  This allows
+// use to achieve 7 digit precision for integer refresh rates.
+// If we wanted exact integer refresh rates, we could bump the pixel clock to
+// 720576 kHz.
+
 static const struct drm_display_mode modes[5] = {
 	{
 		.name = "  2160x2160_120",
-		.clock = (2160 + 24 + 20 + 20) * (2160 + 404 + 1 + 20) * 120 / 1000,
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 447 + 1 + 20) * 120 / 1000,
 		.hdisplay = 2160,
 		.hsync_start = (2160 + 24),
 		.hsync_end = (2160 + 24 + 20),
 		.htotal = (2160 + 24 + 20 + 20),
 		.vdisplay = 2160,
-		.vsync_start = 2160 + 404,
-		.vsync_end = 2160 + 404 + 1,
-		.vtotal = 2160 + 404 + 1 + 20,
+		.vsync_start = 2160 + 447,
+		.vsync_end = 2160 + 447 + 1,
+		.vtotal = 2160 + 447 + 1 + 20,
 		.width_mm = 50,
 		.height_mm = 50,
 
-	},
-	{
-		.name = "  2160x2160_90",
-		.clock = (2160 + 24 + 20 + 20) * (2160 + 1265 + 1 + 20) * 90 / 1000,
-		.hdisplay = 2160,
-		.hsync_start = (2160 + 24),
-		.hsync_end = (2160 + 24 + 20),
-		.htotal = (2160 + 24 + 20 + 20),
-		.vdisplay = 2160,
-		.vsync_start = 2160 + 1265,
-		.vsync_end = 2160 + 1265 + 1,
-		.vtotal = 2160 + 1265 + 1 + 20,
-		.width_mm = 50,
-		.height_mm = 50,
-	},
-	{
-		.name = "  2160x2160_80",
-		.clock = (2160 + 24 + 20 + 20) * (2160 + 1697 + 1 + 20) * 80 / 1000,
-		.hdisplay = 2160,
-		.hsync_start = (2160 + 24),
-		.hsync_end = (2160 + 24 + 20),
-		.htotal = (2160 + 24 + 20 + 20),
-		.vdisplay = 2160,
-		.vsync_start = 2160 + 1697,
-		.vsync_end = 2160 + 1697 + 1,
-		.vtotal = 2160 + 1697 + 1 + 20,
-		.width_mm = 50,
-		.height_mm = 50,
 	},
 	{
 		.name = "  2160x2160_144",
@@ -213,16 +190,44 @@ static const struct drm_display_mode modes[5] = {
 
 	},
 	{
-		.name = "  2160x2160_72",
-		.clock = (2160 + 24 + 20 + 20) * (2160 + 2128 + 1 + 20) * 72 / 1000,
+		.name = "  2160x2160_90",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 1323 + 1 + 20) * 90 / 1000,
 		.hdisplay = 2160,
 		.hsync_start = (2160 + 24),
 		.hsync_end = (2160 + 24 + 20),
 		.htotal = (2160 + 24 + 20 + 20),
 		.vdisplay = 2160,
-		.vsync_start = 2160 + 2128,
-		.vsync_end = 2160 + 2128 + 1,
-		.vtotal = 2160 + 2128 + 1 + 20,
+		.vsync_start = 2160 + 1323,
+		.vsync_end = 2160 + 1323 + 1,
+		.vtotal = 2160 + 1323 + 1 + 20,
+		.width_mm = 50,
+		.height_mm = 50,
+	},
+	{
+		.name = "  2160x2160_80",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 1761 + 1 + 20) * 80 / 1000,
+		.hdisplay = 2160,
+		.hsync_start = (2160 + 24),
+		.hsync_end = (2160 + 24 + 20),
+		.htotal = (2160 + 24 + 20 + 20),
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 1761,
+		.vsync_end = 2160 + 1761 + 1,
+		.vtotal = 2160 + 1761 + 1 + 20,
+		.width_mm = 50,
+		.height_mm = 50,
+	},
+	{
+		.name = "  2160x2160_72",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 2199 + 1 + 20) * 72 / 1000,
+		.hdisplay = 2160,
+		.hsync_start = (2160 + 24),
+		.hsync_end = (2160 + 24 + 20),
+		.htotal = (2160 + 24 + 20 + 20),
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 2199,
+		.vsync_end = 2160 + 2199 + 1,
+		.vtotal = 2160 + 2199 + 1 + 20,
 		.width_mm = 50,
 		.height_mm = 50,
 	},
