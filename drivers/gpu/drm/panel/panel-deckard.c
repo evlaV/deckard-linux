@@ -55,8 +55,10 @@
 #define VBP		23
 #define GPO1_TES1_144_SHARP	150
 #define GPO1_TES1_120_SHARP	100
+#define GPO1_TES1_108_SHARP	75
 #define GPO1_TES1_144_BOE	3435
 #define GPO1_TES1_120_BOE	4068
+#define GPO1_TES1_108_BOE	4619
 #define GPO1_TES1_144_JDI	GPO1_TES1_144_BOE
 #define GPO1_TES1_120_JDI	GPO1_TES1_120_BOE
 #define GPO1_TES1_90		5446
@@ -108,7 +110,8 @@ typedef enum
 typedef enum
 {
 	MODE_120 = 0,
-	MODE_144,
+    MODE_144,
+	MODE_108,
 	MODE_90,
 	MODE_80,
 	MODE_72,
@@ -158,7 +161,7 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 // If we wanted exact integer refresh rates, we could bump the pixel clock to
 // 720576 kHz.
 
-static const struct drm_display_mode modes[5] = {
+static const struct drm_display_mode modes[6] = {
 	{
 		.name = "  2160x2160_120",
 		.clock = (2160 + 24 + 20 + 20) * (2160 + 447 + 1 + 20) * 120 / 1000,
@@ -188,6 +191,20 @@ static const struct drm_display_mode modes[5] = {
 		.width_mm = 50,
 		.height_mm = 50,
 
+	},
+	{
+		.name = "  2160x2160_108",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 738 + 1 + 20) * 108 / 1000,
+		.hdisplay = 2160,
+		.hsync_start = (2160 + 24),
+		.hsync_end = (2160 + 24 + 20),
+		.htotal = (2160 + 24 + 20 + 20),
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 738,
+		.vsync_end = 2160 + 738 + 1,
+		.vtotal = 2160 + 738 + 1 + 20,
+		.width_mm = 50,
+		.height_mm = 50,
 	},
 	{
 		.name = "  2160x2160_90",
@@ -308,7 +325,7 @@ static int update_vcom(struct lpm026m648c_ctx *ctx)
 	u8 wpc_lock[2] = {0xe5, 0x00};
 	int ret = 0;
 	// TODO interpolate for other modes?
-	if ( ctx->current_mode == MODE_120 || ctx->current_mode == MODE_144 ) {
+	if ( ctx->current_mode == MODE_108 || ctx->current_mode == MODE_120 || ctx->current_mode == MODE_144 ) {
 		vcom_left = ctx->vcom120[0];
 		vcom_right = ctx->vcom120[1];
 	} else {
@@ -639,6 +656,8 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_144_SHARP : GPO1_TES1_144_BOE;
 	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_120].vtotal ) {
 		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
+	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_108].vtotal ) {
+		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_108_SHARP : GPO1_TES1_108_BOE;
 	} else {
 		gpo1_tes1 = GPO1_TES1_90;
 	}
@@ -951,6 +970,8 @@ static int lpm026m648c_mode_set(struct drm_panel *panel,
 			new_mode = MODE_80;
 	}else if (mode->vtotal == modes[MODE_72].vtotal){
 			new_mode = MODE_72;
+	}else if (mode->vtotal == modes[MODE_108].vtotal){
+			new_mode = MODE_108;
 	}else if (mode->vtotal == modes[MODE_144].vtotal){
 			new_mode = MODE_144;
 	}else{
@@ -1182,6 +1203,8 @@ static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_144_SHARP : GPO1_TES1_144_BOE;
 	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_120].vtotal ) {
 		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
+	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_108].vtotal ) {
+		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_108_SHARP : GPO1_TES1_108_BOE;
 	} else {
 		gpo1_tes1 = GPO1_TES1_90;
 	}
@@ -1193,7 +1216,7 @@ static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 		|| ctx->current_mode == MODE_90 ) {
 		// VID_VS_DELAY + TES
 		vsync_to_photons_psec = VID_VS_DELAY * EXTERNAL_LINE_TIME_PSEC + gpo1_tes1 * INTERNAL_LINE_TIME_PSEC;
-	} else { // SHARP 120/144
+	} else { // SHARP 108/120/144
 		switch ( ctx->current_mode )
 		{
 			case MODE_144:
@@ -1201,6 +1224,9 @@ static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 				break;
 			case MODE_120:
 				frame_period_psec = 1000000000000 / 120;
+				break;
+			case MODE_108:
+				frame_period_psec = 1000000000000 / 108;
 				break;
 			default:
 				frame_period_psec = 1000000000000 / 120;
