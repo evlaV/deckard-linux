@@ -2122,6 +2122,10 @@
 	status = "okay";
 };
 
+&usb_1_dwc3_hs {
+	remote-endpoint = <&pm8550b_role_switch_out>;
+};
+
 &usb_1_hsphy {
 	vdd-supply = <&vreg_l1i_0p88>;
 	vdda12-supply = <&vreg_l3i_1p2>;
