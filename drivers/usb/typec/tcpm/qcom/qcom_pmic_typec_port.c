@@ -566,7 +566,7 @@ void qcom_pmic_typec_port_stop(struct pmic_typec_port *pmic_typec_port)
 
 	disable_delayed_work_sync(&pmic_typec_port->cc_debounce_dwork);
 
-	qcom_pmic_typec_port_set_vbus(pmic_typec_port, false);
+	regulator_force_disable(pmic_typec_port->vdd_vbus);
 	qcom_pmic_typec_port_set_vconn(pmic_typec_port, false);
 	qcom_pmic_typec_port_disable_cc(pmic_typec_port);
 }
