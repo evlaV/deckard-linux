@@ -1997,12 +1997,33 @@
         vdd-supply = <&vreg_l2b_3p0>;
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
+        #address-cells = <1>;
+        #size-cells = <0>;
 
         // CH 1 : Kryo APC1 Cores
         // CH 2 : Kryo APC2 Cores
         // CH 3 : Kryo APC0 Cores
         // CH 4 : Tensor Processor – NSP1
         // Note: both 1.8 and 3.0V rails are always on for other sensors
+		input@0 {
+			reg = <0>;
+			label = "apc1";
+		};
+
+		input@1 {
+			reg = <1>;
+			label = "apc2";
+		};
+
+		input@2 {
+			reg = <2>;
+			label = "apc0";
+		};
+
+		input@3 {
+			reg = <3>;
+			label = "nsp1";
+		};
     };
 
     max34417_2: max34417@1a {
@@ -2012,12 +2033,33 @@
         vdd-supply = <&vreg_l2b_3p0>;
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
+        #address-cells = <1>;
+        #size-cells = <0>;
 
         // CH 1 : GFX Power
         // CH 2 : Tensor Processor – NSP2
         // CH 3 : VPH Power
         // CH 4 : Unused
         // Note: both 1.8 and 3.0V rails are always on for other sensors
+		input@0 {
+			reg = <0>;
+			label = "gfx";
+		};
+
+		input@1 {
+			reg = <1>;
+			label = "nsp2";
+		};
+
+		input@2 {
+			reg = <2>;
+			label = "vph";
+		};
+
+		input@3 {
+			reg = <3>;
+			label = "unused";
+		};
     };
 
     // TODO enable verr ( varies based on common mode range )
@@ -2028,12 +2070,33 @@
         vdd-supply = <&vreg_l2b_3p0>;
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
-
+        #address-cells = <1>;
+        #size-cells = <0>;
+	
         // CH 1 : BOB
         // CH 2 : S6C ~1.9V Subregulation
         // CH 3 : S1C ~1.3V Subregulation
         // CH 4 : S3C ~1V Subregulation
         // Note: both 1.8 and 3.0V rails are always on for other sensors
+		input@0 {
+			reg = <0>;
+			label = "bob";
+		};
+
+		input@1 {
+			reg = <1>;
+			label = "s6c";
+		};
+
+		input@2 {
+			reg = <2>;
+			label = "s1c";
+		};
+
+		input@3 {
+			reg = <3>;
+			label = "s3c";
+		};
     }; 
 };
 
