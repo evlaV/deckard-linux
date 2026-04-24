@@ -1767,45 +1767,52 @@
 };
 
 &i2c5 {
-    // BOOT EEPROM
-    eeprom@50 {
-        compatible  = "atmel,24c32";
-        status      = "okay";
-        label		= "core_eeprom";
-        reg         = <0x50>;
-        wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
-        vcc-supply  = <&vreg_l15b_1p8>;
-    };
+	// BOOT EEPROM
+	eeprom@50 {
+		compatible  = "atmel,24c32";
+		status      = "okay";
+		label		= "core_eeprom";
+		reg         = <0x50>;
+		wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+		vcc-supply  = <&vreg_l15b_1p8>;
+	};
 
-    max34417_1: max34417@12 {
-        compatible = "maxim,max34417";
-        reg = <0x12>;
-        maxim,sense-resistor = <1>;
-        vdd-supply = <&vreg_l2b_3p0>;
-        vio-supply = <&vreg_l15b_1p8>;
-        status = "okay";
+	broadcaster: broadcaster@2c {
+		compatible = "i2c-sw-broadcaster";
+		reg = <0x2c>;
+	};
 
-        // CH 1 : Kryo APC1 Cores
-        // CH 2 : Kryo APC2 Cores
-        // CH 3 : Kryo APC0 Cores
-        // CH 4 : Tensor Processor – NSP1
-        // Note: both 1.8 and 3.0V rails are always on for other sensors
-    };
+	max34417_1: max34417@12 {
+		compatible = "maxim,max34417";
+		reg = <0x12>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&vreg_l2b_3p0>;
+		vio-supply = <&vreg_l15b_1p8>;
+		status = "okay";
+		broadcaster-parent = <&broadcaster>;
 
-    max34417_2: max34417@1a {
-        compatible = "maxim,max34417";
-        reg = <0x1a>;
-        maxim,sense-resistor = <1>;
-        vdd-supply = <&vreg_l2b_3p0>;
-        vio-supply = <&vreg_l15b_1p8>;
-        status = "okay";
+		// CH 1 : Kryo APC1 Cores
+		// CH 2 : Kryo APC2 Cores
+		// CH 3 : Kryo APC0 Cores
+		// CH 4 : Tensor Processor – NSP1
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
+	};
 
-        // CH 1 : GFX Power
-        // CH 2 : Tensor Processor – NSP2
-        // CH 3 : VPH Power
-        // CH 4 : Unused
-        // Note: both 1.8 and 3.0V rails are always on for other sensors
-    }; 
+	max34417_2: max34417@1a {
+		compatible = "maxim,max34417";
+		reg = <0x1a>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&vreg_l2b_3p0>;
+		vio-supply = <&vreg_l15b_1p8>;
+		status = "okay";
+		broadcaster-parent = <&broadcaster>;
+
+		// CH 1 : GFX Power
+		// CH 2 : Tensor Processor – NSP2
+		// CH 3 : VPH Power
+		// CH 4 : Unused
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
+	}; 
 };
 
 // Custom Connector I2C ( Paddle Card )
