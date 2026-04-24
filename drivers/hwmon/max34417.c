@@ -53,6 +53,9 @@
 #define MAX34417_PARK_VALUE_MASK		0x0C
 #define MAX34417_PARK_VALUE_POS			2
 
+#define MAX34417_UPDATE_FLAG_FORCE		BIT(0)
+#define MAX34417_UPDATE_FLAG_BROADCAST		BIT(1)
+
 /* Addresses scanned */
 static const unsigned short max34417_i2c_addrs[] = { 0x10, 0x12, 0x14,
 		0x16, 0x18, 0x1A, 0x1C, 0x1E, I2C_CLIENT_END };
@@ -69,6 +72,7 @@ struct max34417_input {
 
 struct max34417_data {
 	struct i2c_client *client;
+	struct i2c_client *broadcaster;
 	struct mutex update_lock;	/* Mutex for sync */
 	u8 rsense;			/* Sense Resistor value in Ohms */
 	u8 config;			/* Sensor configuration */
@@ -81,7 +85,7 @@ struct max34417_data {
 };
 
 static int max34417_accumulator_read(struct device *dev, unsigned int *acc_count);
-static int max34417_accumulator_update(struct device *dev, int channel, int force_update);
+static int max34417_accumulator_update(struct device *dev, int channel, int flags);
 
 static long max34417_power_calc(const struct max34417_data *data,
 				unsigned long long raw_power, unsigned int acc_count)
@@ -408,18 +412,52 @@ static ssize_t accumulator_update_store(struct device *dev,
 			       const char *buf, size_t count)
 {
 	struct max34417_data *data = dev_get_drvdata(dev);
+	int flags = MAX34417_UPDATE_FLAG_FORCE;
 	int err;
 
 	if (mutex_lock_interruptible(&data->update_lock))
 		return -ERESTARTSYS;
 
 	//do accumulator update
-	int force_update = 1;
-	err = max34417_accumulator_update(dev,0,force_update);
+	err = max34417_accumulator_update(dev, 0, flags);
 
 	mutex_unlock(&data->update_lock);
 
 	return count;
+}
+
+static ssize_t accumulator_broadcast_update_store(struct device *dev,
+			       struct device_attribute *devattr,
+			       const char *buf, size_t count)
+{
+	struct max34417_data *data = dev_get_drvdata(dev);
+	int flags;
+	int err;
+
+	if (mutex_lock_interruptible(&data->update_lock))
+		return -ERESTARTSYS;
+
+	//do accumulator update
+	flags = MAX34417_UPDATE_FLAG_FORCE | MAX34417_UPDATE_FLAG_BROADCAST;
+
+	err = max34417_accumulator_update(dev, 0, flags);
+
+	mutex_unlock(&data->update_lock);
+
+	return count;
+}
+
+static ssize_t accumulator_broadcast_update_show(struct device *dev,
+					struct device_attribute *devattr,
+					char *buf)
+{
+	struct max34417_data *data = dev_get_drvdata(dev);
+	int addr = 0;
+
+	if (data->broadcaster)
+		addr = data->broadcaster->addr;
+
+	return sprintf(buf, "0x%x\n", data->broadcaster->addr);
 }
 
 static SENSOR_DEVICE_ATTR(measurement_mode, 0644,
@@ -436,6 +474,10 @@ static SENSOR_DEVICE_ATTR(park_value, 0644,
 
 static SENSOR_DEVICE_ATTR(accumulator_update, 0644,
 		accumulator_update_show, accumulator_update_store, 0);
+
+static SENSOR_DEVICE_ATTR(accumulator_broadcast_update, 0644,
+		accumulator_broadcast_update_show,
+		accumulator_broadcast_update_store, 0);
 
 static SENSOR_DEVICE_ATTR(accumulator_update_mode, 0644,
 		accumulator_update_mode_show, accumulator_update_mode_store, 0);
@@ -556,9 +598,10 @@ error:
 }
 
 
-static int max34417_accumulator_update(struct device *dev, int channel, int force_update)
+static int max34417_accumulator_update(struct device *dev, int channel, int flags)
 {
 	struct max34417_data *data = dev_get_drvdata(dev);
+	struct i2c_client *client;
 	int update_needed = 0;
 	int normal_mode = 0;
 	int smm_mode = 0;
@@ -589,9 +632,14 @@ static int max34417_accumulator_update(struct device *dev, int channel, int forc
 		}
 	}
 
-	if( update_needed || force_update)
+	if (flags & MAX34417_UPDATE_FLAG_BROADCAST && data->broadcaster)
+		client = data->broadcaster;
+	else
+		client = data->client;
+
+	if( update_needed || (flags & MAX34417_UPDATE_FLAG_FORCE))
 	{
-		err = i2c_smbus_write_byte(data->client, MAX34417_REG_UPDATE);
+		err = i2c_smbus_write_byte(client, MAX34417_REG_UPDATE);
 
 		if (err) goto error;
 
@@ -612,7 +660,6 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 	unsigned int voltage, voltage_raw, voltage_adj, voltage_err;
 	unsigned long long power, current_fs;
 	u8 cfg;
-	int force_update = 0;
 
 	u8 buf[I2C_SMBUS_BLOCK_MAX] = { 0 };
 
@@ -626,7 +673,7 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_in:
 		switch (attr) {
 		case hwmon_in_input:
-			err = max34417_accumulator_update(dev, channel, force_update);
+			err = max34417_accumulator_update(dev, channel, 0);
 			if (err) goto error;
 
 			regval = i2c_smbus_read_i2c_block_data(data->client,
@@ -670,7 +717,7 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 				goto error;
 			}
 
-			err = max34417_accumulator_update(dev, channel, force_update);
+			err = max34417_accumulator_update(dev, channel, 0);
 			if (err) goto error;
 
 			err = max34417_accumulator_read(dev, &acc_count);
@@ -867,6 +914,7 @@ static struct attribute *max34417_hwmon_attributes[] = {
 	&sensor_dev_attr_perr_verr_mode.dev_attr.attr,
 	&sensor_dev_attr_slow_mode.dev_attr.attr,
 	&sensor_dev_attr_accumulator_update.dev_attr.attr,
+	&sensor_dev_attr_accumulator_broadcast_update.dev_attr.attr,
 	&sensor_dev_attr_accumulator_update_mode.dev_attr.attr,
 	NULL
 };
@@ -886,6 +934,7 @@ static void max34417_remove(void *data)
 
 static int max34417_probe(struct i2c_client *client)
 {
+	 struct device_node *broadcaster_node;
 	struct device *dev = &client->dev;
 	struct device *hwmon_dev;
 	struct max34417_data *data;
@@ -942,6 +991,13 @@ static int max34417_probe(struct i2c_client *client)
 
 		/* Save the connected input label if available */
 		of_property_read_string(child, "label", &input->label);
+	}
+
+	broadcaster_node = of_parse_phandle(client->dev.of_node,
+					    "broadcaster-parent", 0);
+	if (broadcaster_node) {
+		data->broadcaster = of_find_i2c_device_by_node(broadcaster_node);
+		of_node_put(broadcaster_node);
 	}
 
 	dev_set_drvdata(dev, data);
