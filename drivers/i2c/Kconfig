@@ -111,6 +111,12 @@ config I2C_STUB
 
 	  If you don't know what to do here, definitely say N.
 
+config I2C_BROADCASTER
+	bool "I2C/SMBus broadcaster"
+	help
+	  This module may be useful to developers of SMBus client drivers,
+	  to aggregate and send an unique smb command for several clients
+
 config I2C_SLAVE
 	bool "I2C slave support"
 	help
