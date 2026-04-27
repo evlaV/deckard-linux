@@ -1340,7 +1340,8 @@ static int dpu_plane_assign_resources(struct drm_crtc *crtc,
 	if (!dpu_plane_try_multirect_parallel(pipe, pipe_cfg, r_pipe, r_pipe_cfg,
 					      pipe->sspp,
 					      msm_framebuffer_format(plane_state->fb),
-					      dpu_kms->catalog->caps->max_linewidth)) {
+					      dpu_kms->catalog->caps->max_linewidth,
+					      dpu_kms->cac_state_cur == CAC_ENABLED)) {
 		DPU_DEBUG_PLANE(pdpu, "invalid " DRM_RECT_FMT " /" DRM_RECT_FMT
 				" max_line:%u, can't use split source\n",
 				DRM_RECT_ARG(&pipe_cfg->src_rect),
