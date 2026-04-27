@@ -293,14 +293,34 @@ static void dpu_debugfs_sspp_init(struct dpu_kms *dpu_kms, struct dentry *debugf
 
 static ssize_t cac_blob_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
 {
-	struct cac_blob (*blobs)[PLANAR_CAC_SSPP_VIG] = file->private_data;
-	return simple_read_from_buffer(user_buf, count, ppos, blobs, sizeof(*blobs));
+	struct dpu_kms *dpu_kms = file->private_data;
+	int size = PLANAR_CAC_SSPP_VIG * sizeof(struct cac_blob);
+
+	if (dpu_kms->cac_blob_bank)
+		return simple_read_from_buffer(user_buf, count, ppos,
+					       dpu_kms->cac_blobs_b, size);
+	else
+		return simple_read_from_buffer(user_buf, count, ppos,
+					       dpu_kms->cac_blobs, size);
 }
 
 static ssize_t cac_blob_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
 {
-	struct cac_blob (*blobs)[PLANAR_CAC_SSPP_VIG] = file->private_data;
-	return simple_write_to_buffer(blobs, sizeof(*blobs), ppos, user_buf, count);
+	struct dpu_kms *dpu_kms = file->private_data;
+	int size = PLANAR_CAC_SSPP_VIG * sizeof(struct cac_blob);
+	int ret;
+
+	/* write to inactive bank */
+	if (dpu_kms->cac_blob_bank)
+		ret = simple_write_to_buffer(dpu_kms->cac_blobs, size,
+					      ppos, user_buf, count);
+	else
+		ret = simple_write_to_buffer(dpu_kms->cac_blobs_b, size,
+					      ppos, user_buf, count);
+
+	dpu_kms->cac_blob_bank = !dpu_kms->cac_blob_bank;
+	dpu_kms->cac_update_pending = true;
+	return ret;
 }
 
 static const struct file_operations cac_blob_fops = {
@@ -328,7 +348,7 @@ static int dpu_kms_debugfs_init(struct msm_kms *kms, struct drm_minor *minor)
 
 	debugfs_create_x32(DPU_DEBUGFS_HWMASKNAME, 0600, entry, p);
 	debugfs_create_u32("cac_enable", 0600, entry, &dpu_kms->cac_state_cached);
-	debugfs_create_file("cac_blob", 0600, entry, &dpu_kms->cac_blobs, &cac_blob_fops);
+	debugfs_create_file("cac_blob", 0600, entry, dpu_kms, &cac_blob_fops);
 	debugfs_create_bool("cac_update", 0600, entry, &dpu_kms->cac_update_pending);
 	debugfs_create_bool("skip_cwb_right", 0600, entry, &dpu_kms->skip_cwb_right);
 
@@ -920,6 +940,7 @@ static int _dpu_kms_drm_obj_init(struct dpu_kms *dpu_kms)
 
 		if (dpu_use_planar_cac && i == 0) {
 			dpu_kms->cac_blob_id = -1;
+			dpu_kms->cac_blob_bank = 0;
 			dpu_kms->cac_prop = drm_property_create(dev, DRM_MODE_PROP_BLOB,
 								"CAC_BLOB", 0);
 			if(dpu_kms->cac_prop)
