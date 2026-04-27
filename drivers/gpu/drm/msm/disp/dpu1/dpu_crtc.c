@@ -1095,7 +1095,10 @@ static void dpu_crtc_atomic_begin(struct drm_crtc *crtc,
 
 	if (dpu_kms->cac_state_cur == CAC_ENABLED && dpu_kms->cac_update_pending) {
 		/* Update CAC blob while already enabled (per-frame updates) */
-		dpu_crtc_set_cac_blob(priv->kms, dpu_kms->cac_blobs);
+		if (dpu_kms->cac_blob_bank)
+			dpu_crtc_set_cac_blob(priv->kms, dpu_kms->cac_blobs_b);
+		else
+			dpu_crtc_set_cac_blob(priv->kms, dpu_kms->cac_blobs);
 		dpu_kms->cac_update_pending = false;
 	}
 
