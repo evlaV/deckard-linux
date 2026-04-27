@@ -355,7 +355,7 @@ static int update_vcom(struct lpm026m648c_ctx *ctx)
 	return ret;
 }
 
-static void dsi_write_panel_on_jdi(struct drm_panel *panel)
+static void dsi_write_panel_init_jdi(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 
@@ -372,7 +372,7 @@ static void dsi_write_panel_on_jdi(struct drm_panel *panel)
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 				  0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-				  BE16(GPO1_TES1_120_JDI), BE16(GPO1_TEW1), 0x00, 0x00,
+				  BE16(0), BE16(0), 0x00, 0x00,
 				  0x00, 0x00,
 				  BE16(GPO1_TES1_120_JDI-CAMERA_TRIGGER_OFFSET),
 				  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
@@ -394,16 +394,11 @@ static void dsi_write_panel_on_jdi(struct drm_panel *panel)
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_TEAR_ON, 0x00);
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_ADDRESS_MODE, 0x00);
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_PIXEL_FORMAT, 0x77);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_EXIT_SLEEP_MODE);
-	msleep(170);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_ON);
 	//lpm026m648c_dsi_write_seq(ctx, LPM02648C_SEQ_CTL, 0x80);
-	msleep(200);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_MF_CMD_ACCESS_PROTECT, 0x03);
-	msleep(200);
 }
 
-static void dsi_write_panel_on_sharp(struct drm_panel *panel)
+static void dsi_write_panel_init_sharp(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 
@@ -422,7 +417,7 @@ static void dsi_write_panel_on_sharp(struct drm_panel *panel)
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 				  0x00);
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-				  BE16(GPO1_TES1_120_SHARP), BE16(GPO1_TEW1), 0x00, 0x00,
+				  BE16(0), BE16(0), 0x00, 0x00,
 				  0x00, 0x00,
 				  BE16(GPO1_TES1_120_SHARP-CAMERA_TRIGGER_OFFSET),
 				  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
@@ -455,13 +450,9 @@ static void dsi_write_panel_on_sharp(struct drm_panel *panel)
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_TEAR_ON, 0x00);
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_ADDRESS_MODE, 0x40);
 	//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_PIXEL_FORMAT, 0x77);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_EXIT_SLEEP_MODE);
-	msleep(170);
-	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_ON);
-	msleep(200);
 }
 
-static void dsi_write_panel_on_boe(struct drm_panel *panel)
+static void dsi_write_panel_init_boe(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 
@@ -481,7 +472,7 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 					  0x00);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-					  BE16(GPO1_TES1_120_BOE), BE16(GPO1_TEW1), 0x00, 0x00,
+					  BE16(0), BE16(0), 0x00, 0x00,
 					  0x00, 0x00,
 					  BE16(GPO1_TES1_120_BOE-CAMERA_TRIGGER_OFFSET),
 					  BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
@@ -518,7 +509,7 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_DISP_MODE, 0x54, 0x00, 0x00,
 					0x00);
 		lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
-					BE16(GPO1_TES1_120_BOE), BE16(GPO1_TEW1), 0x00, 0x00,
+					BE16(0), BE16(0), 0x00, 0x00,
 					0x00, 0x00,
 					BE16(GPO1_TES1_120_BOE-CAMERA_TRIGGER_OFFSET),
 					BE16(CAMERA_TRIGGER_OFFSET * 2 + GPO1_TEW1));
@@ -538,6 +529,11 @@ static void dsi_write_panel_on_boe(struct drm_panel *panel)
 		//lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_ADDRESS_MODE, 0x00);
 		lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_PIXEL_FORMAT, 0x77);		
 	}
+}
+
+static void dsi_write_panel_on(struct drm_panel *panel)
+{
+    struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_EXIT_SLEEP_MODE);
 	msleep(170);
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_ON);
@@ -570,7 +566,7 @@ static int get_panel_info(struct drm_panel *panel)
     return 0;
 }
 
-static void dsi_write_panel_on(struct drm_panel *panel)
+static void dsi_write_panel_init(struct drm_panel *panel)
 {
 	int ret;
 	char panel_left, panel_right;
@@ -618,14 +614,14 @@ static void dsi_write_panel_on(struct drm_panel *panel)
 	}
 
 	if ( ctx->panel_vendor == VENDOR_SHARP ) {
-		dsi_write_panel_on_sharp(panel);
+		dsi_write_panel_init_sharp(panel);
 	} else if ( ctx->panel_vendor == VENDOR_BOE ) {
-		dsi_write_panel_on_boe(panel);
+		dsi_write_panel_init_boe(panel);
 	} else if ( ctx->panel_vendor == VENDOR_JDI ) {
-		dsi_write_panel_on_jdi(panel);
+		dsi_write_panel_init_jdi(panel);
 	} else {
 		DRM_DEV_ERROR(ctx->dev, "unrecognized panel vendor ( %c ), defualt to sharp\n", ctx->panel_mfg_info[VENDOR_OFFSET] );
-		dsi_write_panel_on_sharp(panel);
+		dsi_write_panel_init_sharp(panel);
 		ctx->panel_vendor = VENDOR_SHARP;
 	}
 }
@@ -750,23 +746,18 @@ static int lpm026m648c_power_off(struct lpm026m648c_ctx *ctx)
 
 static int lpm026m648c_disable(struct drm_panel *panel)
 {
-    int ret;
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 
 	if (!ctx->enabled)
 		return 0;
+
+	backlight_disable(ctx->backlight);
 
 	ctx->dsi[0]->mode_flags &= ~MIPI_DSI_MODE_LPM;
 	if (ctx->is_dual_panel)
 		ctx->dsi[1]->mode_flags &= ~MIPI_DSI_MODE_LPM;
 
 	dsi_write_panel_off(panel);
-
-	ret = lpm026m648c_power_off(ctx);
-	if (ret < 0)
-		DRM_DEV_ERROR(ctx->dev, "power_off failed ret = %d\n", ret);
-
-	backlight_disable(ctx->backlight);
 
 	ctx->enabled = false;
 	return 0;
@@ -779,6 +770,10 @@ static int lpm026m648c_unprepare(struct drm_panel *panel)
 
 	if (!ctx->prepared)
 		return 0;
+
+	ret = lpm026m648c_power_off(ctx);
+	if (ret < 0)
+		DRM_DEV_ERROR(ctx->dev, "power_off failed ret = %d\n", ret);
 
 	// disable backlight drivers
 	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
@@ -829,6 +824,20 @@ static int lpm026m648c_prepare(struct drm_panel *panel)
 	// clear out panel manufacturing info
 	memset(ctx->panel_mfg_info, 0, ARRAY_SIZE(ctx->panel_mfg_info));
 
+	ret = lpm026m648c_power_on(ctx);
+	if (ret < 0) {
+		DRM_DEV_ERROR(ctx->dev, "power_on failed\n");
+		goto power_off;
+	}
+
+	ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
+	if (ctx->is_dual_panel)
+		ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
+
+	msleep(20);
+
+	dsi_write_panel_init(panel);
+
 	ctx->prepared = true;
 
 	return 0;
@@ -874,18 +883,10 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 	if (ctx->enabled)
 		return 0;
 
-	ret = lpm026m648c_power_on(ctx);
-	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "power_on failed\n");
-		goto power_off;
-	}
-
-	ctx->dsi[0]->mode_flags |= MIPI_DSI_MODE_LPM;
-	if (ctx->is_dual_panel)
-		ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
-
-	msleep(20);
 	dsi_write_panel_on(panel);
+
+    // >=6 frames of video before TE starts to output
+	msleep(300);
 
 	// default to 120, but we will change this based on frame rate
 	ctx->backlight->props.pulse_offset_rows = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
@@ -893,11 +894,6 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 
 	ctx->enabled = true;
 
-	return ret;
-
-power_off:
-	if (lpm026m648c_power_off(ctx))
-		DRM_DEV_ERROR(ctx->dev, "power_off failed\n");
 	return ret;
 }
 
