@@ -29,8 +29,7 @@
 #include <linux/iio/trigger_consumer.h>
 #include <linux/iio/triggered_buffer.h>
 #include <linux/iio/adc/qcom-vadc-common.h>
-
-#include <dt-bindings/iio/adc/qcom,spmi-vadc.h>
+#include <linux/iio/adc/qcom-adc5-gen3-common.h>
 
 #define ADC5_GEN3_HS 0x45
 #define ADC5_GEN3_HS_BUSY BIT(7)
@@ -71,7 +70,6 @@
 #define ADC5_GEN3_ADC_CH_SEL_CTL 0x54
 
 #define ADC5_GEN3_DELAY_CTL 0x55
-#define ADC5_GEN3_HW_SETTLE_DELAY_MASK 0xf
 
 #define ADC5_GEN3_CH_EN 0x56
 
@@ -104,23 +102,11 @@
 #define ADC5_GEN3_CONV_REQ_REQ BIT(0)
 
 #define ADC5_GEN3_SID_OFFSET 0x8
-#define ADC5_GEN3_CHANNEL_MASK 0xff
 #define V_CHAN(x) (((x).sid << ADC5_GEN3_SID_OFFSET) | (x).channel)
 
 #define DEFAULT_SAMPLE_DELAY_USEC 1000
 #define DATA_LENGTH (24000)
 #define POWER_DATA_LENGTH 50
-
-enum adc5_cal_method { ADC5_NO_CAL = 0, ADC5_RATIOMETRIC_CAL, ADC5_ABSOLUTE_CAL };
-
-enum adc_time_select {
-	MEAS_INT_DISABLE = 0,
-	MEAS_INT_IMMEDIATE,
-	MEAS_INT_50MS,
-	MEAS_INT_100MS,
-	MEAS_INT_1S,
-	MEAS_INT_NONE,
-};
 
 enum adc_state {
 	ADC_STATE_IDLE,
@@ -628,7 +614,7 @@ struct adc5_channels {
 
 // clang-format off
 static const struct adc5_channels adc5_chans_pmic[ADC5_MAX_CHANNEL] = {
-	[ADC5_GEN3_OFFSET_REF]		= ADC5_CHAN_VOLT("ref_gnd", 0,
+	[ADC5_GEN3_REF_GND]		= ADC5_CHAN_VOLT("ref_gnd", 0,
 						SCALE_HW_CALIB_DEFAULT)
 	[ADC5_GEN3_1P25VREF]		= ADC5_CHAN_VOLT("vref_1p25", 0,
 						SCALE_HW_CALIB_DEFAULT)
@@ -725,7 +711,7 @@ static int adc5_get_dt_channel_data(struct adc5_chip_hs *adc, struct adc5_channe
 	sid = (chan >> ADC5_GEN3_SID_OFFSET);
 	chan = (chan & ADC5_GEN3_CHANNEL_MASK);
 
-	if (chan > ADC5_OFFSET_EXT2 || !data->adc_chans[chan].datasheet_name) {
+	if (chan > ADC5_GEN3_OFFSET_EXT2 || !data->adc_chans[chan].datasheet_name) {
 		dev_err(dev, "%s invalid channel number %d\n", name, chan);
 		return -EINVAL;
 	}
