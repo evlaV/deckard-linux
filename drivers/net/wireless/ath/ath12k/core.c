@@ -76,6 +76,7 @@ void ath12k_get_rx_reorder_timeout(u32 timeout[WME_NUM_AC])
 		     timeout[2],
 		     timeout[3]);
 }
+EXPORT_SYMBOL(ath12k_get_rx_reorder_timeout);
 
 /* protected with ath12k_hw_group_mutex */
 static struct list_head ath12k_hw_group_list = LIST_HEAD_INIT(ath12k_hw_group_list);
