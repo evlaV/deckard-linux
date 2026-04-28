@@ -335,6 +335,7 @@ static int vcnl4200_init(struct vcnl4000_data *data)
 	struct device *dev = &client->dev;
 	int ret, id;
 	u16 regval;
+	u32 val;
 
 	ret = i2c_smbus_read_word_data(client, VCNL4200_DEV_ID);
 	if (ret < 0)
