@@ -620,7 +620,7 @@ static void device_parse_cmd_line_option(struct xarray *dev_xarray,
 	for (p = option; *p; p += len, i++) {
 		len = strcspn(p, delimiter);
 		pt = kzalloc(len + 1, GFP_KERNEL);
-		memcpy(pt, p, len + 1);
+		memcpy(pt, p, len);
 		if (p[len] == *delimiter)
 			len++;
 		xa_store(dev_xarray, i, pt, GFP_KERNEL);
