@@ -173,7 +173,7 @@ struct vfe_device {
 	struct vfe_isr_ops isr_ops;
 	struct camss_video_ops video_ops;
 	struct device *genpd;
-	struct device_link *genpd_link;
+	u64 genpd_last_use_ts;
 
 	u32 stats_cfg; // user-provided bitfield that indicates which statistics/frameheaders must be provided in the metadata buffers
 };
