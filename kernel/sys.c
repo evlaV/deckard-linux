@@ -2903,7 +2903,12 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 			return -EINVAL;
 		if (arg4 || arg5)
 			return -EINVAL;
-		error = arch_lock_indir_br_lp_status(me, arg2);
+		error = arch_prctl_set_branch_landing_pad_state(me, arg3);
+		if (error)
+			break;
+		if (arg3 & PR_CFI_LOCK && !(arg3 & PR_CFI_DISABLE))
+			error = arch_prctl_lock_branch_landing_pad_state(me);
+		break;
 	case PR_ARM64_SET_UNALIGN_ATOMIC:
 		error = ARM64_SET_UNALIGN_ATOMIC_CTL(arg2);
 		break;
