@@ -1777,6 +1777,11 @@
         vcc-supply  = <&vreg_l15b_1p8>;
     };
 
+    broadcaster: broadcaster@2c {
+        compatible = "i2c-sw-broadcaster";
+        reg = <0x2c>;
+    };
+    
     max34417_1: max34417@12 {
         compatible = "maxim,max34417";
         reg = <0x12>;
@@ -1784,6 +1789,7 @@
         vdd-supply = <&vreg_l2b_3p0>;
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
+	broadcaster-parent = <&broadcaster>;
 
         // CH 1 : Kryo APC1 Cores
         // CH 2 : Kryo APC2 Cores
@@ -1799,6 +1805,7 @@
         vdd-supply = <&vreg_l2b_3p0>;
         vio-supply = <&vreg_l15b_1p8>;
         status = "okay";
+	broadcaster-parent = <&broadcaster>;
 
         // CH 1 : GFX Power
         // CH 2 : Tensor Processor – NSP2
