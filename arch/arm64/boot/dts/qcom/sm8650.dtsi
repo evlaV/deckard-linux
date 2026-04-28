@@ -5873,7 +5873,10 @@
 
 			power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>,
 					<&camcc CAM_CC_BPS_GDSC>,
-					<&camcc CAM_CC_IPE_0_GDSC>;
+					<&camcc CAM_CC_IPE_0_GDSC>,
+					<&camcc CAM_CC_IFE_0_GDSC>,
+					<&camcc CAM_CC_IFE_1_GDSC>,
+					<&camcc CAM_CC_IFE_2_GDSC>;
 
 			clocks = 
 				<&gcc GCC_CAMERA_AHB_CLK>,

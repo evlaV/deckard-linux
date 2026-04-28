@@ -28,6 +28,7 @@
 #define ICP_IOCTL_SEND_IPCC _IO('C', 6) // used to signal the ICP after sychronization data changes
 #define ICP_IOCTL_SYNX_TRYLOCK _IO('C', 7)
 #define ICP_IOCTL_SYNX_UNLOCK _IO('C', 8)
+#define ICP_IOCTL_TEST_POWER _IO('C', 9) // u32 arg
 
 struct icp_boot_config
 {
@@ -125,6 +126,8 @@ struct icp_data {
 	atomic_t open, booted, data_available;
 	struct list_head maps; // stores the iommu mappings
 	wait_queue_head_t waitqueue; // to wake up polling processes on ICP2HOST or IPCC signal interrupts
+
+	struct device *ife_genpd[3];
 };
 
 struct dma_map {
@@ -255,6 +258,27 @@ static long icp_unmap_dmabuf_by_va(struct icp_data *icp, u64 va)
 		return 0;
 	}
 	return -EINVAL;
+}
+
+static long icp_power_test(struct icp_data *icp, u32 val)
+{
+	u32 ife_idx = val & 0x3;
+	u32 outer_sleep_us = (val & 0x1fffc) >> 2;
+	u32 inner_sleep_us = (val & 0xfffe0000) >> 17;
+	printk("ICP ife=%u outer=%uus innter=%uus \n", ife_idx, outer_sleep_us, inner_sleep_us);
+
+	for(int i=0; i<100; i++)
+	{
+		pm_runtime_resume_and_get(icp->ife_genpd[ife_idx]);
+		if(inner_sleep_us) usleep_range(inner_sleep_us, inner_sleep_us+50);
+		pm_runtime_put_sync(icp->ife_genpd[ife_idx]);
+
+		if(outer_sleep_us) usleep_range(outer_sleep_us, outer_sleep_us+50);
+	}
+
+	printk("ICP ife=%u outer=%uus innter=%uus - DONE \n", ife_idx, outer_sleep_us, inner_sleep_us);
+
+	return 0;
 }
 
 static int reset_ipe_bps_cores(struct icp_data *icp)
@@ -564,6 +588,9 @@ switch (cmd) {
 	case ICP_IOCTL_SYNX_UNLOCK:
 		hwspin_unlock_raw(icp->hwlock_synx);
 		break;
+	case ICP_IOCTL_TEST_POWER:
+		ret = icp_power_test(icp, (uint32_t)arg);
+		break;
 	default:
 		ret = -ENOTTY;
 		break;
@@ -600,6 +627,9 @@ static int set_power(struct icp_data* icp)
 		return icp->genpd_num;
 	}
 
+	// Link to driver pm_runtime only CAM_CC_TITAN_TOP_GDSC, CAM_CC_BPS_GDSC, CAM_CC_IPE_0_GDSC
+	icp->genpd_num = 3;
+
 	icp->genpd = devm_kmalloc_array(dev, icp->genpd_num, sizeof(*icp->genpd), GFP_KERNEL);
 	if (!icp->genpd)
 		return -ENOMEM;
@@ -630,6 +660,19 @@ static int set_power(struct icp_data* icp)
 			goto link_add_error;
 		}
 	}
+
+	// Attach all IFE power domain but keep then independant
+	dev_err(dev, "Attaching IFE power domains \n");
+	for(i=0; i<3; i++)
+	{
+		icp->ife_genpd[i] = dev_pm_domain_attach_by_id(dev, 3+i);
+		if (IS_ERR(icp->ife_genpd[i])) {
+			ret = PTR_ERR(icp->ife_genpd[i]);
+			icp->ife_genpd[i] = NULL;
+			goto attach_error;
+		}
+	}
+	dev_err(dev, "Attaching IFE power domains - DONE \n");
 
 	pm_runtime_enable(dev);
 
