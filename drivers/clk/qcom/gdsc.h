@@ -77,6 +77,8 @@ struct gdsc {
 
 	struct clk_hw 			**clks;
 	unsigned int			num_clks;
+
+	u64 last_off_ts;
 };
 
 enum gdsc_status {

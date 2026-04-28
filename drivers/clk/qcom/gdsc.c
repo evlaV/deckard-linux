@@ -179,6 +179,20 @@ static int gdsc_toggle_logic(struct gdsc *sc, enum gdsc_status status,
 			return ret;
 	}
 
+	// printk("gdsc %s set to %s (ret=%d wait=%d)\n", sc->pd.name, status == GDSC_ON ? "on" : "off", ret, wait);
+
+	if(status == GDSC_OFF)
+	{
+		sc->last_off_ts = ktime_get_raw_ns();
+		printk("gdsc %s set to %s (ret=%d wait=%d)\n", sc->pd.name, status == GDSC_ON ? "on" : "off", ret, wait);
+	}
+	else if(status == GDSC_ON)
+	{
+		u64 dt = ktime_get_raw_ns() - sc->last_off_ts;
+		printk("gdsc %s set to %s (ret=%d wait=%d) dt=%lluus\n", sc->pd.name, status == GDSC_ON ? "on" : "off", ret, wait, dt/1000);
+	}
+
+
 	return ret;
 }
 
