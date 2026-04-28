@@ -869,7 +869,7 @@ static const struct backlight_ops lpm026m648c_bl_ops = {
 static int lpm026m648c_enable(struct drm_panel *panel)
 {
 	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
-	int ret, i;
+	int ret;
 
 	if (ctx->enabled)
 		return 0;
@@ -889,17 +889,6 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 
 	// default to 120, but we will change this based on frame rate
 	ctx->backlight->props.pulse_offset_rows = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
-
-	if ( ctx->panel_vendor == VENDOR_SHARP || ctx->panel_vendor == VENDOR_BOE ) {
-		for ( i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++ ) {
-			regulator_set_voltage(ctx->lcd_bias_regulators[i].consumer, 5800000, 5800000);
-		}
-	} else {
-		for ( i = 0; i < ARRAY_SIZE(ctx->lcd_bias_regulators); i++ ) {
-			regulator_set_voltage(ctx->lcd_bias_regulators[i].consumer, 5700000, 5700000);
-		}
-	}
-
 	ret = backlight_enable(ctx->backlight);
 
 	ctx->enabled = true;
