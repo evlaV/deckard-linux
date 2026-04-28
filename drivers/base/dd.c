@@ -16,6 +16,7 @@
  * Copyright (c) 2007-2009 Novell Inc.
  */
 
+#include "linux/of.h"
 #include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/delay.h>
@@ -57,6 +58,8 @@ static LIST_HEAD(deferred_probe_pending_list);
 static LIST_HEAD(deferred_probe_active_list);
 static atomic_t deferred_trigger_count = ATOMIC_INIT(0);
 static bool initcalls_done;
+static DEFINE_XARRAY(dev_probe_delay);
+static DEFINE_XARRAY(dev_probe_no_delay);
 
 /* Save the async probe drivers' name from kernel cmdline */
 #define ASYNC_DRV_NAMES_MAX_LEN	256
@@ -602,11 +605,74 @@ static int call_driver_probe(struct device *dev, const struct device_driver *drv
 	return ret;
 }
 
+static char *dev_probe_compatible;
+static char *dev_probe_node_name;
+static char *dev_probe_node_no_lock_name;
+static bool dev_probe_lock_by_default;
+
+static void device_parse_cmd_line_option(struct xarray *dev_xarray,
+					 char *option, const char *delimiter)
+{
+	unsigned long i = (unsigned long)delimiter;
+	char *p, *pt;
+	size_t len;
+
+	for (p = option; *p; p += len, i++) {
+		len = strcspn(p, delimiter);
+		pt = kzalloc(len + 1, GFP_KERNEL);
+		memcpy(pt, p, len + 1);
+		if (p[len] == *delimiter)
+			len++;
+		xa_store(dev_xarray, i, pt, GFP_KERNEL);
+		if (p[len] == ' ')
+			break;
+	}
+}
+
+static int device_probe_delay_list(void)
+{
+	char *dev_delay;
+	unsigned long i;
+
+	if (!dev_probe_compatible && !dev_probe_node_name &&
+		!dev_probe_node_no_lock_name)
+		return 0;
+
+	/*
+	 * if this is set means lock all by default and the other
+	 * options will be ignored
+	 */
+	if (dev_probe_node_no_lock_name) {
+		device_parse_cmd_line_option(&dev_probe_no_delay,
+						dev_probe_node_no_lock_name, ",");
+		dev_probe_lock_by_default = true;
+	} else {
+		device_parse_cmd_line_option(&dev_probe_delay, dev_probe_compatible, ":");
+		device_parse_cmd_line_option(&dev_probe_delay, dev_probe_node_name, ",");
+	}
+
+	dev_probe_compatible = NULL;
+	dev_probe_node_name = NULL;
+	dev_probe_node_no_lock_name = NULL;
+
+	xa_for_each(&dev_probe_delay, i, dev_delay)
+		printk("device_probe: added dev_delay rule: %s\n", dev_delay);
+
+	xa_for_each(&dev_probe_no_delay, i, dev_delay)
+		printk("device_probe: added dev_no_delay rule: %s\n", dev_delay);
+
+	return 0;
+}
+core_param(dev_probe_compatible, dev_probe_compatible, charp, 0400);
+core_param(dev_probe_node_name, dev_probe_node_name, charp, 0400);
+core_param(dev_probe_node_no_lock_name, dev_probe_node_no_lock_name, charp, 0400);
+
 static int really_probe(struct device *dev, const struct device_driver *drv)
 {
 	bool test_remove = IS_ENABLED(CONFIG_DEBUG_TEST_DRIVER_REMOVE) &&
 			   !drv->suppress_bind_attrs;
 	int ret, link_ret;
+
 
 	if (defer_all_probes) {
 		/*
@@ -614,7 +680,7 @@ static int really_probe(struct device *dev, const struct device_driver *drv)
 		 * device_block_probing() which, in turn, will call
 		 * wait_for_device_probe() right after that to avoid any races.
 		 */
-		dev_dbg(dev, "Driver %s force probe deferral\n", drv->name);
+		dev_info(dev, "Driver %s force probe deferral\n", drv->name);
 		return -EPROBE_DEFER;
 	}
 
@@ -822,10 +888,82 @@ static int __driver_probe_device(const struct device_driver *drv, struct device 
  *
  * If the device has a parent, runtime-resume the parent before driver probing.
  */
+static atomic_t device_locked = ATOMIC_INIT(0);
+
+static int driver_probe_device_lock(struct device *dev)
+{
+	if (atomic_read_acquire(&device_locked)) {
+		driver_deferred_probe_add(dev);
+		return -EPROBE_DEFER;
+	}
+	atomic_inc(&device_locked);
+
+	dev_info(dev, "***: //////////// will BLOCK probe here node: %pOFf\n", dev_of_node(dev));
+
+	return 0;
+}
+
 static int driver_probe_device(const struct device_driver *drv, struct device *dev)
 {
 	int trigger_count = atomic_read(&deferred_trigger_count);
+	bool forced_unlocked = false;
+	bool local_locked = false;
+	struct device_node *np;
+	char *dev_delay;
+	unsigned long i;
 	int ret;
+
+	device_probe_delay_list();
+
+	if (atomic_read_acquire(&device_locked)) {
+		dev_info(dev, "Driver %s force probe deferral\n", drv->name);
+		driver_deferred_probe_add(dev);
+
+		 /* Did a trigger occur while probing? Need to re-trigger if yes */
+		if (trigger_count != atomic_read(&deferred_trigger_count) &&
+		    !defer_all_probes)
+			driver_deferred_probe_trigger();
+
+		return -EPROBE_DEFER;
+	}
+
+	np = dev_of_node(dev);
+
+	if (dev_probe_lock_by_default) {
+		xa_for_each(&dev_probe_no_delay, i, dev_delay) {
+			if (!of_device_is_compatible(np, dev_delay) &&
+					(strncmp(dev_delay, of_node_full_name(np), strlen(dev_delay)))) {
+				continue;
+			}
+
+			dev_info(dev, "\\\\\\\\ PROBE: WILL_NOT_LOCK Driver %s node_name: %pOF full_name: %s\n",
+			   	  drv->name, dev_of_node(dev), of_node_full_name(np));
+			forced_unlocked = true;
+			break;
+		}
+		if (!forced_unlocked) {
+			dev_info(dev, "/////// PROBE: LOCK Driver %s node_name: %pOF full_name: %s\n",
+			   	  drv->name, dev_of_node(dev), of_node_full_name(np));
+			local_locked = true;
+		}
+	} else {
+		xa_for_each(&dev_probe_delay, i, dev_delay) {
+			if (!of_device_is_compatible(np, dev_delay) &&
+				(strncmp(dev_delay, of_node_full_name(np), strlen(dev_delay))))
+				continue;
+
+			dev_info(dev, "/////// PROBE: LOCK Driver %s node_name: %pOF full_name: %s\n",
+			   	  drv->name, dev_of_node(dev), of_node_full_name(np));
+			local_locked = true;
+			break;
+		}
+	}
+
+	if (local_locked) {
+		ret = driver_probe_device_lock(dev);
+		if (ret < 0)
+			return ret;
+	}
 
 	atomic_inc(&probe_count);
 	ret = __driver_probe_device(drv, dev);
@@ -840,6 +978,15 @@ static int driver_probe_device(const struct device_driver *drv, struct device *d
 			driver_deferred_probe_trigger();
 	}
 	atomic_dec(&probe_count);
+
+	if (local_locked && atomic_read_acquire(&device_locked)) {
+		if (atomic_dec_and_test(&device_locked)) {
+			dev_info(dev, "/////// PROBE: will UNBLOCK probe full_name: %s here ret: %d\n",
+			 of_node_full_name(np), ret);
+			driver_deferred_probe_trigger();
+		}
+	}
+
 	wake_up_all(&probe_waitqueue);
 	return ret;
 }
