@@ -1402,7 +1402,11 @@ static int platform_probe(struct device *_dev)
 		goto out;
 
 	if (drv->probe)
+	{
+        dev_warn(_dev, "gabe_probe");
 		ret = drv->probe(dev);
+        dev_warn(_dev, "gabe_probe returned %d", ret);
+    }
 
 out:
 	if (drv->prevent_deferred_probe && ret == -EPROBE_DEFER) {
