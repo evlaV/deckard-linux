@@ -9,6 +9,7 @@
  */
 #include <linux/clk.h>
 #include <linux/completion.h>
+#include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/iommu.h>
 #include <linux/mutex.h>
@@ -887,8 +888,9 @@ void vfe_pm_domain_off(struct vfe_device *vfe)
 	if (!vfe->genpd)
 		return;
 
-	device_link_del(vfe->genpd_link);
-	vfe->genpd_link = NULL;
+	/* Avoid using device_link_del, we need a sync suspend to enforce safe power off/on transitions timings. */
+	pm_runtime_put_sync(vfe->genpd);
+	vfe->genpd_last_use_ts = ktime_get_raw_ns();
 }
 
 /*
@@ -897,19 +899,32 @@ void vfe_pm_domain_off(struct vfe_device *vfe)
  */
 int vfe_pm_domain_on(struct vfe_device *vfe)
 {
-	struct camss *camss = vfe->camss;
-
 	if (!vfe->genpd)
 		return 0;
 
-	vfe->genpd_link = device_link_add(camss->dev, vfe->genpd,
-					  DL_FLAG_STATELESS |
-					  DL_FLAG_PM_RUNTIME |
-					  DL_FLAG_RPM_ACTIVE);
-	if (!vfe->genpd_link)
-		return -EINVAL;
+	/*
+	 * IFEs seem to get in a weird broken state when their respective GDSC states change from 
+	 * off to on in less than ~70us. This causes streaming failures and unexpected ISP frame 
+	 * output (partial processing), and can happen randomly at startup when various processes
+	 * are polling the available v4l2 devices and opening video devices in parallel.
+	 * The issue itself is completely unobservable from standard debugging methods (register dumps,
+	 * clocks and power domain configurations are perfectly identical when the hardware is in a bad state).
+	 * For further investigation, this is extremely easy to reproduce by keeping the top titan gdsc 
+	 * on and power cycling any IFE's gdsc in a tight loop.
+	 *
+	 * To avoid that problem we make sure per-IFE power domain is powered on at least 200us after the last
+	 * power-off event. This has no timing impact on most transitions and helps avoid the unexpected hardware state.
+	 */
+	u64 next_allowed_pwr_on_ts = vfe->genpd_last_use_ts + 200000;
+	u64 now_ts = ktime_get_raw_ns();
+	if(now_ts < next_allowed_pwr_on_ts)
+	{
+		u64 sleep_duration_us = (next_allowed_pwr_on_ts - now_ts)/1000;
+		usleep_range(sleep_duration_us, sleep_duration_us+100);
+	}
 
-	return 0;
+	/* Using the per-IFE power domain runtime instead of device links is needed for synchronous suspend */
+	return pm_runtime_resume_and_get(vfe->genpd);
 }
 
 static int vfe_match_clock_names(struct vfe_device *vfe,
@@ -1955,9 +1970,6 @@ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
  */
 void msm_vfe_genpd_cleanup(struct vfe_device *vfe)
 {
-	if (vfe->genpd_link)
-		device_link_del(vfe->genpd_link);
-
 	if (vfe->genpd)
 		dev_pm_domain_detach(vfe->genpd, true);
 }
