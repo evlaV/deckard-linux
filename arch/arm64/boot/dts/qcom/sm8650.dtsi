@@ -5464,10 +5464,16 @@
 					<&videocc VIDEO_CC_MVS0_GDSC>,
 					<&rpmhpd RPMHPD_MXC>,
 					<&rpmhpd RPMHPD_MMCX>;
+
 			power-domain-names = "venus",
 					     "vcodec0",
 					     "mxc",
 					     "mmcx";
+
+			required-opps = <&rpmhpd_opp_nom>,
+						<&rpmhpd_opp_nom>,
+						<&rpmhpd_opp_nom>,
+						<&rpmhpd_opp_nom>;
 
 			operating-points-v2 = <&iris_opp_table>;
 
@@ -5559,6 +5565,10 @@
 				 <&gcc GCC_VIDEO_AHB_CLK>;
 			power-domains = <&rpmhpd RPMHPD_MMCX>,
 					<&rpmhpd RPMHPD_MXC>;
+			
+			required-opps = <&rpmhpd_opp_nom>,
+						<&rpmhpd_opp_nom>;
+
 			#clock-cells = <1>;
 			#reset-cells = <1>;
 			#power-domain-cells = <1>;
@@ -5954,6 +5964,10 @@
 				 <&sleep_clk>;
 			power-domains = <&rpmhpd RPMHPD_MMCX>,
 					<&rpmhpd RPMHPD_MXC>;
+			
+			required-opps = <&rpmhpd_opp_nom>,
+					<&rpmhpd_opp_nom>;
+
 			#clock-cells = <1>;
 			#reset-cells = <1>;
 			#power-domain-cells = <1>;
@@ -8045,9 +8059,14 @@
 			power-domains = <&rpmhpd RPMHPD_CX>,
 					<&rpmhpd RPMHPD_MXC>,
 					<&rpmhpd RPMHPD_NSP>;
+
 			power-domain-names = "cx",
 					     "mxc",
 					     "nsp";
+
+			required-opps = <&rpmhpd_opp_nom>,
+						<&rpmhpd_opp_nom>,
+						<&rpmhpd_opp_nom>;
 
 			memory-region = <&cdsp_mem>, <&q6_cdsp_dtb_mem>, <&global_sync_mem>;
 
@@ -8218,10 +8237,12 @@
 					<&rpmhpd RPMHPD_MXC>,
 					<&rpmhpd RPMHPD_NSP>,
 					<&rpmhpd RPMHPD_NSP2>;
+					
 			power-domain-names = "cx",
 					     "mxc",
 					     "nsp",
 					     "nsp2";
+
 			required-opps = <&rpmhpd_opp_nom>,
 					<&rpmhpd_opp_nom>,
 					<&rpmhpd_opp_nom>,
@@ -8295,8 +8316,12 @@
 					<&rpmhpd RPMHPD_MMCX>,
 					<&videocc VIDEO_CC_MVS1C_GDSC>,
 					<&videocc VIDEO_CC_MVS1_GDSC>;
-			required-opps = <&rpmhpd_opp_nom>, <&rpmhpd_opp_nom>,
-					<&rpmhpd_opp_nom>, <&rpmhpd_opp_nom>;
+			
+			required-opps = <&rpmhpd_opp_nom>, 
+						<&rpmhpd_opp_nom>,
+						<&rpmhpd_opp_nom>, 
+						<&rpmhpd_opp_nom>;
+
 			power-domain-names = "mxc",
 					     "mmcx",
 					     "ctrl",

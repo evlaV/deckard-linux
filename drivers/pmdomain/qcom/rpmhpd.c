@@ -802,19 +802,32 @@ MODULE_DEVICE_TABLE(of, rpmhpd_match_table);
 static int rpmhpd_send_corner(struct rpmhpd *pd, int state,
 			      unsigned int corner, bool sync)
 {
+	int ret = 0;
 	struct tcs_cmd cmd = {
 		.addr = pd->addr,
 		.data = corner,
 	};
+
+#if 0
+	if( !strcmp(pd->res_name,"mxc.lvl") )
+	{
+		printk(KERN_INFO "gabe rpmh skipping mxc");
+		return 0;
+	}
+#endif
 
 	/*
 	 * Wait for an ack only when we are increasing the
 	 * perf state of the power domain
 	 */
 	if (sync)
-		return rpmh_write(pd->dev, state, &cmd, 1);
+		ret = rpmh_write(pd->dev, state, &cmd, 1);
 	else
-		return rpmh_write_async(pd->dev, state, &cmd, 1);
+		ret = rpmh_write_async(pd->dev, state, &cmd, 1);
+
+	printk(KERN_INFO "gabe rpmh write: name=[%s] res_name=[%s] corner=[%d] sync=[%d]",pd->res_name,corner,sync);
+
+	return ret;
 }
 
 static void to_active_sleep(struct rpmhpd *pd, unsigned int corner,
@@ -826,6 +839,20 @@ static void to_active_sleep(struct rpmhpd *pd, unsigned int corner,
 		*sleep = 0;
 	else
 		*sleep = *active;
+}
+
+static void print_rpmh_info(char * info_str, struct rpmhpd *pd, unsigned int corner, unsigned int this_active_corner,
+				unsigned int this_sleep_corner, unsigned int peer_active_corner, unsigned int peer_sleep_corner, unsigned int peer_enabled_corner)
+{
+	if(!pd) return;
+
+	if( !strcmp(pd->res_name,"mxc.lvl") )
+	{
+		printk(KERN_INFO "gabe rpmh info: [%s][%s][%s] [%d,%d,%d,%d,%d,%d]",pd->pd.name,pd->res_name, info_str,
+			corner, this_active_corner, this_sleep_corner, peer_active_corner, peer_sleep_corner, peer_enabled_corner);
+	}
+
+	return;
 }
 
 /*
@@ -844,24 +871,30 @@ static int rpmhpd_aggregate_corner(struct rpmhpd *pd, unsigned int corner)
 	unsigned int active_corner, sleep_corner;
 	unsigned int this_active_corner = 0, this_sleep_corner = 0;
 	unsigned int peer_active_corner = 0, peer_sleep_corner = 0;
-	unsigned int peer_enabled_corner;
+	unsigned int peer_enabled_corner = 0;
+
+	print_rpmh_info("x1",pd,corner,this_active_corner,this_sleep_corner,peer_active_corner,peer_sleep_corner,peer_enabled_corner);
 
 	if (pd->state_synced) {
 		to_active_sleep(pd, corner, &this_active_corner, &this_sleep_corner);
+		print_rpmh_info("x1",pd,corner,this_active_corner,this_sleep_corner,peer_active_corner,peer_sleep_corner,peer_enabled_corner);
 	} else {
 		/* Clamp to highest corner if sync_state hasn't happened */
 		this_active_corner = pd->level_count - 1;
 		this_sleep_corner = pd->level_count - 1;
+		print_rpmh_info("x2",pd,corner,this_active_corner,this_sleep_corner,peer_active_corner,peer_sleep_corner,peer_enabled_corner);
 	}
 
 	if (peer && peer->enabled) {
 		peer_enabled_corner = max(peer->corner, peer->enable_corner);
 		to_active_sleep(peer, peer_enabled_corner, &peer_active_corner,
 				&peer_sleep_corner);
+		print_rpmh_info("x3",pd,corner,this_active_corner,this_sleep_corner,peer_active_corner,peer_sleep_corner,peer_enabled_corner);
 	}
 
 	active_corner = max(this_active_corner, peer_active_corner);
 
+	print_rpmh_info("x4",pd,corner,this_active_corner,this_sleep_corner,peer_active_corner,peer_sleep_corner,peer_enabled_corner);
 	ret = rpmhpd_send_corner(pd, RPMH_ACTIVE_ONLY_STATE, active_corner,
 				 active_corner > pd->active_corner);
 	if (ret)
@@ -872,6 +905,8 @@ static int rpmhpd_aggregate_corner(struct rpmhpd *pd, unsigned int corner)
 	if (peer) {
 		peer->active_corner = active_corner;
 
+		print_rpmh_info("x5",pd,corner,this_active_corner,this_sleep_corner,peer_active_corner,peer_sleep_corner,peer_enabled_corner);
+
 		ret = rpmhpd_send_corner(pd, RPMH_WAKE_ONLY_STATE,
 					 active_corner, false);
 		if (ret)
@@ -879,6 +914,7 @@ static int rpmhpd_aggregate_corner(struct rpmhpd *pd, unsigned int corner)
 
 		sleep_corner = max(this_sleep_corner, peer_sleep_corner);
 
+		print_rpmh_info("x6",pd,corner,this_active_corner,this_sleep_corner,peer_active_corner,peer_sleep_corner,peer_enabled_corner);
 		return rpmhpd_send_corner(pd, RPMH_SLEEP_STATE, sleep_corner,
 					  false);
 	}
@@ -971,7 +1007,10 @@ static int rpmhpd_update_level_mapping(struct rpmhpd *rpmhpd)
 
 	for (i = 0; i < rpmhpd->level_count; i++) {
 		if (rpmhpd->skip_retention_level && buf[i] == RPMH_REGULATOR_LEVEL_RETENTION)
+		{
+			printk(KERN_INFO "%s,%s: ARC hlvl=%2d --> vlvl=%4u\n", rpmhpd->pd.name, rpmhpd->res_name, i,RPMH_REGULATOR_LEVEL_RETENTION);
 			continue;
+		}
 
 		rpmhpd->level[i] = buf[i];
 
@@ -987,7 +1026,7 @@ static int rpmhpd_update_level_mapping(struct rpmhpd *rpmhpd)
 			rpmhpd->level_count = i;
 			break;
 		}
-		pr_debug("%s: ARC hlvl=%2d --> vlvl=%4u\n", rpmhpd->res_name, i,
+		printk(KERN_INFO "%s: ARC hlvl=%2d --> vlvl=%4u\n", rpmhpd->res_name, i,
 			 rpmhpd->level[i]);
 	}
 
