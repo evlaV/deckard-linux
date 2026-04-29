@@ -332,10 +332,8 @@ static void _dpu_crtc_setup_blend_cfg(struct dpu_crtc_mixer *mixer,
 	u32 blend_op;
 	u32 fg_alpha, bg_alpha;
 
-	if (mdss_ver->core_major_ver < 12 && planar_cac)
-		fg_alpha = 0xff;
-	else if (planar_cac)
-		bg_alpha = 0x3ff;
+	if (planar_cac)
+		fg_alpha = DRM_BLEND_ALPHA_OPAQUE;
 	else
 		fg_alpha = pstate->base.alpha;
 
@@ -371,6 +369,9 @@ static void _dpu_crtc_setup_blend_cfg(struct dpu_crtc_mixer *mixer,
 			blend_op |= DPU_BLEND_BG_INV_ALPHA;
 		}
 	}
+
+	if (planar_cac)
+		bg_alpha = fg_alpha;
 
 	/* No valid plane stage for hidden SSPP in planar mode. use cac_stage */
 	if (cac_stage && planar_cac && lm->ops.setup_blend_config_cac)
