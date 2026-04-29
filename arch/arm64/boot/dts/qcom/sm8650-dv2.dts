@@ -1494,13 +1494,13 @@
 	display_avee_en_l: display_avee_en_l-state {
 		pins = "gpio9";
 		function = "normal";
-		power-source = <0>; /* 1.8 V */
+		power-source = <1>; /* 1.8 V */
 	};
 
 	display_avee_en_r: display_avee_en_r-state {
 		pins = "gpio10";
 		function = "normal";
-		power-source = <0>; /* 1.8 V */
+		power-source = <1>; /* 1.8 V */
 	};
 };
 
