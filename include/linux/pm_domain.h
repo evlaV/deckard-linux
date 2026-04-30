@@ -189,6 +189,7 @@ struct genpd_power_state {
 
 struct genpd_lock_ops;
 struct opp_table;
+struct dev_pm_opp;
 
 struct generic_pm_domain {
 	struct device dev;
@@ -218,6 +219,8 @@ struct generic_pm_domain {
 	int (*power_on)(struct generic_pm_domain *domain);
 	struct raw_notifier_head power_notifiers; /* Power on/off notifiers */
 	struct opp_table *opp_table;	/* OPP table of the genpd */
+	unsigned int (*opp_to_performance_state)(struct generic_pm_domain *genpd,
+						struct dev_pm_opp *opp);
 	int (*set_performance_state)(struct generic_pm_domain *genpd,
 				     unsigned int state);
 	struct gpd_dev_ops dev_ops;
@@ -465,6 +468,8 @@ struct generic_pm_domain *of_genpd_remove_last(struct device_node *np);
 int of_genpd_parse_idle_states(struct device_node *dn,
 			       struct genpd_power_state **states, int *n);
 void of_genpd_sync_state(struct device_node *np);
+unsigned int pm_genpd_opp_to_performance_state(struct device *genpd_dev,
+					       struct dev_pm_opp *opp);
 
 int genpd_dev_pm_attach(struct device *dev);
 struct device *genpd_dev_pm_attach_by_id(struct device *dev,
@@ -511,6 +516,13 @@ static inline int of_genpd_parse_idle_states(struct device_node *dn,
 }
 
 static inline void of_genpd_sync_state(struct device_node *np) {}
+
+static inline unsigned int
+pm_genpd_opp_to_performance_state(struct device *genpd_dev,
+				  struct dev_pm_opp *opp)
+{
+	return 0;
+}
 
 static inline int genpd_dev_pm_attach(struct device *dev)
 {

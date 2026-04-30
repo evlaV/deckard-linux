@@ -176,7 +176,10 @@ static struct rpmhpd mxc = {
 	.pd = { .name = "mxc", },
 	.peer = &mxc_ao,
 	.res_name = "mxc.lvl",
+#if 0
+    //android doesnt have this	
 	.skip_retention_level = true,
+#endif	
 };
 
 static struct rpmhpd mxc_ao = {
@@ -184,7 +187,10 @@ static struct rpmhpd mxc_ao = {
 	.active_only = true,
 	.peer = &mxc,
 	.res_name = "mxc.lvl",
+#if 0
+    //android doesnt have this	
 	.skip_retention_level = true,
+#endif	
 };
 
 static struct rpmhpd nsp = {
@@ -824,8 +830,7 @@ static int rpmhpd_send_corner(struct rpmhpd *pd, int state,
 		ret = rpmh_write(pd->dev, state, &cmd, 1);
 	else
 		ret = rpmh_write_async(pd->dev, state, &cmd, 1);
-
-	printk(KERN_INFO "gabe rpmh write: name=[%s] res_name=[%s] corner=[%d] sync=[%d]",pd->res_name,corner,sync);
+	printk(KERN_INFO "gabe rpmh write: name=[%s] res_name=[%s] corner=[%d] sync=[%d]", pd->pd.name, pd->res_name, corner, sync);
 
 	return ret;
 }
@@ -875,6 +880,7 @@ static int rpmhpd_aggregate_corner(struct rpmhpd *pd, unsigned int corner)
 
 	print_rpmh_info("x1",pd,corner,this_active_corner,this_sleep_corner,peer_active_corner,peer_sleep_corner,peer_enabled_corner);
 
+#if 0
 	if (pd->state_synced) {
 		to_active_sleep(pd, corner, &this_active_corner, &this_sleep_corner);
 		print_rpmh_info("x1",pd,corner,this_active_corner,this_sleep_corner,peer_active_corner,peer_sleep_corner,peer_enabled_corner);
@@ -891,6 +897,15 @@ static int rpmhpd_aggregate_corner(struct rpmhpd *pd, unsigned int corner)
 				&peer_sleep_corner);
 		print_rpmh_info("x3",pd,corner,this_active_corner,this_sleep_corner,peer_active_corner,peer_sleep_corner,peer_enabled_corner);
 	}
+#else
+	//android style
+	to_active_sleep(pd, corner, &this_active_corner, &this_sleep_corner);
+
+	if (peer && peer->enabled)
+		to_active_sleep(peer, peer->corner, &peer_active_corner,
+				&peer_sleep_corner);
+
+#endif
 
 	active_corner = max(this_active_corner, peer_active_corner);
 
@@ -990,6 +1005,12 @@ static int rpmhpd_set_performance_state(struct generic_pm_domain *domain,
 	return 0;
 }
 
+static unsigned int rpmhpd_get_performance_state(struct generic_pm_domain *genpd,
+						 struct dev_pm_opp *opp)
+{
+	return dev_pm_opp_get_level(opp);
+}
+
 static int rpmhpd_update_level_mapping(struct rpmhpd *rpmhpd)
 {
 	int i;
@@ -1006,12 +1027,14 @@ static int rpmhpd_update_level_mapping(struct rpmhpd *rpmhpd)
 		return -EINVAL;
 
 	for (i = 0; i < rpmhpd->level_count; i++) {
+#if 0	
+//android doesnt have this
 		if (rpmhpd->skip_retention_level && buf[i] == RPMH_REGULATOR_LEVEL_RETENTION)
 		{
-			printk(KERN_INFO "%s,%s: ARC hlvl=%2d --> vlvl=%4u\n", rpmhpd->pd.name, rpmhpd->res_name, i,RPMH_REGULATOR_LEVEL_RETENTION);
+			printk(KERN_INFO "%s,%s: ARC hlvl=%2d --> vlvl=%4u, skip retention level\n", rpmhpd->pd.name, rpmhpd->res_name, i,RPMH_REGULATOR_LEVEL_RETENTION);
 			continue;
 		}
-
+#endif
 		rpmhpd->level[i] = buf[i];
 
 		/* Remember the first corner with non-zero level */
@@ -1026,8 +1049,7 @@ static int rpmhpd_update_level_mapping(struct rpmhpd *rpmhpd)
 			rpmhpd->level_count = i;
 			break;
 		}
-		printk(KERN_INFO "%s: ARC hlvl=%2d --> vlvl=%4u\n", rpmhpd->res_name, i,
-			 rpmhpd->level[i]);
+		printk(KERN_INFO "%s,%s: ARC hlvl=%2d --> vlvl=%4u\n", rpmhpd->pd.name, rpmhpd->res_name, i, rpmhpd->level[i]);
 	}
 
 	return 0;
@@ -1085,6 +1107,7 @@ static int rpmhpd_probe(struct platform_device *pdev)
 		rpmhpds[i]->pd.power_off = rpmhpd_power_off;
 		rpmhpds[i]->pd.power_on = rpmhpd_power_on;
 		rpmhpds[i]->pd.set_performance_state = rpmhpd_set_performance_state;
+		rpmhpds[i]->pd.opp_to_performance_state = rpmhpd_get_performance_state;
 		pm_genpd_init(&rpmhpds[i]->pd, NULL, true);
 
 		data->domains[i] = &rpmhpds[i]->pd;
@@ -1137,7 +1160,10 @@ static struct platform_driver rpmhpd_driver = {
 		.name = "qcom-rpmhpd",
 		.of_match_table = rpmhpd_match_table,
 		.suppress_bind_attrs = true,
+#if 0
+//android doesn't have this		
 		.sync_state = rpmhpd_sync_state,
+#endif		
 	},
 	.probe = rpmhpd_probe,
 };
