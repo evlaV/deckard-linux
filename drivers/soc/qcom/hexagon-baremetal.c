@@ -428,7 +428,7 @@ static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 
 	// Only try to set src to QDSP6SSPLL for cDSP on 8650
 	if (dsp->is_cdsp) {
-		icc_set_bw(dsp->dma_path, 0, UINT_MAX);
+		icc_set_bw(dsp->dma_path, 0, GBps_to_icc(1));
 		dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
 		pm_runtime_get_sync(dsp->pds[0]);
 		dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
@@ -1013,7 +1013,7 @@ static int dsp_probe(struct platform_device *pdev)
 
 		dsp->dma_path = devm_of_icc_get(dev, "mem");
 		WARN_ON(IS_ERR(dsp->dma_path));
-		icc_set_bw(dsp->dma_path, 0, UINT_MAX);
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1));
 
 		// TURING_QDSP6SS_PLL_PLL_CM_PLL_LUCID_OLE
 		// Set it to use TURBO_L3 frequency - 1843.2 MHz
