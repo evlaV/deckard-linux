@@ -137,9 +137,6 @@ struct dpu_kms {
 	struct dpu_sw_pipe cac_pipes[PLANAR_CAC_PIPES_WITH_FETCH];
 	struct dpu_sw_pipe_cfg cac_pipe_cfg[PLANAR_CAC_PIPES_WITH_FETCH];
 	struct cac_blob cac_blobs[PLANAR_CAC_SSPP_VIG];
-	/* Bank B of cac_blobs for data integrity with A/B bank */
-	struct cac_blob cac_blobs_b[PLANAR_CAC_SSPP_VIG];
-	u32 cac_blob_bank; /* 0 for bank A, 1 for bank B */
 };
 
 struct vsync_info {
