@@ -299,8 +299,14 @@ static ssize_t cac_blob_read(struct file *file, char __user *user_buf, size_t co
 
 static ssize_t cac_blob_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
 {
-	struct cac_blob (*blobs)[PLANAR_CAC_SSPP_VIG] = file->private_data;
-	return simple_write_to_buffer(blobs, sizeof(*blobs), ppos, user_buf, count);
+	struct dpu_kms *dpu_kms = (struct dpu_kms *)file->private_data;
+	int size = PLANAR_CAC_SSPP_VIG * sizeof(struct cac_blob);
+
+	if (dpu_kms->cac_update_wip)
+		return 0;
+
+	return simple_write_to_buffer(dpu_kms->cac_blobs, size, ppos,
+				      user_buf, count);
 }
 
 static const struct file_operations cac_blob_fops = {
@@ -328,7 +334,7 @@ static int dpu_kms_debugfs_init(struct msm_kms *kms, struct drm_minor *minor)
 
 	debugfs_create_x32(DPU_DEBUGFS_HWMASKNAME, 0600, entry, p);
 	debugfs_create_u32("cac_enable", 0600, entry, &dpu_kms->cac_state_cached);
-	debugfs_create_file("cac_blob", 0600, entry, &dpu_kms->cac_blobs, &cac_blob_fops);
+	debugfs_create_file("cac_blob", 0600, entry, dpu_kms, &cac_blob_fops);
 	debugfs_create_bool("cac_update", 0600, entry, &dpu_kms->cac_update_pending);
 	debugfs_create_bool("skip_cwb_right", 0600, entry, &dpu_kms->skip_cwb_right);
 
@@ -1379,6 +1385,7 @@ static int dpu_kms_init(struct drm_device *ddev)
 	dpu_kms->cac_state_cached = CAC_DISABLED;
 	dpu_kms->skip_cwb_right = true;
 	dpu_kms->cac_update_pending = false;
+	dpu_kms->cac_update_wip = false;
 
 	return 0;
 }
