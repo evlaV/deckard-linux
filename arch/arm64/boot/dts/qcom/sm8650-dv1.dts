@@ -1351,7 +1351,6 @@
 		right-pos-supply = <&vpos_right>;
 		right-neg-supply = <&vneg_right>;
 
-		preboost-supply = <&BACKLIGHT_PREBOOST>;
 		backlight-left-supply = <&backlight_left>;
 		backlight-right-supply = <&backlight_right>;
 
@@ -1794,6 +1793,7 @@
 		reg = <0x38>;
 		status = "okay";
 		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+		preboost-supply = <&BACKLIGHT_PREBOOST>;
 		mode = "pwm";
 		regulator {
 			backlight_right: backlight{
@@ -1857,6 +1857,7 @@
 		reg = <0x38>;
 		status = "okay";
 		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+		preboost-supply = <&BACKLIGHT_PREBOOST>;
 		mode = "pwm";
 		regulator {
 			backlight_left: backlight{

@@ -1352,7 +1352,6 @@
 		right-pos-supply = <&vpos_right>;
 		right-neg-supply = <&vneg_right>;
 
-		preboost-supply = <&BACKLIGHT_PREBOOST>;
 		backlight-left-supply = <&backlight_left>;
 		backlight-right-supply = <&backlight_right>;
 
@@ -1797,6 +1796,7 @@
 		compatible = "mps,mp3317";
 		reg = <0x29>;
 		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+		preboost-supply = <&BACKLIGHT_PREBOOST>;
 
 		mp3317,vout = <18000>; // 18V
 		mp3317,ovp-max = <0x9f>;
@@ -1877,6 +1877,7 @@
 		compatible = "mps,mp3317";
 		reg = <0x29>;
 		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+		preboost-supply = <&BACKLIGHT_PREBOOST>;
 
 		mp3317,vout = <18000>; // 18V
 		mp3317,ovp-max = <0x9f>;
