@@ -30,6 +30,7 @@ struct mpq3367_data {
 	struct regmap *regmap;
 	struct device *dev;
 	struct regulator_desc desc;
+	struct regulator *preboost;
 	bool is_enabled;
 	struct gpio_desc *en_gpio;
 	unsigned int dimming_mode;
@@ -100,6 +101,11 @@ static int reg_enable(struct regulator_dev *rdev)
 	int ret;
 	int i=0;
 
+	regulator_enable(mpq->preboost);
+	//we need to delay to wait for hiccup mode to exit on EV1 hardware --
+	//at a minimum it is about 70ms we need to wait here...
+	usleep_range(400000, 450000);
+
 	gpiod_set_value(mpq->en_gpio, 1);
 	usleep_range(10000, 20000);
 	for(i=0;i<10;i++) {
@@ -134,6 +140,7 @@ static int reg_disable(struct regulator_dev *rdev)
 	gpiod_set_value(mpq->en_gpio, 0);
 
 	mpq->is_enabled = false;
+	regulator_disable(mpq->preboost);
 	return 0;
 }
 
@@ -255,6 +262,10 @@ static int mpq3367_probe(struct i2c_client *client)
 		dev_err(dev, "cannot get en gpio %ld\n",
 			PTR_ERR(mpq->en_gpio));
 	}
+
+	mpq->preboost = devm_regulator_get(dev, "preboost");
+	if (IS_ERR(mpq->preboost))
+		WARN(1, "Preboot regulator is not found!\n");
 
 	// default to PWM dimming if not set in DTS
 	mpq->dimming_mode = MPQ3367_PWM_DIMMING;
