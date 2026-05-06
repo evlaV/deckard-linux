@@ -680,17 +680,13 @@ static int cvp_power_off_controller(struct cvp *cvp)
 	}
 #endif
 
-	/* poll AON spare register bit1 to become zero with 50ms timeout */
-	ret = read_poll_timeout(readl, reg, (reg & BIT(1)) == 0, 1000, 50000, false,
+	/* poll AON spare register bit1 to become zero with 500ms timeout */
+	ret = read_poll_timeout(readl, reg, (reg & BIT(1)) == 0, 1000, 500000, false,
 				cvp->base + CVP_AON_WRAPPER_SPARE);
-	if (ret) {
-		dev_warn(cvp->miscdev.parent, "AON_WRAPPER_SPARE timeout (%x)", reg);
-		reset_control_release(cvp->resets[RESET_XO]);
-		goto skip_xo_reset;
-	}
+	if (ret)
+		dev_warn(cvp->miscdev.parent, "AON_WRAPPER_SPARE timeout (%x)\n", reg);
 
-	reg = readl(cvp->base + CVP_AON_WRAPPER_SPARE);
-	writel(reg | BIT(0), cvp->base + CVP_AON_WRAPPER_SPARE);
+	writel(BIT(0), cvp->base + CVP_AON_WRAPPER_SPARE);
 
 	//reset_control_assert(cvp->resets[RESET_XO]);
 
@@ -703,12 +699,9 @@ static int cvp_power_off_controller(struct cvp *cvp)
 	//reset_control_deassert(cvp->resets[RESET_XO]);
 
 	/* clear XO mask bit - this step was missing in previous sequence */
-	reg = readl(cvp->base + CVP_AON_WRAPPER_SPARE);
-	writel(reg & ~BIT(0), cvp->base + CVP_AON_WRAPPER_SPARE);
+	writel(0, cvp->base + CVP_AON_WRAPPER_SPARE);
 
 	//reset_control_release(cvp->resets[RESET_XO]);
-
-skip_xo_reset:
 
 	/* Enable CVP NoC clock */
 	reg = readl(cvp->base + CVP_AON_WRAPPER_CVP_NOC_CORE_CLK_CONTROL);
