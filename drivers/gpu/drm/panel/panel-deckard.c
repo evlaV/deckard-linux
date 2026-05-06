@@ -81,10 +81,6 @@ static const char * const regulator_names[] = {
 	"vdda",
 };
 
-static const char * const preboost_driver_names[] = {
-	"preboost",
-};
-
 static const char * const backlight_driver_names[] = {
 	"backlight-left",
 	"backlight-right",
@@ -122,7 +118,6 @@ struct lpm026m648c_ctx {
 	struct drm_panel panel;
 
 	struct regulator_bulk_data power_supplies[ARRAY_SIZE(regulator_names)];
-	struct regulator_bulk_data preboost_drivers[ARRAY_SIZE(preboost_driver_names)];
 	struct regulator_bulk_data backlight_drivers[ARRAY_SIZE(backlight_driver_names)];
 	struct regulator_bulk_data lcd_bias_regulators[ARRAY_SIZE(lcd_bias_names)];
 
@@ -781,13 +776,6 @@ static int lpm026m648c_unprepare(struct drm_panel *panel)
 			"regulator_bulk_disable failed for backlight %d\n", ret);
 	}
 
-	// disable preboost drivers
-	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->preboost_drivers), ctx->preboost_drivers);
-	if (ret) {
-		DRM_DEV_ERROR(ctx->dev,
-			"regulator_bulk_disable failed for preboost%d\n", ret);
-	}
-	
 	ctx->prepared = false;
 	return ret;
 }
@@ -799,18 +787,6 @@ static int lpm026m648c_prepare(struct drm_panel *panel)
 
 	if (ctx->prepared)
 		return 0;
-
-	// turn on preboost drivers
-	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->preboost_drivers), ctx->preboost_drivers);
-	if (ret < 0)
-	{
-		DRM_DEV_ERROR(ctx->dev, "preboost on failed\n");
-		goto power_off;
-	}
-
-	//we need to delay to wait for hiccup mode to exit on EV1 hardware --
-	//at a minimum it is about 70ms we need to wait here...
-	usleep_range(400000, 450000);
 
 	// turn on backlight drivers
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
@@ -1263,16 +1239,6 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 				      ctx->power_supplies);
 	if (ret < 0) {
 		DRM_DEV_ERROR(ctx->dev, "Failed to get power supplies\n");
-		return ret;
-	}
-
-	for (i = 0; i < ARRAY_SIZE(ctx->preboost_drivers); i++)
-						ctx->preboost_drivers[i].supply = preboost_driver_names[i];
-
-	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->preboost_drivers),
-						ctx->preboost_drivers);
-	if (ret < 0){
-		DRM_DEV_ERROR(ctx->dev, "Failed to get preboost supplies\n");
 		return ret;
 	}
 
