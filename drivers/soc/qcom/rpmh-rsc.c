@@ -649,12 +649,12 @@ int rpmh_rsc_send_data(struct rsc_drv *drv, const struct tcs_request *msg)
 	if(drv->memfreq != -1) {
 		u32 convertedfreq = clamp_val(drv->memfreq, 200, 4200) * 34/10; //conversion is 3.4 * target_freq_MHz
 		dataval = 0x60000000 | (convertedfreq << 14) | convertedfreq;
-	}
 
-	for (int i = 0; i < msg->num_cmds; i++) {
-		struct tcs_cmd *cmd = &msg->cmds[i];
-		if (cmd->addr == 0x50000) {
-			cmd->data = dataval;
+		for (int i = 0; i < msg->num_cmds; i++) {
+			struct tcs_cmd *cmd = &msg->cmds[i];
+			if (cmd->addr == 0x50000) {
+				cmd->data = dataval;
+			}
 		}
 	}
 
