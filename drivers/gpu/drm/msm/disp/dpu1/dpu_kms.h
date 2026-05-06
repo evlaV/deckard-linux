@@ -114,6 +114,7 @@ struct dpu_kms {
 	enum cac_state cac_state_cached;
 	enum cac_state cac_state_cur;
 	bool cac_update_pending;
+	bool cac_updating_now;
 	u32 cac_vig_lm_stage;	/* stage in LM to blend SSPP_VIG0~3 */
 	u32 cac_blob_id;
 	/* skip right half of framebuffer in quad-pipe writeback case */
