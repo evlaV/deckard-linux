@@ -308,13 +308,7 @@ static ssize_t cac_blob_write(struct file *file, const char __user *user_buf, si
 {
 	struct dpu_kms *dpu_kms = file->private_data;
 	int size = PLANAR_CAC_SSPP_VIG * sizeof(struct cac_blob);
-	int ret, retry = 50;
-
-	while (READ_ONCE(dpu_kms->cac_update_pending) != false) {
-		msleep(1);
-		if(!retry--)
-			return 0;
-	}
+	int ret;
 
 	/* write to inactive bank */
 	if (dpu_kms->cac_blob_bank)
