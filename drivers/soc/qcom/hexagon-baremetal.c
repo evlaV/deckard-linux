@@ -1,3 +1,5 @@
+#include "linux/pm.h"
+#include "linux/types.h"
 #include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/mod_devicetable.h>
@@ -40,6 +42,12 @@
 #define QDSP6SS_RESET_STATUS 0x2448
 
 #define QDSP6SS_QDSP6V67SS_PLL 0x40000
+
+#define QDSP6V67SS_BOOT_PARAMS0 0x60
+#define DSP_APP_DEV_STATE (QDSP6V67SS_BOOT_PARAMS0 + 4)
+
+#define DSP_APP_DEV_RESUMING  BIT(0)
+#define DSP_APP_DEV_SUSPENDED BIT(1)
 
 struct dsp {
 	struct miscdevice miscdev;
@@ -170,7 +178,7 @@ xtensa_boot(struct dsp *dsp)
 {
 	// Can this be called outside of booting the CVP?
 	bool is_cvp = true;
-	
+
 #define CVP_SS_BASE_OFFS			0x0
 #define CVP_SS_NUM_THREADS			4
 
@@ -316,7 +324,7 @@ xtensa_boot(struct dsp *dsp)
 		}
 
 		u32 post_recovery_status = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS);
-		dev_warn(dsp->miscdev.parent, "CVP error recovery | Initial status: 0x%x | Final status: 0x%x\n", intr_status, post_recovery_status); 
+		dev_warn(dsp->miscdev.parent, "CVP error recovery | Initial status: 0x%x | Final status: 0x%x\n", intr_status, post_recovery_status);
 		if(post_recovery_status)
 		{
 			dev_err(dsp->miscdev.parent, "CVP error recovery failed. Status: 0x%x\n", post_recovery_status);
@@ -906,6 +914,7 @@ static int dsp_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, dsp);
+	dev_set_drvdata(dev, dsp);
 
 	dsp->iommu = iommu_paging_domain_alloc(dev);
 	ret = iommu_attach_device(dsp->iommu, dev);
@@ -1022,6 +1031,7 @@ static int dsp_probe(struct platform_device *pdev)
 
 	if (dsp->is_adsp)
 	{
+		writel(0, dsp->base + DSP_APP_DEV_STATE);
 		dsp->dma_path = devm_of_icc_get(dev, "mem");
 		WARN_ON(IS_ERR(dsp->dma_path));
 		icc_set_bw(dsp->dma_path, 0, UINT_MAX);
@@ -1038,6 +1048,34 @@ static void dsp_remove(struct platform_device *pdev)
 	return;
 }
 
+static int dsp_suspend(struct device *dev)
+{
+	struct dsp *dsp = dev_get_drvdata(dev);
+
+	dev_info(dev, "%s: going to suspend\n", __func__);
+	if (dsp->is_adsp)
+		writel(DSP_APP_DEV_SUSPENDED,
+			dsp->base + DSP_APP_DEV_STATE);
+
+	return 0;
+}
+
+static int dsp_resume(struct device *dev)
+{
+	struct dsp *dsp = dev_get_drvdata(dev);
+
+	dev_info(dev, "%s: going to resume\n", __func__);
+	if (dsp->is_adsp)
+		writel(DSP_APP_DEV_RESUMING,
+		 	dsp->base + DSP_APP_DEV_STATE);
+
+	return 0;
+}
+
+static const struct dev_pm_ops dsp_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(dsp_suspend, dsp_resume)
+};
+
 static const struct of_device_id dsp_match_table[] = {
 	{ .compatible = "qcom,sm8650-hexagon" },
 	{ }
@@ -1049,6 +1087,7 @@ static struct platform_driver dsp_driver = {
 	.remove = dsp_remove,
 	.driver = {
 		.name = "dsp-sm8650",
+		.pm = &dsp_pm_ops,
 		.of_match_table = dsp_match_table,
 	},
 };
