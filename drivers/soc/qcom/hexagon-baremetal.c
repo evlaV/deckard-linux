@@ -561,7 +561,11 @@ static int dsp_handover(struct dsp *dsp)
 		return -EINVAL;
 
 	if (dsp->is_cdsp)  {
-		// TODO
+		dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
+		dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
+		dev_pm_genpd_set_performance_state(dsp->pds[2], 0);
+		dev_pm_genpd_set_performance_state(dsp->pds[3], 0);
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1));
 	}
 
 	if (dsp->is_adsp) {
