@@ -31,6 +31,7 @@
 #include <linux/tick.h>
 #include <linux/units.h>
 #include <trace/events/power.h>
+#include <trace/gpuvis.h>
 
 static LIST_HEAD(cpufreq_policy_list);
 
@@ -373,6 +374,7 @@ void cpufreq_freq_transition_begin(struct cpufreq_policy *policy,
 		struct cpufreq_freqs *freqs)
 {
 
+	TRACE_BEGIN_CTX("gabe cpufreq_freq_transition_begin");
 	/*
 	 * Catch double invocations of _begin() which lead to self-deadlock.
 	 * ASYNC_NOTIFICATION drivers are left out because the cpufreq core
@@ -408,6 +410,8 @@ void cpufreq_freq_transition_end(struct cpufreq_policy *policy,
 {
 	if (WARN_ON(!policy->transition_ongoing))
 		return;
+
+	TRACE_BEGIN_CTX("gabe cpufreq_freq_transition_end");
 
 	cpufreq_notify_post_transition(policy, freqs, transition_failed);
 
@@ -503,6 +507,8 @@ static unsigned int __resolve_freq(struct cpufreq_policy *policy,
 
 	if (!policy->freq_table)
 		return target_freq;
+
+	TRACE_BEGIN_CTX("gabe __resolve_freq");
 
 	idx = cpufreq_frequency_table_target(policy, target_freq, min, max, relation);
 	policy->cached_resolved_idx = idx;
@@ -2265,7 +2271,7 @@ static int __target_intermediate(struct cpufreq_policy *policy,
 				 struct cpufreq_freqs *freqs, int index)
 {
 	int ret;
-
+	TRACE_BEGIN_CTX("gabe __target_intermediate");
 	freqs->new = cpufreq_driver->get_intermediate(policy, index);
 
 	/* We don't need to switch to intermediate freq */
@@ -2296,6 +2302,8 @@ static int __target_index(struct cpufreq_policy *policy, int index)
 
 	if (newfreq == policy->cur)
 		return 0;
+
+	TRACE_BEGIN_CTX("gabe __target_index");
 
 	/* Save last value to restore later on errors */
 	restore_freq = policy->cur;
@@ -2355,6 +2363,7 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 	if (cpufreq_disabled())
 		return -ENODEV;
 
+	TRACE_BEGIN_CTX("gabe __cpufreq_driver_target");
 	target_freq = __resolve_freq(policy, target_freq, policy->min,
 				     policy->max, relation);
 

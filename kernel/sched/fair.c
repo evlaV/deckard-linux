@@ -53,6 +53,7 @@
 #include <asm/switch_to.h>
 
 #include <uapi/linux/sched/types.h>
+#include <trace/gpuvis.h>
 
 #include "sched.h"
 #include "stats.h"
@@ -6928,6 +6929,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (task_is_throttled(p) && enqueue_throttled_task(p))
 		return;
 
+	TRACE_BEGIN_CTX("gabe enqueue_task_fair");
+
 	/*
 	 * The code below (indirectly) updates schedutil which looks at
 	 * the cfs_rq utilization to select a frequency.
@@ -7160,6 +7163,7 @@ static int dequeue_entities(struct rq *rq, struct sched_entity *se, int flags)
  */
 static bool dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
+	TRACE_BEGIN_CTX("gabe dequeue_task_fair");
 	if (task_is_throttled(p)) {
 		dequeue_throttled_task(p, flags);
 		return true;
@@ -8641,6 +8645,7 @@ static void migrate_task_rq_fair(struct task_struct *p, int new_cpu)
 {
 	struct sched_entity *se = &p->se;
 
+	TRACE_BEGIN_CTX("gabe migrate_task_rq_fair");
 	if (!task_on_rq_migrating(p)) {
 		remove_entity_load_avg(se);
 

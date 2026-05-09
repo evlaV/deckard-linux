@@ -291,7 +291,7 @@ TRACE_EVENT(sched_migrate_task,
 		__entry->dest_cpu	= dest_cpu;
 	),
 
-	TP_printk("comm=%s pid=%d prio=%d orig_cpu=%d dest_cpu=%d",
+	TP_printk("comm=%s pzid=%d prio=%d orig_cpu=%d dest_cpu=%d",
 		  __get_str(comm), __entry->pid, __entry->prio,
 		  __entry->orig_cpu, __entry->dest_cpu)
 );

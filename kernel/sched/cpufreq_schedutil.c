@@ -7,6 +7,7 @@
  */
 #include <uapi/linux/sched/types.h>
 #include "sched.h"
+#include <trace/gpuvis.h>
 
 #define IOWAIT_BOOST_MIN	(SCHED_CAPACITY_SCALE / 8)
 
@@ -545,6 +546,7 @@ static void sugov_work(struct kthread_work *work)
 	unsigned int freq;
 	unsigned long flags;
 
+	TRACE_BEGIN_CTX("gabe sugov_work");
 	/*
 	 * Hold sg_policy->update_lock shortly to handle the case where:
 	 * in case sg_policy->next_freq is read here, and then updated by
