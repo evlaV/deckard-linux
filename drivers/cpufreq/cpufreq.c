@@ -31,6 +31,7 @@
 #include <linux/tick.h>
 #include <linux/units.h>
 #include <trace/events/power.h>
+#include <trace/gpuvis.h>
 
 static LIST_HEAD(cpufreq_policy_list);
 
@@ -2342,6 +2343,8 @@ static int __target_index(struct cpufreq_policy *policy, int index)
 			cpufreq_freq_transition_end(policy, &freqs, 0);
 		}
 	}
+
+	TRACE_BEGIN_CTX("%s: cpu: %d, oldfreq: %u, new freq: %u\n", __func__, policy->cpu, freqs.old, freqs.new);
 
 	return retval;
 }

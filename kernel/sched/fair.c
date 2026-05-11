@@ -53,6 +53,7 @@
 #include <asm/switch_to.h>
 
 #include <uapi/linux/sched/types.h>
+#include <trace/gpuvis.h>
 
 #include "sched.h"
 #include "stats.h"
@@ -8641,6 +8642,7 @@ static void migrate_task_rq_fair(struct task_struct *p, int new_cpu)
 {
 	struct sched_entity *se = &p->se;
 
+	TRACE_BEGIN_CTX("gabe migrate_task_rq_fair");
 	if (!task_on_rq_migrating(p)) {
 		remove_entity_load_avg(se);
 

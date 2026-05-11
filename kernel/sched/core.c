@@ -120,6 +120,8 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_util_est_se_tp);
 EXPORT_TRACEPOINT_SYMBOL_GPL(sched_update_nr_running_tp);
 EXPORT_TRACEPOINT_SYMBOL_GPL(sched_compute_energy_tp);
 
+#include <trace/gpuvis.h>
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 #ifdef CONFIG_SCHED_PROXY_EXEC
@@ -2466,6 +2468,8 @@ static struct rq *move_queued_task(struct rq *rq, struct rq_flags *rf,
 {
 	lockdep_assert_rq_held(rq);
 
+	TRACE_BEGIN_CTX("gabe move_queued_task");
+
 	deactivate_task(rq, p, DEQUEUE_NOCLOCK);
 	set_task_cpu(p, new_cpu);
 	rq_unlock(rq, rf);
@@ -2532,6 +2536,8 @@ static int migration_cpu_stop(void *data)
 	struct rq *rq = this_rq();
 	bool complete = false;
 	struct rq_flags rf;
+
+	TRACE_BEGIN_CTX("gabe migration_cpu_stop");
 
 	/*
 	 * The original target CPU might have gone down and we might
@@ -2634,6 +2640,8 @@ int push_cpu_stop(void *arg)
 {
 	struct rq *lowest_rq = NULL, *rq = this_rq();
 	struct task_struct *p = arg;
+
+	TRACE_BEGIN_CTX("gabe push_cpu_stop");
 
 	raw_spin_lock_irq(&p->pi_lock);
 	raw_spin_rq_lock(rq);
@@ -2904,6 +2912,8 @@ static int affine_move_task(struct rq *rq, struct task_struct *p, struct rq_flag
 {
 	struct set_affinity_pending my_pending = { }, *pending = NULL;
 	bool stop_pending, complete = false;
+
+	TRACE_BEGIN_CTX("gabe affine_move_task");
 
 	/*
 	 * Can the task run on the task's current CPU? If so, we're done
@@ -3323,6 +3333,7 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 
 	WARN_ON_ONCE(is_migration_disabled(p));
 
+	TRACE_BEGIN_CTX("gabe sched migrate");
 	trace_sched_migrate_task(p, new_cpu);
 
 	if (task_cpu(p) != new_cpu) {
@@ -3341,6 +3352,8 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 #ifdef CONFIG_NUMA_BALANCING
 static void __migrate_swap_task(struct task_struct *p, int cpu)
 {
+	TRACE_BEGIN_CTX("gabe __migrate_swap_task");
+	
 	if (task_on_rq_queued(p)) {
 		struct rq *src_rq, *dst_rq;
 		struct rq_flags srf, drf;
@@ -8140,6 +8153,8 @@ static int __balance_push_cpu_stop(void *arg)
 	struct rq *rq = this_rq();
 	struct rq_flags rf;
 	int cpu;
+
+	TRACE_BEGIN_CTX("gabe __balance_push_cpu_stop");
 
 	raw_spin_lock_irq(&p->pi_lock);
 	rq_lock(rq, &rf);
