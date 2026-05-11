@@ -3,6 +3,11 @@
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
  */
 
+#include "asm-generic/errno-base.h"
+#include "linux/gfp_types.h"
+#include "linux/list.h"
+#include "linux/string.h"
+#include "linux/xarray.h"
 #include <asm/div64.h>
 #include <linux/interconnect-provider.h>
 #include <linux/list_sort.h>
@@ -36,6 +41,7 @@ struct bcm_voter {
 	struct list_head commit_list;
 	struct list_head ws_list;
 	struct list_head voter_node;
+	struct xarray bcm_cache;
 	u32 tcs_wait;
 };
 
@@ -56,6 +62,33 @@ static u64 bcm_div(u64 num, u32 base)
 	do_div(num, base);
 
 	return num;
+}
+
+static int bcm_cache_store(struct bcm_voter *voter, struct qcom_icc_bcm *bcm)
+{
+	struct qcom_icc_bcm *bcm_cache;
+	struct qcom_icc_bcm *bcm_old;
+
+	bcm_cache = kmemdup_noprof(bcm, sizeof(*bcm), GFP_KERNEL);
+	bcm_old = xa_store(&voter->bcm_cache, bcm_cache->addr,
+				bcm_cache, GFP_KERNEL);
+	if (xa_err(bcm_old))
+		return xa_err(bcm_old);
+
+	kfree(bcm_old);
+
+	return 0;
+}
+
+static void bcm_cache_reset(struct bcm_voter *voter)
+{
+	struct qcom_icc_bcm *bcm_cache;
+	unsigned long id;
+	
+	xa_for_each(&voter->bcm_cache, id, bcm_cache) {
+		xa_erase(&voter->bcm_cache, id);
+		kfree(bcm_cache);
+	}
 }
 
 /* BCMs with enable_mask use one-hot-encoding for on/off signaling */
@@ -275,7 +308,7 @@ EXPORT_SYMBOL_GPL(qcom_icc_bcm_voter_add);
  */
 int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 {
-	struct qcom_icc_bcm *bcm;
+	struct qcom_icc_bcm *bcm, *bcm_cache;
 	struct qcom_icc_bcm *bcm_tmp;
 	int commit_idx[MAX_VCD + 1];
 	struct tcs_cmd cmds[MAX_BCMS];
@@ -303,6 +336,32 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 	list_sort(NULL, &voter->commit_list, cmp_vcd);
 
 	/*
+	 * check cached values
+	 */
+	list_for_each_entry_safe(bcm, bcm_tmp, &voter->commit_list, list) {
+		bcm_cache = xa_load(&voter->bcm_cache, bcm->addr);
+		if (!bcm_cache) {
+			bcm_cache_store(voter, bcm);
+			if (ret < 0)
+				pr_err("%s: failed to add %s addr: 0x%x to cache\n",
+					__func__, bcm->name, bcm->addr);
+			continue;
+		}
+
+		if ((bcm->aux_data.vcd == bcm_cache->aux_data.vcd) &&
+			(!memcmp(bcm->vote_x, bcm_cache->vote_x, sizeof(bcm->vote_x))) &&
+			(!memcmp(bcm->vote_y, bcm_cache->vote_y, sizeof(bcm->vote_y)))) {
+				list_del_init(&bcm->list);
+				list_del_init(&bcm->ws_list);
+			} else {
+				bcm_cache_store(voter, bcm);
+				if (ret < 0)
+					pr_err("%s: failed to replace %s addr: 0x%x to cache\n",
+						__func__, bcm->name, bcm->addr);
+			}
+	}
+	
+	/*
 	 * Construct the command list based on a pre ordered list of BCMs
 	 * based on VCD.
 	 */
@@ -316,6 +375,7 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 			       cmds, commit_idx);
 	if (ret) {
 		pr_err("Error sending AMC RPMH requests (%d)\n", ret);
+		bcm_cache_reset(voter);
 		goto out;
 	}
 
@@ -347,6 +407,7 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 	ret = rpmh_write_batch(voter->dev, RPMH_WAKE_ONLY_STATE, cmds, commit_idx);
 	if (ret) {
 		pr_err("Error sending WAKE RPMH requests (%d)\n", ret);
+		bcm_cache_reset(voter);
 		goto out;
 	}
 
@@ -355,6 +416,7 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 	ret = rpmh_write_batch(voter->dev, RPMH_SLEEP_STATE, cmds, commit_idx);
 	if (ret) {
 		pr_err("Error sending SLEEP RPMH requests (%d)\n", ret);
+		bcm_cache_reset(voter);
 		goto out;
 	}
 
@@ -385,6 +447,7 @@ static int qcom_icc_bcm_voter_probe(struct platform_device *pdev)
 	mutex_init(&voter->lock);
 	INIT_LIST_HEAD(&voter->commit_list);
 	INIT_LIST_HEAD(&voter->ws_list);
+	xa_init(&voter->bcm_cache);
 
 	mutex_lock(&bcm_voter_lock);
 	list_add_tail(&voter->voter_node, &bcm_voters);
