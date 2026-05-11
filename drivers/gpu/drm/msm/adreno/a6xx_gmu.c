@@ -1218,7 +1218,7 @@ static void a6xx_gmu_shutdown(struct a6xx_gmu *gmu)
 
 	if (adreno_is_a750_family(adreno_gpu) && info->bcms && gmu->nr_gpu_bws > 1)
 		/* Vote for minimal frequency and bandwidth */
-		a6xx_hfi_set_freq(gmu, 1, AB_VOTE(1) | AB_VOTE_ENABLE | 1);
+		a6xx_hfi_set_freq(gmu, 1, 0);
 
 	/*
 	 * GMU firmware's internal power state gets messed up if we send "prepare_slumber" hfi when
