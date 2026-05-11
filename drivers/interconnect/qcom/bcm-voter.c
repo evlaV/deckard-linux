@@ -333,8 +333,8 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 		    bcm->vote_y[QCOM_ICC_BUCKET_WAKE] !=
 		    bcm->vote_y[QCOM_ICC_BUCKET_SLEEP])
 			list_add_tail(&bcm->list, &voter->commit_list);
-		else
-			list_del_init(&bcm->ws_list);
+
+		list_del_init(&bcm->ws_list);
 	}
 
 	if (list_empty(&voter->commit_list))
