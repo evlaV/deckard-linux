@@ -40,6 +40,7 @@ struct pmic_typec_port {
 	struct delayed_work		cc_debounce_dwork;
 
 	spinlock_t			lock;	/* Register atomicity */
+	bool 				stopped;
 };
 
 static const char * const typec_cc_status_name[] = {
@@ -175,6 +176,11 @@ int qcom_pmic_typec_port_set_vbus(struct pmic_typec_port *pmic_typec_port, bool 
 	u32 val;
 	int ret;
 
+	pr_info("%s: %d\n", __func__, on);
+
+	if (pmic_typec_port->stopped)
+		return 0;
+
 	if (on) {
 		ret = regulator_enable(pmic_typec_port->vdd_vbus);
 		if (ret)
@@ -304,6 +310,9 @@ int qcom_pmic_typec_port_set_cc(struct pmic_typec_port *pmic_typec_port,
 	unsigned long flags;
 	int ret;
 
+	if (pmic_typec_port->stopped)
+		return 0;
+
 	spin_lock_irqsave(&pmic_typec_port->lock, flags);
 
 	ret = regmap_read(pmic_typec_port->regmap,
@@ -367,6 +376,9 @@ int qcom_pmic_typec_port_set_vconn(struct pmic_typec_port *pmic_typec_port, bool
 	unsigned int orientation, misc, mask, value;
 	unsigned long flags;
 	int ret;
+
+	if (pmic_typec_port->stopped)
+		return 0;
 
 	spin_lock_irqsave(&pmic_typec_port->lock, flags);
 
@@ -448,6 +460,9 @@ int qcom_pmic_typec_port_start_toggling(struct pmic_typec_port *pmic_typec_port,
 	u8 mode = 0;
 	unsigned long flags;
 	int ret;
+
+	if (pmic_typec_port->stopped)
+		return 0;
 
 	switch (port_type) {
 	case TYPEC_PORT_SRC:
@@ -564,6 +579,8 @@ void qcom_pmic_typec_port_stop(struct pmic_typec_port *pmic_typec_port)
 
 	qcom_pmic_typec_port_set_vconn(pmic_typec_port, false);
 	qcom_pmic_typec_port_disable_cc(pmic_typec_port);
+
+	pmic_typec_port->stopped = true;
 }
 
 struct pmic_typec_port *qcom_pmic_typec_port_alloc(struct device *dev)

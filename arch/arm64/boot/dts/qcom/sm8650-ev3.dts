@@ -2530,6 +2530,7 @@
 &usb_1 {
 	dr_mode = "otg";
 	usb-role-switch;
+	role-switch-default-mode = "host";
 	status = "okay";
 };
 
