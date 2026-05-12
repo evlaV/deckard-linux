@@ -562,7 +562,6 @@ void qcom_pmic_typec_port_stop(struct pmic_typec_port *pmic_typec_port)
 	for (i = 0; i < pmic_typec_port->nr_irqs; i++)
 		disable_irq(pmic_typec_port->irq_data[i].irq);
 
-	regulator_force_disable(pmic_typec_port->vdd_vbus);
 	qcom_pmic_typec_port_set_vconn(pmic_typec_port, false);
 	qcom_pmic_typec_port_disable_cc(pmic_typec_port);
 }
@@ -590,7 +589,7 @@ int qcom_pmic_typec_port_probe(struct platform_device *pdev,
 	if (!irq_data)
 		return -ENOMEM;
 
-	pmic_typec_port->vdd_vbus = devm_regulator_get(dev, "vdd-vbus");
+	pmic_typec_port->vdd_vbus = devm_regulator_get_exclusive(dev, "vdd-vbus");
 	if (IS_ERR(pmic_typec_port->vdd_vbus)) {
 		pr_warn("qcom_pmic_typec_port_probe Failed to Find USB OTG Supply\n");
 		return PTR_ERR(pmic_typec_port->vdd_vbus);
