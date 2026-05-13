@@ -5325,7 +5325,10 @@ static int max1720x_get_property(struct power_supply *psy,
 		ret = max1720x_regmap_read(priv, priv->regs[REPSOC_REG], &reg);
 		if (ret < 0)
 			return ret;
-		val->intval = reg >> 8; /* RepSOC LSB: 1/256 % */
+		// Steam Frame: map fuel guage 90% max -> 100%
+		// I.e., 0.90 * 25600 (of 65535) to 100 (of 255 )
+		val->intval = reg / 230;
+		if ( val->intval > 100 ) val->intval = 100;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY_ALERT_MIN:
 		ret = max1720x_get_min_capacity_alert_th(priv, &val->intval);
