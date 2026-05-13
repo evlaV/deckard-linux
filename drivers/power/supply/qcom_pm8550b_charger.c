@@ -927,26 +927,31 @@ static irqreturn_t qcom_pm8550b_charger_isr(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static void qcom_pm8550b_set_qph_charge_current(struct pm8550b_charger *chg)
+{
+	unsigned int reg = 0;
+	regmap_read(chg->regmap, chg->base[BASE_CHG2] + CHGR2_INT_RT_STS, &reg);
+
+	/* Change Current Limit */
+	if (!!(reg & CHGR2_INT_CHG_PATH_STS_MASK))
+		pm8550b_charger_set_charge_current_max(chg, chg->qph2_charge_current_max);
+	else
+		pm8550b_charger_set_charge_current_max(chg, chg->qph1_charge_current_max);
+
+	sysfs_notify(&chg->psy->dev.kobj, NULL, dev_attr_qph2.attr.name);
+}
+
 static irqreturn_t qcom_pm8550b_charger2_isr(int irq, void *dev_id)
 {
 	struct pm8550b_charger_irq_data *irq_data = dev_id;
 	struct pm8550b_charger *chg = irq_data->charger;
-	unsigned int reg = 0;
 
 	if (!chg->regmap)
 		return IRQ_HANDLED;
 
 	switch (irq_data->virq) {
 	case PM8550B_CHARGER2_CHARGE_PATH_CHANGE_IRQ:
-		regmap_read(chg->regmap, chg->base[BASE_CHG2] + CHGR2_INT_RT_STS, &reg);
-
-		/* Change Current Limit */
-		if (!!(reg & CHGR2_INT_CHG_PATH_STS_MASK))
-			pm8550b_charger_set_charge_current_max(chg, chg->qph2_charge_current_max);
-		else
-			pm8550b_charger_set_charge_current_max(chg, chg->qph1_charge_current_max);
-
-		sysfs_notify(&chg->psy->dev.kobj, NULL, dev_attr_qph2.attr.name);
+		qcom_pm8550b_set_qph_charge_current(chg);
 		break;
 	case PM8550B_CHARGER2_FULL_DUTY_CHARGE_IRQ:
 		// TODO This should be off, maybe drop the IRQ
@@ -1178,6 +1183,7 @@ static int qcom_pm8550b_charger_probe(struct platform_device *pdev)
 	 * NOTE When we measure this current the divider seems to be closer to 57 than 60...
 	 * Not sure why this is. so all are currents are a little lower than this.
 	 */
+	qcom_pm8550b_set_qph_charge_current(chg);
 	pm8550b_charger_set_charge_current(chg, 1000000);
 	pm8550b_charger_set_float_voltage(chg, 8900000);
 	pm8550b_charger_set_termination_current(chg, 135000);
@@ -1256,6 +1262,17 @@ static struct pm8550b_charger_resources pm8550b_charger_res = {
 	.misc_res = &pm8550b_misc_res,
 };
 
+static int qcom_pm8550b_charger_resume(struct platform_device *pdev)
+{
+	struct pm8550b_charger *chg = platform_get_drvdata(pdev);
+	if ( chg ) {
+		qcom_pm8550b_set_qph_charge_current(chg);
+	} else {
+		dev_err(&pdev->dev, "failed to get pm8550b chg\n");
+	}
+	return 0;
+}
+
 static const struct of_device_id qcom_pm8550b_charger_table[] = { { .compatible = "qcom,pm8550b-charger",
 								    .data = &pm8550b_charger_res },
 								  {} };
@@ -1267,6 +1284,7 @@ static struct platform_driver qcom_pm8550b_charger_driver = {
 		.of_match_table = qcom_pm8550b_charger_table,
 	},
 	.probe = qcom_pm8550b_charger_probe,
+	.resume = qcom_pm8550b_charger_resume,
 };
 
 module_platform_driver(qcom_pm8550b_charger_driver);
