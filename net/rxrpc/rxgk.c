@@ -480,8 +480,10 @@ static int rxgk_verify_packet_integrity(struct rxrpc_call *call,
 
 	_enter("");
 
-	crypto_krb5_where_is_the_data(gk->krb5, KRB5_CHECKSUM_MODE,
-				      &data_offset, &data_len);
+	if (crypto_krb5_where_is_the_data(gk->krb5, KRB5_CHECKSUM_MODE,
+					  &data_offset, &data_len) < 0)
+		return rxrpc_abort_eproto(call, skb, RXKADSEALEDINCON,
+					  rxgk_abort_1_short_header);
 
 	hdr = kzalloc_obj(*hdr, GFP_NOFS);
 	if (!hdr)
@@ -528,6 +530,11 @@ static int rxgk_verify_packet_encrypted(struct rxrpc_call *call,
 	u32 ac = 0;
 
 	_enter("");
+
+	if (crypto_krb5_check_data_len(gk->krb5, KRB5_ENCRYPT_MODE,
+				       len, sizeof(*hdr)) < 0)
+		return rxrpc_abort_eproto(call, skb, RXKADSEALEDINCON,
+					  rxgk_abort_2_short_header);
 
 	ret = rxgk_decrypt_skb(gk->krb5, gk->rx_enc, skb, &offset, &len, &ac);
 	if (ret < 0) {
