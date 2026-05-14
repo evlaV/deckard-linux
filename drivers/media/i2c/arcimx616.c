@@ -31,21 +31,9 @@
 #define VIVID_CID_ARCIMX616_BASE	(V4L2_CID_USER_BASE | 0xf000)
 #define V4L2_CID_TEMPERATURE	(VIVID_CID_ARCIMX616_BASE + 0)
 
-/* min/typical/max system clock (xclk) frequencies */
-#define arcimx616_XCLK_MIN  6000000
-#define arcimx616_XCLK_MAX 54000000
-
-#define arcimx616_DEFAULT_SLAVE_ID 0x1a
-
 #define arcimx616_REG_CHIP_ID		0x16
 
 #define ARCIMX616_LINK_FREQUENCY  2200000000
-
-
-#define arcimx616_REG_TIMING_DVPHO		0x3808
-#define arcimx616_REG_TIMING_DVPVO		0x380a
-#define arcimx616_REG_TIMING_HTS		0x380c
-#define arcimx616_REG_TIMING_VTS		0x380e
 
 #define IMX_REG_TEMP_SEN_OUT		0x013A
 
@@ -130,7 +118,6 @@ struct arcimx616_dev {
 
 	struct v4l2_mbus_framefmt fmt;
 
-	bool streaming;
 	bool is_left_sensor;
 
 	// nvmem_device_read/nvmem_device_write cannot work directly with user pointers to we need
@@ -165,9 +152,7 @@ static int arcimx616_match_client(struct device *dev, void *data)
  */
 #define ARCIMX616_NVMEM_NAME_LEFT      "passthrough_cams_eeprom_left"
 #define ARCIMX616_NVMEM_NAME_RIGHT     "passthrough_cams_eeprom_right"
-#define ARCIMX616_NVMEM_TIMEOUT   1000      /* total 1 s */
-#define ARCIMX616_NVMEM_POLL_MS   50
-#define ARCIMX616_EEPROM_TPOR_MS  10 
+#define ARCIMX616_EEPROM_TPOR_MS  10
 
 static int arcimx616_ensure_eeprom_client(struct arcimx616_dev *sensor)
 {
@@ -343,7 +328,6 @@ static const struct reg_value arcimx616_global_settings[] = {
 
 
 
-// Image quality settings {0x88D6, 0x60, 0, 0}, {0x9852, 0x00, 0, 0},
 {0xA569, 0x06, 0, 0}, {0xA56A, 0x13, 0, 0}, {0xA56B, 0x13, 0, 0},
 {0xA56C, 0x01, 0, 0}, {0xA678, 0x00, 0, 0}, {0xA679, 0x20, 0, 0},
 {0xA812, 0x00, 0, 0}, {0xA813, 0x3F, 0, 0}, {0xA814, 0x3F, 0, 0},
@@ -433,108 +417,12 @@ static const struct reg_value arcimx616_setting_1640x1232_binned[] = {
 {0x4035, 0xCC, 0, 0}
 };
 
-static const struct reg_value arcimx616_setting_1280x1024_binned[] = {
-
-//enable 2v2h binnging
-{0x0900, 0x01,0, 0},
-{0x0901, 0x22,0, 0},
-{0x0902, 0x02,0, 0}, //additional average weighting binning
-{0xE04C, 0x00,0, 0},
-{0xE04D, 0x87,0, 0},
-{0xE04E, 0x00,0, 0},
-{0xE04F, 0x1F,0, 0},
-{0x3E20, 0x01,0, 0},
-{0x3E37, 0x00,0, 0},
-{0x3F50, 0x00,0, 0},
-{0x3F56, 0x01,0, 0},
-{0x3F57, 0x02,0, 0},
-{0X3FF9, 0x00,0, 0}, //use per-channel digital gain
-
-{0X0204,	0x01,0},//gain
-{0X0205,	0xFF,0},//gain
-
-{0X0202,	0x0B,0},
-{0X0203,	0xe8,0}, //exposure
-
-//image quality register 
-{0x9827, 0x20, 0, 0}, {0x9830, 0x0A, 0, 0}, {0x9833, 0x0A, 0, 0},
-{0x9834, 0x32, 0, 0}, {0x9837, 0x22, 0, 0}, {0x983C, 0x04, 0, 0},
-{0x983F, 0x0A, 0, 0}, {0x994F, 0x00, 0, 0}, {0x9A48, 0x06, 0, 0},
-{0x9A49, 0x06, 0, 0}, {0x9A4A, 0x06, 0, 0}, {0x9A4B, 0x06, 0, 0},
-{0x9A4E, 0x03, 0, 0}, {0x9A4F, 0x03, 0, 0}, {0x9A54, 0x03, 0, 0},
-{0x9A66, 0x03, 0, 0}, {0x9A67, 0x03, 0, 0}, {0xA2C9, 0x02, 0, 0},
-{0xA2CB, 0x02, 0, 0}, {0xA2CD, 0x02, 0, 0}, {0xB249, 0x3F, 0, 0},
-{0xB24F, 0x3F, 0, 0}, {0xB290, 0x3F, 0, 0}, {0xB293, 0x3F, 0, 0},
-{0xB296, 0x3F, 0, 0}, {0xB299, 0x3F, 0, 0}, {0xB2A2, 0x3F, 0, 0},
-{0xB2A8, 0x3F, 0, 0}, {0xB2A9, 0x0D, 0, 0}, {0xB2AA, 0x0D, 0, 0},
-{0xB2AB, 0x3F, 0, 0}, {0xB2BA, 0x2F, 0, 0}, {0xB2BB, 0x2F, 0, 0},
-{0xB2BC, 0x2F, 0, 0}, {0xB2BD, 0x10, 0, 0}, {0xB2C0, 0x3F, 0, 0},
-{0xB2C3, 0x3F, 0, 0}, {0xB2D2, 0x3F, 0, 0}, {0xB2DE, 0x20, 0, 0},
-{0xB2DF, 0x20, 0, 0}, {0xB2E0, 0x20, 0, 0}, {0xB2EA, 0x3F, 0, 0},
-{0xB2ED, 0x3F, 0, 0}, {0xB2EE, 0x3F, 0, 0}, {0xB2EF, 0x3F, 0, 0},
-{0xB2F0, 0x2F, 0, 0}, {0xB2F1, 0x2F, 0, 0}, {0xB2F2, 0x2F, 0, 0},
-{0xB2F9, 0x0E, 0, 0}, {0xB2FA, 0x0E, 0, 0}, {0xB2FB, 0x0E, 0, 0},
-{0xB759, 0x01, 0, 0}, {0xB765, 0x3F, 0, 0}, {0xB76B, 0x3F, 0, 0},
-{0xB7B3, 0x03, 0, 0}, {0xB7B5, 0x03, 0, 0}, {0xB7B7, 0x03, 0, 0},
-{0xB7BF, 0x03, 0, 0}, {0xB7C1, 0x03, 0, 0}, {0xB7C3, 0x03, 0, 0},
-{0xB7EF, 0x02, 0, 0}, {0xB7F5, 0x1F, 0, 0}, {0xB7F7, 0x1F, 0, 0},
-{0xB7F9, 0x1F, 0, 0}, {0xBCF1, 0x0, 0, 0},
-
-//other register block for binning 
-{0x3C0A, 0x73, 0, 0}, {0x3C0B, 0x64, 0, 0}, {0x3C0C, 0x5F, 0, 0},
-{0x3C0D, 0x00, 0, 0}, {0x3C0E, 0x00, 0, 0}, {0x3C0F, 0x00, 0, 0},
-{0x3C10, 0xA4, 0, 0}, {0x3C11, 0x02, 0, 0}, {0x3C12, 0x00, 0, 0},
-{0x3C13, 0x03, 0, 0}, {0x3C14, 0x80, 0, 0}, {0x3C15, 0x04, 0, 0},
-{0x3C16, 0x15, 0, 0}, {0x3C17, 0x15, 0, 0}, {0x3C18, 0x15, 0, 0},
-{0x3C19, 0x15, 0, 0}, {0x3C1A, 0x15, 0, 0}, {0x3C1B, 0x15, 0, 0},
-{0x3C1C, 0x06, 0, 0}, {0x3C1D, 0x06, 0, 0}, {0x3C1E, 0x06, 0, 0},
-{0x3C1F, 0x06, 0, 0}, {0x3C20, 0x06, 0, 0}, {0x3C21, 0x06, 0, 0},
-{0x3C22, 0x3F, 0, 0}, {0x3C23, 0x0A, 0, 0}, {0x3E35, 0x01, 0, 0},
-{0x3F4A, 0x01, 0, 0}, {0x3F4B, 0x7F, 0, 0}, {0x3F26, 0x00, 0, 0},
-
-{0x0344, 0x00,0, 0}, //analog horizontal cropping start
-{0x0345, 0x00,0, 0},
-{0x0346, 0x00,0, 0}, //vertical direction analog cropping start
-{0x0347, 0x00,0, 0},
-{0x0348, 0x0F,0, 0},
-{0x0349, 0xD7,0, 0}, //anolog crop end
-{0x034A, 0x0B,0, 0},
-{0x034B, 0xdf,0, 0},
-
-
-{0x0348, 0x0f,0, 0},
-{0x0349, 0xd7,0, 0}, //anolog crop end
-
-{0x034C, 0x05,0, 0}, //output width
-{0x034D, 0x00,0, 0},
-
-{0x034E, 0x04,0, 0},
-{0x034F, 0x00,0, 0}, //output height
-
-{0x0408, 0x00,0, 0},
-{0x0409, 0x36,0, 0}, //digital crop left
-{0x040A, 0x00,0, 0},
-{0x040B, 0x00,0, 0},
-{0x040C, 0x05,0, 0}, //digital width
-{0x040D, 0x00,0, 0},
-{0x040E, 0x04,0, 0}, //digital height
-{0x040F, 0x00,0, 0},	
-};
-
-
 static const struct arcimx616_mode_info arcimx616_mode_data_3820x2464 = {
 	2688, 0, 2688, 0, arcimx616_setting_3820x2464, ARRAY_SIZE(arcimx616_setting_3820x2464)
-	// 1280, 1456, 800, 3676, arcimx616_setting_3820x2464_2688_crop, ARRAY_SIZE(arcimx616_setting_3820x2464)
 };
 
 static const struct arcimx616_mode_info arcimx616_mode_data_1640x1232_binned = {
 	1920, 0, 1520, 0, arcimx616_setting_1640x1232_binned, ARRAY_SIZE(arcimx616_setting_1640x1232_binned)
-	// 1280, 1456, 800, 3676, arcimx616_setting_3820x2464_2688_crop, ARRAY_SIZE(arcimx616_setting_3820x2464)
-};
-
-static const struct arcimx616_mode_info arcimx616_mode_data_1280x1024_binned = {
-	1920, 0, 1520, 0, arcimx616_setting_1280x1024_binned, ARRAY_SIZE(arcimx616_setting_1280x1024_binned)
-	// 1280, 1456, 800, 3676, arcimx616_setting_3820x2464_2688_crop, ARRAY_SIZE(arcimx616_setting_3820x2464)
 };
 
 static const s64 link_freq_menu_items[] = {
@@ -673,7 +561,6 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 	if (ret) {
 		dev_err(&sensor->i2c_client->dev,
 			"failed to ensure eeprom client: %d\n", ret);
-		//goto out_power;
 	}
 	ret = 0;
 
@@ -1033,7 +920,6 @@ static int arcimx616_restore_mode(struct arcimx616_dev *sensor)
 	u8 val;
 	struct i2c_client *client = sensor->i2c_client;
 
-	//dev_err(&client->dev, "Trying to restore mode - regmap");
 	/* first load the initial register values */
 	ret = arcimx616_load_regs(sensor, (sensor->current_mode));
 	if (ret < 0)
@@ -1041,12 +927,9 @@ static int arcimx616_restore_mode(struct arcimx616_dev *sensor)
 
 	ret = arcimx616_read_reg(sensor, 0x114, &val);
 	if (ret < 0 || val != 0x03) {
-		//struct i2c_client *client = sensor->i2c_client;
 		dev_err(&client->dev, "verify failed val=%.2x ret=%d\n", val, ret);
 		return ret;
 	}
-	//dev_err(&client->dev, "Mode restored - regmap");
-
 
 	return 0;
 }
@@ -1177,7 +1060,6 @@ static int arcimx616_set_power(struct arcimx616_dev *sensor, bool on)
 				return ret;
 		}
 	
-		//stuff we always when on
 		for(int i = 0; i < g_arcimx616_sensor_count; i++) {
 			ret = arcimx616_restore_mode(g_arcimx616_sensors[i]);
 			if (ret)
@@ -1443,9 +1325,9 @@ static int arcimx616_s_stream(struct v4l2_subdev *sd, int enable)
 			__func__, enable, enabled_check);
 		ret = -ENXIO;
 	}
-	return 0;
 
-	return ret;
+	// Always return 0 so we can enable the rest of the pipeline even if this fails
+	return 0;
 }
 
 static int arcimx616_subscribe_event(struct v4l2_subdev *sd,
@@ -1798,8 +1680,6 @@ static int arcimx616_probe(struct i2c_client *client)
 {
 	bool added_global = false;
 	struct device *dev = &client->dev;
-	//dev_err(dev, "starting arcimx616 driver\n");
-	//dev_info(dev, "probe arcimx616 driver\n");
 	struct fwnode_handle *endpoint;
 	struct arcimx616_dev *sensor;
 	struct v4l2_mbus_framefmt *fmt;
