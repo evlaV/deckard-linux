@@ -17,6 +17,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/types.h>
@@ -1151,6 +1152,13 @@ static int og01a1b_set_power_on(struct og01a1b_dev *sensor)
 	struct i2c_client *client = sensor->i2c_client;
 	int ret;
 
+	ret = pm_runtime_resume_and_get(&client->dev);
+	if (ret) {
+		dev_err(&client->dev, "%s: failed to enable power\n",
+			__func__);
+		return ret;
+	}
+	
 	// hard code clock rate to 24 mhz
 	clk_set_rate(sensor->xclk, 24000000);
 
@@ -1158,7 +1166,7 @@ static int og01a1b_set_power_on(struct og01a1b_dev *sensor)
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to enable clock\n",
 			__func__);
-		return ret;
+		goto power_off;
 	}
 
 	ret = regulator_bulk_enable(og01a1b_NUM_SUPPLIES,
@@ -1175,6 +1183,8 @@ static int og01a1b_set_power_on(struct og01a1b_dev *sensor)
 
 xclk_off:
 	clk_disable_unprepare(sensor->xclk);
+power_off:
+	pm_runtime_put_sync(&client->dev);
 	return ret;
 }
 
@@ -1183,6 +1193,7 @@ static void og01a1b_set_power_off(struct og01a1b_dev *sensor)
 	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
 	regulator_bulk_disable(og01a1b_NUM_SUPPLIES, sensor->supplies);
 	clk_disable_unprepare(sensor->xclk);
+	pm_runtime_put_sync(&sensor->i2c_client->dev);
 }
 
 static int og01a1b_read_otp_once(struct og01a1b_dev *sensor, u8 *otp_data);
@@ -1291,8 +1302,8 @@ static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
     u16 addr;
 
 	/* V4L2 controls values will be applied only when power is already up */
-	//if (!pm_runtime_get_if_in_use(&client->dev))
-	//	return 0;
+	if (!pm_runtime_get_if_in_use(&sensor->i2c_client->dev))
+		return 0;
 
 	switch (ctrl->id) {
 	case V4L2_CID_ANALOGUE_GAIN:
@@ -1332,6 +1343,9 @@ static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 		ret = -EINVAL;
 		break;
 	}
+
+	pm_runtime_put(&sensor->i2c_client->dev);
+
 	return ret;
 }
 
@@ -2351,6 +2365,10 @@ static int og01a1b_probe(struct i2c_client *client)
 
 	last_time_in_sync = 0;
 
+	pm_runtime_set_active(&client->dev);
+	pm_runtime_enable(&client->dev);
+	pm_runtime_idle(&client->dev);
+
 	return 0;
 
 free_ctrls:
@@ -2385,6 +2403,7 @@ static void og01a1b_remove(struct i2c_client *client)
 	}
 
 	v4l2_async_unregister_subdev(&sensor->sd);
+	pm_runtime_disable(&client->dev);
 	mutex_destroy(&sensor->lock);
 	media_entity_cleanup(&sensor->sd.entity);
 }
