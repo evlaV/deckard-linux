@@ -17,6 +17,7 @@
 #include <linux/module.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/of_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/types.h>
@@ -27,27 +28,12 @@
 #include <media/v4l2-fwnode.h>
 #include <media/v4l2-subdev.h>
 
-bool connected_override = true;
-
-
 #define VIVID_CID_ARCIMX616_BASE	(V4L2_CID_USER_BASE | 0xf000)
 #define V4L2_CID_TEMPERATURE	(VIVID_CID_ARCIMX616_BASE + 0)
-
-/* min/typical/max system clock (xclk) frequencies */
-#define arcimx616_XCLK_MIN  6000000
-#define arcimx616_XCLK_MAX 54000000
-
-#define arcimx616_DEFAULT_SLAVE_ID 0x1a
 
 #define arcimx616_REG_CHIP_ID		0x16
 
 #define ARCIMX616_LINK_FREQUENCY  2200000000
-
-
-#define arcimx616_REG_TIMING_DVPHO		0x3808
-#define arcimx616_REG_TIMING_DVPVO		0x380a
-#define arcimx616_REG_TIMING_HTS		0x380c
-#define arcimx616_REG_TIMING_VTS		0x380e
 
 #define IMX_REG_TEMP_SEN_OUT		0x013A
 
@@ -58,8 +44,8 @@ struct eeprom_access_info {
 	void __user *buffer;	// src buffer when using VIDIOC_PRIV_S_EEPROM_DATA, or dst when using VIDIOC_PRIV_G_EEPROM_DATA
 };
 #define VIDIOC_PRIV_G_CONNECTED _IOR('V', BASE_VIDIOC_PRIVATE + 1, u32)
-#define VIDIOC_PRIV_S_CONNECTED _IO('V', BASE_VIDIOC_PRIVATE + 2)
-#define VIDIOC_PRIV_S_DUAL_REG _IO('V', BASE_VIDIOC_PRIVATE + 3) 
+/* BASE_VIDIOC_PRIVATE + 2 reserved (formerly VIDIOC_PRIV_S_CONNECTED) */
+#define VIDIOC_PRIV_S_DUAL_REG _IO('V', BASE_VIDIOC_PRIVATE + 3)
 #define VIDIOC_PRIV_G_EEPROM_DATA _IOWR('V', BASE_VIDIOC_PRIVATE + 4, struct eeprom_access_info) 
 #define VIDIOC_PRIV_S_EEPROM_DATA _IOW('V', BASE_VIDIOC_PRIVATE + 5, struct eeprom_access_info) 
 
@@ -132,7 +118,6 @@ struct arcimx616_dev {
 
 	struct v4l2_mbus_framefmt fmt;
 
-	bool streaming;
 	bool is_left_sensor;
 
 	// nvmem_device_read/nvmem_device_write cannot work directly with user pointers to we need
@@ -167,9 +152,7 @@ static int arcimx616_match_client(struct device *dev, void *data)
  */
 #define ARCIMX616_NVMEM_NAME_LEFT      "passthrough_cams_eeprom_left"
 #define ARCIMX616_NVMEM_NAME_RIGHT     "passthrough_cams_eeprom_right"
-#define ARCIMX616_NVMEM_TIMEOUT   1000      /* total 1 s */
-#define ARCIMX616_NVMEM_POLL_MS   50
-#define ARCIMX616_EEPROM_TPOR_MS  10 
+#define ARCIMX616_EEPROM_TPOR_MS  10
 
 static int arcimx616_ensure_eeprom_client(struct arcimx616_dev *sensor)
 {
@@ -345,7 +328,6 @@ static const struct reg_value arcimx616_global_settings[] = {
 
 
 
-// Image quality settings {0x88D6, 0x60, 0, 0}, {0x9852, 0x00, 0, 0},
 {0xA569, 0x06, 0, 0}, {0xA56A, 0x13, 0, 0}, {0xA56B, 0x13, 0, 0},
 {0xA56C, 0x01, 0, 0}, {0xA678, 0x00, 0, 0}, {0xA679, 0x20, 0, 0},
 {0xA812, 0x00, 0, 0}, {0xA813, 0x3F, 0, 0}, {0xA814, 0x3F, 0, 0},
@@ -435,108 +417,12 @@ static const struct reg_value arcimx616_setting_1640x1232_binned[] = {
 {0x4035, 0xCC, 0, 0}
 };
 
-static const struct reg_value arcimx616_setting_1280x1024_binned[] = {
-
-//enable 2v2h binnging
-{0x0900, 0x01,0, 0},
-{0x0901, 0x22,0, 0},
-{0x0902, 0x02,0, 0}, //additional average weighting binning
-{0xE04C, 0x00,0, 0},
-{0xE04D, 0x87,0, 0},
-{0xE04E, 0x00,0, 0},
-{0xE04F, 0x1F,0, 0},
-{0x3E20, 0x01,0, 0},
-{0x3E37, 0x00,0, 0},
-{0x3F50, 0x00,0, 0},
-{0x3F56, 0x01,0, 0},
-{0x3F57, 0x02,0, 0},
-{0X3FF9, 0x00,0, 0}, //use per-channel digital gain
-
-{0X0204,	0x01,0},//gain
-{0X0205,	0xFF,0},//gain
-
-{0X0202,	0x0B,0},
-{0X0203,	0xe8,0}, //exposure
-
-//image quality register 
-{0x9827, 0x20, 0, 0}, {0x9830, 0x0A, 0, 0}, {0x9833, 0x0A, 0, 0},
-{0x9834, 0x32, 0, 0}, {0x9837, 0x22, 0, 0}, {0x983C, 0x04, 0, 0},
-{0x983F, 0x0A, 0, 0}, {0x994F, 0x00, 0, 0}, {0x9A48, 0x06, 0, 0},
-{0x9A49, 0x06, 0, 0}, {0x9A4A, 0x06, 0, 0}, {0x9A4B, 0x06, 0, 0},
-{0x9A4E, 0x03, 0, 0}, {0x9A4F, 0x03, 0, 0}, {0x9A54, 0x03, 0, 0},
-{0x9A66, 0x03, 0, 0}, {0x9A67, 0x03, 0, 0}, {0xA2C9, 0x02, 0, 0},
-{0xA2CB, 0x02, 0, 0}, {0xA2CD, 0x02, 0, 0}, {0xB249, 0x3F, 0, 0},
-{0xB24F, 0x3F, 0, 0}, {0xB290, 0x3F, 0, 0}, {0xB293, 0x3F, 0, 0},
-{0xB296, 0x3F, 0, 0}, {0xB299, 0x3F, 0, 0}, {0xB2A2, 0x3F, 0, 0},
-{0xB2A8, 0x3F, 0, 0}, {0xB2A9, 0x0D, 0, 0}, {0xB2AA, 0x0D, 0, 0},
-{0xB2AB, 0x3F, 0, 0}, {0xB2BA, 0x2F, 0, 0}, {0xB2BB, 0x2F, 0, 0},
-{0xB2BC, 0x2F, 0, 0}, {0xB2BD, 0x10, 0, 0}, {0xB2C0, 0x3F, 0, 0},
-{0xB2C3, 0x3F, 0, 0}, {0xB2D2, 0x3F, 0, 0}, {0xB2DE, 0x20, 0, 0},
-{0xB2DF, 0x20, 0, 0}, {0xB2E0, 0x20, 0, 0}, {0xB2EA, 0x3F, 0, 0},
-{0xB2ED, 0x3F, 0, 0}, {0xB2EE, 0x3F, 0, 0}, {0xB2EF, 0x3F, 0, 0},
-{0xB2F0, 0x2F, 0, 0}, {0xB2F1, 0x2F, 0, 0}, {0xB2F2, 0x2F, 0, 0},
-{0xB2F9, 0x0E, 0, 0}, {0xB2FA, 0x0E, 0, 0}, {0xB2FB, 0x0E, 0, 0},
-{0xB759, 0x01, 0, 0}, {0xB765, 0x3F, 0, 0}, {0xB76B, 0x3F, 0, 0},
-{0xB7B3, 0x03, 0, 0}, {0xB7B5, 0x03, 0, 0}, {0xB7B7, 0x03, 0, 0},
-{0xB7BF, 0x03, 0, 0}, {0xB7C1, 0x03, 0, 0}, {0xB7C3, 0x03, 0, 0},
-{0xB7EF, 0x02, 0, 0}, {0xB7F5, 0x1F, 0, 0}, {0xB7F7, 0x1F, 0, 0},
-{0xB7F9, 0x1F, 0, 0}, {0xBCF1, 0x0, 0, 0},
-
-//other register block for binning 
-{0x3C0A, 0x73, 0, 0}, {0x3C0B, 0x64, 0, 0}, {0x3C0C, 0x5F, 0, 0},
-{0x3C0D, 0x00, 0, 0}, {0x3C0E, 0x00, 0, 0}, {0x3C0F, 0x00, 0, 0},
-{0x3C10, 0xA4, 0, 0}, {0x3C11, 0x02, 0, 0}, {0x3C12, 0x00, 0, 0},
-{0x3C13, 0x03, 0, 0}, {0x3C14, 0x80, 0, 0}, {0x3C15, 0x04, 0, 0},
-{0x3C16, 0x15, 0, 0}, {0x3C17, 0x15, 0, 0}, {0x3C18, 0x15, 0, 0},
-{0x3C19, 0x15, 0, 0}, {0x3C1A, 0x15, 0, 0}, {0x3C1B, 0x15, 0, 0},
-{0x3C1C, 0x06, 0, 0}, {0x3C1D, 0x06, 0, 0}, {0x3C1E, 0x06, 0, 0},
-{0x3C1F, 0x06, 0, 0}, {0x3C20, 0x06, 0, 0}, {0x3C21, 0x06, 0, 0},
-{0x3C22, 0x3F, 0, 0}, {0x3C23, 0x0A, 0, 0}, {0x3E35, 0x01, 0, 0},
-{0x3F4A, 0x01, 0, 0}, {0x3F4B, 0x7F, 0, 0}, {0x3F26, 0x00, 0, 0},
-
-{0x0344, 0x00,0, 0}, //analog horizontal cropping start
-{0x0345, 0x00,0, 0},
-{0x0346, 0x00,0, 0}, //vertical direction analog cropping start
-{0x0347, 0x00,0, 0},
-{0x0348, 0x0F,0, 0},
-{0x0349, 0xD7,0, 0}, //anolog crop end
-{0x034A, 0x0B,0, 0},
-{0x034B, 0xdf,0, 0},
-
-
-{0x0348, 0x0f,0, 0},
-{0x0349, 0xd7,0, 0}, //anolog crop end
-
-{0x034C, 0x05,0, 0}, //output width
-{0x034D, 0x00,0, 0},
-
-{0x034E, 0x04,0, 0},
-{0x034F, 0x00,0, 0}, //output height
-
-{0x0408, 0x00,0, 0},
-{0x0409, 0x36,0, 0}, //digital crop left
-{0x040A, 0x00,0, 0},
-{0x040B, 0x00,0, 0},
-{0x040C, 0x05,0, 0}, //digital width
-{0x040D, 0x00,0, 0},
-{0x040E, 0x04,0, 0}, //digital height
-{0x040F, 0x00,0, 0},	
-};
-
-
 static const struct arcimx616_mode_info arcimx616_mode_data_3820x2464 = {
 	2688, 0, 2688, 0, arcimx616_setting_3820x2464, ARRAY_SIZE(arcimx616_setting_3820x2464)
-	// 1280, 1456, 800, 3676, arcimx616_setting_3820x2464_2688_crop, ARRAY_SIZE(arcimx616_setting_3820x2464)
 };
 
 static const struct arcimx616_mode_info arcimx616_mode_data_1640x1232_binned = {
 	1920, 0, 1520, 0, arcimx616_setting_1640x1232_binned, ARRAY_SIZE(arcimx616_setting_1640x1232_binned)
-	// 1280, 1456, 800, 3676, arcimx616_setting_3820x2464_2688_crop, ARRAY_SIZE(arcimx616_setting_3820x2464)
-};
-
-static const struct arcimx616_mode_info arcimx616_mode_data_1280x1024_binned = {
-	1920, 0, 1520, 0, arcimx616_setting_1280x1024_binned, ARRAY_SIZE(arcimx616_setting_1280x1024_binned)
-	// 1280, 1456, 800, 3676, arcimx616_setting_3820x2464_2688_crop, ARRAY_SIZE(arcimx616_setting_3820x2464)
 };
 
 static const s64 link_freq_menu_items[] = {
@@ -675,7 +561,6 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 	if (ret) {
 		dev_err(&sensor->i2c_client->dev,
 			"failed to ensure eeprom client: %d\n", ret);
-		//goto out_power;
 	}
 	ret = 0;
 
@@ -1035,7 +920,6 @@ static int arcimx616_restore_mode(struct arcimx616_dev *sensor)
 	u8 val;
 	struct i2c_client *client = sensor->i2c_client;
 
-	//dev_err(&client->dev, "Trying to restore mode - regmap");
 	/* first load the initial register values */
 	ret = arcimx616_load_regs(sensor, (sensor->current_mode));
 	if (ret < 0)
@@ -1043,12 +927,9 @@ static int arcimx616_restore_mode(struct arcimx616_dev *sensor)
 
 	ret = arcimx616_read_reg(sensor, 0x114, &val);
 	if (ret < 0 || val != 0x03) {
-		//struct i2c_client *client = sensor->i2c_client;
 		dev_err(&client->dev, "verify failed val=%.2x ret=%d\n", val, ret);
 		return ret;
 	}
-	//dev_err(&client->dev, "Mode restored - regmap");
-
 
 	return 0;
 }
@@ -1058,8 +939,12 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 	struct i2c_client *client = sensor->i2c_client;
 	int ret;
 
-	ret = regulator_bulk_enable(arcimx616_NUM_SUPPLIES,
-				    sensor->supplies);
+	ret = pm_runtime_resume_and_get(&client->dev);
+	if (ret) {
+		dev_err(&client->dev, "%s: failed to enable power\n",
+			__func__);
+		return ret;
+	}
 
 	//  If this is not the sensor that owns the reset gpio, skip it
 	if(sensor->reset_gpio == NULL) {
@@ -1070,10 +955,13 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 	// Make sure the reset is low for at least 1ms
 	usleep_range(1000, 1500);
 
+	ret = regulator_bulk_enable(arcimx616_NUM_SUPPLIES,
+		sensor->supplies);
+
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to enable regulators\n",
 			__func__);
-		return ret;
+		goto power_off;
 	}
 
 
@@ -1084,6 +972,7 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to enable clock\n",
 			__func__);
+		goto regulator_off;
 	}
 
 	clk_set_rate(sensor->xclk2, 24000000);
@@ -1092,6 +981,7 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to enable clock\n",
 			__func__);
+		goto xclk_off;
 	}
 
 	// Wait for power to stabilize
@@ -1105,20 +995,33 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 
 	return 0;
 
+xclk_off:
+	clk_disable_unprepare(sensor->xclk);
+regulator_off:
+	regulator_bulk_disable(arcimx616_NUM_SUPPLIES, sensor->supplies);
+power_off:
+	pm_runtime_put_sync(&client->dev);
+	return ret;
 }
 
 static void arcimx616_set_power_off(struct arcimx616_dev *sensor)
 {
 	struct i2c_client *client = sensor->i2c_client;
 
+	/*
+	 * Sensors that don't own the reset gpio never enabled regulators
+	 * or clocks in set_power_on, so only balance the pm_runtime ref.
+	 */
+	if (sensor->reset_gpio == NULL) {
+		pm_runtime_put_sync(&client->dev);
+		return;
+	}
+
 	regulator_bulk_disable(arcimx616_NUM_SUPPLIES, sensor->supplies);
 
 	clk_disable_unprepare(sensor->xclk);
 	clk_disable_unprepare(sensor->xclk2);
 
-	if(sensor->reset_gpio == NULL) {
-		return ;
-	}
 	dev_dbg(&client->dev, "%s: Powered off\n",
 			__func__);
 	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
@@ -1126,7 +1029,7 @@ static void arcimx616_set_power_off(struct arcimx616_dev *sensor)
 	// Make sure everything is off before returning
 	usleep_range(1000, 1500);
 
-	
+	pm_runtime_put_sync(&client->dev);
 }
 
 static int arcimx616_set_power(struct arcimx616_dev *sensor, bool on)
@@ -1157,7 +1060,6 @@ static int arcimx616_set_power(struct arcimx616_dev *sensor, bool on)
 				return ret;
 		}
 	
-		//stuff we always when on
 		for(int i = 0; i < g_arcimx616_sensor_count; i++) {
 			ret = arcimx616_restore_mode(g_arcimx616_sensors[i]);
 			if (ret)
@@ -1182,6 +1084,10 @@ static int arcimx616_set_ctrl(struct v4l2_ctrl *ctrl)
 			container_of(ctrl->handler, struct arcimx616_dev, ctrl_handler);
 	int ret = 0;
 
+	/* V4L2 controls values will be applied only when power is already up */
+	if (!pm_runtime_get_if_in_use(&sensor->i2c_client->dev))
+		return 0;
+
 	switch (ctrl->id) {
 
 	case V4L2_CID_BRIGHTNESS:
@@ -1191,6 +1097,9 @@ static int arcimx616_set_ctrl(struct v4l2_ctrl *ctrl)
 		ret = -EINVAL;
 		break;
 	}
+
+	pm_runtime_put(&sensor->i2c_client->dev);
+
 	return ret;
 }
 
@@ -1419,9 +1328,9 @@ static int arcimx616_s_stream(struct v4l2_subdev *sd, int enable)
 			__func__, enable, enabled_check);
 		ret = -ENXIO;
 	}
-	return 0;
 
-	return ret;
+	// Always return 0 so we can enable the rest of the pipeline even if this fails
+	return 0;
 }
 
 static int arcimx616_subscribe_event(struct v4l2_subdev *sd,
@@ -1449,28 +1358,7 @@ static long arcimx616_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, vo
 			if (sensor->detect_gpio &&
 			    gpiod_get_value(sensor->detect_gpio) != 0)
 				sensor->connected = false;
-			if (!connected_override)
-				sensor->connected = false;
 			*a = sensor->connected;
-			break;
-		case VIDIOC_PRIV_S_CONNECTED:
-			if(sensor->connected != (unsigned long)arg) {
-				sensor->connected = (unsigned long)arg;
-				if(!sensor->connected) {
-					spin_lock(&sensor->irq_lock);
-					sensor->accessory_power_latched = false;
-					spin_unlock(&sensor->irq_lock);
-					arcimx616_power_off_all_sensors();
-					connected_override = false;
-				}
-				else {
-					connected_override = true;
-				}
-
-				struct v4l2_event ev = {0};
-				ev.type = sensor->connected ? V4L2_EVENT_SENSOR_CONNECTED : V4L2_EVENT_SENSOR_DISCONNECTED;
-				v4l2_event_queue(sd->devnode, &ev);
-			}
 			break;
 		case VIDIOC_PRIV_S_DUAL_REG:
 			{
@@ -1795,8 +1683,6 @@ static int arcimx616_probe(struct i2c_client *client)
 {
 	bool added_global = false;
 	struct device *dev = &client->dev;
-	//dev_err(dev, "starting arcimx616 driver\n");
-	//dev_info(dev, "probe arcimx616 driver\n");
 	struct fwnode_handle *endpoint;
 	struct arcimx616_dev *sensor;
 	struct v4l2_mbus_framefmt *fmt;
@@ -1844,7 +1730,7 @@ static int arcimx616_probe(struct i2c_client *client)
 	}
 	sensor->xclk2 = devm_clk_get(dev, "xclk2");
 	sensor->reset_gpio = devm_gpiod_get_optional(dev, "reset",
-						     GPIOD_OUT_HIGH);
+						     GPIOD_OUT_LOW);
 	sensor->detect_gpio = devm_gpiod_get_optional(dev, "detect",
 						     GPIOD_IN);
 	sensor->mux_enable = devm_gpiod_get_optional(dev, "mux-enable",
@@ -1994,6 +1880,10 @@ static int arcimx616_probe(struct i2c_client *client)
 		spin_unlock(&sensor->irq_lock);
 	}
 
+	pm_runtime_set_active(&client->dev);
+	pm_runtime_enable(&client->dev);
+	pm_runtime_idle(&client->dev);
+
 	return 0;
 
 free_ctrls:
@@ -2079,6 +1969,7 @@ static void arcimx616_remove(struct i2c_client *client)
 	}
 
 	v4l2_async_unregister_subdev(&sensor->sd);
+	pm_runtime_disable(&client->dev);
 	mutex_destroy(&sensor->lock);
 	media_entity_cleanup(&sensor->sd.entity);
 }
