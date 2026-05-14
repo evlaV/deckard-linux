@@ -1066,9 +1066,6 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 		return ret;
 	}
 
-	ret = regulator_bulk_enable(arcimx616_NUM_SUPPLIES,
-				    sensor->supplies);
-
 	//  If this is not the sensor that owns the reset gpio, skip it
 	if(sensor->reset_gpio == NULL) {
 		return 0;
@@ -1077,6 +1074,9 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
 	// Make sure the reset is low for at least 1ms
 	usleep_range(1000, 1500);
+
+	ret = regulator_bulk_enable(arcimx616_NUM_SUPPLIES,
+		sensor->supplies);
 
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to enable regulators\n",
@@ -1128,15 +1128,20 @@ static void arcimx616_set_power_off(struct arcimx616_dev *sensor)
 {
 	struct i2c_client *client = sensor->i2c_client;
 
+	/*
+	 * Sensors that don't own the reset gpio never enabled regulators
+	 * or clocks in set_power_on, so only balance the pm_runtime ref.
+	 */
+	if (sensor->reset_gpio == NULL) {
+		pm_runtime_put_sync(&client->dev);
+		return;
+	}
+
 	regulator_bulk_disable(arcimx616_NUM_SUPPLIES, sensor->supplies);
 
 	clk_disable_unprepare(sensor->xclk);
 	clk_disable_unprepare(sensor->xclk2);
-	pm_runtime_put_sync(&client->dev);
 
-	if(sensor->reset_gpio == NULL) {
-		return ;
-	}
 	dev_dbg(&client->dev, "%s: Powered off\n",
 			__func__);
 	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
@@ -1144,7 +1149,7 @@ static void arcimx616_set_power_off(struct arcimx616_dev *sensor)
 	// Make sure everything is off before returning
 	usleep_range(1000, 1500);
 
-	
+	pm_runtime_put_sync(&client->dev);
 }
 
 static int arcimx616_set_power(struct arcimx616_dev *sensor, bool on)
@@ -1866,7 +1871,7 @@ static int arcimx616_probe(struct i2c_client *client)
 	}
 	sensor->xclk2 = devm_clk_get(dev, "xclk2");
 	sensor->reset_gpio = devm_gpiod_get_optional(dev, "reset",
-						     GPIOD_OUT_HIGH);
+						     GPIOD_OUT_LOW);
 	sensor->detect_gpio = devm_gpiod_get_optional(dev, "detect",
 						     GPIOD_IN);
 	sensor->mux_enable = devm_gpiod_get_optional(dev, "mux-enable",
