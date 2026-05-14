@@ -27,6 +27,7 @@
 #include <linux/mmu_context.h>
 #include <linux/context_tracking.h>
 #include <trace/events/power.h>
+#include <trace/gpuvis.h>
 
 #include "cpuidle.h"
 
@@ -287,7 +288,16 @@ noinstr int cpuidle_enter_state(struct cpuidle_device *dev,
 		tick_broadcast_exit();
 
 	if (!cpuidle_state_is_coupled(drv, index))
-		local_irq_enable();
+	{
+		if(dev->cpu == 4)
+		{
+			//only look at one cpu to make it easier to see what is going on
+			TRACE_BEGIN_CTX("cpuidle_enter_state local_irq_enable() cpu[%d]", dev->cpu);
+			local_irq_enable();
+		}
+		else
+			local_irq_enable();
+	}
 
 	if (entered_state >= 0) {
 		s64 diff, delay = drv->states[entered_state].exit_latency_ns;
