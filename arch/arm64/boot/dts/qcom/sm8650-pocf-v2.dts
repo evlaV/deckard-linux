@@ -997,6 +997,7 @@
 	sensor@3e {
 		compatible = "ovti,og0ve10x";
 		reg = <0x3e>;
+		power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>;
 		clocks = <&camcc CAM_CC_MCLK5_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
@@ -1025,6 +1026,7 @@
 	sensor@60 {
 		compatible = "ovti,og01a1bx";
 		reg = <0x60>;
+		power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>;
 		clocks = <&camcc CAM_CC_MCLK0_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
@@ -1054,6 +1056,7 @@
 	sensor@3e {
 		compatible = "ovti,og0ve10x";
 		reg = <0x3e>;
+		power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>;
 		clocks = <&camcc CAM_CC_MCLK3_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
@@ -1082,6 +1085,7 @@
 	sensor@60 {
 		compatible = "ovti,og01a1bx";
 		reg = <0x60>;
+		power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>;
 		clocks = <&camcc CAM_CC_MCLK1_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
