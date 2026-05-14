@@ -17,6 +17,7 @@
 #include <linux/module.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/of_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/types.h>
@@ -1058,6 +1059,13 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 	struct i2c_client *client = sensor->i2c_client;
 	int ret;
 
+	ret = pm_runtime_resume_and_get(&client->dev);
+	if (ret) {
+		dev_err(&client->dev, "%s: failed to enable power\n",
+			__func__);
+		return ret;
+	}
+
 	ret = regulator_bulk_enable(arcimx616_NUM_SUPPLIES,
 				    sensor->supplies);
 
@@ -1073,7 +1081,7 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to enable regulators\n",
 			__func__);
-		return ret;
+		goto power_off;
 	}
 
 
@@ -1084,6 +1092,7 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to enable clock\n",
 			__func__);
+		goto regulator_off;
 	}
 
 	clk_set_rate(sensor->xclk2, 24000000);
@@ -1092,6 +1101,7 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to enable clock\n",
 			__func__);
+		goto xclk_off;
 	}
 
 	// Wait for power to stabilize
@@ -1105,6 +1115,13 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 
 	return 0;
 
+xclk_off:
+	clk_disable_unprepare(sensor->xclk);
+regulator_off:
+	regulator_bulk_disable(arcimx616_NUM_SUPPLIES, sensor->supplies);
+power_off:
+	pm_runtime_put_sync(&client->dev);
+	return ret;
 }
 
 static void arcimx616_set_power_off(struct arcimx616_dev *sensor)
@@ -1115,6 +1132,7 @@ static void arcimx616_set_power_off(struct arcimx616_dev *sensor)
 
 	clk_disable_unprepare(sensor->xclk);
 	clk_disable_unprepare(sensor->xclk2);
+	pm_runtime_put_sync(&client->dev);
 
 	if(sensor->reset_gpio == NULL) {
 		return ;
@@ -1181,6 +1199,10 @@ static int arcimx616_set_ctrl(struct v4l2_ctrl *ctrl)
 	struct arcimx616_dev *sensor =
 			container_of(ctrl->handler, struct arcimx616_dev, ctrl_handler);
 	int ret = 0;
+
+	/* V4L2 controls values will be applied only when power is already up */
+	if (!pm_runtime_get_if_in_use(&sensor->i2c_client->dev))
+		return 0;
 
 	switch (ctrl->id) {
 
@@ -1994,6 +2016,10 @@ static int arcimx616_probe(struct i2c_client *client)
 		spin_unlock(&sensor->irq_lock);
 	}
 
+	pm_runtime_set_active(&client->dev);
+	pm_runtime_enable(&client->dev);
+	pm_runtime_idle(&client->dev);
+
 	return 0;
 
 free_ctrls:
@@ -2079,6 +2105,7 @@ static void arcimx616_remove(struct i2c_client *client)
 	}
 
 	v4l2_async_unregister_subdev(&sensor->sd);
+	pm_runtime_disable(&client->dev);
 	mutex_destroy(&sensor->lock);
 	media_entity_cleanup(&sensor->sd.entity);
 }
