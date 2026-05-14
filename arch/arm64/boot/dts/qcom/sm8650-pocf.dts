@@ -1029,6 +1029,7 @@
 		reg = <0x3e>;
 		//sensor-queue-index = <1>;
 		
+		power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>;
 		clocks = <&camcc CAM_CC_MCLK5_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
@@ -1059,6 +1060,7 @@
 		reg = <0x60>;
 		//sensor-queue-index = <1>;
 
+		power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>;
 		clocks = <&camcc CAM_CC_MCLK0_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
@@ -1091,6 +1093,7 @@
 		reg = <0x3e>;
 		//sensor-queue-index = <0>;
 
+		power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>;
 		clocks = <&camcc CAM_CC_MCLK3_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
@@ -1121,6 +1124,7 @@
 		reg = <0x60>;
 		//sensor-queue-index = <0>;
 		
+		power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>;
 		clocks = <&camcc CAM_CC_MCLK1_CLK>;
 		clock-names = "xclk";
 		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
@@ -1455,6 +1459,7 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&cam6_default>,<&cam7_default>;
 
+		power-domains = <&camcc CAM_CC_TITAN_TOP_GDSC>;
 		clocks = <&camcc CAM_CC_MCLK7_CLK>,<&camcc CAM_CC_MCLK6_CLK>;
 		clock-names = "xclk","xclk2";
 
