@@ -147,6 +147,31 @@ static ssize_t reg_dump_show(struct device *dev, struct device_attribute *attr, 
 
 static struct device_attribute dev_attr_led_state;
 
+static bool mp3317_verify_config(struct mp3317 *led)
+{
+	// Verify all registers are configured to desired defaults
+	bool config = true;
+	unsigned int reg, rval;
+	int ret;
+	for(reg = 0; reg < sizeof(MP3317_DEFAULT_MAP); reg++)
+	{
+		ret = regmap_read(led->regmap, reg, &rval);
+		if(ret)
+		{
+			dev_dbg(&led->client->dev, "could not read %d ( %d )\n", reg, ret);
+			config = false;
+		}
+		if(rval != led->default_map[reg])
+		{
+			dev_dbg(&led->client->dev, "config failed on %d ( %x != %x )\n", reg, rval, led->default_map[reg]);
+			config = false;
+			break;
+		}
+	}
+
+	return config;
+}
+
 /* Configure and enable the MP3317 with the desired Deckard settings */
 static int deckard_config_mp3317(struct mp3317 *led)
 {
@@ -334,7 +359,7 @@ static int deckard_config_mp3317(struct mp3317 *led)
 		return ret;
 	}
 
-	return 0;
+	return mp3317_verify_config(led) ? 0 : -EIO;
 }
 
 static int check_boost_mode(struct mp3317 *led)
@@ -1054,27 +1079,9 @@ static ssize_t led_config_show(struct device *dev,
 {
 	struct led_classdev *lcdev = dev_get_drvdata(dev);
 	struct mp3317 *led = container_of(lcdev, struct mp3317, wled);
-	int ret;
-	uint rval;
-	bool config = true;
+	bool config;
 
-	// Verify all registers are configured to desired defaults
-	u8 reg;
-	for(reg = 0; reg < sizeof(MP3317_DEFAULT_MAP); reg++)
-	{
-		ret = regmap_read(led->regmap, reg, &rval);
-		dev_err(dev, "setting %d == %x\n", reg, rval );
-		if(ret)
-		{
-			dev_err(dev, "could not read %d ( %d )\n", reg, ret);
-			return ret;
-		}
-		if(rval != led->default_map[reg])
-		{
-			dev_err(dev, "config failed on %d ( %x != %x )\n", reg, rval, led->default_map[reg]);
-			config = false;
-		}
-	}
+	config = mp3317_verify_config(led);
 
 	if(!config)
 	{
@@ -1858,10 +1865,15 @@ static int mp3317_reg_enable(struct regulator_dev *rdev)
 	gpiod_set_value(led->en_gpio, 1);
 	usleep_range(10000,20000);
 	ret = deckard_config_mp3317(led);
+
 	// retry a few times in case the i2c bus is busy coming out of suspend
 	for ( int i = 0; i < 10 && ret; i++ ) {
 		ret = deckard_config_mp3317(led);
 		usleep_range(2000,4000);
+	}
+
+	if ( ret ) {
+		dev_err(&led->client->dev, "config failed with %d \n", ret );
 	}
 
 	return 0;
