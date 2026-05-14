@@ -7,7 +7,6 @@
  * Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  * Copyright (C) 2015-2018 Linaro Ltd.
  */
-#include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <media/media-entity.h>
 #include <media/v4l2-dev.h>
@@ -1040,29 +1039,16 @@ static int video_open(struct file *file)
 
 	file->private_data = vfh;
 
-	// PM runtime must be resumed before calling v4l2_pipeline_pm_get to allow sensors (powered first during
-	// v4l2_pipeline_pm_get's pipeline traversal) to use resources requiring the titan top gsdc to be turned on
-	// (This is typically needed if the sensor uses one of the CAM_CC_MCLKX_CLK clocks)
-	ret = pm_runtime_resume_and_get(video->camss->dev);
-	if (ret < 0) {
-		dev_err(video->camss->dev, "Failed to get runtime pm: %d\n",
-			ret);
-		goto error_pm_use;
-	}
-
 	ret = v4l2_pipeline_pm_get(&vdev->entity);
 	if (ret < 0) {
 		dev_err(video->camss->dev, "Failed to power up pipeline: %d\n",
 			ret);
-		goto error_pm_get;
+		goto error_pm_use;
 	}
 
 	mutex_unlock(&video->lock);
 
 	return 0;
-
-error_pm_get:
-	pm_runtime_put_sync(video->camss->dev);
 
 error_pm_use:
 	v4l2_fh_release(file);
@@ -1076,12 +1062,10 @@ error_alloc:
 static int video_release(struct file *file)
 {
 	struct video_device *vdev = video_devdata(file);
-	struct camss_video *video = video_drvdata(file);
 
 	vb2_fop_release(file);
 
 	v4l2_pipeline_pm_put(&vdev->entity);
-	pm_runtime_put_sync(video->camss->dev);
 
 	file->private_data = NULL;
 
