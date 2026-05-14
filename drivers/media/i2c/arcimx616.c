@@ -28,9 +28,6 @@
 #include <media/v4l2-fwnode.h>
 #include <media/v4l2-subdev.h>
 
-bool connected_override = true;
-
-
 #define VIVID_CID_ARCIMX616_BASE	(V4L2_CID_USER_BASE | 0xf000)
 #define V4L2_CID_TEMPERATURE	(VIVID_CID_ARCIMX616_BASE + 0)
 
@@ -59,8 +56,8 @@ struct eeprom_access_info {
 	void __user *buffer;	// src buffer when using VIDIOC_PRIV_S_EEPROM_DATA, or dst when using VIDIOC_PRIV_G_EEPROM_DATA
 };
 #define VIDIOC_PRIV_G_CONNECTED _IOR('V', BASE_VIDIOC_PRIVATE + 1, u32)
-#define VIDIOC_PRIV_S_CONNECTED _IO('V', BASE_VIDIOC_PRIVATE + 2)
-#define VIDIOC_PRIV_S_DUAL_REG _IO('V', BASE_VIDIOC_PRIVATE + 3) 
+/* BASE_VIDIOC_PRIVATE + 2 reserved (formerly VIDIOC_PRIV_S_CONNECTED) */
+#define VIDIOC_PRIV_S_DUAL_REG _IO('V', BASE_VIDIOC_PRIVATE + 3)
 #define VIDIOC_PRIV_G_EEPROM_DATA _IOWR('V', BASE_VIDIOC_PRIVATE + 4, struct eeprom_access_info) 
 #define VIDIOC_PRIV_S_EEPROM_DATA _IOW('V', BASE_VIDIOC_PRIVATE + 5, struct eeprom_access_info) 
 
@@ -1476,28 +1473,7 @@ static long arcimx616_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, vo
 			if (sensor->detect_gpio &&
 			    gpiod_get_value(sensor->detect_gpio) != 0)
 				sensor->connected = false;
-			if (!connected_override)
-				sensor->connected = false;
 			*a = sensor->connected;
-			break;
-		case VIDIOC_PRIV_S_CONNECTED:
-			if(sensor->connected != (unsigned long)arg) {
-				sensor->connected = (unsigned long)arg;
-				if(!sensor->connected) {
-					spin_lock(&sensor->irq_lock);
-					sensor->accessory_power_latched = false;
-					spin_unlock(&sensor->irq_lock);
-					arcimx616_power_off_all_sensors();
-					connected_override = false;
-				}
-				else {
-					connected_override = true;
-				}
-
-				struct v4l2_event ev = {0};
-				ev.type = sensor->connected ? V4L2_EVENT_SENSOR_CONNECTED : V4L2_EVENT_SENSOR_DISCONNECTED;
-				v4l2_event_queue(sd->devnode, &ev);
-			}
 			break;
 		case VIDIOC_PRIV_S_DUAL_REG:
 			{
