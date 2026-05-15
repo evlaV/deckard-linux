@@ -635,6 +635,47 @@ static void dsi_write_panel_off(struct drm_panel *panel)
 	msleep(200);
 }
 
+// Enable/disable backlights if they are not in the desired state
+// This prevents the driver from voting multiple times to enable/disable
+// the backlight regulators and get out of sync
+static int enable_backlight_regulators(struct lpm026m648c_ctx *ctx, bool enable)
+{
+	int i, ret = 0;
+	if( enable ) {
+		for ( i = 0; i < ARRAY_SIZE(ctx->preboost_drivers); i++ ) {
+			if ( !regulator_is_enabled(ctx->preboost_drivers[i].consumer) ) {
+				ret = regulator_enable(ctx->preboost_drivers[i].consumer);
+				if ( ret ) {
+					dev_err(ctx->dev, "Could not enable preboost driver\n");
+				}
+			}
+		}
+
+		for ( i = 0; i < ARRAY_SIZE(ctx->backlight_drivers); i++ ) {
+			if ( !regulator_is_enabled(ctx->backlight_drivers[i].consumer) ) {
+				ret = regulator_enable(ctx->backlight_drivers[i].consumer);
+				if ( ret ) {
+					dev_err(ctx->dev, "Could not enable backlight driver\n");
+				}
+			}
+		}
+	} else {
+		for ( i = 0; i < ARRAY_SIZE(ctx->backlight_drivers); i++ ) {
+			if ( regulator_is_enabled(ctx->backlight_drivers[i].consumer) ) {
+				ret |= regulator_disable(ctx->backlight_drivers[i].consumer);
+			}
+		}
+
+		for ( i = 0; i < ARRAY_SIZE(ctx->preboost_drivers); i++ ) {
+			if ( regulator_is_enabled(ctx->preboost_drivers[i].consumer) ) {
+				ret |= regulator_disable(ctx->preboost_drivers[i].consumer);
+			}
+		}
+	}
+
+	return ret;
+}
+
 static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 			  u16 pulse_offset_rows)
 {
@@ -670,6 +711,9 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 		cam_trig_width = gpo1_tew1 + CAMERA_TRIGGER_OFFSET*2;
 	}
 
+	// make sure regulators are enabled if we are turning on the backlight
+	enable_backlight_regulators(ctx, brightness > 0);
+
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
 				  BE16(gpo1_tes1), BE16(gpo1_tew1), 0x00, 0x00,
 				  0x00, 0x00, BE16(cam_trig_start),
@@ -680,6 +724,10 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 		if (ctx->is_dual_panel)
 			ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
 	}
+
+	// if set to 0, disable the regulators to save power
+	enable_backlight_regulators(ctx, brightness);
+
 	return 0;
 }
 
@@ -774,19 +822,8 @@ static int lpm026m648c_unprepare(struct drm_panel *panel)
 	if (ret < 0)
 		DRM_DEV_ERROR(ctx->dev, "power_off failed ret = %d\n", ret);
 
-	// disable backlight drivers
-	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
-	if (ret) {
-		DRM_DEV_ERROR(ctx->dev,
-			"regulator_bulk_disable failed for backlight %d\n", ret);
-	}
-
-	// disable preboost drivers
-	ret = regulator_bulk_disable(ARRAY_SIZE(ctx->preboost_drivers), ctx->preboost_drivers);
-	if (ret) {
-		DRM_DEV_ERROR(ctx->dev,
-			"regulator_bulk_disable failed for preboost%d\n", ret);
-	}
+	// disable preboost and backlight drivers
+	enable_backlight_regulators(ctx, false);
 	
 	ctx->prepared = false;
 	return ret;
@@ -800,23 +837,10 @@ static int lpm026m648c_prepare(struct drm_panel *panel)
 	if (ctx->prepared)
 		return 0;
 
-	// turn on preboost drivers
-	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->preboost_drivers), ctx->preboost_drivers);
-	if (ret < 0)
-	{
-		DRM_DEV_ERROR(ctx->dev, "preboost on failed\n");
-		goto power_off;
-	}
-
-	//we need to delay to wait for hiccup mode to exit on EV1 hardware --
-	//at a minimum it is about 70ms we need to wait here...
-	usleep_range(400000, 450000);
-
-	// turn on backlight drivers
-	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->backlight_drivers), ctx->backlight_drivers);
-	if (ret < 0)
-	{
-		DRM_DEV_ERROR(ctx->dev, "backlight driver on failed\n");
+	// turn on preboost and backlight drivers
+	ret = enable_backlight_regulators(ctx, true);
+	if (ret < 0) {
+		DRM_DEV_ERROR(ctx->dev, "failed to turn on backlight drivers\n");
 		goto power_off;
 	}
 
