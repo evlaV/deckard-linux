@@ -377,9 +377,18 @@ static int regcache_rbtree_write(struct regmap *map, unsigned int reg,
 	/* if we can't locate it in the cached rbnode we'll have
 	 * to traverse the rbtree looking for it.
 	 */
+
 	rbnode = regcache_rbtree_lookup(map, reg);
 	if (rbnode) {
 		reg_tmp = (reg - rbnode->base_reg) / map->reg_stride;
+		if( ((void *)rbnode < (void*) 0x1000) && !strcmp(map->name,"max98390_regmap"))
+		{
+			printk(KERN_INFO "max98390_regmap map=%p, rbnode=%p, reg=%d, reg_tmp=%d, base_reg=%d, reg_stride=%d, value=%d",
+										      map,    rbnode,    reg,    reg_tmp, rbnode->base_reg, map->reg_stride, value);
+			
+			printk(KERN_INFO "max98390_regmap map=%p, rbnode=%p, reg=%d, reg_tmp=%d, cache_present=%p, block=%p",
+										      map,    rbnode,    reg,    reg_tmp, rbnode->cache_present, rbnode->block);
+		}
 		regcache_rbtree_set_register(map, rbnode, reg_tmp, value);
 	} else {
 		unsigned int base_reg, top_reg;
@@ -450,6 +459,16 @@ static int regcache_rbtree_write(struct regmap *map, unsigned int reg,
 		rbnode = regcache_rbtree_node_alloc(map, reg);
 		if (!rbnode)
 			return -ENOMEM;
+		
+		if(((void *) rbnode < (void*) 0x1000) && !strcmp(map->name,"max98390_regmap"))
+		{
+			printk(KERN_INFO "max98390_regmap map=%p, rbnode=%p, reg=%d, base_reg=%d, reg_stride=%d, value=%d",
+										      map,    rbnode,    reg,    rbnode->base_reg, map->reg_stride, value);
+			
+			printk(KERN_INFO "max98390_regmap map=%p, rbnode=%p, reg=%d, cache_present=%p, block=%p",
+										      map,    rbnode,    reg,    rbnode->cache_present, rbnode->block);
+		}
+
 		regcache_rbtree_set_register(map, rbnode,
 					     (reg - rbnode->base_reg) / map->reg_stride,
 					     value);

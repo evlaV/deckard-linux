@@ -1026,6 +1026,7 @@ static const struct regmap_config max98390_regmap = {
 	.readable_reg	  = max98390_readable_register,
 	.volatile_reg	  = max98390_volatile_reg,
 	.cache_type       = REGCACHE_RBTREE,
+	.name 			  = "max98390_regmap",
 };
 
 static void max98390_slot_config(struct i2c_client *i2c,
@@ -1156,6 +1157,9 @@ static int max98390_i2c_probe(struct i2c_client *i2c)
 
 	/* regmap initialization */
 	max98390->regmap = devm_regmap_init_i2c(i2c, &max98390_regmap);
+	
+	printk(KERN_INFO "gabe max98390 regmap name = %s", max98390_regmap.name);
+
 	if (IS_ERR(max98390->regmap)) {
 		ret = PTR_ERR(max98390->regmap);
 		dev_err(&i2c->dev,
