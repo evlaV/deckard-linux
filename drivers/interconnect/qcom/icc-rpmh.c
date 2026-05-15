@@ -180,6 +180,8 @@ int qcom_icc_bcm_init(struct qcom_icc_bcm *bcm, struct device *dev)
 	INIT_LIST_HEAD(&bcm->list);
 	INIT_LIST_HEAD(&bcm->ws_list);
 
+	bcm->dirty = true;
+
 	if (!bcm->vote_scale)
 		bcm->vote_scale = 1000;
 
