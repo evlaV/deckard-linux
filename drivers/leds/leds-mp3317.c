@@ -1159,6 +1159,11 @@ static ssize_t led_state_store(struct device *dev,
 	int ret;
 	u8 val;
 
+	// If in use a kernel regulator, don't allow enable/disable from userspace
+	if ( led->desc.ops ) {
+		return -EIO;
+	}
+
 	ret = kstrtou8(buf, 10, &val);
 	if(ret)
 		return ret;
