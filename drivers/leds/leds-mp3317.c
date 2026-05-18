@@ -172,8 +172,8 @@ static bool mp3317_verify_config(struct mp3317 *led)
 	return config;
 }
 
-/* Configure and enable the MP3317 with the desired Deckard settings */
-static int deckard_config_mp3317(struct mp3317 *led)
+/* Configure and enable the MP3317 with the desired settings from dts node */
+static int mp3317_config(struct mp3317 *led)
 {
 	struct device *dev = &led->client->dev;
 	int ret;
@@ -360,31 +360,6 @@ static int deckard_config_mp3317(struct mp3317 *led)
 	}
 
 	return mp3317_verify_config(led) ? 0 : -EIO;
-}
-
-static int check_boost_mode(struct mp3317 *led)
-{
-	int ret, rval;
-
-	ret = regmap_read(led->regmap, MP3317_MODE_CTL, &rval);
-	if(ret)
-		return ret;
-
-	rval &= BLMOD_MASK;
-
-	return rval;
-}
-
-static int check_chip_state(struct mp3317 *led)
-{
-	int ret, rval;
-
-	ret = regmap_read(led->regmap, MP3317_EN_CTL, &rval);
-	if(ret)
-		return ret;
-
-	rval &= EN_MASK;
-	return rval;
 }
 
 static int set_headroom(struct mp3317 *led, int val)
@@ -1110,7 +1085,7 @@ static ssize_t led_config_store(struct device *dev,
 	// If val !=0, apply the MP3317 configuration
 	if(val)
 	{
-		ret = deckard_config_mp3317(led);
+		ret = mp3317_config(led);
 		if(ret) return ret;
 	}
 	else
@@ -1171,7 +1146,7 @@ static ssize_t led_state_store(struct device *dev,
 	if (val && !gpiod_get_value(led->en_gpio)) {
 		gpiod_set_value(led->en_gpio, 1);
 		usleep_range(10000,20000);
-		deckard_config_mp3317(led);
+		mp3317_config(led);
 
 		sysfs_notify(&dev->kobj, NULL, dev_attr_led_state.attr.name);
 
@@ -1850,7 +1825,7 @@ static int mp3317_leds_resume(struct device *dev)
 	gpiod_set_value_cansleep(led->en_gpio, 1);
 	usleep_range(10000,20000);
 	// set default config led
-	deckard_config_mp3317(led);
+	mp3317_config(led);
 
 	return 0;
 }
@@ -1869,11 +1844,11 @@ static int mp3317_reg_enable(struct regulator_dev *rdev)
 
 	gpiod_set_value(led->en_gpio, 1);
 	usleep_range(10000,20000);
-	ret = deckard_config_mp3317(led);
+	ret = mp3317_config(led);
 
 	// retry a few times in case the i2c bus is busy coming out of suspend
 	for ( int i = 0; i < 10 && ret; i++ ) {
-		ret = deckard_config_mp3317(led);
+		ret = mp3317_config(led);
 		usleep_range(2000,4000);
 	}
 
@@ -1972,6 +1947,9 @@ static int mp3317_leds_probe(struct i2c_client *client)
 		return ret;
 	}
 
+	// turn off until requested
+	gpiod_set_value(led->en_gpio, 0);
+
 	// setup led platform device
 	led->rst = 60000;
 	if ( device_property_read_string(&client->dev, "mp3317,label", &led->wled.name) ) {
@@ -1988,9 +1966,6 @@ static int mp3317_leds_probe(struct i2c_client *client)
 		dev_err(&client->dev, "Unable register led: %s\n", led->wled.name);
 		return ret;
 	}
-
-	// set default config led
-	deckard_config_mp3317(led);
 
 	regulator_node = of_get_child_by_name(dev->of_node, "regulator");
 	if (!regulator_node) {
@@ -2019,8 +1994,6 @@ static int mp3317_leds_probe(struct i2c_client *client)
 			if (IS_ERR(rdev)) {
 				dev_err(dev, "Failed to register regulator: %d\n", (int) PTR_ERR(rdev));
 			}
-			// start with regulator disabled
-			mp3317_reg_disable(rdev);
 		} else {
 			dev_err(dev, "Regulator match failed, %d\n", ret);
 		}
