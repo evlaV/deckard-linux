@@ -540,7 +540,8 @@ static const char *hwmon_channel_label_get(const struct hwmon_ops *ops,
 	return label;
 }
 
-static int hwmon_template_label(const char *template, char *template_label)
+static int hwmon_template_label(const char *template, char *template_label,
+				size_t template_label_len)
 {
 	const char *s = template;
 	char *format;
@@ -557,7 +558,8 @@ static int hwmon_template_label(const char *template, char *template_label)
 	if (!prefix)
 		return -ENOMEM;
 
-	sprintf(template_label, "%s_%%s%s", prefix, format + 2);
+	snprintf(template_label, template_label_len, "%s_%%s%s", prefix,
+		 format + 2);
 	kfree(prefix);
 
 	return 0;
@@ -572,6 +574,7 @@ static struct attribute *hwmon_genattr(const void *drvdata,
 {
 	struct hwmon_device_attribute *hattr;
 	struct device_attribute *dattr;
+	size_t template_label_len;
 	char *template_label;
 	struct attribute *a;
 	const char *label;
@@ -601,8 +604,10 @@ static struct attribute *hwmon_genattr(const void *drvdata,
 
 		label = hwmon_channel_label_get(ops, drvdata, index);
 		if (label) {
-			template_label = kzalloc(strlen(template) + 2, GFP_KERNEL);
-			hwmon_template_label(template, template_label);
+			/* add to the old template, one for extra _ and one for '\0' */
+			template_label_len = strlen(template) + 2;
+			template_label = kzalloc(template_label_len, GFP_KERNEL);
+			hwmon_template_label(template, template_label, template_label_len);
 			scnprintf(hattr->name_labeled, sizeof(hattr->name_labeled), template_label,
 				  label);
 			kfree(template_label);
