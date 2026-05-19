@@ -601,7 +601,7 @@ static struct attribute *hwmon_genattr(const void *drvdata,
 
 		label = hwmon_channel_label_get(ops, drvdata, index);
 		if (label) {
-			template_label = kzalloc(strlen(template) + 1, GFP_KERNEL);
+			template_label = kzalloc(strlen(template) + 2, GFP_KERNEL);
 			hwmon_template_label(template, template_label);
 			scnprintf(hattr->name_labeled, sizeof(hattr->name_labeled), template_label,
 				  label);
