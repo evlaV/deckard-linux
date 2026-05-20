@@ -743,6 +743,7 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		if (arg >= 4)
 			return -EINVAL;
 		mbox_send_message(dsp->mbox_chan[arg], NULL);
+		mbox_client_txdone(dsp->mbox_chan[arg], 0);
 		return 0;
 	case DSP_IOCTL_BOOT:
 		if (atomic_xchg(&dsp->booted, 1))
