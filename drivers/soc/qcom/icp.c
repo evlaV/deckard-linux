@@ -557,6 +557,7 @@ switch (cmd) {
 		break;
 	case ICP_IOCTL_SEND_IPCC:
 		mbox_send_message(icp->mbox_chan, NULL);
+		mbox_client_txdone(icp->mbox_chan, 0);
 		break;
 	case ICP_IOCTL_SYNX_TRYLOCK:
 		ret = hwspin_trylock_raw(icp->hwlock_synx);
