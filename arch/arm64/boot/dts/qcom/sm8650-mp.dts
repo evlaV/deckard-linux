@@ -2225,7 +2225,7 @@
 
 		input@1 {
 			reg = <1>;
-			label = "s6c";
+			label = "s1c";
 		};
 
 		input@2 {
@@ -2235,7 +2235,7 @@
 
 		input@3 {
 			reg = <3>;
-			label = "s1c";
+			label = "s6c";
 		};
     }; 
 };
