@@ -61,6 +61,7 @@
 #define GPO1_TES1_108_BOE	4619
 #define GPO1_TES1_144_JDI	GPO1_TES1_144_BOE
 #define GPO1_TES1_120_JDI	GPO1_TES1_120_BOE
+#define GPO1_TES1_96		5290
 #define GPO1_TES1_90		5446
 #define GPO1_TEW1			0
 #define RTN 59
@@ -112,6 +113,7 @@ typedef enum
 	MODE_120 = 0,
     MODE_144,
 	MODE_108,
+	MODE_96,
 	MODE_90,
 	MODE_80,
 	MODE_72,
@@ -161,7 +163,7 @@ static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
 // If we wanted exact integer refresh rates, we could bump the pixel clock to
 // 720576 kHz.
 
-static const struct drm_display_mode modes[6] = {
+static const struct drm_display_mode modes[7] = {
 	{
 		.name = "  2160x2160_120",
 		.clock = (2160 + 24 + 20 + 20) * (2160 + 447 + 1 + 20) * 120 / 1000,
@@ -203,6 +205,20 @@ static const struct drm_display_mode modes[6] = {
 		.vsync_start = 2160 + 738,
 		.vsync_end = 2160 + 738 + 1,
 		.vtotal = 2160 + 738 + 1 + 20,
+		.width_mm = 50,
+		.height_mm = 50,
+	},
+	{
+		.name = "  2160x2160_96",
+		.clock = (2160 + 24 + 20 + 20) * (2160 + 1104.0 + 1 + 20) * 96 / 1000,
+		.hdisplay = 2160,
+		.hsync_start = (2160 + 24),
+		.hsync_end = (2160 + 24 + 20),
+		.htotal = (2160 + 24 + 20 + 20),
+		.vdisplay = 2160,
+		.vsync_start = 2160 + 1104.0,
+		.vsync_end = 2160 + 1104.0 + 1,
+		.vtotal = 2160 + 1104.0 + 1 + 20,
 		.width_mm = 50,
 		.height_mm = 50,
 	},
@@ -695,6 +711,8 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
 	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_108].vtotal ) {
 		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_108_SHARP : GPO1_TES1_108_BOE;
+	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_96].vtotal ) {
+		gpo1_tes1 = GPO1_TES1_96;
 	} else {
 		gpo1_tes1 = GPO1_TES1_90;
 	}
@@ -973,6 +991,8 @@ static int lpm026m648c_mode_set(struct drm_panel *panel,
 	// use the vtotal to determine the mode
 	if (mode->vtotal == modes[MODE_120].vtotal){
 			new_mode = MODE_120;
+	}else if (mode->vtotal == modes[MODE_96].vtotal){
+			new_mode = MODE_96;
 	}else if (mode->vtotal == modes[MODE_90].vtotal){
 			new_mode = MODE_90;
 	}else if (mode->vtotal == modes[MODE_80].vtotal){
@@ -1214,6 +1234,8 @@ static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
 	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_108].vtotal ) {
 		gpo1_tes1 = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_108_SHARP : GPO1_TES1_108_BOE;
+	} else if ( modes[ctx->current_mode].vtotal == modes[MODE_96].vtotal ) {
+		gpo1_tes1 = GPO1_TES1_96;
 	} else {
 		gpo1_tes1 = GPO1_TES1_90;
 	}
@@ -1222,7 +1244,8 @@ static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 		|| ctx->panel_vendor == VENDOR_BOE
 		|| ctx->current_mode == MODE_72
 		|| ctx->current_mode == MODE_80
-		|| ctx->current_mode == MODE_90 ) {
+		|| ctx->current_mode == MODE_90
+		|| ctx->current_mode == MODE_96 ) {
 		// VID_VS_DELAY + TES
 		vsync_to_photons_psec = VID_VS_DELAY * EXTERNAL_LINE_TIME_PSEC + gpo1_tes1 * INTERNAL_LINE_TIME_PSEC;
 	} else { // SHARP 108/120/144
