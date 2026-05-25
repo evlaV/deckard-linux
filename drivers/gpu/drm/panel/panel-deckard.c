@@ -667,6 +667,9 @@ static int enable_backlight_regulators(struct lpm026m648c_ctx *ctx, bool enable)
 			}
 		}
 
+		// Preboost Startup time
+		usleep_range(40000, 50000);
+
 		for ( i = 0; i < ARRAY_SIZE(ctx->backlight_drivers); i++ ) {
 			if ( !regulator_is_enabled(ctx->backlight_drivers[i].consumer) ) {
 				ret = regulator_enable(ctx->backlight_drivers[i].consumer);
