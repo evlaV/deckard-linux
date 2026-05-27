@@ -471,6 +471,10 @@ static int dpu_encoder_phys_wb_wait_for_commit_done(
 	struct dpu_encoder_wait_info wait_info;
 	struct dpu_encoder_phys_wb *wb_enc = to_dpu_encoder_phys_wb(phys_enc);
 
+	if (phys_enc->dpu_kms->skip_cwb_right &&
+	    phys_enc->split_role == ENC_ROLE_SLAVE)
+		return 0;
+
 	wait_info.wq = &phys_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &phys_enc->pending_kickoff_cnt;
 	wait_info.timeout_ms = KICKOFF_TIMEOUT_MS;
