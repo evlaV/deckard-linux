@@ -2850,7 +2850,7 @@ static const struct llcc_slice_config sm8650_data[] = {
 	{
 		.usecase_id = LLCC_CPUSS,
 		.slice_id = 1,
-		.max_cap = 5120,
+		.max_cap = 1024,
 		.priority = 1,
 		.bonus_ways = 0xffffff,
 		.cache_mode = 0,
@@ -2906,8 +2906,8 @@ static const struct llcc_slice_config sm8650_data[] = {
 	}, {
 		.usecase_id = LLCC_GPU,
 		.slice_id = 9,
-		.max_cap = 3096,
-		.priority = 1,
+		.max_cap = 4096,
+		.priority = 2,
 		.bonus_ways = 0xffffff,
 		.cache_mode = 0,
 		.write_scid_en = true,
