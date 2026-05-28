@@ -22,12 +22,17 @@
 
 #define AW37503_VOUT_MASK		0x1F
 #define AW37503_VOUT_N_VOLTAGE		0x15
+#define AW37505_VOUT_N_VOLTAGE		0x19
 #define AW37503_VOUT_VMIN		4000000
 #define AW37503_VOUT_VMAX		6000000
+#define AW37505_VOUT_VMAX		6500000
 #define AW37503_VOUT_STEP		100000
 
 #define AW37503_REG_APPS_DIS_VPOS	BIT(1)
 #define AW37503_REG_APPS_DIS_VNEG	BIT(0)
+#define AW37503_REG_APPS_MODE   	BIT(6)
+#define AW37505_MODE_HPM				1
+#define AW37505_MODE_LPM				0
 
 #define AW37503_REGULATOR_ID_VPOS	0
 #define AW37503_REGULATOR_ID_VNEG	1
@@ -41,6 +46,7 @@ struct aw37503_reg_pdata {
 struct aw37503_regulator {
 	struct device *dev;
 	struct aw37503_reg_pdata reg_pdata[AW37503_MAX_REGULATORS];
+    struct regmap *regmap;
 };
 
 static int aw37503_regulator_enable(struct regulator_dev *rdev)
@@ -106,6 +112,40 @@ static const struct regulator_ops aw37503_regulator_ops = {
 	.set_active_discharge = regulator_set_active_discharge_regmap,
 };
 
+static int aw37505_regulator_set_mode(struct regulator_dev *rdev, unsigned int mode)
+{
+    struct aw37503_regulator *chip = rdev_get_drvdata(rdev);
+    unsigned int val;
+
+    switch (mode) {
+    case REGULATOR_MODE_FAST:
+        val = AW37505_MODE_HPM;
+        break;
+    case REGULATOR_MODE_NORMAL:
+    case REGULATOR_MODE_IDLE:
+        val = AW37505_MODE_LPM;
+        break;
+    default:
+        return -EINVAL;
+    }
+
+    /* Write mode configuration to hardware registers */
+    return regmap_update_bits(chip->regmap, AW37503_REG_APPS,
+                              AW37503_REG_APPS_MODE, val);
+}
+
+static const struct regulator_ops aw37505_regulator_ops = {
+	.enable = aw37503_regulator_enable,
+	.disable = aw37503_regulator_disable,
+	.is_enabled = aw37503_regulator_is_enabled,
+	.list_voltage = regulator_list_voltage_linear,
+	.map_voltage = regulator_map_voltage_linear,
+	.get_voltage_sel = regulator_get_voltage_sel_regmap,
+	.set_voltage_sel = regulator_set_voltage_sel_regmap,
+	.set_active_discharge = regulator_set_active_discharge_regmap,
+    .set_mode = aw37505_regulator_set_mode,
+};
+
 static int aw37503_of_parse_cb(struct device_node *np,
 				const struct regulator_desc *desc,
 				struct regulator_config *config)
@@ -152,9 +192,36 @@ static int aw37503_of_parse_cb(struct device_node *np,
 		.owner = THIS_MODULE,			\
 	}
 
-static const struct regulator_desc aw_regs_desc[AW37503_MAX_REGULATORS] = {
+static const struct regulator_desc aw37503_regs_desc[AW37503_MAX_REGULATORS] = {
 	AW37503_REGULATOR_DESC(VPOS, outp),
 	AW37503_REGULATOR_DESC(VNEG, outn),
+};
+
+#define AW37505_REGULATOR_DESC(_id, _name)		\
+	[AW37503_REGULATOR_ID_##_id] = {		\
+		.name = "aw37503-"#_name,		\
+		.supply_name = "vin",			\
+		.id = AW37503_REGULATOR_ID_##_id,	\
+		.of_match = of_match_ptr(#_name),	\
+		.of_parse_cb = aw37503_of_parse_cb,	\
+		.ops = &aw37505_regulator_ops,		\
+		.n_voltages = AW37505_VOUT_N_VOLTAGE,	\
+		.min_uV = AW37503_VOUT_VMIN,		\
+		.uV_step = AW37503_VOUT_STEP,		\
+		.enable_time = 500,			\
+		.vsel_mask = AW37503_VOUT_MASK,	\
+		.vsel_reg = AW37503_REG_##_id,		\
+		.active_discharge_off = 0,			\
+		.active_discharge_on = AW37503_REG_APPS_DIS_##_id, \
+		.active_discharge_mask = AW37503_REG_APPS_DIS_##_id, \
+		.active_discharge_reg = AW37503_REG_APPS, \
+		.type = REGULATOR_VOLTAGE,		\
+		.owner = THIS_MODULE,			\
+	}
+
+static const struct regulator_desc aw37505_regs_desc[AW37503_MAX_REGULATORS] = {
+	AW37505_REGULATOR_DESC(VPOS, outp),
+	AW37505_REGULATOR_DESC(VNEG, outn),
 };
 
 static const struct regmap_range aw37503_no_reg_ranges[] = {
@@ -180,33 +247,38 @@ static int aw37503_probe(struct i2c_client *client)
 	struct device *dev = &client->dev;
 	struct aw37503_regulator *chip;
 	struct regulator_dev *rdev;
-	struct regmap *regmap;
 	struct regulator_config config = { };
+	struct regulator_desc * aw37503_data;
 	int id;
+
+	aw37503_data = (struct regulator_desc *)i2c_get_match_data(client);
+	if ( !aw37503_data ) {
+		return -EINVAL;
+	}
 
 	chip = devm_kzalloc(dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;
 
-	regmap = devm_regmap_init_i2c(client, &aw37503_regmap_config);
-	if (IS_ERR(regmap))
-		return dev_err_probe(dev, PTR_ERR(regmap),
+	chip->regmap = devm_regmap_init_i2c(client, &aw37503_regmap_config);
+	if (IS_ERR(chip->regmap))
+		return dev_err_probe(dev, PTR_ERR(chip->regmap),
 				     "Failed to init regmap\n");
 
 	i2c_set_clientdata(client, chip);
 	chip->dev = dev;
 
-	config.regmap = regmap;
+	config.regmap = chip->regmap;
 	config.dev = dev;
 	config.driver_data = chip;
 
 	for (id = 0; id < AW37503_MAX_REGULATORS; ++id) {
-		rdev = devm_regulator_register(dev, &aw_regs_desc[id],
+		rdev = devm_regulator_register(dev, &aw37503_data[id],
 					       &config);
 		if (IS_ERR(rdev))
 			return dev_err_probe(dev, PTR_ERR(rdev),
 					     "Failed to register regulator %s\n",
-					     aw_regs_desc[id].name);
+					     aw37503_data[id].name);
 	}
 	return 0;
 }
@@ -218,7 +290,8 @@ static const struct i2c_device_id aw37503_id[] = {
 MODULE_DEVICE_TABLE(i2c, aw37503_id);
 
 static const struct of_device_id aw37503_of_match[] = {
-	{.compatible = "awinic,aw37503",},
+	{.compatible = "awinic,aw37503", .data = &aw37503_regs_desc},
+	{.compatible = "awinic,aw37505", .data = &aw37505_regs_desc},
 	{ /* Sentinel */ },
 };
 
