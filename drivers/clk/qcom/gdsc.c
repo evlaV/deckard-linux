@@ -143,6 +143,11 @@ static int gdsc_toggle_logic(struct gdsc *sc, enum gdsc_status status,
 			return ret;
 	}
 
+	if (sc->pd.name && !strcmp(sc->pd.name, "cam_cc_titan_top_gdsc")) {
+		printk(KERN_ERR "%s: Titan GDSC: on: %d\n",
+		       __func__, (status == GDSC_ON));
+	}
+
 	ret = gdsc_update_collapse_bit(sc, status == GDSC_OFF);
 
 	/* If disabling votable gdscs, don't poll on status */

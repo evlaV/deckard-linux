@@ -7,6 +7,8 @@
  * Copyright (c) 2009 Rafael J. Wysocki <rjw@sisk.pl>, Novell Inc.
  */
 
+#define DEBUG
+
 #define pr_fmt(fmt) "PM: " fmt
 
 #include <linux/string.h>
