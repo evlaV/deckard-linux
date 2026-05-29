@@ -17,13 +17,16 @@
 #define MPQ3367_FAULT_REG       0x02
 #define MPQ3367_ID_REG          0x03
 
-char * mpq3367_dimming_modes[] = {"mix", "pwm", "analog"};
+const char *mpq3367_dimming_modes[] = {"mix", "pwm", "analog"};
+
 #define MPQ3367_DIMMING_SHIFT   5
 #define MPQ3367_DIMMING_MASK    0x03
 #define MPQ3367_MIX_DIMMING     0x00
 #define MPQ3367_PWM_DIMMING     0x01
 #define MPQ3367_ANALOG_DIMMING  0x02
 #define MPQ3367_RSVD_DIMMING    0x03
+
+#define MPQ3367_I2C_MAX_RETRY   20
 
 struct mpq3367_data {
 	struct i2c_client *client;
@@ -42,10 +45,15 @@ static int mpq_read(struct mpq3367_data *mpq, unsigned int reg, unsigned int *va
 }
 
 static int mpq3367_set_dimming_mode(struct mpq3367_data *mpq) {
-	if ( mpq->dimming_mode >= MPQ3367_RSVD_DIMMING )
+	unsigned int mask = MPQ3367_DIMMING_MASK << MPQ3367_DIMMING_SHIFT;
+	unsigned int val;
+
+	if (mpq->dimming_mode >= MPQ3367_RSVD_DIMMING)
 		return -EINVAL;
 
-	return regmap_update_bits(mpq->regmap, MPQ3367_FUNC1_SET_REG, MPQ3367_DIMMING_MASK << MPQ3367_DIMMING_SHIFT, mpq->dimming_mode << MPQ3367_DIMMING_SHIFT);
+	val = mpq->dimming_mode << MPQ3367_DIMMING_SHIFT;
+
+	return regmap_update_bits(mpq->regmap, MPQ3367_FUNC1_SET_REG, mask, val);
 }
 
 static void backlight_delayed_work_handler(struct work_struct *work)
@@ -55,34 +63,35 @@ static void backlight_delayed_work_handler(struct work_struct *work)
 	int ret;
 	int loopctr=0;
 
-	struct mpq3367_data *mpq = container_of((struct delayed_work *)work,struct mpq3367_data, backlight_work);
+	struct mpq3367_data *mpq = container_of(to_delayed_work(work),
+						struct mpq3367_data, backlight_work);
 
 	ret = mpq_read(mpq, MPQ3367_FUNC1_SET_REG, &mode);
 	if (ret) {
 		dev_err(mpq->dev, "read failed in work handler (ret=%d)\n", ret);
 		return;
 	}
-	mode = ( mode >>  MPQ3367_DIMMING_SHIFT) & MPQ3367_DIMMING_MASK;
-	if(ret || mode != mpq->dimming_mode )
-	{
+
+	mode = (mode >>  MPQ3367_DIMMING_SHIFT) & MPQ3367_DIMMING_MASK;
+
+	if (ret || mode != mpq->dimming_mode) {
 		dev_err(mpq->dev, "failed init check, resetting mode\n");
-		do
-		{
+		do {
 			ret = mpq3367_set_dimming_mode(mpq);
-
-			if( ret == 0 ) {
+			if(!ret)
 				break;
-			}
 
-			if(loopctr>20) {
+			if(loopctr > MPQ3367_I2C_MAX_RETRY) {
 				dev_err(mpq->dev, "i2c write failed too many times, quitting\n");
 				break;
 			} else {
 				loopctr++;
 				usleep_range(50000, 100000);
-				dev_err(mpq->dev, "i2c write fail, retrying... [%d]\n", loopctr);
+				dev_err(mpq->dev, "i2c write fail, retrying... [%d]\n",
+					loopctr);
 			}
-		}while(ret<0);
+		} while (ret < 0);
+
 		dev_err(mpq->dev, "reinit complete\n");
 	}
 }
@@ -92,20 +101,21 @@ static int reg_enable(struct regulator_dev *rdev)
 	struct mpq3367_data *mpq = rdev_get_drvdata(rdev);
 	struct device *dev = mpq->dev;
 	int ret;
-	int i=0;
+	int i;
 
-	if ( mpq->is_enabled )
+	if (mpq->is_enabled)
 		return 0;
 
 	gpiod_set_value(mpq->en_gpio, 1);
 	usleep_range(10000, 20000);
-	for(i=0;i<10;i++) {
+
+	for (i = 0; i < MPQ3367_I2C_MAX_RETRY; i++) {
 		ret = mpq3367_set_dimming_mode(mpq);
-		if(  ret == 0 ) {
+		if (!ret)
 			continue;
-		}
 	}
-	if ( ret ) {
+
+	if (ret) {
 		dev_err(dev, "i2c write failed too many times, quitting\n");
 		return -EIO;
 	}
@@ -118,9 +128,9 @@ static int reg_enable(struct regulator_dev *rdev)
 	// 10 frames @80Hz  ~ 125 msec
 	// backlight pulses are only output when panel starts receving frames, so we give ourselves a bit of a buffer and
 	// schedule the timer to come back in 1 sec
-	if (delayed_work_pending(&mpq->backlight_work)) {
+	if (delayed_work_pending(&mpq->backlight_work))
 		cancel_delayed_work_sync(&mpq->backlight_work);
-	}
+
 	queue_delayed_work(system_freezable_wq, &mpq->backlight_work, HZ);
 
 	return 0;
@@ -130,12 +140,14 @@ static int reg_disable(struct regulator_dev *rdev)
 {
 	struct mpq3367_data *mpq = rdev_get_drvdata(rdev);
 
-	if ( !mpq->is_enabled )
+	if (!mpq->is_enabled)
 		return 0;
+
 	cancel_delayed_work_sync(&mpq->backlight_work);
 	gpiod_set_value(mpq->en_gpio, 0);
 
 	mpq->is_enabled = false;
+
 	return 0;
 }
 
@@ -261,7 +273,7 @@ static int mpq3367_probe(struct i2c_client *client)
 	// default to PWM dimming if not set in DTS
 	mpq->dimming_mode = MPQ3367_PWM_DIMMING;
 	if ( !of_property_read_string(dev->of_node, "mode", &mode) ) {
-		for(i=0;i<sizeof(mpq3367_dimming_modes);i++){
+		for(i = 0; i < sizeof(mpq3367_dimming_modes); i++){
 			if (!strcmp(mpq3367_dimming_modes[i], mode)) {
 				mpq->dimming_mode = i;
 				break;
@@ -271,7 +283,8 @@ static int mpq3367_probe(struct i2c_client *client)
 
 	mpq->regmap = devm_regmap_init_i2c(client, &mpq3367_regmap_config);
 	if (IS_ERR(mpq->regmap)) {
-		dev_err(dev, "Failed to allocate register map: %ld\n", PTR_ERR(mpq->regmap));
+		dev_err(dev, "Failed to allocate register map: %ld\n",
+			PTR_ERR(mpq->regmap));
 		return PTR_ERR(mpq->regmap);
 	}
 
