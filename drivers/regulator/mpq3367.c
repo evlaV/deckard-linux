@@ -83,14 +83,8 @@ static void backlight_delayed_work_handler(struct work_struct *work)
 				dev_err(mpq->dev, "i2c write fail, retrying... [%d]\n", loopctr);
 			}
 		}while(ret<0);
-		dev_info(mpq->dev, "reinit complete\n");
+		dev_err(mpq->dev, "reinit complete\n");
 	}
-}
-
-static void backlight_check_work_init(struct mpq3367_data *mpq)
-{
-	INIT_DELAYED_WORK(&mpq->backlight_work, backlight_delayed_work_handler);
-	schedule_delayed_work(&mpq->backlight_work, HZ);
 }
 
 static int reg_enable(struct regulator_dev *rdev)
@@ -99,6 +93,9 @@ static int reg_enable(struct regulator_dev *rdev)
 	struct device *dev = mpq->dev;
 	int ret;
 	int i=0;
+
+	if ( mpq->is_enabled )
+		return 0;
 
 	gpiod_set_value(mpq->en_gpio, 1);
 	usleep_range(10000, 20000);
@@ -121,7 +118,10 @@ static int reg_enable(struct regulator_dev *rdev)
 	// 10 frames @80Hz  ~ 125 msec
 	// backlight pulses are only output when panel starts receving frames, so we give ourselves a bit of a buffer and
 	// schedule the timer to come back in 1 sec
-	backlight_check_work_init(mpq);
+	if (delayed_work_pending(&mpq->backlight_work)) {
+		cancel_delayed_work_sync(&mpq->backlight_work);
+	}
+	queue_delayed_work(system_freezable_wq, &mpq->backlight_work, HZ);
 
 	return 0;
 }
@@ -130,7 +130,9 @@ static int reg_disable(struct regulator_dev *rdev)
 {
 	struct mpq3367_data *mpq = rdev_get_drvdata(rdev);
 
-	dev_err(mpq->dev, "disabling backlight\n");
+	if ( !mpq->is_enabled )
+		return 0;
+	cancel_delayed_work_sync(&mpq->backlight_work);
 	gpiod_set_value(mpq->en_gpio, 0);
 
 	mpq->is_enabled = false;
@@ -304,6 +306,8 @@ static int mpq3367_probe(struct i2c_client *client)
 		dev_err(dev, "failed to create mpq sysfs files\n");
 		return ret;
 	}
+
+	INIT_DELAYED_WORK(&mpq->backlight_work, backlight_delayed_work_handler);
 
 	mpq->client = client;
 	mpq->dev = dev;
