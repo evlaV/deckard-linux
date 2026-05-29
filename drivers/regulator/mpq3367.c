@@ -112,7 +112,7 @@ static int reg_enable(struct regulator_dev *rdev)
 	for (i = 0; i < MPQ3367_I2C_MAX_RETRY; i++) {
 		ret = mpq3367_set_dimming_mode(mpq);
 		if (!ret)
-			continue;
+			break;
 	}
 
 	if (ret) {
