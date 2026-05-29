@@ -273,7 +273,7 @@ static int mpq3367_probe(struct i2c_client *client)
 	// default to PWM dimming if not set in DTS
 	mpq->dimming_mode = MPQ3367_PWM_DIMMING;
 	if ( !of_property_read_string(dev->of_node, "mode", &mode) ) {
-		for(i = 0; i < sizeof(mpq3367_dimming_modes); i++){
+		for(i = 0; i < ARRAY_SIZE(mpq3367_dimming_modes); i++){
 			if (!strcmp(mpq3367_dimming_modes[i], mode)) {
 				mpq->dimming_mode = i;
 				break;
