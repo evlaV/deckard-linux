@@ -418,6 +418,13 @@ config AXP288_FUEL_GAUGE
 	  monitoring as well as alerts for battery over/under voltage and
 	  over/under temperature.
 
+config CHARGER_MP2652
+	tristate "MPS MP2652 charger"
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  MPS MP2652 2S-5S buck/boost charger driver.
+
 config HOTSWAP_NORTHGATE
 	tristate "Northgate Hotswap"
 	depends on I2C
