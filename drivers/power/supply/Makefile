@@ -126,4 +126,5 @@ obj-$(CONFIG_BATTERY_UG3105)	+= ug3105_battery.o
 obj-$(CONFIG_CHARGER_QCOM_SMB2)	+= qcom_smbx.o
 obj-$(CONFIG_CHARGER_QCOM_PM8550B)	+= qcom_pm8550b_charger.o
 obj-$(CONFIG_FUEL_GAUGE_MM8013)	+= mm8013.o
+obj-$(CONFIG_CHARGER_MP2652)	+= mp2652_charger.o
 obj-$(CONFIG_HOTSWAP_NORTHGATE)	+= northgate_hotswap.o
