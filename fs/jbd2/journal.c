@@ -2579,7 +2579,8 @@ void jbd2_journal_abort(journal_t *journal, int errno)
 	 * Mark the abort as occurred and start current running transaction
 	 * to release all journaled buffer.
 	 */
-	pr_err("Aborting journal on device %s.\n", journal->j_devname);
+	pr_err("FRAME: Aborting journal on device %s.\n", journal->j_devname);
+	WARN_ON_ONCE(1);
 
 	journal->j_flags |= JBD2_ABORT;
 	journal->j_errno = errno;

@@ -718,6 +718,8 @@ static void ext4_handle_error(struct super_block *sb, bool force_ro, int error,
 			ext4_commit_super(sb);
 	}
 
+	pr_err("FRAME: ext4 handle error: %s.\n", sb->s_id);
+	WARN_ON_ONCE(1);
 	/*
 	 * We force ERRORS_RO behavior when system is rebooting. Otherwise we
 	 * could panic during 'reboot -f' as the underlying device got already
