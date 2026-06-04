@@ -2166,7 +2166,7 @@ static void dpu_encoder_prep_dsc(struct dpu_encoder_virt *dpu_enc,
 	pic_width = dsc->pic_width;
 
 	dsc_common_mode = 0;
-	if (num_dsc > 1)
+	if (num_dsc > dpu_enc->topology.num_intf)
 		dsc_common_mode |= DSC_MODE_SPLIT_PANEL;
 	if (dpu_encoder_use_dsc_merge(enc_master->parent))
 		dsc_common_mode |= DSC_MODE_MULTIPLEX;
