@@ -1056,6 +1056,28 @@ static irqreturn_t cvp_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static ssize_t reset_store(struct device *dev,
+			   struct device_attribute *attr,
+			   const char *buf, size_t n)
+{
+	struct cvp *cvp = dev_get_drvdata(dev);
+
+	writel(0, cvp->base + CVP_AON_WRAPPER_SPARE);
+
+	return n;
+}
+
+static DEVICE_ATTR_WO(reset);
+
+static struct attribute *attrs[] = {
+	&dev_attr_reset.attr,
+	NULL,
+};
+
+static struct attribute_group sysfs_group = {
+	.attrs = attrs,
+};
+
 static int cvp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1164,6 +1186,10 @@ static int cvp_probe(struct platform_device *pdev)
 	clk_set_rate(cvp->clks[CLK_CORE], rate_to_set);
 	u32 applied_rate = clk_get_rate(cvp->clks[CLK_CORE]);
 	printk("cvp clock rate: %d (called with set_rate: %d)", applied_rate, rate_to_set);
+
+	ret = sysfs_create_group(&pdev->dev.kobj, &sysfs_group);
+	if (ret)
+		return ret;
 
 	cvp->miscdev.minor = MISC_DYNAMIC_MINOR;
 	cvp->miscdev.name = dev->of_node->name;
