@@ -1212,13 +1212,8 @@ static void a6xx_gmu_shutdown(struct a6xx_gmu *gmu)
 {
 	struct a6xx_gpu *a6xx_gpu = container_of(gmu, struct a6xx_gpu, gmu);
 	struct adreno_gpu *adreno_gpu = &a6xx_gpu->base;
-	const struct a6xx_info *info = adreno_gpu->info->a6xx;
 	u32 val;
 	int ret;
-
-	if (adreno_is_a750_family(adreno_gpu) && info->bcms && gmu->nr_gpu_bws > 1)
-		/* Vote for minimal frequency and bandwidth */
-		a6xx_hfi_set_freq(gmu, 1, AB_VOTE(1) | AB_VOTE_ENABLE | 1);
 
 	/*
 	 * GMU firmware's internal power state gets messed up if we send "prepare_slumber" hfi when
@@ -1242,9 +1237,6 @@ static void a6xx_gmu_shutdown(struct a6xx_gmu *gmu)
 		goto force_off;
 
 	a6xx_bus_clear_pending_transactions(adreno_gpu, a6xx_gpu->hung);
-
-	/* Make sure there are no outstanding RPMh votes */
-	a6xx_gmu_rpmh_off(gmu);
 
 	/* tell the GMU we want to slumber */
 	ret = a6xx_gmu_notify_slumber(gmu);
