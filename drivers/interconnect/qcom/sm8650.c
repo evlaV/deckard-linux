@@ -1935,6 +1935,7 @@ MODULE_DEVICE_TABLE(of, qnoc_of_match);
 static struct platform_driver qnoc_driver = {
 	.probe = qcom_icc_rpmh_probe,
 	.remove = qcom_icc_rpmh_remove,
+	.resume = qcom_icc_rpmh_resume,
 	.driver = {
 		.name = "qnoc-sm8650",
 		.of_match_table = qnoc_of_match,
