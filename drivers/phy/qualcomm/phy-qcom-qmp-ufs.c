@@ -40,6 +40,8 @@
 
 #define NUM_OVERLAY				2
 
+static unsigned int qmp_ufs_force_fail;
+
 /* set of registers with offsets different per-PHY */
 enum qphy_reg_layout {
 	/* PCS registers */
@@ -1845,6 +1847,29 @@ static const struct qmp_phy_cfg sm8750_ufsphy_cfg = {
 
 };
 
+static ssize_t force_fail_timeout_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul(buf, 10, &val);
+	if (ret)
+		return ret;
+
+	qmp_ufs_force_fail = val;
+
+	return count;
+}
+
+static ssize_t force_fail_timeout_show(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", qmp_ufs_force_fail);
+}
+static DEVICE_ATTR_RW(force_fail_timeout);
+
 static void qmp_ufs_serdes_init(struct qmp_ufs *qmp, const struct qmp_phy_cfg_tbls *tbls)
 {
 	void __iomem *serdes = qmp->serdes;
@@ -1970,8 +1995,11 @@ static int qmp_ufs_phy_calibrate(struct phy *phy)
 	if (!cfg->no_pcs_sw_reset)
 		qphy_clrbits(pcs, cfg->regs[QPHY_SW_RESET], SW_RESET);
 
-	/* start SerDes */
-	qphy_setbits(pcs, cfg->regs[QPHY_START_CTRL], SERDES_START);
+	if (!qmp_ufs_force_fail)
+		/* start SerDes */
+		qphy_setbits(pcs, cfg->regs[QPHY_START_CTRL], SERDES_START);
+	else
+		dev_err(qmp->dev, "phy initialization forced timed-out\n");
 
 	status = pcs + cfg->regs[QPHY_PCS_READY_STATUS];
 	ret = readl_poll_timeout(status, val, (val & PCS_READY), 200,
@@ -2222,6 +2250,10 @@ static int qmp_ufs_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	ret = device_create_file(&pdev->dev, &dev_attr_force_fail_timeout);
+	if (ret)
+		return ret;
+
 	/* Check for legacy binding with child node. */
 	np = of_get_next_available_child(dev->of_node, NULL);
 	if (np) {
@@ -2253,8 +2285,14 @@ static int qmp_ufs_probe(struct platform_device *pdev)
 	return PTR_ERR_OR_ZERO(phy_provider);
 
 err_node_put:
+	device_remove_file(&pdev->dev, &dev_attr_force_fail_timeout);
 	of_node_put(np);
 	return ret;
+}
+
+static void qmp_ufs_remove(struct platform_device *pdev)
+{
+	device_remove_file(&pdev->dev, &dev_attr_force_fail_timeout);
 }
 
 static const struct of_device_id qmp_ufs_of_match_table[] = {
@@ -2329,6 +2367,7 @@ MODULE_DEVICE_TABLE(of, qmp_ufs_of_match_table);
 
 static struct platform_driver qmp_ufs_driver = {
 	.probe		= qmp_ufs_probe,
+	.remove		= qmp_ufs_remove,
 	.driver = {
 		.name	= "qcom-qmp-ufs-phy",
 		.of_match_table = qmp_ufs_of_match_table,
