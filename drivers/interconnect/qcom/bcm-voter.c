@@ -377,7 +377,7 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 		} else {
 			list_del_init(&bcm->ws_list);
 		}
-		
+
 		/*
 		 * updated the bcm cache only after all cases are handled
 		 */
