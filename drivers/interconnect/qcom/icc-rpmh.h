@@ -165,5 +165,6 @@ int qcom_icc_bcm_init(struct qcom_icc_bcm *bcm, struct device *dev);
 void qcom_icc_pre_aggregate(struct icc_node *node);
 int qcom_icc_rpmh_probe(struct platform_device *pdev);
 void qcom_icc_rpmh_remove(struct platform_device *pdev);
+int qcom_icc_rpmh_resume(struct platform_device *pdev);
 
 #endif

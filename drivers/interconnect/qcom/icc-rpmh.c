@@ -373,5 +373,17 @@ void qcom_icc_rpmh_remove(struct platform_device *pdev)
 }
 EXPORT_SYMBOL_GPL(qcom_icc_rpmh_remove);
 
+int qcom_icc_rpmh_resume(struct platform_device *pdev)
+{
+	struct qcom_icc_provider *qp = platform_get_drvdata(pdev);
+	int i;
+
+	for (i = 0; i < qp->num_bcms; i++)
+		qp->bcms[i]->dirty = true;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_icc_rpmh_resume);
+
 MODULE_DESCRIPTION("Qualcomm RPMh interconnect driver");
 MODULE_LICENSE("GPL v2");
