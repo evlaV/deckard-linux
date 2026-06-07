@@ -80,10 +80,10 @@ enum {
 #define DME_LINKSTARTUP_RETRIES 3
 
 /* maximum number of reset retries before giving up */
-#define MAX_HOST_RESET_RETRIES 5
+#define MAX_HOST_RESET_RETRIES 10
 
 /* Maximum number of error handler retries before giving up */
-#define MAX_ERR_HANDLER_RETRIES 5
+#define MAX_ERR_HANDLER_RETRIES 10
 
 /* Expose the flag value from utp_upiu_query.value */
 #define MASK_QUERY_UPIU_FLAG_LOC 0xFF
