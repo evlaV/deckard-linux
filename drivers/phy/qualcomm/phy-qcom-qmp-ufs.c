@@ -36,7 +36,7 @@
 /* QPHY_PCS_READY_STATUS bit */
 #define PCS_READY				BIT(0)
 
-#define PHY_INIT_COMPLETE_TIMEOUT		10000
+#define PHY_INIT_COMPLETE_TIMEOUT		100000
 
 #define NUM_OVERLAY				2
 
@@ -2005,7 +2005,7 @@ static int qmp_ufs_phy_calibrate(struct phy *phy)
 	ret = readl_poll_timeout(status, val, (val & PCS_READY), 200,
 				 PHY_INIT_COMPLETE_TIMEOUT);
 	if (ret) {
-		dev_err(qmp->dev, "phy initialization timed-out\n");
+		dev_err(qmp->dev, "phy initialization timed-out: 0x%x\n", val);
 		return ret;
 	}
 
