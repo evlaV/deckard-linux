@@ -69,6 +69,22 @@ struct msm_kms_funcs {
 	int (*check_mode_changed)(struct msm_kms *kms, struct drm_atomic_commit *state);
 
 	/**
+	 * @seamless_timing_update:
+	 *
+	 * Optional.  Called for same-resolution refresh-rate-only mode changes
+	 * to apply the new timing at the next vblank without power-cycling the
+	 * panel.
+	 *
+	 * Returns true if the update was successfully scheduled; the caller
+	 * clears the CRTC modeset flags so commit_modeset_disables/enables
+	 * become no-ops.  Returns false if unavailable (e.g. display not yet
+	 * initialised); the caller falls back to the full modeset path.
+	 * If NULL, the full modeset path is always used.
+	 */
+	bool (*seamless_timing_update)(struct msm_kms *kms,
+				       struct drm_display_mode *mode);
+
+	/**
 	 * Prepare for atomic commit.  This is called after any previous
 	 * (async or otherwise) commit has completed.
 	 */

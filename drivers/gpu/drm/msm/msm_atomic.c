@@ -232,6 +232,57 @@ void msm_atomic_commit_tail(struct drm_atomic_commit *state)
 	kms->funcs->wait_flush(kms, crtc_mask);
 	trace_msm_atomic_wait_flush_finish(crtc_mask);
 
+	/*
+	 * For same-resolution refresh-rate-only changes on already-active
+	 * CRTCs, schedule the timing update via the seamless path and clear
+	 * the modeset flags so commit_modeset_disables/enables become no-ops.
+	 * The normal flush/wait/commit_hw_done tail still runs, ensuring
+	 * flip_done is properly signalled to waiters.
+	 */
+	{
+		struct drm_crtc *crtc;
+		struct drm_crtc_state *old_crtc_state, *new_crtc_state;
+		int i;
+
+		for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state,
+					      new_crtc_state, i) {
+			const struct drm_display_mode *om = &old_crtc_state->mode;
+			struct drm_display_mode *nm = &new_crtc_state->mode;
+
+			if (!drm_atomic_crtc_needs_modeset(new_crtc_state))
+				continue;
+
+			/*
+			 * active_changed means a DPMS transition or initial
+			 * enable, these always need the full modeset path.
+			 */
+			if (new_crtc_state->active_changed ||
+			    !new_crtc_state->active)
+				continue;
+
+			/*
+			 * Only seamless if the visible area, horizontal
+			 * timing, and pixel clock are all unchanged.  A
+			 * different htotal or clock would require the DSI
+			 * link to be reconfigured, which the timing-update
+			 * path does not handle.  Only vtotal (vertical
+			 * blanking) may differ.
+			 */
+			if (om->hdisplay != nm->hdisplay ||
+			    om->vdisplay != nm->vdisplay ||
+			    om->htotal   != nm->htotal   ||
+			    om->clock    != nm->clock)
+				continue;
+
+			if (kms->funcs->seamless_timing_update &&
+			    kms->funcs->seamless_timing_update(kms, nm)) {
+				new_crtc_state->mode_changed = false;
+				new_crtc_state->active_changed = false;
+				new_crtc_state->connectors_changed = false;
+			}
+		}
+	}
+
 	atomic_set(&kms->fault_snapshot_capture, 0);
 
 	/*

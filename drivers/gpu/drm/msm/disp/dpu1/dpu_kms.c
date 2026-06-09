@@ -482,6 +482,15 @@ static void dpu_kms_disable_commit(struct msm_kms *kms)
 	pm_runtime_put_sync(&dpu_kms->pdev->dev);
 }
 
+static bool dpu_kms_seamless_timing_update(struct msm_kms *kms,
+					   struct drm_display_mode *mode)
+{
+	mode = dpu_encoder_find_connector_mode(mode);
+	if (!mode)
+		return false;
+	return dpu_encoder_schedule_timing_update(mode);
+}
+
 static int dpu_kms_check_mode_changed(struct msm_kms *kms, struct drm_atomic_commit *state)
 {
 	struct drm_crtc_state *new_crtc_state;
@@ -1133,6 +1142,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.irq             = dpu_core_irq,
 	.enable_commit   = dpu_kms_enable_commit,
 	.disable_commit  = dpu_kms_disable_commit,
+	.seamless_timing_update = dpu_kms_seamless_timing_update,
 	.check_mode_changed = dpu_kms_check_mode_changed,
 	.flush_commit    = dpu_kms_flush_commit,
 	.wait_flush      = dpu_kms_wait_flush,
