@@ -1348,44 +1348,66 @@ void dpu_encoder_kickoff_hack(void)
 	dpu_encoder_kickoff(glb_drm_enc);
 }
 
-/* modified from dpu_encoder_virt_atomic_enable */
-void dpu_encoder_virt_hack_timing(int mode_idx)
+struct drm_display_mode *dpu_encoder_find_connector_mode(struct drm_display_mode *mode)
+{
+	struct dpu_encoder_virt *dpu_enc;
+	struct drm_display_mode *m;
+
+	if (!glb_drm_enc || !mode)
+		return NULL;
+
+	dpu_enc = to_dpu_encoder_virt(glb_drm_enc);
+	if (!dpu_enc->connector)
+		return NULL;
+
+	list_for_each_entry(m, &dpu_enc->connector->modes, head) {
+		if (drm_mode_equal(m, mode))
+			return m;
+	}
+	return NULL;
+}
+
+/*
+ * dpu_encoder_schedule_timing_update - apply a refresh-rate change at the next vblank
+ *
+ * Schedules INTF and DSI timing register updates to fire at the next vblank without
+ * power-cycling the panel.
+ * 
+ * Note: @mode must be a stable pointer (e.g. from the connector's mode list via
+ * dpu_encoder_find_connector_mode) that remains valid until the vblank fires.
+ */
+bool dpu_encoder_schedule_timing_update(struct drm_display_mode *mode)
 {
 	struct dpu_encoder_virt *dpu_enc;
 	struct dpu_encoder_phys *phys;
-	struct drm_display_mode *t, *mode;
-	struct drm_connector *connector;
 	int i;
 
-	if (!glb_drm_enc)
-		return;
+	if (!glb_drm_enc || !mode)
+		return false;
 
 	dpu_enc = to_dpu_encoder_virt(glb_drm_enc);
 
 	mutex_lock(&dpu_enc->enc_lock);
 
-	if (dpu_enc->connector) {
-		connector = dpu_enc->connector;
-		//panel_bridge_connector_get_modes(dpu_enc->connector);
-		if (!list_empty(&connector->modes)) {
-			list_for_each_entry_safe(mode, t, &connector->modes, head) {
-				if (!mode_idx)
-					break;
-				mode_idx--;
-			}
-		}
-	} else {
-		printk("%s: No connector is found for the encoder\n", __func__);
-		return;
-	}
+	/* Require at least one physical encoder */
+	if (!dpu_enc->num_phys_encs)
+		goto fail;
 
-	/* mark the pending mode to switch refresh rate */
+	/* Master encoder must support the timing hack op */
+	if (!dpu_enc->cur_master || !dpu_enc->cur_master->ops.hacktiming)
+		goto fail;
+
+	/* Connector is required for the bridge-chain mode_set call */
+	if (!dpu_enc->connector)
+		goto fail;
+
+	/* Mark the pending mode to switch refresh rate */
 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
 		phys = dpu_enc->phys_encs[i];
 		phys->mode_pending = mode;
 	}
 
-	/* update pending flush cached bits in ctl side */
+	/* Update pending flush cached bits in ctl side */
 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
 		phys = dpu_enc->phys_encs[i];
 		phys->enable_state = DPU_ENC_ENABLING;
@@ -1393,29 +1415,66 @@ void dpu_encoder_virt_hack_timing(int mode_idx)
 			phys->hw_intf->idx);
 	}
 
-	/* Update timing in intf. Always enable slave encoder before master */
+	/* Update timing in intf. Always enable slave encoder (if exists) before master. */
 	if (dpu_enc->cur_slave && dpu_enc->cur_slave->ops.hacktiming)
 		dpu_enc->cur_slave->ops.hacktiming(dpu_enc->cur_slave, mode);
 
-	if (dpu_enc->cur_master && dpu_enc->cur_master->ops.hacktiming)
-		dpu_enc->cur_master->ops.hacktiming(dpu_enc->cur_master, mode);
+	dpu_enc->cur_master->ops.hacktiming(dpu_enc->cur_master, mode);
 
-	/* update panel's backlight. dsi cmd tx may sleep, do it in this thread */
+	/* Update panel's backlight. DSI cmd TX may sleep, so do it in this thread. */
 	drm_bridge_chain_mode_set(
-		list_first_entry_or_null(&connector->encoder->bridge_chain,
-					 struct drm_bridge, chain_node),
+		list_first_entry_or_null(
+			&dpu_enc->connector->encoder->bridge_chain,
+			struct drm_bridge, chain_node),
 		mode, mode);
 
 	/* _dpu_encoder_irq_enable() call phys->ops.irq_enable(phys) to hook
-	 * dpu_encoder_phys_vid_irq_enable(), where dsi master is checked and
+	 * dpu_encoder_phys_vid_irq_enable(), where DSI master is checked and
 	 * mutex is locked.
 	 * dpu_encoder_phys_vid_vblank_irq() will be triggered on irq. The
 	 * register flush happens in irq handler, and backlight shall be handled
-	 * in another thread due to dsi tx requirement.
+	 * in another thread due to DSI TX requirement.
 	*/
 	_dpu_encoder_irq_enable(glb_drm_enc);
 
 	mutex_unlock(&dpu_enc->enc_lock);
+	return true;
+
+fail:
+	mutex_unlock(&dpu_enc->enc_lock);
+	return false;
+}
+
+/* sysfs entry point: look up mode by index then schedule the timing update */
+void dpu_encoder_switch_mode_by_idx(int mode_idx)
+{
+	struct dpu_encoder_virt *dpu_enc;
+	struct drm_display_mode *m, *mode = NULL;
+
+	if (!glb_drm_enc)
+		return;
+
+	dpu_enc = to_dpu_encoder_virt(glb_drm_enc);
+
+	if (!dpu_enc->connector) {
+		pr_err("%s: no connector\n", __func__);
+		return;
+	}
+
+	list_for_each_entry(m, &dpu_enc->connector->modes, head) {
+		if (!mode_idx--) {
+			mode = m;
+			break;
+		}
+	}
+
+	if (!mode) {
+		pr_err("%s: mode not found %i\n", __func__, mode_idx);
+		return;
+	}
+
+	if (!dpu_encoder_schedule_timing_update(mode))
+		pr_warn_ratelimited("%s: failed to switch to mode %i (%s)\n", __func__, mode_idx, mode->name);
 }
 
 static void dpu_encoder_virt_atomic_enable(struct drm_encoder *drm_enc,
