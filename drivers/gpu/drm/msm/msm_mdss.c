@@ -466,7 +466,7 @@ static const struct dev_pm_ops mdss_pm_ops = {
 	SET_RUNTIME_PM_OPS(mdss_runtime_suspend, mdss_runtime_resume, NULL)
 };
 
-extern void dpu_encoder_virt_hack_timing(int mode_idx);
+extern void dpu_encoder_switch_mode_by_idx(int mode_idx);
 
 static ssize_t
 mode_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -494,7 +494,7 @@ mode_store(struct device *dev, struct device_attribute *attr,
 */
 
 	printk("********* set mode index %d\n", mode_idx);
-	dpu_encoder_virt_hack_timing(mode_idx);
+	dpu_encoder_switch_mode_by_idx(mode_idx);
 	return count;
 }
 
