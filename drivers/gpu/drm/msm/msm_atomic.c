@@ -261,17 +261,20 @@ void msm_atomic_commit_tail(struct drm_atomic_commit *state)
 				continue;
 
 			/*
-			 * Only seamless if the visible area, horizontal
-			 * timing, and pixel clock are all unchanged.  A
-			 * different htotal or clock would require the DSI
-			 * link to be reconfigured, which the timing-update
-			 * path does not handle.  Only vtotal (vertical
-			 * blanking) may differ.
+			 * Only seamless if the visible area and horizontal
+			 * timing are unchanged.  The htotal determines the
+			 * DSI line period; if it changes the link clock must
+			 * be reprogrammed, which the timing-update path does
+			 * not handle. The vtotal can be safely ignored for this.
+			 *
+			 * Note: The DRM clock field is not checked: it is
+			 * derived from htotal*vtotal*vrefresh and subject to
+			 * integer-rounding differences across modes that share
+			 * the same physical DSI clock.
 			 */
 			if (om->hdisplay != nm->hdisplay ||
 			    om->vdisplay != nm->vdisplay ||
-			    om->htotal   != nm->htotal   ||
-			    om->clock    != nm->clock)
+			    om->htotal   != nm->htotal)
 				continue;
 
 			if (kms->funcs->seamless_timing_update &&
