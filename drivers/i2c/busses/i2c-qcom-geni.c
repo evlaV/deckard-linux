@@ -935,6 +935,11 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		fifo_disable = readl_relaxed(gi2c->se.base + GENI_IF_DISABLE_RO) & FIFO_IF_DISABLE;
 	}
 
+	if (!strcmp(dev_name(dev), "a94000.i2c")) {
+		dev_warn(dev, "forcing FIFO mode, disabling SE DMA\n");
+		gi2c->no_dma = true;
+	}
+
 	if (fifo_disable) {
 		/* FIFO is disabled, so we can only use GPI DMA */
 		gi2c->gpi_mode = true;
