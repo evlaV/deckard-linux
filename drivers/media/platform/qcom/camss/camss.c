@@ -4355,8 +4355,6 @@ static int camss_register_entities(struct camss *camss)
 		}
 	}
 
-	
-
 	ret = msm_ispif_register_entities(camss->ispif,
 					  &camss->v4l2_dev);
 	if (ret < 0) {
@@ -4382,7 +4380,7 @@ static int camss_register_entities(struct camss *camss)
 			dev_err(camss->dev,
 				"Failed to register metadata%d entity: %d\n",
 				i, ret);
-			goto err_reg_csid;
+			goto err_reg_metadata;
 		}
 	}
 
@@ -4399,17 +4397,22 @@ static int camss_register_entities(struct camss *camss)
 
 	return 0;
 
+err_reg_csid:
+	for (i--; i >= 0; i--)
+		msm_csid_unregister_entity(&camss->csid[i]);
+
+	i = camss->res->metadata_num;
+err_reg_metadata:
+	for (i--; i >= 0; i--)
+		msm_metadata_unregister_entity(&camss->metadata[i]);
+
+	i = camss->res->vfe_num;
 err_reg_vfe:
 	for (i--; i >= 0; i--)
 		msm_vfe_unregister_entities(&camss->vfe[i]);
 
 err_reg_ispif:
 	msm_ispif_unregister_entities(camss->ispif);
-
-	i = camss->res->csid_num;
-err_reg_csid:
-	for (i--; i >= 0; i--)
-		msm_csid_unregister_entity(&camss->csid[i]);
 
 	i = camss->res->csiphy_num;
 err_reg_csiphy:
@@ -4429,16 +4432,19 @@ static void camss_unregister_entities(struct camss *camss)
 {
 	unsigned int i;
 
-	for (i = 0; i < camss->res->csiphy_num; i++)
-		msm_csiphy_unregister_entity(&camss->csiphy[i]);
-
 	for (i = 0; i < camss->res->csid_num; i++)
 		msm_csid_unregister_entity(&camss->csid[i]);
 
-	msm_ispif_unregister_entities(camss->ispif);
+	for (i = 0; i < camss->res->metadata_num; i++)
+		msm_metadata_unregister_entity(&camss->metadata[i]);
 
 	for (i = 0; i < camss->res->vfe_num; i++)
 		msm_vfe_unregister_entities(&camss->vfe[i]);
+
+	msm_ispif_unregister_entities(camss->ispif);
+
+	for (i = 0; i < camss->res->csiphy_num; i++)
+		msm_csiphy_unregister_entity(&camss->csiphy[i]);
 }
 
 static int camss_subdev_notifier_bound(struct v4l2_async_notifier *async,
