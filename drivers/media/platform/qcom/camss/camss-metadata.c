@@ -386,3 +386,10 @@ int msm_metadata_register_entity(struct metadata_device *metadata, struct v4l2_d
 
 	return ret;
 }
+
+void msm_metadata_unregister_entity(struct metadata_device *metadata)
+{
+	msm_video_unregister(&metadata->video_out);
+	v4l2_device_unregister_subdev(&metadata->subdev);
+	media_entity_cleanup(&metadata->subdev.entity);
+}
