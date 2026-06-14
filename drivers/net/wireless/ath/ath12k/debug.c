@@ -78,6 +78,29 @@ void __ath12k_dbg(struct ath12k_base *ab, enum ath12k_debug_mask mask,
 }
 EXPORT_SYMBOL(__ath12k_dbg);
 
+#if defined(CONFIG_DYNAMIC_DEBUG) || \
+	(defined(CONFIG_DYNAMIC_DEBUG_CORE) && defined(DYNAMIC_DEBUG_MODULE))
+void __ath12k_dbg_dyndbg(struct _ddebug *desc, struct ath12k_base *ab,
+			 const char *fmt, ...)
+{
+	struct va_format vaf;
+	va_list args;
+
+	va_start(args, fmt);
+
+	vaf.fmt = fmt;
+	vaf.va = &args;
+
+	if (likely(ab))
+		__dynamic_dev_dbg(desc, ab->dev, "%pV", &vaf);
+	else
+		__dynamic_pr_debug(desc, "ath12k: %pV", &vaf);
+
+	va_end(args);
+}
+EXPORT_SYMBOL(__ath12k_dbg_dyndbg);
+#endif
+
 void ath12k_dbg_dump(struct ath12k_base *ab,
 		     enum ath12k_debug_mask mask,
 		     const char *msg, const char *prefix,
