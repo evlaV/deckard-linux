@@ -29,6 +29,11 @@ module_param_named(debug_mask, ath12k_debug_mask, uint, 0644);
 MODULE_PARM_DESC(debug_mask, "Debugging mask");
 EXPORT_SYMBOL(ath12k_debug_mask);
 
+int ath12k_gtx = -1;
+module_param_named(gtx, ath12k_gtx, int, 0644);
+MODULE_PARM_DESC(gtx,
+		 "Green TX, applied as each vdev comes up: -1=BDF default (default), 0=disable, 1=enable");
+
 bool ath12k_ftm_mode;
 module_param_named(ftm_mode, ath12k_ftm_mode, bool, 0444);
 MODULE_PARM_DESC(ftm_mode, "Boots up in factory test mode");

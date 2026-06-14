@@ -11438,6 +11438,20 @@ ath12k_mac_vdev_start_restart(struct ath12k_link_vif *arvif,
 		ath12k_warn(ab, "failed to set txbf conf for vdev %d: %d\n",
 			    arvif->vdev_id, ret);
 
+	if (ath12k_gtx >= 0) {
+		ret = ath12k_wmi_vdev_set_param_cmd(ar, arvif->vdev_id,
+						    WMI_VDEV_PARAM_GTX_ENABLE,
+						    !!ath12k_gtx);
+		if (ret)
+			ath12k_warn(ab, "failed to %s GTX on vdev %d: %d\n",
+				    ath12k_gtx ? "enable" : "disable",
+				    arvif->vdev_id, ret);
+		else
+			ath12k_dbg(ab, ATH12K_DBG_MAC, "%s GTX on vdev %d\n",
+				    ath12k_gtx ? "enabled" : "disabled",
+				    arvif->vdev_id);
+	}
+
 	return 0;
 }
 
