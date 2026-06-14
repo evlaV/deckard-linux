@@ -7,6 +7,7 @@
 #ifndef _ATH12K_DEBUG_H_
 #define _ATH12K_DEBUG_H_
 
+#include <linux/dynamic_debug.h>
 #include "trace.h"
 
 enum ath12k_debug_mask {
@@ -48,6 +49,12 @@ extern bool ath12k_disable_txbf;
 __printf(3, 4) void __ath12k_dbg(struct ath12k_base *ab,
 				 enum ath12k_debug_mask mask,
 				 const char *fmt, ...);
+#if defined(CONFIG_DYNAMIC_DEBUG) || \
+	(defined(CONFIG_DYNAMIC_DEBUG_CORE) && defined(DYNAMIC_DEBUG_MODULE))
+__printf(3, 4) void __ath12k_dbg_dyndbg(struct _ddebug *desc,
+					struct ath12k_base *ab,
+					const char *fmt, ...);
+#endif
 void ath12k_dbg_dump(struct ath12k_base *ab,
 		     enum ath12k_debug_mask mask,
 		     const char *msg, const char *prefix,
@@ -67,11 +74,25 @@ static inline void ath12k_dbg_dump(struct ath12k_base *ab,
 }
 #endif /* CONFIG_ATH12K_DEBUG */
 
+#if defined(CONFIG_ATH12K_DEBUG) && \
+	(defined(CONFIG_DYNAMIC_DEBUG) || \
+	 (defined(CONFIG_DYNAMIC_DEBUG_CORE) && defined(DYNAMIC_DEBUG_MODULE)))
+#define ath12k_dbg_dyndbg(ab, fmt, ...)				\
+	_dynamic_func_call(fmt, __ath12k_dbg_dyndbg, ab, fmt,	\
+			   ##__VA_ARGS__)
+#else
+#define ath12k_dbg_dyndbg(ab, fmt, ...)				\
+	do { } while (0)
+#endif
+
+
 #define ath12k_dbg(ab, dbg_mask, fmt, ...)			\
 do {								\
 	typeof(dbg_mask) mask = (dbg_mask);			\
 	if (ath12k_debug_mask & mask)				\
 		__ath12k_dbg(ab, mask, fmt, ##__VA_ARGS__);	\
+	else							\
+		ath12k_dbg_dyndbg(ab, fmt, ##__VA_ARGS__);	\
 } while (0)
 
 #define ath12k_generic_dbg(dbg_mask, fmt, ...)			\
