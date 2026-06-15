@@ -2066,6 +2066,8 @@
 };
 
 &i2c5 {
+    clock-frequency = <400000>;
+    
     // BOOT EEPROM
     eeprom@50 {
         compatible  = "atmel,24c32";
