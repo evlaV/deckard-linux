@@ -1428,15 +1428,6 @@ bool dpu_encoder_schedule_timing_update(struct drm_display_mode *mode)
 			struct drm_bridge, chain_node),
 		mode, mode);
 
-	/* _dpu_encoder_irq_enable() call phys->ops.irq_enable(phys) to hook
-	 * dpu_encoder_phys_vid_irq_enable(), where DSI master is checked and
-	 * mutex is locked.
-	 * dpu_encoder_phys_vid_vblank_irq() will be triggered on irq. The
-	 * register flush happens in irq handler, and backlight shall be handled
-	 * in another thread due to DSI TX requirement.
-	*/
-	_dpu_encoder_irq_enable(glb_drm_enc);
-
 	mutex_unlock(&dpu_enc->enc_lock);
 	return true;
 
