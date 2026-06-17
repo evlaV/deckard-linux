@@ -189,8 +189,11 @@ static irqreturn_t vfe_isr(int irq, void *dev)
 		}
 
 		for (i = 0; i < TFE_SUBGROUP_NUM; i++) {
-			if (bus_status & TFE_BUS_IRQ_MASK_BUF_DONE(i))
-				vfe_buf_done(vfe, __subgroup_to_line(i));
+			if (bus_status & TFE_BUS_IRQ_MASK_BUF_DONE(i)) {
+				struct camss_buf_done_info buf_done_info;
+				memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
+				vfe_buf_done(vfe, __subgroup_to_line(i), &buf_done_info);
+			}
 		}
 
 		if (bus_status & TFE_BUS_IRQ_MASK_0_CONS_VIOL)
@@ -235,9 +238,10 @@ static void vfe_enable_irq(struct vfe_device *vfe)
 	       TFE_BUS_IRQ_MASK_0_IMG_VIOL, vfe->base + TFE_BUS_IRQ_MASK_0);
 }
 
-static void vfe_wm_update(struct vfe_device *vfe, u8 rdi, u32 addr,
+static void vfe_wm_update(struct vfe_device *vfe, u8 rdi, struct camss_buffer *buffer,
 			  struct vfe_line *line)
 {
+	u32 addr = buffer->addr[0];
 	u8 wm = RDI_WM(rdi);
 
 	writel_relaxed(addr, vfe->base + TFE_BUS_IMAGE_ADDR(wm));
