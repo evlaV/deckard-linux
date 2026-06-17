@@ -467,7 +467,7 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 
 #ifdef CONFIG_MEMCG
 static unsigned long shrink_slab_memcg(gfp_t gfp_mask, int nid,
-			struct mem_cgroup *memcg, int priority)
+			struct mem_cgroup *memcg, int priority, bool opportunistic_compaction)
 {
 	struct shrinker_info *info;
 	unsigned long ret, freed = 0;
@@ -529,6 +529,7 @@ again:
 				.gfp_mask = gfp_mask,
 				.nid = nid,
 				.memcg = memcg,
+				.opportunistic_compaction = opportunistic_compaction,
 			};
 			struct shrinker *shrinker;
 			int shrinker_id = calc_shrinker_id(index, offset);
@@ -585,7 +586,8 @@ unlock:
 }
 #else /* !CONFIG_MEMCG */
 static unsigned long shrink_slab_memcg(gfp_t gfp_mask, int nid,
-			struct mem_cgroup *memcg, int priority)
+			struct mem_cgroup *memcg, int priority,
+			bool opportunistic_compaction)
 {
 	return 0;
 }
@@ -597,6 +599,7 @@ static unsigned long shrink_slab_memcg(gfp_t gfp_mask, int nid,
  * @nid: node whose slab caches to target
  * @memcg: memory cgroup whose slab caches to target
  * @priority: the reclaim priority
+ * @opportunistic_compaction: do compaction opportunistically (e.g., do not swap working sets)
  *
  * Call the shrink functions to age shrinkable caches.
  *
@@ -612,7 +615,7 @@ static unsigned long shrink_slab_memcg(gfp_t gfp_mask, int nid,
  * Returns the number of reclaimed slab objects.
  */
 unsigned long shrink_slab(gfp_t gfp_mask, int nid, struct mem_cgroup *memcg,
-			  int priority)
+			  int priority, bool opportunistic_compaction)
 {
 	unsigned long ret, freed = 0;
 	struct shrinker *shrinker;
@@ -625,7 +628,8 @@ unsigned long shrink_slab(gfp_t gfp_mask, int nid, struct mem_cgroup *memcg,
 	 * oom.
 	 */
 	if (!mem_cgroup_disabled() && !mem_cgroup_is_root(memcg))
-		return shrink_slab_memcg(gfp_mask, nid, memcg, priority);
+		return shrink_slab_memcg(gfp_mask, nid, memcg, priority,
+					 opportunistic_compaction);
 
 	/*
 	 * lockless algorithm of global shrink.
@@ -654,6 +658,7 @@ unsigned long shrink_slab(gfp_t gfp_mask, int nid, struct mem_cgroup *memcg,
 			.gfp_mask = gfp_mask,
 			.nid = nid,
 			.memcg = memcg,
+			.opportunistic_compaction = opportunistic_compaction,
 		};
 
 		if (!shrinker_try_get(shrinker))
