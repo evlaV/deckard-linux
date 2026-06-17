@@ -14,9 +14,37 @@
 	model = "SM8650 Valve Deckard EV3 rev1 4slam 2et";
 };
 
+&i2c4 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	mp3317_right@29{
+		status = "disabled";
+	};
+
+	// right backlight
+	mpq3367_right@38 {
+		compatible = "mps,mpq3367";
+		reg = <0x38>;
+
+		en-gpios = <&pm8550_gpios 1 GPIO_ACTIVE_HIGH>;
+		mode = "pwm";
+
+		regulator {
+			mpq3367_backlight_right: backlight{
+				regulator-name = "backlight_right";
+			};
+		};
+	};
+};
+
 &i2c5 {
 	#address-cells = <1>;
 	#size-cells = <0>;
+
+	mp3317_left@29 {
+		status = "disabled";
+	};
 
 	// BOOT EEPROM
 	eeprom@50 {
@@ -30,4 +58,24 @@
 		wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
 		vcc-supply  = <&vreg_l15b_1p8>;
 	};
+	
+	// left backlight
+	mpq3367_left@38 {
+		compatible = "mps,mpq3367";
+		reg = <0x38>;
+
+		en-gpios = <&pm8550_gpios 2 GPIO_ACTIVE_HIGH>;
+		mode = "pwm";
+
+		regulator {
+			mpq3367_backlight_left: backlight{
+				regulator-name = "backlight_left";
+			};
+		};
+	};
+};
+
+&panel {
+	backlight-left-supply = <&mpq3367_backlight_left>;
+	backlight-right-supply = <&mpq3367_backlight_right>;
 };

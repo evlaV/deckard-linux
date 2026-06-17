@@ -23,3 +23,7 @@
 		mux-select-gpios = <&tlmm 111 GPIO_ACTIVE_HIGH>;
 	};
 };
+
+&panel {
+	low-fps-support;
+};
