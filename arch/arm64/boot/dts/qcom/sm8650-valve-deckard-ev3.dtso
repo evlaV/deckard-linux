@@ -79,3 +79,13 @@
 	backlight-left-supply = <&mpq3367_backlight_left>;
 	backlight-right-supply = <&mpq3367_backlight_right>;
 };
+
+&pmk8550_vadc {
+	display_right_therm {
+		status = "disabled";
+	};
+
+	display_left_therm {
+		status = "disabled";
+	};
+};
