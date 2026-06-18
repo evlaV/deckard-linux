@@ -28,6 +28,8 @@
 #include <media/v4l2-fwnode.h>
 #include <media/v4l2-subdev.h>
 
+#include "arcimx616.h"
+
 #define VIVID_CID_ARCIMX616_BASE	(V4L2_CID_USER_BASE | 0xf000)
 #define V4L2_CID_TEMPERATURE	(VIVID_CID_ARCIMX616_BASE + 0)
 
@@ -37,11 +39,11 @@
 
 #define IMX_REG_TEMP_SEN_OUT		0x013A
 
-// Private ioctls
+/* Private ioctls. */
 struct eeprom_access_info {
-	u32 offset; 			// offset into the eeprom memory range
-	u32 size;				// number of bytes copied
-	void __user *buffer;	// src buffer when using VIDIOC_PRIV_S_EEPROM_DATA, or dst when using VIDIOC_PRIV_G_EEPROM_DATA
+	u32 offset;			/* EEPROM offset */
+	u32 size;			/* bytes copied */
+	void __user *buffer;		/* userspace data buffer */
 };
 #define VIDIOC_PRIV_G_CONNECTED _IOR('V', BASE_VIDIOC_PRIVATE + 1, u32)
 /* BASE_VIDIOC_PRIVATE + 2 reserved (formerly VIDIOC_PRIV_S_CONNECTED) */
@@ -49,18 +51,15 @@ struct eeprom_access_info {
 #define VIDIOC_PRIV_G_EEPROM_DATA _IOWR('V', BASE_VIDIOC_PRIVATE + 4, struct eeprom_access_info) 
 #define VIDIOC_PRIV_S_EEPROM_DATA _IOW('V', BASE_VIDIOC_PRIVATE + 5, struct eeprom_access_info) 
 
-// Private events
+/* Private events. */
 #define V4L2_EVENT_SENSOR_CONNECTED   (V4L2_EVENT_PRIVATE_START + 2)
 #define V4L2_EVENT_SENSOR_DISCONNECTED   (V4L2_EVENT_PRIVATE_START + 3)
-
-#define ARCIMX616_EEPROM_SIZE (8*1024)
 
 /* regulator supplies */
 static const char * const arcimx616_supply_name[] = {
 	"DOVDD", /* Entire camera system supply */
 };
-
-#define arcimx616_NUM_SUPPLIES ARRAY_SIZE(arcimx616_supply_name)
+static_assert(ARRAY_SIZE(arcimx616_supply_name) == arcimx616_NUM_SUPPLIES);
 
 struct reg_value {
 	u16 reg_addr;
@@ -78,59 +77,8 @@ struct arcimx616_mode_info {
 	u32 reg_data_size;
 };
 
-static int power_on_count = 0;
+int arcimx616_power_on_count;
 
-struct arcimx616_dev {
-	struct i2c_client *i2c_client;
-	struct v4l2_subdev sd;
-	struct media_pad pad;
-	struct v4l2_fwnode_endpoint ep; /* the parsed DT endpoint info */
-	struct clk *xclk; /* system clock to arcimx616 */
-	struct clk *xclk2; /* system clock to arcimx616 */
-
-	struct regulator_bulk_data supplies[arcimx616_NUM_SUPPLIES];
-	struct gpio_desc *reset_gpio;
-	struct gpio_desc *detect_gpio;
-	struct gpio_desc *mux_enable;
-	struct gpio_desc *mux_select;
-	struct gpio_desc *strobe;
-	int irq;
-
-	struct delayed_work connect_work;      // For delayed "connected" notification
-    spinlock_t irq_lock;                  // For state updates in the IRQ handler
-    bool connect_work_scheduled;          // Whether we have scheduled the delayed work
-    bool connected;                       // Whether we are currently in the "connected" state
-    bool accessory_power_latched;         // Frunky/custom peripheral is holding rails on
-
-    int debounce_cnt;
-    bool debounce_sensor0_ok;
-    bool debounce_sensor1_ok;
-    bool debounce_led_ok;
-    bool debounce_settling;
-
-	/* lock to protect all members below */
-	struct mutex lock;
-
-	const struct arcimx616_mode_info* current_mode;
-
-	struct v4l2_ctrl_handler ctrl_handler;
-	struct mutex mutex;
-
-	struct v4l2_mbus_framefmt fmt;
-
-	bool is_left_sensor;
-
-	// nvmem_device_read/nvmem_device_write cannot work directly with user pointers to we need
-	// to copy to/from this buffer
-	u8 eeprom_buffer[ARCIMX616_EEPROM_SIZE];
-
-	/* on-demand AT24 client */
-	struct i2c_client *eeprom_client;
-
-};
-
-/* ------------------------------------------------------------------ */
-/* Context + match helper (unchanged)                                 */
 struct arcimx616_find_ctx {
 	struct i2c_adapter *adap;
 	u16 addr;
@@ -145,7 +93,7 @@ static int arcimx616_match_client(struct device *dev, void *data)
 	return c && c->adapter == ctx->adap && c->addr == ctx->addr
 	       ? (ctx->found = c, 1) : 0;
 }
-/* ------------------------------------------------------------------ */
+
 /*
  * Ensure an at24 (24c64) client exists *and* its nvmem provider is ready,
  * so that nvmem_device_get() will succeed without returning -EPROBE_DEFER.
@@ -214,22 +162,14 @@ static int arcimx616_ensure_eeprom_client(struct arcimx616_dev *sensor)
 
 
 
-/* Maximum number of ARCIMX616 sensors we expect */
-#define ARCIMX616_MAX_SENSORS 2
+struct arcimx616_dev *g_arcimx616_sensors[ARCIMX616_MAX_SENSORS];
+int g_arcimx616_sensor_count;
 
-/* Global array tracking all probed sensors */
-static struct arcimx616_dev *g_arcimx616_sensors[ARCIMX616_MAX_SENSORS];
-static int g_arcimx616_sensor_count = 0;
-
-/* Global i2c_client for dual writes */
 static struct i2c_client *g_dual_i2c_client = NULL;
 
-/* Global i2c_client for AW9106 LED controller */
-static struct i2c_client *g_aw9106_i2c_client = NULL;
+struct i2c_client *g_aw9106_i2c_client;
 
-/*
- * Global i2c_clients for custom-peripheral probing (P3T1084 temp sensor and CAT24C32-style EEPROM).
- */
+/* Probe-only clients for the custom peripheral path. */
 static struct i2c_client *g_temp_i2c_client = NULL;
 static struct i2c_client *g_eeprom_i2c_client = NULL;
 
@@ -254,16 +194,11 @@ static void arcimx616_power_off_all_sensors(void)
 	}
 }
 
-static inline struct arcimx616_dev *to_arcimx616_dev(struct v4l2_subdev *sd)
-{
-	return container_of(sd, struct arcimx616_dev, sd);
-}
-
 static const struct reg_value arcimx616_global_settings[] = {
 {0x0136, 0x18,0 ,0}, {0x0137, 0x00,0 ,5}, {0x3c7e, 0x08,0 ,0},
 {0x3c7f, 0x15,0 ,0}, {0x0111, 0x02,0 ,0},
 
-// global settings
+/* Global settings. */
 {0x380C, 0x00, 0, 0}, {0x3C00, 0x01, 0, 0}, {0x3C01, 0x00, 0, 0},
 {0x3C02, 0x00, 0, 0}, {0x3C03, 0x03, 0, 0}, {0x3C04, 0xFF, 0, 0},
 {0x3C05, 0x01, 0, 0}, {0x3C06, 0x00, 0, 0}, {0x3C07, 0x00, 0, 0},
@@ -349,7 +284,7 @@ static const struct reg_value arcimx616_global_settings[] = {
 
 static const struct reg_value arcimx616_setting_3820x2464[] = {
 
-//timing settings:
+/* Timing settings. */
 {0x0112, 0x0A, 0, 0}, {0x0113, 0x0A, 0, 0}, {0x0114, 0x03, 0, 0},
 {0x0342, 0x0E, 0, 0}, {0x0343, 0xB8, 0, 0}, {0x0340, 0x1C, 0, 0},
 {0x0341, 0xE4, 0, 0}, {0x0344, 0x00, 0, 0}, {0x0345, 0x00, 0, 0},
@@ -544,7 +479,7 @@ static int arcimx616_nvmem_match(struct device *dev, const void *data)
 	int result;
 
 	if(strlen(name) < strlen(expected_prefix)) {
-		return 0; // name too short to hold the prefix
+		return 0;
 	}
 
 	result = memcmp(expected_prefix, name, strlen(expected_prefix)) == 0;
@@ -565,8 +500,7 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 	ret = 0;
 
 
-	// Try to find an nvmem device with a name starting with this expected prefix
-	// TODO: consider making that an of property
+	/* Match the synthetic nvmem provider name. */
 	bool is_left = sensor->is_left_sensor;
 	struct nvmem_device* nvmem_dev;
 	int retries = 5;
@@ -586,12 +520,11 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 		goto out_power;
 	}
 
-	// Make sure we get the expected EEPROM size (8KB)
+	/* Validate the AT24 size. */
 	size_t nvmem_size = nvmem_dev_size(nvmem_dev);
 	if(nvmem_size != ARCIMX616_EEPROM_SIZE)
 	{
 		dev_err(&sensor->i2c_client->dev, "Unexpected EEPROM data size (nvmem cell size is %zu but expected %d\n", nvmem_size, ARCIMX616_EEPROM_SIZE);
-		// Release nvmem_device before early return
 		nvmem_device_put(nvmem_dev);
 		ret = -EINVAL;
 		goto out_power;
@@ -608,7 +541,8 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 		goto out_power;
 	}
 
-	const u32 protected_range_end = 0x800; // [0x0, 0x800] is written by manufacturer
+	/* Manufacturer range. */
+	const u32 protected_range_end = 0x800;
 	if(!from_eeprom && (eeprom_offset < protected_range_end))
 	{
 		dev_err(&sensor->i2c_client->dev, "Invalid EEPROM access range [0x%x, 0x%x] would overwrite the protected range [0x0, 0x%x] \n",
@@ -620,7 +554,6 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 
 	
 	if(from_eeprom) {
-		// Copy from EEPROM to user buffer
 		int nb_read = nvmem_device_read(nvmem_dev, eeprom_offset, access_info->size, sensor->eeprom_buffer);
 		if(nb_read != access_info->size)
 		{
@@ -637,7 +570,6 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 		}
 	}
 	else {
-		// Copy from user buffer to EEPROM
 		if(copy_from_user(sensor->eeprom_buffer, access_info->buffer, access_info->size) != 0)
 		{
 			dev_err(&sensor->i2c_client->dev, "Failed to copy data from user pointer \n");
@@ -662,205 +594,9 @@ out_power:
 	return ret;
 }
 
-/**
- * arcimx616_aw9106_write_reg - Write one byte to a single-byte register on AW9106C
- * Returns 0 on success, negative error code on failure.
- */
-static int arcimx616_aw9106_write_reg(struct arcimx616_dev *sensor, u8 reg, u8 val)
-{
-    struct i2c_msg msg;
-    u8 buf[2];
-    int ret;
-
-    if (!g_aw9106_i2c_client) {
-        dev_err(&sensor->i2c_client->dev, "%s: AW9106 i2c client not initialized\n", __func__);
-        return -ENODEV;
-    }
-
-    buf[0] = reg;
-    buf[1] = val;
-
-    msg.addr  = g_aw9106_i2c_client->addr;
-    msg.flags = 0;  /* Write */
-    msg.len   = 2;
-    msg.buf   = buf;
-
-    ret = i2c_transfer(g_aw9106_i2c_client->adapter, &msg, 1);
-    if (ret < 0) {
-        dev_err(&sensor->i2c_client->dev, "AW9106 reg=0x%02x val=0x%02x write failed: %d\n",
-                reg, val, ret);
-        return ret;
-    }
-    return 0;
-}
-
-/**
- * arcimx616_aw9106_read_reg - Read one byte from a single-byte register on AW9106C
- * @sensor: The arcimx616_dev
- * @reg:    Register address to read from
- * @val:    Pointer to store the read value
- * Returns 0 on success, negative error code on failure.
- */
-static int arcimx616_aw9106_read_reg(struct arcimx616_dev *sensor, u8 reg, u8 *val)
-{
-    struct i2c_msg msg[2];
-    u8 buf;
-    int ret;
-
-    if (!g_aw9106_i2c_client) {
-        dev_err(&sensor->i2c_client->dev, "%s: AW9106 i2c client not initialized\n", __func__);
-        return -ENODEV;
-    }
-
-    buf = reg;
-
-    msg[0].addr  = g_aw9106_i2c_client->addr;
-    msg[0].flags = 0;  /* Write */
-    msg[0].buf   = &buf;
-    msg[0].len   = 1;
-
-    msg[1].addr  = g_aw9106_i2c_client->addr;
-    msg[1].flags = I2C_M_RD;  /* Read */
-    msg[1].buf   = &buf;
-    msg[1].len   = 1;
-
-    ret = i2c_transfer(g_aw9106_i2c_client->adapter, msg, 2);
-    if (ret < 0) {
-        dev_err(&sensor->i2c_client->dev, "AW9106 reg=0x%02x read failed: %d\n",
-                reg, ret);
-        return ret;
-    }
-
-    *val = buf;
-    return 0;
-}
-
-static int arcimx616_aw9106_check_chip_id(struct arcimx616_dev *sensor)
-{
-	int ret = 0;
-	u8 led_chip_id = 0;
-	ret = arcimx616_aw9106_read_reg(sensor, 0x10, &led_chip_id);
-
-	if (!ret && led_chip_id != 0x23)
-		ret = -ENXIO;
-
-	return ret;
-}
-
-/**
- * arcimx616_aw9106_set_leds - Example function to control two "RGB groups" of AW9106C
- * @sensor:        The arcimx616_dev
- * @left_r/g/b:    Brightness (0..255) for left LED's R/G/B
- * @right_r/g/b:   Brightness (0..255) for right LED's R/G/B
- * @left_breathe:  True => left side breathes (blink), else steady
- * @right_breathe: True => right side breathes (blink), else steady
- * @enable:        True => turn them on, False => turn them off
- */
-static int arcimx616_aw9106_set_leds(struct arcimx616_dev *sensor,
-                                  u8 left_r, u8 left_g, u8 left_b,
-                                  u8 right_r, u8 right_g, u8 right_b,
-                                  bool left_breathe, bool right_breathe,
-                                  bool enable)
-{
-    int ret = 0;
-    u8 paten_val = 0;
-    u8 p1dir = 0;
-    u8 p0dir = 0;
-
-    if (!sensor->i2c_client)
-        return -ENODEV;
-
-    /* If disable => just zero everything out. */
-    if (!enable) {
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x20, 0x00); // DIM0
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x21, 0x00); // DIM1
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x22, 0x00); // DIM2
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x23, 0x00); // DIM3
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x24, 0x00); // DIM4
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x25, 0x00); // DIM5
-        /* Turn off breathing enable bits. */
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x14, 0x00);
-        /* Clear GO bit in GCR. */
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x11, 0x00);
-
-		ret |= arcimx616_aw9106_write_reg(sensor, 0x7f, 0x00); // reset
-        return ret;
-    }
-
-    /*
-     *    Switch all pins to LED mode:
-     *    P0WKMD=0x00 => OUT4..5 LED
-     *    P1WKMD=0x00 => OUT0..3 LED
-     */
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x12, 0x00); // P0WKMD
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x13, 0x00); // P1WKMD
-
-    /* Write brightness registers (DIM0..5) */
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x20, right_r);   // out0
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x21, right_g);   // out1
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x22, right_b);   // out2
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x23, left_r);  // out3
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x24, left_g);  // out4
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x25, left_b);  // out5
-
-    /*
-     * Enable breathing on whichever pins are meant to breathe:
-     */
-    if (left_breathe) {
-        /* left => out0/out1/out2 => bits 0..2 */
-        if (right_r > 0) paten_val |= BIT(0);
-        if (right_g > 0) paten_val |= BIT(1); 
-        if (right_b > 0) paten_val |= BIT(2);
-    }
-    if (right_breathe) {
-        /* right => out3/out4/out5 => bits 3..5 */
-        if (left_r > 0) paten_val |= BIT(3);
-        if (left_g > 0) paten_val |= BIT(4);
-        if (left_b > 0) paten_val |= BIT(5);
-    }
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x14, paten_val);
-
-    /*
-     *   For BLINK vs SMART-FADE:
-     *    In LED mode + PATEN=1, setting the corresponding DIR bit=1 => BLINK
-     *    bit=0 => SMART-FADE. 
-     *    P1DIR(0x05) => bits [3..0] => OUT3..OUT0
-     *    P0DIR(0x04) => bits [1..0] => OUT5..OUT4
-     */
-    if (right_breathe) {
-        /* out0..2 => bits 0..2 => set them to 1 => blink */
-        p1dir |= 0x07;  /* sets bits 2..0 */
-    }
-    if (left_breathe) {
-        /* out3 => bit3 in P1DIR, out4=>bit0 in P0DIR, out5=>bit1 in P0DIR */
-        p1dir |= 0x08;  /* set bit3 => out3 => blink */
-        p0dir |= 0x03;  /* set bits 1..0 => out5..4 => blink */
-    }
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x05, p1dir); // P1DIR
-    ret |= arcimx616_aw9106_write_reg(sensor, 0x04, p0dir); // P0DIR
-
-    /*
-     *    If breathing, set fade/hold times in FDTMR(0x15) & FLTMR(0x16).
-     */
-    if (left_breathe || right_breathe) {
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x15, 0x1A);
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x16, 0x1A);
-    }
-
-    /*  For BLINK mode, set GO=1 in GCR(0x11) => 0x80 */
-    if (left_breathe || right_breathe) {
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x11, 0x80);
-    } else {
-        /* For steady on, we do not enable GO. */
-        ret |= arcimx616_aw9106_write_reg(sensor, 0x11, 0x00);
-    }
-    return ret;
-}
-
 static int arcimx616_load_regs(struct arcimx616_dev *sensor,
 			    const struct arcimx616_mode_info *mode)
 {
-	//load default regs
 	{
 		const struct reg_value *regs = arcimx616_global_settings;
 		unsigned int i;
@@ -880,7 +616,6 @@ static int arcimx616_load_regs(struct arcimx616_dev *sensor,
 				break;
 
 			if (delay_ms) {
-				// Apply the delay in the register map
 				usleep_range(1000 * delay_ms, 1000 * delay_ms + 100);
 			}
 		}
@@ -905,7 +640,6 @@ static int arcimx616_load_regs(struct arcimx616_dev *sensor,
 				break;
 
 			if (delay_ms) {
-				// Apply the delay in the register map
 				usleep_range(1000 * delay_ms, 1000 * delay_ms + 100);
 			}
 		}
@@ -946,13 +680,13 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 		return ret;
 	}
 
-	//  If this is not the sensor that owns the reset gpio, skip it
+	/* Only the reset owner controls the shared rails. */
 	if(sensor->reset_gpio == NULL) {
 		return 0;
 	}
 
 	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
-	// Make sure the reset is low for at least 1ms
+	/* Reset low for at least 1 ms. */
 	usleep_range(1000, 1500);
 
 	ret = regulator_bulk_enable(arcimx616_NUM_SUPPLIES,
@@ -984,13 +718,13 @@ static int arcimx616_set_power_on(struct arcimx616_dev *sensor)
 		goto xclk_off;
 	}
 
-	// Wait for power to stabilize
+	/* Rail settle. */
 	usleep_range(5000, 5500);
 
-	// Set the reset high to release the sensor from reset
+	/* Release reset. */
 	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
 
-	// Wait for the sensor to be ready to receive commands
+	/* Sensor command delay. */
 	usleep_range(13000, 13500);
 
 	return 0;
@@ -1026,7 +760,7 @@ static void arcimx616_set_power_off(struct arcimx616_dev *sensor)
 			__func__);
 	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
 
-	// Make sure everything is off before returning
+	/* Let rails settle. */
 	usleep_range(1000, 1500);
 
 	pm_runtime_put_sync(&client->dev);
@@ -1037,41 +771,33 @@ static int arcimx616_set_power(struct arcimx616_dev *sensor, bool on)
 	struct i2c_client *client = sensor->i2c_client;
 	int ret = 0;
 
-    bool was_on = power_on_count > 0;
+	bool was_on = arcimx616_power_on_count > 0;
 
-	if(on) {
-		power_on_count++;
-	}
-	else {
-		if(power_on_count > 0) {
-			power_on_count --;
-		}
-		else {
-			// already powered off
+	if (on) {
+		arcimx616_power_on_count++;
+	} else {
+		if (arcimx616_power_on_count > 0)
+			arcimx616_power_on_count--;
+		else
 			return 0;
-		}
 	}
-	
-	if (on && !was_on) {
 
-		for(int i = 0; i < g_arcimx616_sensor_count; i++) {
+	if (on && !was_on) {
+		for (int i = 0; i < g_arcimx616_sensor_count; i++) {
 			ret = arcimx616_set_power_on(g_arcimx616_sensors[i]);
 			if (ret)
 				return ret;
 		}
-	
-		for(int i = 0; i < g_arcimx616_sensor_count; i++) {
+
+		for (int i = 0; i < g_arcimx616_sensor_count; i++) {
 			ret = arcimx616_restore_mode(g_arcimx616_sensors[i]);
 			if (ret)
 				dev_err(&client->dev, "Error from arcimx616_restore_mode");
 		}
 	} else {
-
-		if(power_on_count == 0)
-		{
-			for(int i = 0; i < g_arcimx616_sensor_count; i++) {
+		if (arcimx616_power_on_count == 0) {
+			for (int i = 0; i < g_arcimx616_sensor_count; i++)
 				arcimx616_set_power_off(g_arcimx616_sensors[i]);
-			}
 		}
 	}
 
@@ -1165,7 +891,7 @@ static int arcimx616_init_controls(struct arcimx616_dev *sensor)
 	if (link_freq)
 		link_freq->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 	
-	//add custom control for temperature sensor
+	/* Temperature control. */
 	v4l2_ctrl_new_custom(ctrl_hdlr, &arcimx616_ctrl_temperature, NULL);
 
 	if (ctrl_hdlr->error)
@@ -1175,8 +901,6 @@ static int arcimx616_init_controls(struct arcimx616_dev *sensor)
 
 	return 0;
 }
-
-/* --------------- Subdev Operations --------------- */
 
 static int arcimx616_s_power(struct v4l2_subdev *sd, int on)
 {
@@ -1289,9 +1013,7 @@ static void arcimx616_probe_sources(struct arcimx616_dev *sensor,
 		}
 
 		/*
-		 * Custom (non-native-camera) peripheral probe. Runs before
-		 * the frunky loopback check so an ACK from a temp sensor or
-		 * EEPROM keeps the port powered on its own.
+		 * Custom peripheral check before the strobe loopback path.
 		 */
 		if (arcimx616_probe_custom_peripheral(sensor)) {
 			out->custom_peripheral_ok = true;
@@ -1329,7 +1051,11 @@ static int arcimx616_s_stream(struct v4l2_subdev *sd, int enable)
 		ret = -ENXIO;
 	}
 
-	// Always return 0 so we can enable the rest of the pipeline even if this fails
+	/* Apply cached LED state. */
+	if (enable)
+		arcimx616_led_apply_effective();
+
+	/* Keep the rest of the pipeline bring-up tolerant. */
 	return 0;
 }
 
@@ -1362,7 +1088,7 @@ static long arcimx616_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, vo
 			break;
 		case VIDIOC_PRIV_S_DUAL_REG:
 			{
-				u32 val = (uintptr_t)arg; // argument contains reg addr and value
+				u32 val = (uintptr_t)arg;
 				ret = arcimx616_write_reg_dual(sensor, val & 0xffff, (val >> 16) & 0xff);
 			}
 			break;
@@ -1420,7 +1146,7 @@ static int arcimx616_set_fmt(struct v4l2_subdev *sd,
 		sensor->current_mode = &arcimx616_mode_data_1640x1232_binned;
 	}
 	else {
-		// This map is used for other resolutions that only modify the cropping manually
+		/* Other resolutions use manual crop changes. */
 		sensor->current_mode = &arcimx616_mode_data_3820x2464;	
 	}
 
@@ -1514,8 +1240,8 @@ static void arcimx616_connect_work_fn(struct work_struct *work)
 				     sensor->debounce_sensor0_ok ||
 				     sensor->debounce_sensor1_ok;
 
-		if (arcimx616_aw9106_check_chip_id(sensor) == 0)
-			arcimx616_aw9106_set_leds(sensor, 0, 0, 0, 0, 0, 0, false, false, false);
+		/* Clear the probe blink before powering down. */
+		arcimx616_led_clear_internal_override();
 		arcimx616_set_power(sensor, false);
 
 		if (i2c_ever_seen) {
@@ -1527,11 +1253,7 @@ static void arcimx616_connect_work_fn(struct work_struct *work)
 		goto halt_connection_work;
 	}
 
-	/*
-	 * Toggle power for every probe iteration. Rails only get latched
-	 * "on" after we either see both RGB sensors in a single probe or
-	 * a different PCIE peripheral.
-	 */
+	/* Pulse rails for each debounce probe. */
 	arcimx616_set_power(sensor, true);
 	if (sensor->mux_enable)
 		gpiod_set_value_cansleep(sensor->mux_enable, 0);
@@ -1541,11 +1263,7 @@ static void arcimx616_connect_work_fn(struct work_struct *work)
 	sensor->debounce_sensor1_ok |= cur.sensor1_ok;
 	sensor->debounce_led_ok     |= cur.led_ok;
 
-	/*
-	 * PCIE peripheral paths commit on the first detection -- a single
-	 * ACK on 0x48/0x50 or a strobe+reset short is unambiguous, no
-	 * debounce needed. Rails latch on and stay up until unplug.
-	 */
+	/* Non-camera accessories latch rails until unplug. */
 	if (cur.custom_peripheral_ok) {
 		dev_info(&sensor->i2c_client->dev,
 			 "Custom I2C peripheral detected; leaving power on until unplug\n");
@@ -1563,35 +1281,22 @@ static void arcimx616_connect_work_fn(struct work_struct *work)
 	bool probe_window_done  = sensor->debounce_cnt >= debounce_num_connection_tests;
 
 	if (!both_sensors_available && !probe_window_done) {
-		/* Still in the probe window: stay cold, no LEDs. */
 		arcimx616_set_power(sensor, false);
 		sensor->debounce_cnt++;
 		schedule_delayed_work(&sensor->connect_work, debounce_connection_tests_delay);
 		return;
 	}
 
-	/*
-	 * RGB commit phase. Rails are on from the probe we just completed.
-	 * Reach here when both sensors ACKed in the same pulse, or the full
-	 * probe window expired with at most partial I2C evidence.
-	 */
-
 	bool any_i2c = sensor->debounce_sensor0_ok ||
 		       sensor->debounce_sensor1_ok ||
 		       sensor->debounce_led_ok;
 
 	if (!any_i2c) {
-		/* Probe window expired with no evidence -- drop rails. */
 		arcimx616_set_power(sensor, false);
 		goto halt_connection_work;
 	}
 
-	/*
-	 * Enable the LEDs based on the latched per-sensor state.
-	 * Until the settling delay is complete, the LEDs will be on.
-	 * After the settling delay, the LEDs will be off and power will be off.
-	 * The V4L2 CONNECTED event will be emitted when the settling delay is complete.
-	 */
+	/* Probe blink: green = seen, red = missing. */
 	{
 		int left_idx  = g_arcimx616_sensors[0]->is_left_sensor ? 0 : 1;
 		int right_idx = left_idx == 0 ? 1 : 0;
@@ -1601,10 +1306,25 @@ static void arcimx616_connect_work_fn(struct work_struct *work)
 						 : sensor->debounce_sensor1_ok;
 
 		if (sensor->debounce_led_ok) {
-			arcimx616_aw9106_set_leds(sensor,
-				left_ok  ? 0 : 255, left_ok  ? 255 : 0, 0,
-				right_ok ? 0 : 255, right_ok ? 255 : 0, 0,
-				true, true, true);
+			struct arcimx616_led_override ov = {
+				.left_enable = true,
+				.right_enable = true,
+				.left_brightness = 255,
+				.right_brightness = 255,
+				.left_r = left_ok ? 0 : 255,
+				.left_g = left_ok ? 255 : 0,
+				.left_b = 0,
+				.right_r = right_ok ? 0 : 255,
+				.right_g = right_ok ? 255 : 0,
+				.right_b = 0,
+				.effect = ARC_LED_EFFECT_BLINK,
+				.fade_on_ms = 630,
+				.full_on_ms = 315,
+				.fade_off_ms = 630,
+				.full_off_ms = 315,
+			};
+
+			arcimx616_led_set_internal_override(ARC_LED_OVERRIDE_PROBE, &ov);
 		}
 	}
 
@@ -1624,60 +1344,47 @@ halt_connection_work:
 
 static irqreturn_t gpio_handler(int irq, void *ident)
 {
-    struct arcimx616_dev *sensor = (struct arcimx616_dev *) ident;
-    int state = gpiod_get_value(sensor->detect_gpio);
+	struct arcimx616_dev *sensor = ident;
+	int state = gpiod_get_value(sensor->detect_gpio);
 
-    spin_lock(&sensor->irq_lock);
+	spin_lock(&sensor->irq_lock);
 
-    if (state == 0) {
-        // Plugged in (pull-down). Start the 1/4 second timer if not already connected
-        if (!sensor->connected && !sensor->accessory_power_latched &&
-			!sensor->connect_work_scheduled) {
-            sensor->connect_work_scheduled = true;
-            schedule_delayed_work(&sensor->connect_work, HZ/4); // 250ms
-        }
-    } else {
-        // state == 1 => unplugged
-        // Cancel any scheduled connect
-        if (sensor->connect_work_scheduled) {
-			/* Drop irq_lock so the work can grab it and finish. */
+	if (state == 0) {
+		if (!sensor->connected && !sensor->accessory_power_latched &&
+		    !sensor->connect_work_scheduled) {
+			sensor->connect_work_scheduled = true;
+			schedule_delayed_work(&sensor->connect_work, HZ / 4);
+		}
+	} else {
+		if (sensor->connect_work_scheduled) {
 			spin_unlock(&sensor->irq_lock);
-            cancel_delayed_work_sync(&sensor->connect_work);
+			cancel_delayed_work_sync(&sensor->connect_work);
 			spin_lock(&sensor->irq_lock);
-            sensor->connect_work_scheduled = false;
+			sensor->connect_work_scheduled = false;
 			sensor->accessory_power_latched = false;
 			arcimx616_reset_debounce_state(sensor);
-            dev_info(&sensor->i2c_client->dev, "Debounce: canceled connect.\n");
-        }
+			dev_info(&sensor->i2c_client->dev, "Debounce: canceled connect.\n");
+		}
 
-		/*
-		 * Power off after cancel so an in-flight connect_work can't
-		 * re-enable the rail. Drop irq_lock because set_power() sleeps.
-		 */
 		sensor->accessory_power_latched = false;
 		spin_unlock(&sensor->irq_lock);
 		arcimx616_power_off_all_sensors();
 		spin_lock(&sensor->irq_lock);
 
-        // If we were connected, send disconnected event immediately
-        if (sensor->connected) {
-            sensor->connected = false;
+		if (sensor->connected) {
+			struct v4l2_event ev = {0};
 
-            // Send the V4L2 disconnected event
-            {
-                struct v4l2_event ev = {0};
-                ev.type = V4L2_EVENT_SENSOR_DISCONNECTED;
-                v4l2_event_queue(sensor->sd.devnode, &ev);
-            }
-            dev_info(&sensor->i2c_client->dev, "Accessory disconnected\n");
-        }
-    }
+			sensor->connected = false;
+			ev.type = V4L2_EVENT_SENSOR_DISCONNECTED;
+			v4l2_event_queue(sensor->sd.devnode, &ev);
+			dev_info(&sensor->i2c_client->dev, "Accessory disconnected\n");
+		}
+	}
 
-    spin_unlock(&sensor->irq_lock);
+	spin_unlock(&sensor->irq_lock);
 
-    return IRQ_HANDLED;
+	return IRQ_HANDLED;
 }
-
 
 static int arcimx616_probe(struct i2c_client *client)
 {
@@ -1725,7 +1432,7 @@ static int arcimx616_probe(struct i2c_client *client)
 	/* get system clock (xclk) */
 	sensor->xclk = devm_clk_get(dev, "xclk");
 	if (IS_ERR(sensor->xclk)) {
-		// This is normal because the xclk is shared between the two sensors
+		/* Shared with the sibling sensor. */
 		dev_dbg(dev, "failed to get xclk\n");
 	}
 	sensor->xclk2 = devm_clk_get(dev, "xclk2");
@@ -1791,7 +1498,16 @@ static int arcimx616_probe(struct i2c_client *client)
 			dev_dbg(dev, "Identified as right sensor\n");
 		}
 	}
-	
+
+	/*
+	 * Prefer DT for shared AW9106 attrs; otherwise use the detect owner.
+	 */
+	sensor->is_led_master =
+		of_property_read_bool(dev->of_node, "arcturus,led-master") ||
+		(sensor->detect_gpio != NULL);
+
+	arcimx616_led_init_state(sensor);
+
 	ret = arcimx616_init_controls(sensor);
 	if (ret) {
 		dev_err(&client->dev, "failed to init controls: %d", ret);
@@ -1801,7 +1517,6 @@ static int arcimx616_probe(struct i2c_client *client)
 	ret = v4l2_async_register_subdev_sensor(&sensor->sd);
 	if (ret)
 		goto free_ctrls;
-
 
 	sensor->current_mode = &arcimx616_mode_data_3820x2464;
 
@@ -1869,7 +1584,17 @@ static int arcimx616_probe(struct i2c_client *client)
 		}
 	}
 
-	// Something plugged in at probe time: use the same async path as the IRQ
+	/* Needs the sensor in the global array first; non-fatal on failure. */
+	if (added_global) {
+		ret = arcimx616_led_create_sysfs(sensor);
+		if (ret) {
+			dev_warn(&client->dev,
+				 "failed to create LED sysfs attrs: %d\n", ret);
+			ret = 0;
+		}
+	}
+
+	/* Handle accessories already present at probe. */
 	if (sensor->detect_gpio && gpiod_get_value(sensor->detect_gpio) == 0) {
 		dev_dbg(&client->dev, "Accessory detected during probe, scheduling async connect\n");
 		spin_lock(&sensor->irq_lock);
@@ -1923,6 +1648,8 @@ static void arcimx616_remove(struct i2c_client *client)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct arcimx616_dev *sensor = to_arcimx616_dev(sd);
 
+	arcimx616_led_remove_sysfs(sensor);
+
        /* Drop the synthetic AT24 client if we created one */
        if (sensor->eeprom_client) {
                i2c_unregister_device(sensor->eeprom_client);
@@ -1974,21 +1701,7 @@ static void arcimx616_remove(struct i2c_client *client)
 	media_entity_cleanup(&sensor->sd.entity);
 }
 
-/*
- * Suspend powers rails off and drains scheduled work. On resume,
- * pm_complete re-probes synchronously to identify whatever is plugged in
- * now -- the detect IRQ is disabled across the whole suspend window, so
- * an accessory swap during that window is invisible and the pre-suspend
- * latched/connected flags can't be trusted. Based on the fresh probe:
- *   - unplugged                    -> emit DISCONNECTED if was connected
- *   - plugged + custom/strobe ack  -> latch rails, emit DISCONNECTED if was RGB
- *   - plugged + both RGB cams ack  -> mark connected, emit CONNECTED if was idle
- *   - plugged + inconclusive probe -> defer to async debounce; provisionally
- *                                     emit DISCONNECTED if was connected so
- *                                     userspace doesn't see stale state (the
- *                                     async path will re-emit CONNECTED on
- *                                     confirmation).
- */
+/* Suspend drains detect work; resume re-probes the accessory state. */
 static int arcimx616_pm_prepare(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
@@ -1996,33 +1709,20 @@ static int arcimx616_pm_prepare(struct device *dev)
 	struct arcimx616_dev *sensor = to_arcimx616_dev(sd);
 	unsigned long flags;
 
-	/*
-	 * Only the sensor that owns the detect IRQ runs the global PM
-	 * teardown. Otherwise the sibling's prepare (which has no IRQ to
-	 * disable and no work to cancel) can call power_off_all_sensors()
-	 * while this sensor's IRQ is still live -- a plug edge in that
-	 * window would re-arm connect_work and re-enable rails mid-suspend.
-	 */
+	/* The detect owner handles global teardown. */
 	if (!sensor->detect_gpio)
 		return 0;
 
 	if (sensor->irq > 0)
 		disable_irq(sensor->irq);
 
-	/* Drain any pending or running connect_work. */
 	cancel_delayed_work_sync(&sensor->connect_work);
 
 	spin_lock_irqsave(&sensor->irq_lock, flags);
 	sensor->connect_work_scheduled = false;
 	arcimx616_reset_debounce_state(sensor);
-	/*
-	 * Leave ->connected and ->accessory_power_latched untouched so
-	 * pm_complete can decide whether to restore rails directly or
-	 * emit a disconnect event.
-	 */
 	spin_unlock_irqrestore(&sensor->irq_lock, flags);
 
-	/* Sleeps in regulator / usleep paths -- must be outside irq_lock. */
 	arcimx616_power_off_all_sensors();
 
 	return 0;
@@ -2046,13 +1746,7 @@ static void arcimx616_pm_complete(struct device *dev)
 		return;
 	}
 
-	/*
-	 * Snapshot the bit that drives userspace events, then clear all
-	 * detection state. The fresh probe below re-establishes whatever
-	 * is actually plugged in -- the pre-suspend latched/connected
-	 * flags can't be trusted because the detect IRQ was disabled
-	 * across the whole suspend window.
-	 */
+	/* Rebuild detect state from a fresh probe. */
 	spin_lock_irqsave(&sensor->irq_lock, flags);
 	was_connected = sensor->connected;
 	sensor->connected = false;
@@ -2069,12 +1763,6 @@ static void arcimx616_pm_complete(struct device *dev)
 		goto out;
 	}
 
-	/*
-	 * Sync re-probe. One pulse is enough to (a) catch an obvious
-	 * accessory swap and route the mux for what's there now, and
-	 * (b) re-derive the latch. Anything ambiguous (slow rail settle,
-	 * partial I2C responses) falls through to the async debounce path.
-	 */
 	arcimx616_set_power(sensor, true);
 	if (sensor->mux_enable)
 		gpiod_set_value_cansleep(sensor->mux_enable, 0);
@@ -2094,12 +1782,6 @@ static void arcimx616_pm_complete(struct device *dev)
 		if (!was_connected)
 			emit_connected = true;
 	} else {
-		/*
-		 * Plugged but the single-shot probe is inconclusive. Defer
-		 * to the async debounce. If we WERE connected, retract that
-		 * now so userspace doesn't keep stale "connected" state --
-		 * the async path will re-emit CONNECTED if it confirms.
-		 */
 		if (was_connected)
 			emit_disconnected = true;
 		spin_lock_irqsave(&sensor->irq_lock, flags);
@@ -2108,8 +1790,11 @@ static void arcimx616_pm_complete(struct device *dev)
 		schedule_probe = true;
 	}
 
-	if (!keep_power_on)
+	if (!keep_power_on) {
 		arcimx616_set_power(sensor, false);
+	} else {
+		arcimx616_led_apply_effective();
+	}
 
 out:
 	if (schedule_probe)
