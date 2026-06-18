@@ -3,18 +3,11 @@
  * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-#define QCOM_SCM_MP_CP_SMMU_APERTURE_ID         0x1b
+#include <linux/firmware/qcom/qcom_scm.h>
+
 #define QCOM_SCM_CP_APERTURE_REG    0x0
 #define QCOM_SCM_SVC_GPU            0x28
-#define QCOM_SCM_SVC_GPU_INIT_REGS          0x1
 
-#define QCOM_SCM_SVC_SMCINVOKE          0x06
-#define QCOM_SCM_SMCINVOKE_INVOKE_LEGACY    0x00
-#define QCOM_SCM_SMCINVOKE_INVOKE       0x02
-#define QCOM_SCM_SMCINVOKE_CB_RSP       0x01
-
-#define QCOM_SCM_SVC_INFO       0x06
-#define QCOM_SCM_INFO_IS_CALL_AVAIL 0x01
 #define QCOM_SCM_INFO_GET_FEAT_VERSION_CMD  0x03
 
 /* TOS Services and Function IDs */
@@ -26,7 +19,6 @@
 /* Feature IDs for QCOM_SCM_INFO_GET_FEAT_VERSION */
 #define QCOM_SCM_TZ_DBG_ETM_FEAT_ID     0x08
 #define QCOM_SCM_FEAT_LOG_ID            0x0a
-#define QCOM_SCM_MP_CP_FEAT_ID          0x0c
 
 #define QCOM_SCM_SVC_DCVS           0x0D
 #define QCOM_SCM_DCVS_RESET         0x07
