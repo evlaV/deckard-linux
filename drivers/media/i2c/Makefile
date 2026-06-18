@@ -176,4 +176,5 @@ obj-$(CONFIG_VIDEO_VPX3220) += vpx3220.o
 obj-$(CONFIG_VIDEO_WM8739) += wm8739.o
 obj-$(CONFIG_VIDEO_WM8775) += wm8775.o
 obj-$(CONFIG_VIDEO_INTEL_CVS) += cvs/
+arcimx616-objs := arcimx616-core.o arcimx616-led.o
 obj-${CONFIG_VIDEO_ARCIMX616} += arcimx616.o
