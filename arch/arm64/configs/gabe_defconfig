@@ -5317,12 +5317,6 @@ CONFIG_I2C_HID_OF_GOODIX=m
 CONFIG_I2C_HID_CORE=m
 
 #
-# SPI HID support
-#
-CONFIG_SPI_HID=m
-# end of SPI HID support
-
-#
 # USB HID support
 #
 CONFIG_USB_HID=y
