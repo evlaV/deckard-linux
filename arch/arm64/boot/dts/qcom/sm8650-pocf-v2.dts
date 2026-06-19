@@ -1404,50 +1404,15 @@
 	clock-frequency = <32764>;
 };
 
-#ifndef NRF_UART
-// nRF SPI HID
 &spi10 {
 	status = "okay";
 
-	// L, on QUP2 SE2 L3 CS
-	// expansion, CS_2=gpio_15
-	hid@2 {
-		compatible = "hid-over-spi";
-		reg = <2>;
-		interrupts-extended = <&tlmm 69 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&tlmm 70 GPIO_ACTIVE_LOW>;
-		input-report-header-address = <0x1000>;
-		input-report-body-address = <0x1004>;
-		output-report-address = <0x2000>;
-		read-opcode = <0x0b>;
-		write-opcode = <0x02>;
-		hid-over-spi-flags = <0x00>;
-		post-power-on-delay-ms = <1>;
-		minimal-reset-delay-ms = <100>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&l_spihid_default_state>;
-	};
-
-	// R, on QUP2 SE2 L6 CS
-	// mainboard, CS_1=gpio_13
-	hid@1 {
-		compatible = "hid-over-spi";
+	spidev@1 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <8000000>;
 		reg = <1>;
-		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&tlmm 137 GPIO_ACTIVE_LOW>;
-		input-report-header-address = <0x1000>;
-		input-report-body-address = <0x1004>;
-		output-report-address = <0x2000>;
-		read-opcode = <0x0b>;
-		write-opcode = <0x02>;
-		hid-over-spi-flags = <0x00>;
-		post-power-on-delay-ms = <1>;
-		minimal-reset-delay-ms = <100>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&r_spihid_default_state>;
 	};
 };
-#endif
 
 &uart14 {
 	status = "okay";
@@ -1743,54 +1708,7 @@
     }; 
 };
 
-// nRF SPI HID Config
-
-// nRF Pins
 &tlmm {
-	// nRF CS
-	qup_spi10_cs_nrf: qup-spi10-cs-state-nrf {
-		pins = "gpio13", "gpio15";
-		function = "qup2_se2";
-		drive-strength = <6>;
-		bias-disable;
-	};
-
-	// nRF SPI interrupt and reset pins
-
-    	// expansion 
-	l_spihid_default_state: l-spihid-default {
-		irq0-pins {
-			pins = "gpio69";
-			function = "gpio";
-			bias-pull-up;
-		};
-
-		reset0-pins {
-			pins = "gpio70";
-			function = "gpio";
-			drive-strength = <2>;
-			output-low;
-			bias-pull-down;
-		};
-	};
-
-	// host/mainboard
-	r_spihid_default_state: r-spihid-default {
-		irq0-pins {
-			pins = "gpio66";
-			function = "gpio";
-			bias-pull-up;
-		};
-
-		reset0-pins {
-			pins = "gpio137";
-			function = "gpio";
-			drive-strength = <2>;
-			output-low;
-			bias-pull-down;
-		};
-	};
-
 	nrf_host_rst_n: nrf_host_rst_n {
 		mux {
 			pins = "gpio164";
