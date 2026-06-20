@@ -296,7 +296,7 @@ struct ath12k_key_conf {
 struct ath12k_vif_cache {
 	struct ath12k_tx_conf tx_conf;
 	struct ath12k_key_conf key_conf;
-	u32 bss_conf_changed;
+	u64 bss_conf_changed;
 };
 
 struct ath12k_rekey_data {
