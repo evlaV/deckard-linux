@@ -440,11 +440,11 @@ static int cvp_setup_cvp_uc_region(struct cvp *cvp)
 
 static int cvp_set_registers(struct cvp *cvp)
 {
-	int ret;
-
 	writel(0, cvp->base + CVP_WRAPPER_CORE_CLOCK_CONFIG);
 
 #if 0
+	int ret;
+
 	// RESET_XO is shared with iris, but this causes the iris fw to shutdown
 	// keep this commented until we figure out how to use this
 	ret = reset_control_acquire(cvp->resets[RESET_XO]);
