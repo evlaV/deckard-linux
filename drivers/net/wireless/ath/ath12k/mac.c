@@ -14977,6 +14977,7 @@ static int ath12k_mac_hw_register(struct ath12k_hw *ah)
 
 	wiphy->features |= NL80211_FEATURE_TX_POWER_INSERTION;
 
+#if 0 // hide MLO from mac80211 but still allow firmware setup
 	/* Copy over MLO related capabilities received from
 	 * WMI_SERVICE_READY_EXT2_EVENT if single_chip_mlo_supp is set.
 	 */
@@ -14987,6 +14988,7 @@ static int ath12k_mac_hw_register(struct ath12k_hw *ah)
 
 		ieee80211_hw_set(hw, MLO_MCAST_MULTI_LINK_TX);
 	}
+#endif
 
 	hw->queues = ATH12K_HW_MAX_QUEUES;
 	wiphy->tx_queue_len = ATH12K_QUEUE_LEN;
