@@ -18,6 +18,7 @@
 #define SMEM_DDR_INFO_ID		603
 
 #define MAX_DDR_FREQ_NUM_V3		13
+#define MAX_DDR_FREQ_NUM_V3_WITH_14	14
 #define MAX_DDR_FREQ_NUM_V5		14
 
 #define MAX_DDR_REGION_NUM		6
@@ -76,7 +77,7 @@ struct ddr_freq_table {
 
 /* V3 */
 struct ddr_freq_plan_v3 {
-	struct ddr_freq_table ddr_freq[MAX_DDR_FREQ_NUM_V3]; /* NOTE: some have 14 like v5 */
+	struct ddr_freq_table ddr_freq[MAX_DDR_FREQ_NUM_V3_WITH_14]; /* NOTE: some have 14 like v5 */
 	u8 num_ddr_freqs;
 	phys_addr_t clk_period_address;
 };
@@ -196,7 +197,7 @@ static void smem_dram_parse_v3_data(struct smem_dram *dram, void *data, bool add
 	memcpy(dram->ddr_params, details->ddr_params, sizeof(struct ddr_part_details) * MAX_CHAN_NUM);
 
 	if (additional_freq_entry)
-		num_freq_entries++;
+		num_freq_entries = MAX_DDR_FREQ_NUM_V3_WITH_14;
 
 	for (int i = 0; i < num_freq_entries; i++) {
 		struct ddr_freq_table *freq_entry = &details->ddr_freq_tbl.ddr_freq[i];
