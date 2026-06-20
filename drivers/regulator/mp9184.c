@@ -77,7 +77,6 @@ static int mp9184_probe(struct platform_device *pdev)
 	struct regulator_config cfg = { };
 	struct regulator_dev *rdev;
 	struct mp9184_data *mp9184;
-	int ret = 0;
 
 	mp9184 = devm_kzalloc(dev, sizeof(*mp9184), GFP_KERNEL);
 	if (!mp9184)
