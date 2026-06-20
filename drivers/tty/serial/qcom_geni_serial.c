@@ -631,7 +631,6 @@ static void qcom_geni_serial_stop_tx_dma(struct uart_port *uport)
 {
 	struct qcom_geni_serial_port *port = to_dev_port(uport);
 	bool done;
-	u32 m_irq_en;
 
 	if (!qcom_geni_serial_main_active(uport))
 		return;
@@ -862,7 +861,7 @@ static void qcom_geni_serial_stop_rx_dma(struct uart_port *uport)
 	}
 }
 
-static void qcom_geni_serial_start_rx_dma(struct uart_port *uport)
+static void __maybe_unused qcom_geni_serial_start_rx_dma(struct uart_port *uport)
 {
 	struct qcom_geni_serial_port *port = to_dev_port(uport);
 	int ret;
