@@ -657,7 +657,7 @@ err_remove_fs:
  * configures SPMI transaction, namely: sid, address, and count.
  * @returns valid pointer on success or NULL
  */
-struct dentry *spmi_dfs_get_root(void)
+static struct dentry *spmi_dfs_get_root(void)
 {
 	if (dbgfs_data.root)
 		return dbgfs_data.root;
