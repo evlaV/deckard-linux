@@ -40,13 +40,6 @@ struct msm_gem_submit *submit_create(struct drm_device *dev,
 
 int wait_fence(struct msm_gpu_submitqueue *queue, uint32_t fence_id, signed long timeout);
 
-signed long drm_syncobj_array_wait_timeout(struct drm_syncobj **syncobjs,
-						  void __user *user_points,
-						  uint32_t count,
-						  uint32_t flags,
-						  signed long timeout,
-						  uint32_t *idx);
-
 uint64_t a7xx_gpu_shadow_iova(struct msm_gpu *gpu);
 struct drm_gem_object *a7xx_gpu_shadow_bo(struct msm_gpu *gpu);
 
@@ -1072,7 +1065,7 @@ case IOCTL_KGSL_TIMELINE_WAIT: {
 	timeout = min_t(u64, MAX_JIFFY_OFFSET, nsecs_to_jiffies64((u64) wait.tv_sec * 1000000000ull + (u64) wait.tv_nsec));
 	timeout = drm_syncobj_array_wait_timeout(syncobjs, points, wait.count,
 		(wait.flags == KGSL_TIMELINE_WAIT_ALL ? DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL : 0) |
-		DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT, timeout, &first);
+		DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT, timeout, &first, NULL);
 	ret = timeout < 0 ? timeout : 0; // XXX check this;
 fail_timeline_wait:
 	while (i-->0)

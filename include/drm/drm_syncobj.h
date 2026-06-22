@@ -133,4 +133,12 @@ int drm_syncobj_get_handle(struct drm_file *file_private,
 			   struct drm_syncobj *syncobj, u32 *handle);
 int drm_syncobj_get_fd(struct drm_syncobj *syncobj, int *p_fd);
 
+signed long drm_syncobj_array_wait_timeout(struct drm_syncobj **syncobjs,
+						  void __user *user_points,
+						  uint32_t count,
+						  uint32_t flags,
+						  signed long timeout,
+						  uint32_t *idx,
+						  ktime_t *deadline);
+
 #endif
