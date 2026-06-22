@@ -431,7 +431,7 @@ int qcom_pmic_typec_port_legacy_cable_reset(struct pmic_typec_port *pmic_typec_p
 
 int qcom_pmic_typec_port_disable_cc(struct pmic_typec_port *pmic_typec_port)
 {
-	int ret,i=0;
+	int ret;
 	// disable cc ( set port role disabled )
 	ret = regmap_write(pmic_typec_port->regmap,
 			pmic_typec_port->base + TYPEC_MODE_CFG_REG,
