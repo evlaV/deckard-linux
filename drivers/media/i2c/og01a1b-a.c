@@ -1126,7 +1126,6 @@ static int og01a1b_load_regs(struct og01a1b_dev *sensor,
 static int og01a1b_restore_mode(struct og01a1b_dev *sensor)
 {
 	int ret;
-	u8 val;
 
 	/* first load the initial register values */
 	ret = og01a1b_load_regs(sensor, (sensor->current_mode));

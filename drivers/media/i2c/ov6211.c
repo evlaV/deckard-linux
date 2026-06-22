@@ -45,8 +45,6 @@ struct sensor_register {
 	u8 len;
 };
 
-static unsigned int virtual_channel;
-
 /* regulator supplies */
 static const char * const ov6211_supply_name[] = {
 	"DOVDD", /* Digital I/O (1.8V) supply */
@@ -183,7 +181,8 @@ static int ov6211_write_reg(struct ov6211_dev *sensor, u16 reg, u8 val)
 	return 0;
 }
 
-static int ov6211_read_reg(struct ov6211_dev *sensor, u16 reg, u8 *val)
+static int __maybe_unused ov6211_read_reg(struct ov6211_dev *sensor, u16 reg,
+					  u8 *val)
 {
 	struct i2c_client *client = sensor->i2c_client;
 	struct i2c_msg msg[2];
@@ -253,8 +252,8 @@ static int ov6211_write_reg16(struct ov6211_dev *sensor, u16 reg, u16 val)
 }
 
 /* download ov6211 settings to sensor through i2c */
-static int ov6211_set_timings(struct ov6211_dev *sensor,
-			      const struct ov6211_mode_info *mode)
+static int __maybe_unused ov6211_set_timings(struct ov6211_dev *sensor,
+					    const struct ov6211_mode_info *mode)
 {
 	int ret;
 
@@ -325,7 +324,6 @@ static int ov6211_load_regs(struct ov6211_dev *sensor,
 static int ov6211_restore_mode(struct ov6211_dev *sensor)
 {
 	int ret;
-	u8 val;
 
 	struct i2c_client *client = sensor->i2c_client;
 
@@ -388,12 +386,10 @@ static int ov6211_set_power_on(struct ov6211_dev *sensor)
 
 	usleep_range(5000,5500);
 
-    ov6211_power_on = 1;
+	ov6211_power_on = 1;
 
 	return 0;
 
-power_off:
-	regulator_bulk_disable(OV6211_NUM_SUPPLIES, sensor->supplies);
 xclk_off:
 	clk_disable_unprepare(sensor->xclk);
 	return ret;
@@ -402,7 +398,7 @@ xclk_off:
 static void ov6211_set_power_off(struct ov6211_dev *sensor)
 {
 	int i;
-	int ret;
+
     // reset pin is setup as active low
 	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
 	usleep_range(20000, 25000);
@@ -412,7 +408,7 @@ static void ov6211_set_power_off(struct ov6211_dev *sensor)
 		regulator_disable(sensor->supplies[i].consumer);
 	}
 	clk_disable_unprepare(sensor->xclk);
-    ov6211_power_on = 0;
+	ov6211_power_on = 0;
 }
 
 static int ov6211_set_power(struct ov6211_dev *sensor, bool on)
@@ -482,7 +478,6 @@ static int ov6211_set_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct ov6211_dev *sensor =
 			container_of(ctrl->handler, struct ov6211_dev, ctrl_handler);
-	struct i2c_client *client = v4l2_get_subdevdata(&sensor->sd);
 	int ret = 0;
 
 	/* V4L2 controls values will be applied only when power is already up */
@@ -562,11 +557,6 @@ static int ov6211_init_controls(struct ov6211_dev *sensor)
 	sensor->sd.ctrl_handler = ctrl_hdlr;
 
 	return 0;
-
-error_free_hdlr:
-	v4l2_ctrl_handler_free(ctrl_hdlr);
-
-	return ret;
 }
 
 /* --------------- Subdev Operations --------------- */
@@ -614,9 +604,7 @@ static long ov6211_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 				 void *arg)
 {
 	struct ov6211_dev *sensor = to_ov6211_dev(sd);
-	struct i2c_client *client = sensor->i2c_client;
 	int ret = 0;
-	u32 *a = arg;
 
 	switch (cmd) {
 	case VIDIOC_SENSOR_PRV_G_REGISTER: {
@@ -732,7 +720,6 @@ static int ov6211_probe(struct i2c_client *client)
 	struct fwnode_handle *endpoint;
 	struct ov6211_dev *sensor;
 	struct v4l2_mbus_framefmt *fmt;
-	u32 rotation;
 	int ret;
 
 	sensor = devm_kzalloc(dev, sizeof(*sensor), GFP_KERNEL);
