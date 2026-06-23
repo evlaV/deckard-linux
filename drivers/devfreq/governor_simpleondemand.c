@@ -25,7 +25,7 @@ static int devfreq_simple_ondemand_func(struct devfreq *df,
 {
 	int err;
 	struct devfreq_dev_status *stat;
-	unsigned long long a, b, new_freq;
+	unsigned long long b, new_freq;
 	unsigned int dfso_upthreshold = DFSO_UPTHRESHOLD;
 	unsigned int dfso_downdifferential = DFSO_DOWNDIFFERENCTIAL;
 	struct devfreq_simple_ondemand_data *data = df->data;
