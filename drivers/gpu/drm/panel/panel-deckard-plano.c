@@ -2039,12 +2039,13 @@ static int panel_available_show(struct seq_file *s, void *data)
 
 static int panel_vsync_to_photons_usec_show(struct seq_file *s, void *data)
 {
-	struct drm_panel *panel = s->private;
-	struct plano_ctx *ctx = panel_to_ctx(panel);
-	uint32_t vsync_to_photons_nsec, gpo1_tes1, frame_period_nsec;
+	//struct drm_panel *panel = s->private;
+	//struct plano_ctx *ctx = panel_to_ctx(panel);
+	uint32_t vsync_to_photons_nsec;
+	//uint32_t gpo1_tes1, frame_period_nsec;
 
 	// set offset based on frame rate to optimize settling time vs latency
-	frame_period_nsec = 1000000000 / extmodes[ctx->current_mode].fps;
+	// frame_period_nsec = 1000000000 / extmodes[ctx->current_mode].fps;
 	// 1/FPS + TES
 	//TODO: revisit... for now, just zero out
 	//vsync_to_photons_nsec = VID_VS_DELAY * EXTERNAL_LINE_TIME_NSEC + frame_period_nsec + gpo1_tes1 * INTERNAL_LINE_TIME_NSEC;
