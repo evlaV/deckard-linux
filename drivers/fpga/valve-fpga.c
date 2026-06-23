@@ -23,7 +23,7 @@ struct valve_fpga
     struct regulator *v1v1;
 };
 
-static int valve_fpga_suspend(struct platform_device * dev, pm_message_t state)
+static int __maybe_unused valve_fpga_suspend(struct platform_device * dev, pm_message_t state)
 {
     struct valve_fpga *valve = platform_get_drvdata(dev);
     // Power off and disable clock
@@ -34,7 +34,7 @@ static int valve_fpga_suspend(struct platform_device * dev, pm_message_t state)
 }
 
 
-static int valve_fpga_resume(struct platform_device * dev)
+static int __maybe_unused valve_fpga_resume(struct platform_device * dev)
 {
     struct valve_fpga *valve = platform_get_drvdata(dev);
     int ret;
