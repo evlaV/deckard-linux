@@ -64,7 +64,7 @@ static inline int is_visible_ascii( unsigned char c )
 	return (c >= 0x21 && c <= 0x7E);  // '!' .. '~', excludes space
 }
 
-static char *parsenum(char *s, int *num)
+static char __maybe_unused *parsenum(char *s, int *num)
 {
 	char *end;
 #if defined(VRTERMINAL_UBOOT) || defined(VRTERMINAL_LINUX)
@@ -156,7 +156,6 @@ int vrfont_init( VRFont_t * pFont, const uint8_t *pData, uint32_t size )
 	pFont->maxGlyphWidth = 0;
 	pFont->maxGlyphHeight = 0;
 
-	int nglyphs = 0;
 	// int nlastoffset = 0;
 	int nStartCodePoint = pHeader->nStartCodePoint;
 	int nEndCodePoint = pHeader->nStartCodePoint + pHeader->nNumCodePoints;
@@ -180,11 +179,9 @@ int vrfont_init( VRFont_t * pFont, const uint8_t *pData, uint32_t size )
 				if ( nPixelDataEnd > pFont->size )
 					return 7;
 			}
-			
+
 			pFont->maxGlyphWidth = u8_max( pFont->maxGlyphWidth, pGlyph->nWidth );
 			pFont->maxGlyphHeight = u8_max( pFont->maxGlyphHeight, pGlyph->nHeight );
-
-			nglyphs++;
 		}
 	}
 
