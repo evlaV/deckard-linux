@@ -640,9 +640,9 @@ static int qcom_swrm_enumerate(struct sdw_bus *bus)
 static irqreturn_t qcom_swrm_wake_irq_handler(int irq, void *dev_id)
 {
 	struct qcom_swrm_ctrl *ctrl = dev_id;
+#if 0
 	int ret;
 
-#if 0
 	ret = pm_runtime_get_sync(ctrl->dev);
 	if (ret < 0 && ret != -EACCES) {
 		dev_err_ratelimited(ctrl->dev,
@@ -1286,10 +1286,10 @@ static void *qcom_swrm_get_sdw_stream(struct snd_soc_dai *dai, int direction)
 static int qcom_swrm_startup(struct snd_pcm_substream *substream,
 			     struct snd_soc_dai *dai)
 {
+#if 0
 	struct qcom_swrm_ctrl *ctrl = dev_get_drvdata(dai->dev);
 	int ret;
 
-#if 0
 	ret = pm_runtime_get_sync(ctrl->dev);
 	if (ret < 0 && ret != -EACCES) {
 		dev_err_ratelimited(ctrl->dev,
@@ -1479,9 +1479,11 @@ static int qcom_swrm_get_port_config(struct qcom_swrm_ctrl *ctrl)
 static int swrm_reg_show(struct seq_file *s_file, void *data)
 {
 	struct qcom_swrm_ctrl *ctrl = s_file->private;
-	int reg, reg_val, ret;
+	int reg, reg_val;
 
 #if 0
+	int ret;
+
 	ret = pm_runtime_get_sync(ctrl->dev);
 	if (ret < 0 && ret != -EACCES) {
 		dev_err_ratelimited(ctrl->dev,
