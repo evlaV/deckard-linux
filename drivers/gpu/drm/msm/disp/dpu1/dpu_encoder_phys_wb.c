@@ -663,6 +663,10 @@ static bool dpu_encoder_phys_wb_is_valid_for_commit(struct dpu_encoder_phys *phy
 {
 	struct dpu_encoder_phys_wb *wb_enc = to_dpu_encoder_phys_wb(phys_enc);
 
+	if (phys_enc->dpu_kms->skip_cwb_right &&
+	    phys_enc->split_role == ENC_ROLE_SLAVE)
+		return true;
+
 	if (wb_enc->wb_job)
 		return true;
 	else
