@@ -29,6 +29,7 @@
 #include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/kref.h>
+#include <drm/drm_modes.h>
 
 struct backlight_device;
 struct dentry;
