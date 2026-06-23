@@ -397,7 +397,7 @@ int qcom_pmic_typec_pdphy_set_roles(struct pmic_typec_pdphy *pmic_typec_pdphy,
 #define USBIN_AICL_HDC_EN						BIT(5)
 #define USBIN_AICL_START_AT_MAX					BIT(4)
 
-int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int icl_ma)
+static int pdphy_set_usbin_current_limit(struct pmic_typec_pdphy *pmic_typec_pdphy, int icl_ma)
 {
 	int val_u = icl_ma;
 	int val_raw;
