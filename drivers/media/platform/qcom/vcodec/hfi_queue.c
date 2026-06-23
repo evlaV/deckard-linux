@@ -5,7 +5,7 @@
 
 #include "hfi_queue.h"
 
-static void venus_dump_packet(const void *packet)
+static void __maybe_unused venus_dump_packet(const void *packet)
 {
 	size_t pkt_size = *(u32 *)packet;
 
