@@ -272,7 +272,7 @@ static int msm_iommu_pagetable_map2(struct msm_mmu *mmu, u64 iova,
 	return 0;
 }
 
-int msm_iommu_pagetable_map_zero(struct msm_mmu *mmu, u64 iova, size_t size)
+static int msm_iommu_pagetable_map_zero(struct msm_mmu *mmu, u64 iova, size_t size)
 {
 	struct msm_iommu_pagetable *pagetable = to_pagetable(mmu);
 	struct io_pgtable_ops *ops = pagetable->pgtbl_ops;

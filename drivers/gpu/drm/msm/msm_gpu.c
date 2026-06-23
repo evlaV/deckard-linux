@@ -212,10 +212,10 @@ static void coredump_print(struct msm_gpu *gpu, struct msm_gpu_state *state)
 
 	//now allocate and write the contents into a buffer
 	gpu->devcd_saved_buffer = kvmalloc(gpu->devcd_size, GFP_KERNEL);
-	ssize_t devcd_size_count_read;
-	devcd_size_count_read = __coredump_print(gpu->devcd_saved_buffer, state, 0, gpu->devcd_size, (void*)gpu); 
+
+	__coredump_print(gpu->devcd_saved_buffer, state, 0, gpu->devcd_size, (void*)gpu);
 }
-	
+
 static ssize_t msm_gpu_devcoredump_read(char *buffer, loff_t offset, size_t count, void *data, size_t datalen)
 {
 	struct msm_gpu *gpu = data;
@@ -685,7 +685,6 @@ static bool check_ring_timeout(struct msm_ringbuffer *ring, unsigned long timeou
 {
 	struct msm_gpu *gpu = ring->gpu;
 	u64 start, end;
-	int ret;
 
 	if (!gpu->funcs->get_ctx_timestamp)
 		return !made_progress(gpu, ring);

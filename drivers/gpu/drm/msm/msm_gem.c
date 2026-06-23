@@ -1075,10 +1075,6 @@ static inline void msm_gem_stats(struct drm_gem_object *obj, struct seq_file *m,
 		struct msm_gem_stats *stats)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
-	struct dma_resv *robj = obj->resv;
-	struct msm_gem_vma *vma;
-	uint64_t off = drm_vma_node_start(&obj->vma_node);
-	const char *madv;
 
 	if (!msm_gem_trylock(obj))
 			return;
@@ -1100,16 +1096,13 @@ static inline void msm_gem_stats(struct drm_gem_object *obj, struct seq_file *m,
 	case __MSM_MADV_PURGED:
 		stats->purged.count++;
 		stats->purged.size += obj->size;
-		madv = " purged";
 		break;
 	case MSM_MADV_DONTNEED:
 		stats->purgeable.count++;
 		stats->purgeable.size += obj->size;
-		madv = " purgeable";
 		break;
 	case MSM_MADV_WILLNEED:
 	default:
-		madv = "";
 		break;
 	}
 

@@ -234,7 +234,7 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_context *ctx,
 		queue = kzalloc(sz, GFP_KERNEL);
 	} else {
 		extern int enable_preemption;
-		bool preemption_supported =
+		preemption_supported =
 			priv->gpu->nr_rings == 1 && enable_preemption != 0;
 
 		if (flags & MSM_SUBMITQUEUE_ALLOW_PREEMPT && preemption_supported)

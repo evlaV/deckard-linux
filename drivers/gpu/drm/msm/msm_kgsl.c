@@ -33,11 +33,6 @@ static const struct dma_fence_ops kgsl_fence_ops = {
 	.get_timeline_name = kgsl_fence_get_timeline_name,
 };
 
-struct msm_gem_submit *submit_create(struct drm_device *dev,
-		struct msm_gpu *gpu,
-		struct msm_gpu_submitqueue *queue, uint32_t nr_bos,
-		uint32_t nr_cmds);
-
 int wait_fence(struct msm_gpu_submitqueue *queue, uint32_t fence_id, signed long timeout);
 
 uint64_t a7xx_gpu_shadow_iova(struct msm_gpu *gpu);
@@ -730,7 +725,7 @@ case IOCTL_KGSL_GPU_COMMAND: {
 	else
 		trace_msm_kgsl_gpu_command(cmd.context_id, cmd.timestamp);
 
-	submit = submit_create(dev, gpu, queue, 0, cmd.numcmds);
+	submit = submit_create(dev, gpu, queue, 0, cmd.numcmds, 0);
 	if (IS_ERR(submit))
 		return PTR_ERR(submit);
 

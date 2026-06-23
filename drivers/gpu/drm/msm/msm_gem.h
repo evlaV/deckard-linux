@@ -490,6 +490,11 @@ static inline struct msm_gem_submit *to_msm_submit(struct drm_sched_job *job)
 	return container_of(job, struct msm_gem_submit, base);
 }
 
+struct msm_gem_submit *submit_create(struct drm_device *dev,
+		struct msm_gpu *gpu,
+		struct msm_gpu_submitqueue *queue, uint32_t nr_bos,
+		uint32_t nr_cmds, u64 drm_client_id);
+
 void __msm_gem_submit_destroy(struct kref *kref);
 
 static inline void msm_gem_submit_get(struct msm_gem_submit *submit)
