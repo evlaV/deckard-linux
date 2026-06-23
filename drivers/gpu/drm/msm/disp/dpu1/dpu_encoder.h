@@ -82,6 +82,10 @@ int dpu_encoder_get_crc(const struct drm_encoder *drm_enc, u32 *crcs, int pos);
 
 bool dpu_encoder_use_dsc_merge(struct drm_encoder *drm_enc);
 
+void dpu_encoder_kickoff_hack(void);
+
+void dpu_encoder_switch_mode_by_idx(int mode_idx);
+
 void dpu_encoder_update_topology(struct drm_encoder *drm_enc,
 				 struct msm_display_topology *topology,
 				 struct drm_atomic_state *state,

@@ -4,6 +4,7 @@
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 #include "dpu_encoder_phys.h"
+#include "dpu_encoder.h"
 #include "dpu_hw_interrupts.h"
 #include "dpu_hw_merge3d.h"
 #include "dpu_core_irq.h"
@@ -412,8 +413,6 @@ static void dpu_encoder_phys_vid_hack_timing(
 	programmable_fetch_config(phys_enc, &timing_params);
 }
 
-extern void dpu_encoder_kickoff_hack(void);
-extern void dsi_mgr_bridge_hacktiming(struct drm_display_mode *mode);
 static void dpu_encoder_phys_vid_vblank_irq(void *arg)
 {
 	struct dpu_encoder_phys *phys_enc = arg;
@@ -432,7 +431,7 @@ static void dpu_encoder_phys_vid_vblank_irq(void *arg)
 	/* Commit refresh rate switching */
 	if (dpu_encoder_phys_vid_is_master(phys_enc) && phys_enc->mode_pending) {
 		/* No reg flush for dsi controller reg, so update timing here */
-		dsi_mgr_bridge_hacktiming(phys_enc->mode_pending);
+		msm_dsi_manager_bridge_hacktiming(phys_enc->mode_pending);
 		/* update dpu register */
 		dpu_encoder_kickoff_hack();
 
