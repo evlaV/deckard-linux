@@ -1978,6 +1978,8 @@ void dpu_encoder_trigger_kickoff_pending(struct drm_encoder *drm_enc)
 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
 		phys = dpu_enc->phys_encs[i];
 
+		if(!phys->hw_ctl)
+			phys->hw_ctl = to_dpu_hw_ctl(phys->dpu_kms->rm.ctl_blks[0]);
 		ctl = phys->hw_ctl;
 		ctl->ops.clear_pending_flush(ctl);
 
