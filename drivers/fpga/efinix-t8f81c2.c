@@ -34,11 +34,16 @@ static int t8f81c2_fpga_suspend(struct platform_device * dev, pm_message_t state
 }
 
 
-static int t8f81c2_fpga_resume(struct platform_device * dev)
+static int t8f81c2_fpga_resume(struct platform_device *pdev)
 {
-    struct t8f81c2_fpga *t8f81c2 = platform_get_drvdata(dev);
+    struct t8f81c2_fpga *t8f81c2 = platform_get_drvdata(pdev);
+    int ret;
+
     // Power on and enable clock
-    regulator_enable(t8f81c2->v1v1);
+    ret = regulator_enable(t8f81c2->v1v1);
+    if (ret)
+	    dev_err(&pdev->dev, "failed to enable regulator\n");
+
     gpiod_set_value(t8f81c2->pwren_gpio, 1); // needs to be enabled within 10msec of 1v1
     clk_prepare_enable(t8f81c2->clk);
     return 0;
@@ -70,7 +75,9 @@ enable_store(struct device *dev, struct device_attribute *attr,
 
     if (enable){
         // Power on and enable clock
-        regulator_enable(t8f81c2->v1v1);
+        ret = regulator_enable(t8f81c2->v1v1);
+        if (ret)
+		dev_err(dev, "failed to enable regulator\n");
         gpiod_set_value(t8f81c2->pwren_gpio, 1); // needs to be enabled within 10msec of 1v1
         clk_prepare_enable(t8f81c2->clk);
     }
