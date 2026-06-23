@@ -257,7 +257,7 @@ static bool is_iris3_hw_power_collapsed(struct iris_core *core)
 static int power_off_iris3_hardware(struct iris_core *core)
 {
 	u32 value = 0;
-	int ret, i, count = 0;
+	int ret, i;
 
 	if (is_iris3_hw_power_collapsed(core))
 		goto disable_power;

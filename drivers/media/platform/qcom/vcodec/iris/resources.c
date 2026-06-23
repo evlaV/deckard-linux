@@ -92,8 +92,6 @@ static int init_bus(struct iris_core *core)
 static int init_power_domains(struct iris_core *core)
 {
 
-	const struct platform_clk_data *clk_tbl;
-	u32 clk_cnt;
 	int ret;
 
 	struct dev_pm_domain_attach_data iris_pd_data = {
