@@ -90,7 +90,6 @@ static void a6xx_preempt_timer(struct timer_list *t)
 	struct a6xx_gpu *a6xx_gpu = timer_container_of(a6xx_gpu, t,
 						       preempt_timer);
 	struct msm_gpu *gpu = &a6xx_gpu->base.base;
-	struct drm_device *dev = gpu->dev;
 
 	if (!try_preempt_state(a6xx_gpu, PREEMPT_TRIGGERED, PREEMPT_FAULTED))
 		return;

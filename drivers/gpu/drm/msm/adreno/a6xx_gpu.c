@@ -17,6 +17,9 @@
 
 #define GPU_PAS_ID 13
 
+struct drm_gem_object *a7xx_gpu_shadow_bo(struct msm_gpu *gpu);
+void a7xx_reset_memstore(struct msm_gpu *gpu, uint32_t ctx_id);
+
 static u64 read_gmu_ao_counter(struct a6xx_gpu *a6xx_gpu)
 {
 	u64 count_hi, count_lo, temp;
@@ -619,13 +622,6 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 
 	/* Check to see if we need to start preemption */
 	a6xx_preempt_trigger(gpu);
-}
-
-uint64_t a7xx_gpu_shadow_iova(struct msm_gpu *gpu)
-{
-	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
-	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
-	return a6xx_gpu->shadow_iova;
 }
 
 struct drm_gem_object *a7xx_gpu_shadow_bo(struct msm_gpu *gpu)
