@@ -62,11 +62,8 @@ struct dsp {
 	void __iomem *base, *evb_sel;
 	struct clk_bulk_data *clks;
 	unsigned num_clks;
-	bool is_xtensa;
 	bool is_adsp;
 	bool is_cdsp;
-	u32 mem_phys;
-	u32 mem_size;
 	struct device *pds[4];
 	int perf[4];
 	struct icc_path *dma_path;
@@ -97,9 +94,6 @@ struct map_direct {
 #define DSP_IOCTL_MAP_DIRECT 	_IOW('C', 5, struct map_direct)
 #define DSP_IOCTL_UNMAP 	_IO('C', 6) /* 32 bit va argument */
 #define DSP_IOCTL_HANDOVER 	_IO('C', 8) /* Signal to the driver the dsp has started, can unvote resources */
-
-// Dedicated ioctl for cvp boot to set registers inside kernel instead of userspace + using DSP_IOCTL_BOOT
-#define CVP_IOCTL_BOOT 	_IO('C', 7) /* argument ignored */
 
 #define write32(x, y) writel(y, x)
 
@@ -173,262 +167,6 @@ clk_pll_configure_lucid_ole(void __iomem *pll_reg, u32 freq)
 	write32(pll_reg + PLL_MODE, PLL_RESET_N | PLL_OUTCTRL);// | OUT_MAIN_HW_CTL);
 }
 
-static int
-xtensa_boot(struct dsp *dsp)
-{
-	// Can this be called outside of booting the CVP?
-	bool is_cvp = true;
-
-#define CVP_SS_BASE_OFFS			0x0
-#define CVP_SS_NUM_THREADS			4
-
-#define CVP_SS_IRQ_STATUS			(CVP_SS_BASE_OFFS + 0x0)
-#define CVP_SS_WD_IRQ_CLR			(CVP_SS_BASE_OFFS + 0x3c)
-#define CVP_SS_THREAD_DONE_CLR(x)	(CVP_SS_BASE_OFFS + 0x514 + 0x40 * (x))
-
-#define CVP_CPU_BASE_OFFS			0x000A0000
-
-#define CPU_CS_A2HSOFTINTEN		(CVP_CPU_BASE_OFFS + 0x10)
-#define CPU_CS_A2HSOFTINTENCLR	(CVP_CPU_BASE_OFFS + 0x14)
-#define CPU_CS_A2HSOFTINT		(CVP_CPU_BASE_OFFS + 0x18)
-#define CPU_CS_A2HSOFTINTCLR	(CVP_CPU_BASE_OFFS + 0x1C)
-#define CPU_CS_VMIMSG		(CVP_CPU_BASE_OFFS + 0x34)
-#define CPU_CS_VMIMSGAG0		(CVP_CPU_BASE_OFFS + 0x38)
-#define CPU_CS_VMIMSGAG1		(CVP_CPU_BASE_OFFS + 0x3C)
-#define CPU_CS_VMIMSGAG2		(CVP_CPU_BASE_OFFS + 0x40)
-#define CPU_CS_VMIMSGAG3		(CVP_CPU_BASE_OFFS + 0x44)
-#define CPU_CS_SCIACMD			(CVP_CPU_BASE_OFFS + 0x48)
-#define CPU_CS_H2XSOFTINTEN		(CVP_CPU_BASE_OFFS + 0x148)
-
-/* CVP_CTRL_STATUS */
-#define CPU_CS_SCIACMDARG0		(CVP_CPU_BASE_OFFS + 0x4C)
-#define CPU_CS_SCIACMDARG0_BMSK	0xff
-#define CPU_CS_SCIACMDARG0_SHFT	0x0
-#define CPU_CS_SCIACMDARG0_HFI_CTRL_ERROR_STATUS_BMSK	0xfe
-#define CPU_CS_SCIACMDARG0_HFI_CTRL_ERROR_STATUS_SHFT	0x1
-#define CPU_CS_SCIACMDARG0_HFI_CTRL_INIT_STATUS_BMSK	0x1
-#define CPU_CS_SCIACMDARG0_HFI_CTRL_INIT_STATUS_SHFT	0x0
-#define CPU_CS_SCIACMDARG0_HFI_CTRL_PC_READY           0x100
-
-/* HFI_QTBL_INFO */
-#define CPU_CS_SCIACMDARG1		(CVP_CPU_BASE_OFFS + 0x50)
-
-/* HFI_QTBL_ADDR */
-#define CPU_CS_SCIACMDARG2		(CVP_CPU_BASE_OFFS + 0x54)
-
-/* HFI_VERSION_INFO */
-#define CPU_CS_SCIACMDARG3		(CVP_CPU_BASE_OFFS + 0x58)
-
-/* CVP_SFR_ADDR */
-#define CPU_CS_SCIBCMD		(CVP_CPU_BASE_OFFS + 0x5C)
-
-/* CVP_MMAP_ADDR */
-#define CPU_CS_SCIBCMDARG0		(CVP_CPU_BASE_OFFS + 0x60)
-
-/* CVP_UC_REGION_ADDR */
-#define CPU_CS_SCIBARG1		(CVP_CPU_BASE_OFFS + 0x64)
-
-/* CVP_UC_REGION_ADDR */
-#define CPU_CS_SCIBARG2		(CVP_CPU_BASE_OFFS + 0x68)
-
-#define CPU_CS_SCIBARG3		(CVP_CPU_BASE_OFFS + 0x6C)
-
-#define CPU_CS_H2ASOFTINTEN		(CVP_CPU_BASE_OFFS + 0x148)
-#define CPU_CS_H2ASOFTINTENCLR	(CVP_CPU_BASE_OFFS + 0x14c)
-#define CPU_CS_H2ASOFTINT		(CVP_CPU_BASE_OFFS + 0x150)
-#define CPU_CS_H2ASOFTINTCLR	(CVP_CPU_BASE_OFFS + 0x154)
-
-/* FAL10 Feature Control */
-#define CPU_CS_X2RPMh		(CVP_CPU_BASE_OFFS + 0x168)
-#define CPU_CS_X2RPMh_MASK0_BMSK	0x1
-#define CPU_CS_X2RPMh_MASK0_SHFT	0x0
-#define CPU_CS_X2RPMh_MASK1_BMSK	0x2
-#define CPU_CS_X2RPMh_MASK1_SHFT	0x1
-#define CPU_CS_X2RPMh_SWOVERRIDE_BMSK	0x4
-#define CPU_CS_X2RPMh_SWOVERRIDE_SHFT	0x3
-
-/* WRAPPER */
-
-#define CVP_WRAPPER_BASE_OFFS		0x000B0000
-
-#define CVP_WRAPPER_HW_VERSION		(CVP_WRAPPER_BASE_OFFS + 0x00)
-#define CVP_WRAPPER_HW_VERSION_MAJOR_VERSION_MASK  0x78000000
-#define CVP_WRAPPER_HW_VERSION_MAJOR_VERSION_SHIFT 28
-#define CVP_WRAPPER_HW_VERSION_MINOR_VERSION_MASK  0xFFF0000
-#define CVP_WRAPPER_HW_VERSION_MINOR_VERSION_SHIFT 16
-#define CVP_WRAPPER_HW_VERSION_STEP_VERSION_MASK   0xFFFF
-
-#define CVP_WRAPPER_INTR_STATUS	(CVP_WRAPPER_BASE_OFFS + 0x0C)
-#define CVP_WRAPPER_INTR_STATUS_A2HWD_BMSK	0x8
-#define CVP_WRAPPER_INTR_STATUS_A2H_BMSK	0x4
-
-#define CVP_WRAPPER_INTR_MASK		(CVP_WRAPPER_BASE_OFFS + 0x10)
-#define CVP_FATAL_INTR_BMSK	(CVP_WRAPPER_INTR_MASK_CPU_NOC_BMSK | \
-				CVP_WRAPPER_INTR_MASK_CORE_NOC_BMSK | \
-				CVP_WRAPPER_INTR_MASK_A2HWD_BMSK)
-#define CVP_WRAPPER_INTR_MASK_CPU_NOC_BMSK	0x40
-#define CVP_WRAPPER_INTR_MASK_CORE_NOC_BMSK	0x20
-#define CVP_WRAPPER_INTR_MASK_A2HWD_BMSK	0x8
-#define CVP_WRAPPER_INTR_MASK_A2HCPU_BMSK	0x4
-#define CVP_WRAPPER_INTR_MASK_A2HCPU_SHFT	0x2
-
-#define CVP_WRAPPER_INTR_CLEAR		(CVP_WRAPPER_BASE_OFFS + 0x14)
-#define CVP_WRAPPER_TZ_BASE_OFFS		0x000C0000
-#define CVP_WRAPPER_INTR_CLEAR_A2HWD_BMSK	0x10
-#define CVP_WRAPPER_INTR_CLEAR_A2HWD_SHFT	0x4
-#define CVP_WRAPPER_INTR_CLEAR_A2H_BMSK	0x4
-#define CVP_WRAPPER_INTR_CLEAR_A2H_SHFT	0x2
-#define CVP_WRAPPER_CPU_STATUS		(CVP_WRAPPER_TZ_BASE_OFFS + 0x10)
-#define CVP_WRAPPER_CPU_CGC_DIS	(CVP_WRAPPER_BASE_OFFS + 0x2010)
-
-#define CVP_WRAPPER_CPU_CLOCK_CONFIG	(CVP_WRAPPER_BASE_OFFS + 0x50)
-#define CVP_WRAPPER_DEBUG_BRIDGE_LPI_CONTROL	(CVP_WRAPPER_BASE_OFFS + 0x54)
-#define CVP_WRAPPER_DEBUG_BRIDGE_LPI_STATUS	(CVP_WRAPPER_BASE_OFFS + 0x58)
-#define CVP_WRAPPER_CORE_CLOCK_CONFIG		(CVP_WRAPPER_BASE_OFFS + 0x88)
-
-	// Error recovery
-	u32 intr_status = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS);
-	if(intr_status) {
-		// We have pending IRQs from the last session, try to recover from potential errors here
-		// Disable the cores power to make sure all per-core watchdog statuses are cleared
-		usleep_range(1000, 2000);
-		writel_relaxed(0x1, dsp->base + 0xb0084); // VPU_WRAPPER_CORE_POWER_CONTROL
-		usleep_range(1000, 2000);
-		// No need to re-enable power, done later-on during boot
-
-		// Clear double exception status
-		if(readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS) & 0x2) {
-			writel_relaxed(0x1, dsp->base + 0xb00c8); // VPU_WRAPPER_CPU_DOUBLEEXCEPTIONERROR_CLR
-		}
-		// Clear error logger errors (that's needed to clear CPU NOC error status after smmu context fault)
-		if(readl_relaxed(dsp->base + 0x1a010)) {
-			writel_relaxed(0x1, dsp->base + 0x1a018); // MAIN_ERRORLOGGER_ERRCLR_LOW
-		}
-		if(readl_relaxed(dsp->base + 0xd0010)) {
-			writel_relaxed(0x1, dsp->base + 0xd0018); // IRIS_CPU_NOC_ERRORLOGGER_ERRCLR_LOW
-			writel_relaxed(0x1, dsp->base + 0xd0018); // needs to be set twice... otherwise doesn't take effect
-		}
-
-		// Clear interrupt/watchdog on the CVP_SS block if the SS_INTR bit is set (happens after invalid iova access issued by hardwares)
-		if(readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS) & 0x10) {
-			// Assert clear signal on all THREAD_DONE and watchdog IRQ registers, then deassert after a few ms
-			writel_relaxed(0xf, dsp->base + CVP_SS_WD_IRQ_CLR);
-			for(int i=0; i<CVP_SS_NUM_THREADS; i++)
-				writel_relaxed(0x1, dsp->base + CVP_SS_THREAD_DONE_CLR(i));
-
-			usleep_range(1000, 2000);
-
-			writel_relaxed(0x0, dsp->base + CVP_SS_WD_IRQ_CLR);
-			for(int i=0; i<CVP_SS_NUM_THREADS; i++)
-				writel_relaxed(0x0, dsp->base + CVP_SS_THREAD_DONE_CLR(i));
-		}
-
-		u32 post_recovery_status = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS);
-		dev_warn(dsp->miscdev.parent, "CVP error recovery | Initial status: 0x%x | Final status: 0x%x\n", intr_status, post_recovery_status);
-		if(post_recovery_status)
-		{
-			dev_err(dsp->miscdev.parent, "CVP error recovery failed. Status: 0x%x\n", post_recovery_status);
-		}
-	}
-
-	u32 fw_size = 8 * SZ_1M;
-	// qtlb buffer
-	u32 addr = 0x80000000;
-
-	// Corresponds to SHARED_QSIZE which is 3Mb
-	u32 size = SZ_1M * 3;
-	u32 mask_val, count, status;
-
-	if (is_cvp)
-		fw_size = 7 * SZ_1M;
-
-	// Make sure host->xtensa and xtensa->host interrupt status are cleared before booting
-	// since these prevent the CVP firmware from booting successfully with status 0x6400
-	writel_relaxed(1, dsp->base + CPU_CS_A2HSOFTINTCLR);
-	writel_relaxed(1, dsp->base + CPU_CS_H2ASOFTINTCLR);
-
-	dev_pm_genpd_set_performance_state(dsp->pds[0], dsp->perf[0]);
-	dev_pm_genpd_set_performance_state(dsp->pds[1], dsp->perf[1]);
-
-#define WRAPPER_CPA_START_ADDR 		0xc1020
-#define WRAPPER_CPA_END_ADDR 		0xc1024
-#define WRAPPER_FW_START_ADDR 		0xc1028
-#define WRAPPER_FW_END_ADDR 		0xc102c
-#define WRAPPER_NONPIX_START_ADDR 	0xc1030
-#define WRAPPER_NONPIX_END_ADDR 	0xc1034
-
-	writel_relaxed(0, dsp->base + WRAPPER_FW_START_ADDR);
-	writel_relaxed(fw_size, dsp->base + WRAPPER_FW_END_ADDR);
-	writel(0, dsp->base + WRAPPER_CPA_START_ADDR);
-	if (is_cvp) {
-		writel(0x4b000000, dsp->base + WRAPPER_CPA_END_ADDR);
-		writel(0x01000000, dsp->base + WRAPPER_NONPIX_START_ADDR);
-		writel(0x26800000, dsp->base + WRAPPER_NONPIX_END_ADDR);
-	} else {
-		writel(fw_size, dsp->base + WRAPPER_CPA_END_ADDR);
-		writel(fw_size, dsp->base + WRAPPER_NONPIX_START_ADDR);
-		writel(fw_size, dsp->base + WRAPPER_NONPIX_END_ADDR);
-	}
-
-	writel_relaxed(0, dsp->base + 0xB0088);
-
-	writel_relaxed(0, dsp->base + CPU_CS_SCIACMDARG0);
-
-	writel(addr, dsp->base + CPU_CS_SCIBARG1); // UC_REGION_ADDR
-	writel(size, dsp->base + CPU_CS_SCIBARG2); // UC_REGION_SIZE
-	writel(addr, dsp->base + CPU_CS_SCIACMDARG2); // QTBL_ADDR
-	writel(0x01, dsp->base + CPU_CS_SCIACMDARG1); // QTBL_INFO
-	writel(addr + size, dsp->base + CPU_CS_SCIBCMD);
-
-	if (is_cvp) {
-		// XXX firmware unhappy without DSP queues..
-		addr += size + SZ_1M;
-		writel(addr, dsp->base + CPU_CS_VMIMSG); // DSP_QTBL_ADDR
-		writel(addr, dsp->base + CPU_CS_VMIMSGAG0); // DSP_UC_REGION_ADDR
-		writel(size, dsp->base + CPU_CS_VMIMSGAG1); // DSP_UC_REGION_SIZE
-	}
-
-	writel(BIT(0) | BIT(3), dsp->base + CPU_CS_SCIACMD);
-
-#define WRAPPER_INTR_MASK  0xb0010
-#define CPUSS_WD_INTR   BIT(3)
-#define CPUSS_INTR      BIT(2)
-
-
-	// mask_val = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_MASK);
-	// mask_val &= ~(8|4);//~(CVP_FATAL_INTR_BMSK | CVP_WRAPPER_INTR_MASK_A2HCPU_BMSK);
-	//writel_relaxed(mask_val, dsp->base + CVP_WRAPPER_INTR_MASK);
-
-	mask_val = readl_relaxed(dsp->base + CVP_WRAPPER_INTR_MASK);
-	mask_val &= ~(8|4);//~(CVP_FATAL_INTR_BMSK | CVP_WRAPPER_INTR_MASK_A2HCPU_BMSK);
-	writel_relaxed(mask_val, dsp->base + CVP_WRAPPER_INTR_MASK);
-
-	//writel_relaxed(~(CPUSS_WD_INTR|CPUSS_INTR), dsp->base + CVP_WRAPPER_INTR_MASK);
-
-
-	// busybox devmem 0xab00004 32 0x000D000F
-   	// trigger FW init (fw waits for this)
-	writel_relaxed(1, dsp->base + CPU_CS_SCIACMDARG3);
-	count = 1000;
-	do {
-		status = readl_relaxed(dsp->base + CPU_CS_SCIACMDARG0);
-		if (status & BIT(0))
-			break;
-		usleep_range(500, 1000);
-	} while (--count);
-
-	if(!count)
-	{
-		dev_err(dsp->miscdev.parent, "CVP boot failed with boot status 0x%x (interrupt status: 0x%x) \n", status, readl_relaxed(dsp->base + CVP_WRAPPER_INTR_STATUS));
-	}
-
-	writel_relaxed(1, dsp->base + CPU_CS_H2XSOFTINTEN);
-	writel_relaxed(0, dsp->base + CPU_CS_X2RPMh);
-
-	writel_relaxed(0, dsp->base + CVP_WRAPPER_BASE_OFFS + 0x84); // WRAPPER_CORE_POWER_CONTROL.CORE_PWR_DISABLE=0
-	return status;
-}
-
 static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 {
 	if (dsp->evb_sel)
@@ -480,75 +218,43 @@ static int dsp_shutdown(struct dsp *dsp)
 	if (atomic_read(&dsp->booted) == 0)
 		return -EBUSY;
 
-	if (dsp->is_xtensa) {
-		// Make sure the following is set so we know it's safe to reset cores and remove dma mappings
-		//	- IDLE status: BIT(30) in CPU_CS_SCIACMDARG0
-		//	- CPU Wait For Interrupt: BIT(0) in CVP_WRAPPER_CPU_STATUS
-		// (this state may not be reached if the hardware enters an error state, for example after an invalid iova access)
-		u32 retry_cnt = 0;
-		const u32 max_retry_cnt = 20;
-		while(retry_cnt < max_retry_cnt)
-		{
-			u32 cpu_status = readl_relaxed(dsp->base + CVP_WRAPPER_CPU_STATUS);
-			u32 arg0 = readl_relaxed(dsp->base + CPU_CS_SCIACMDARG0);
-			if((cpu_status & 0x1) && (arg0 & BIT(30)))
-			{
-				break;
-			}
-			retry_cnt++;
-			usleep_range(1000, 2000);
-		}
-		if(retry_cnt == max_retry_cnt)
-		{
-			dev_warn(dsp->miscdev.parent, "CVP failed to enter idle state during shutdown. (CPU_STATUS=0x%x SCIACMDARG0=0x%x)",
-				readl_relaxed(dsp->base + CVP_WRAPPER_CPU_STATUS), readl_relaxed(dsp->base + CPU_CS_SCIACMDARG0));
-		}
 
-		writel(1, dsp->base + 0xc1000); // VCODEC_VPU_WRAPPER_TZ_XTSS_SW_RESET
+	writel(7, dsp->base + QDSP6SS_INTF_HALTREQ);
+	while (!readl(dsp->base + QDSP6SS_INTF_HALTACK)) usleep_range(1000,2000);
+	printk("haltack=%d\n", readl(dsp->base + QDSP6SS_INTF_HALTACK));
+	writel(0, dsp->base + QDSP6SS_INTF_HALTREQ);
 
-		// disable CPU watchdog while off
-		writel(0, dsp->base + 0x90008); // CPU_WD_WDOGCONTROL
-
-		dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
-		dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
-	} else {
-		writel(7, dsp->base + QDSP6SS_INTF_HALTREQ);
-		while (!readl(dsp->base + QDSP6SS_INTF_HALTACK)) usleep_range(1000,2000);
-		printk("haltack=%d\n", readl(dsp->base + QDSP6SS_INTF_HALTACK));
-		writel(0, dsp->base + QDSP6SS_INTF_HALTREQ);
-
-		writel(~0u, dsp->base +  QDSP6SS_RESET_CFG);
-		writel(1, dsp->base +  QDSP6SS_RESET_CMD);
-		usleep_range(10000, 20000); // XXX
-		writel(0, dsp->base +  QDSP6SS_RESET_CFG);
-		//writel(1, dsp->base +  QDSP6SS_RESET_CMD);
+	writel(~0u, dsp->base +  QDSP6SS_RESET_CFG);
+	writel(1, dsp->base +  QDSP6SS_RESET_CMD);
+	usleep_range(10000, 20000); // XXX
+	writel(0, dsp->base +  QDSP6SS_RESET_CFG);
+	//writel(1, dsp->base +  QDSP6SS_RESET_CMD);
 
 #if 0
-		writel(0, dsp->base +  QDSP6SS_XO_CBCR);
-		writel(0, dsp->base +  QDSP6SS_SLEEP_CBCR);
-		writel(0, dsp->base +  QDSP6SS_CORE_CBCR);
+	writel(0, dsp->base +  QDSP6SS_XO_CBCR);
+	writel(0, dsp->base +  QDSP6SS_SLEEP_CBCR);
+	writel(0, dsp->base +  QDSP6SS_CORE_CBCR);
 #endif
 
-		if (dsp->is_cdsp)  {
-			dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
-			pm_runtime_put(dsp->pds[0]);
-			dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
-			pm_runtime_put(dsp->pds[1]);
-			dev_pm_genpd_set_performance_state(dsp->pds[2], 0);
-			pm_runtime_put(dsp->pds[2]);
-			dev_pm_genpd_set_performance_state(dsp->pds[3], 0);
-			pm_runtime_put(dsp->pds[3]);
-			icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1));
-		}
+	if (dsp->is_cdsp)  {
+		dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
+		pm_runtime_put(dsp->pds[0]);
+		dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
+		pm_runtime_put(dsp->pds[1]);
+		dev_pm_genpd_set_performance_state(dsp->pds[2], 0);
+		pm_runtime_put(dsp->pds[2]);
+		dev_pm_genpd_set_performance_state(dsp->pds[3], 0);
+		pm_runtime_put(dsp->pds[3]);
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1));
+	}
 
-		if (dsp->is_adsp) {
-			dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
-			pm_runtime_put(dsp->pds[0]);
-			dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
-			pm_runtime_put(dsp->pds[1]);
-			icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1));
+	if (dsp->is_adsp) {
+		dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
+		pm_runtime_put(dsp->pds[0]);
+		dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
+		pm_runtime_put(dsp->pds[1]);
+		icc_set_bw(dsp->dma_path, 0, kBps_to_icc(1));
 
-		}
 	}
 
 	atomic_set(&dsp->booted, 0);
@@ -639,8 +345,7 @@ static long dsp_map_dmabuf(struct dsp *dsp, int fd, u32 iova)
 		goto map_err;
 	}
 
-	// (CVP firmware needs IOMMU_PRIV, use 0 address to detect?)
-	ret = iommu_map_sgtable(dsp->iommu, iova, map->table, IOMMU_READ | IOMMU_WRITE | (iova ? 0 : IOMMU_PRIV));
+	ret = iommu_map_sgtable(dsp->iommu, iova, map->table, IOMMU_READ | IOMMU_WRITE);
 	WARN_ON(!ret);
 	if (ret < 0)
 		goto iommu_err;
@@ -735,11 +440,6 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case DSP_IOCTL_IRQ_STATUS:
 		return atomic_xchg(&dsp->pending, 0);
 	case DSP_IOCTL_IRQ_SEND:
-		if (dsp->is_xtensa) {
-			writel_relaxed(1, dsp->base + CPU_CS_H2XSOFTINT);
-			return 0;
-		}
-
 		if (arg >= 4)
 			return -EINVAL;
 		mbox_send_message(dsp->mbox_chan[arg], NULL);
@@ -749,22 +449,7 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		if (atomic_xchg(&dsp->booted, 1))
 			return -EBUSY;
 
-		if (dsp->is_xtensa) {
-			/* Bring out of reset */
-			writel(0, dsp->base + 0xc1000);
-			return 0;
-		}
 		return dsp_boot(dsp, arg);
-	case CVP_IOCTL_BOOT:
-		if (atomic_xchg(&dsp->booted, 1))
-			return -EBUSY;
-
-		// Should only call this for CVP file
-		if (!dsp->is_xtensa)
-			return -EINVAL;
-
-		writel(0, dsp->base + 0xc1000);
-		return xtensa_boot(dsp);
 	case DSP_IOCTL_SHUTDOWN:
 		return dsp_shutdown(dsp);
 	case DSP_IOCTL_MAP_DMABUF:
@@ -784,50 +469,18 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	}
 }
 
-static int dsp_mmap(struct file *file, struct vm_area_struct *vma)
-{
-	struct dsp *dsp = file->private_data;
-	unsigned long user_count = vma_pages(vma);
-	unsigned long count = dsp->mem_size >> PAGE_SHIFT;
-	unsigned long pfn = PHYS_PFN(dsp->mem_phys);
-	unsigned long off = vma->vm_pgoff;
-
-	/* note: only used with CVP region which is a device region */
-	vma->vm_page_prot = pgprot_device(vma->vm_page_prot);
-
-	if (off >= count || user_count > count - off)
-		return -ENXIO;
-
-	return remap_pfn_range(vma, vma->vm_start, pfn + off,
-			user_count << PAGE_SHIFT, vma->vm_page_prot);
-}
-
 static const struct file_operations dsp_fops = {
 	.open = dsp_open,
 	.release = dsp_release,
 	.poll = dsp_poll,
 	.unlocked_ioctl = dsp_ioctl,
 	.compat_ioctl = dsp_ioctl,
-	.mmap = dsp_mmap,
 };
 
 static irqreturn_t ipcc_irq(int irq, void *data)
 {
 	struct dsp *dsp = (void*) (((size_t) data) & ~3ul);
 	atomic_or(BIT( (size_t) data & 3), &dsp->pending);
-	wake_up_interruptible(&dsp->waitqueue);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t xtensa_irq(int irq, void *data)
-{
-	struct dsp *dsp = data;
-	u32 status;
-
-	status = readl_relaxed(dsp->base + WRAPPER_INTR_STATUS);
-	writel_relaxed(1, dsp->base + CPU_CS_X2HSOFTINTCLR);
-
-	atomic_or(status, &dsp->pending);
 	wake_up_interruptible(&dsp->waitqueue);
 	return IRQ_HANDLED;
 }
@@ -848,24 +501,15 @@ static int dsp_probe(struct platform_device *pdev)
 	if (!dsp)
 		return -ENOMEM;
 
-	dsp->is_xtensa = of_device_is_compatible(dev->of_node, "qcom,sm8650-xtensa");
+	/* manually managing iommu mapping. iommu can map any physical address */
+	ret = dma_set_mask_and_coherent(dev, ~0);
+	if (ret)
+		return ret;
+
 	dsp->is_adsp = of_device_is_compatible(dev->of_node, "qcom,sm8650-hexagon") &&
 			!strcmp(dev->of_node->name, "adsp");
 	dsp->is_cdsp = of_device_is_compatible(dev->of_node, "qcom,sm8650-hexagon") &&
 			!strcmp(dev->of_node->name, "cdsp");
-
-	/* 36-bit dma address mask */
-	if (!dsp->is_xtensa) {
-		ret = dma_set_mask_and_coherent(dev, 0xffffffffful);
-		if (ret)
-			return ret;
-	}
-
-	// XXX: get this from device tree instead
-	if (!strcmp(dev->of_node->name, "cvp")) {
-		dsp->mem_phys = 0x0ab00000;
-		dsp->mem_size = 0xf0000;
-	}
 
 	dsp->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(dsp->base))
@@ -887,31 +531,21 @@ static int dsp_probe(struct platform_device *pdev)
 		return ret;
 	dsp->num_clks = ret;
 
-	if (dsp->is_xtensa) {
-		irq = platform_get_irq(pdev, 0);
+	for (i = 0; i < 4; i++) {
+		irq = platform_get_irq(pdev, i);
 		if (irq < 0)
 			return -ENODEV;
 
-		ret = devm_request_irq(dev, irq, xtensa_irq, IRQF_TRIGGER_HIGH, "cvp", dsp);
+		ret = devm_request_irq(dev, irq, ipcc_irq, IRQF_TRIGGER_HIGH, "ipcc", (void*) ((size_t) dsp | i));
 		if (ret)
 			return ret;
-	} else {
-		for (i = 0; i < 4; i++) {
-			irq = platform_get_irq(pdev, i);
-			if (irq < 0)
-				return -ENODEV;
+	}
 
-			ret = devm_request_irq(dev, irq, ipcc_irq, IRQF_TRIGGER_HIGH, "ipcc", (void*) ((size_t) dsp | i));
-			if (ret)
-				return ret;
-		}
-
-		dsp->mbox_client.dev = dev;
-		dsp->mbox_client.knows_txdone = true;
-		for (i = 0; i < 4; i++) {
-			dsp->mbox_chan[i] = mbox_request_channel(&dsp->mbox_client, i);
-			WARN_ON(IS_ERR(dsp->mbox_chan[i]));
-		}
+	dsp->mbox_client.dev = dev;
+	dsp->mbox_client.knows_txdone = true;
+	for (i = 0; i < 4; i++) {
+		dsp->mbox_chan[i] = mbox_request_channel(&dsp->mbox_client, i);
+		WARN_ON(IS_ERR(dsp->mbox_chan[i]));
 	}
 
 	platform_set_drvdata(pdev, dsp);
@@ -929,22 +563,6 @@ static int dsp_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	/* Get power domains and corresponding power levels */
-	if (!strcmp(dev->of_node->name, "cvp")) {
-		dsp->pds[0] = dev_pm_domain_attach_by_id(dev, 0);
-		if (IS_ERR_OR_NULL(dsp->pds[0]))
-			return PTR_ERR(dsp->pds[0]) ? : -ENODATA;
-		dsp->pds[1] = dev_pm_domain_attach_by_id(dev, 1);
-		if (IS_ERR_OR_NULL(dsp->pds[1]))
-			return PTR_ERR(dsp->pds[1]) ? : -ENODATA;
-
-		dsp->perf[0] = of_get_required_opp_performance_state(dev->of_node, 0);
-		if (dsp->perf[0] < 0)
-			return dsp->perf[0];
-		dsp->perf[1] = of_get_required_opp_performance_state(dev->of_node, 1);
-		if (dsp->perf[1] < 0)
-			return dsp->perf[1];
-	}
 	if (dsp->is_cdsp) {
 		dsp->pds[0] = dev_pm_domain_attach_by_name(dev, "cx");
 		if (IS_ERR_OR_NULL(dsp->pds[0]))
@@ -987,22 +605,6 @@ static int dsp_probe(struct platform_device *pdev)
 		if (dsp->perf[1] < 0)
 			return dsp->perf[1];
 	}
-
-	if (dsp->is_xtensa)
-    {
-        // Uses VIDEO_CC_MVS1C_CLK which looks like it's video_cc_mvs1c_div2_div_clk_src
-        // which scales the input rate by 2 to match what is in the freq_tbl??
-        // So try to map those allowed rates from the ftbl_video_cc_mvs1_clk_src_sm8650 ->
-        // 420000000 -> 840000000
-        // 555000000 -> 1110000000
-        // 675000000 -> 1350000000
-        // 750000000 -> 1500000000
-        // 825000000 -> 1650000000
-        u32 rate_to_set = 825000000;
-        clk_set_rate(dsp->clks[1].clk, rate_to_set);
-        u32 applied_rate = clk_get_rate(dsp->clks[1].clk);
-        printk("cvp clock rate: %d (called with set_rate: %d)", applied_rate, rate_to_set);
-    }
 
 	// XXX
 	ret = clk_bulk_prepare_enable(dsp->num_clks, dsp->clks);
