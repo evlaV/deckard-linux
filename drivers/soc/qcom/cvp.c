@@ -1067,6 +1067,11 @@ static int cvp_probe(struct platform_device *pdev)
 	if (!cvp)
 		return -ENOMEM;
 
+	/* manually managing iommu mapping. iommu can map any physical address */
+	ret = dma_set_mask_and_coherent(dev, ~0);
+	if (ret)
+		return ret;
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
 		return -EINVAL;
