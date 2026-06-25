@@ -331,6 +331,7 @@ struct ath12k_link_vif {
 	int num_legacy_stations;
 	int rtscts_prot_mode;
 	int txpower;
+	s8 max_allowed_tx_power_dbm;
 	bool rsnie_present;
 	bool wpaie_present;
 	u8 vdev_stats_id;
@@ -769,7 +770,7 @@ struct ath12k {
 	struct ath12k_fw_stats fw_stats;
 	unsigned long last_tx_power_update;
 
-	s8 max_allowed_tx_power;
+	s8 last_vdev_start_max_tx_power;
 	struct ath12k_pdev_rssi_offsets rssi_info;
 
 	struct ath12k_thermal thermal;
