@@ -4880,7 +4880,6 @@ static int ath12k_mac_op_get_txpower(struct ieee80211_hw *hw,
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_fw_stats_req_params params = {};
-	struct ieee80211_bss_conf *link_conf;
 	struct ath12k_fw_stats_pdev *pdev;
 	struct ath12k_hw *ah = hw->priv;
 	struct ath12k_link_vif *arvif;
@@ -4912,13 +4911,10 @@ static int ath12k_mac_op_get_txpower(struct ieee80211_hw *hw,
 	if (ar->chan_tx_pwr != ATH12K_PDEV_TX_POWER_INVALID &&
 	    time_before(jiffies,
 			msecs_to_jiffies(ATH12K_PDEV_TX_POWER_REFRESH_TIME_MSECS) +
-					 ar->last_tx_power_update)) {
-		*dbm = ar->chan_tx_pwr;
+					 ar->last_tx_power_update))
+		goto send_tx_power;
 
-		return 0;
-	}
-
-	params.pdev_id = ath12k_mac_get_target_pdev_id(ar);
+	params.pdev_id = ar->pdev->pdev_id;
 	params.vdev_id = arvif->vdev_id;
 	params.stats_id = WMI_REQUEST_PDEV_STAT;
 	ret = ath12k_mac_get_fw_stats(ar, &params);
@@ -4940,28 +4936,10 @@ static int ath12k_mac_op_get_txpower(struct ieee80211_hw *hw,
 	spin_unlock_bh(&ar->data_lock);
 	ar->last_tx_power_update = jiffies;
 
+send_tx_power:
 	*dbm = ar->chan_tx_pwr;
 	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "txpower fetched from firmware %d dBm\n",
 		   *dbm);
-
-	link_conf = ath12k_mac_get_link_bss_conf(arvif);
-
-	if (!link_conf)
-		return 0;
-
-	if (link_conf->txpower != ar->chan_tx_pwr) {
-		ath12k_warn(ar->ab, "txpower %d different from the link conf: %d\n",
-			    ar->chan_tx_pwr, link_conf->txpower);
-		ath12k_mac_txpower_recalc(ar);
-	}
-
-	/*
-	 * upper layer assumed the configured link txpower is set in the end
-	 * but that could not be the true if firmware ended calculating a different
-	 * value, so update the stored value with the real one got form the firmware
-	 */
-	link_conf->txpower = ar->chan_tx_pwr;
-
 	return 0;
 
 err_fallback:
