@@ -19,6 +19,7 @@
 #include <linux/pm_domain.h>
 #include <linux/pm_opp.h>
 #include <linux/pm_runtime.h>
+#include <linux/of_device.h>
 
 #define QDSP6SS_VERSION 0x00
 
@@ -56,7 +57,9 @@ struct dsp {
 	spinlock_t lock;
 	struct list_head maps;
 	atomic_t open, booted;
-	struct iommu_domain *iommu;
+	struct iommu_domain *iommu[16];
+	struct platform_device *iommu_pdev[16];
+
 	struct mbox_client mbox_client;
 	struct mbox_chan *mbox_chan[4];
 	void __iomem *base, *evb_sel;
@@ -74,8 +77,9 @@ struct dma_map {
 	struct dma_buf *buf;
 	struct dma_buf_attachment *attach;
 	struct sg_table *table;
-	u32 iova;
-	u32 size;
+	unsigned long iova;
+	size_t size;
+	u32 sid;
 };
 
 struct map_direct {
@@ -90,10 +94,20 @@ struct map_direct {
 #define DSP_IOCTL_BOOT 		_IO('C', 2) /* boot the DSP. argument is address to boot at */
 /* note: for xtensa boot address is ignored (always 0) */
 #define DSP_IOCTL_SHUTDOWN 	_IO('C', 3) /* shutdown DSP. no argument */
-#define DSP_IOCTL_MAP_DMABUF 	_IO('C', 4) /* 64-bit argument: low 32-bits dmabuf fd, high 32-bits VA */
+#define DSP_IOCTL_MAP_DMABUF 	_IO('C', 4) /* 64-bit argument: low 32-bits dmabuf fd, high 32-bits VA. low 4 bits of VA is SID */
 #define DSP_IOCTL_MAP_DIRECT 	_IOW('C', 5, struct map_direct)
-#define DSP_IOCTL_UNMAP 	_IO('C', 6) /* 32 bit va argument */
+#define DSP_IOCTL_UNMAP 	_IO('C', 6) /* 32 bit va argument, low 4 bits SID */
 #define DSP_IOCTL_HANDOVER 	_IO('C', 8) /* Signal to the driver the dsp has started, can unvote resources */
+/* note:
+DSPs (and some other related HW) has 36-bit physical address space, which maps to 4-bit SID + 32-bit iommu address
+(confusing because iommu supports 36-bit addresses)
+
+it would be nice the just have this API expose a 36-bit address space and let the driver deal with the upper 4-bits
+being the SID, but that would make things a lot more complicated
+
+consider adding a way to map dmabufs partially, so e.g. pieces of a large buffer can be mapped to different SIDs
+(so userspace doesn't need to split >4GB buffers into separate dmabufs)
+*/
 
 #define write32(x, y) writel(y, x)
 
@@ -318,10 +332,13 @@ static __poll_t dsp_poll(struct file *file, struct poll_table_struct *wait)
 	return 0;
 }
 
-static long dsp_map_dmabuf(struct dsp *dsp, int fd, u32 iova)
+static long dsp_map_dmabuf(struct dsp *dsp, int fd, unsigned long iova, u32 sid)
 {
 	struct dma_map *map;
-	int ret;
+	long ret;
+
+	if (sid >= ARRAY_SIZE(dsp->iommu) || !dsp->iommu[sid])
+		return -EINVAL;
 
 	map = kzalloc(sizeof(*map), GFP_KERNEL);
 	if (!map)
@@ -333,7 +350,7 @@ static long dsp_map_dmabuf(struct dsp *dsp, int fd, u32 iova)
 		goto get_err;
 	}
 
-	map->attach = dma_buf_attach(map->buf, dsp->miscdev.parent);
+	map->attach = dma_buf_attach(map->buf, &dsp->iommu_pdev[sid]->dev);
 	if (IS_ERR(map->attach)) {
 		ret = PTR_ERR(map->attach);
 		goto attach_err;
@@ -345,13 +362,14 @@ static long dsp_map_dmabuf(struct dsp *dsp, int fd, u32 iova)
 		goto map_err;
 	}
 
-	ret = iommu_map_sgtable(dsp->iommu, iova, map->table, IOMMU_READ | IOMMU_WRITE);
+	ret = iommu_map_sgtable(dsp->iommu[sid], iova, map->table, IOMMU_READ | IOMMU_WRITE);
 	WARN_ON(!ret);
 	if (ret < 0)
 		goto iommu_err;
 
 	map->iova = iova;
 	map->size = ret;
+	map->sid = sid;
 
 	spin_lock(&dsp->lock);
 	list_add_tail(&map->node, &dsp->maps);
@@ -380,7 +398,7 @@ static int dsp_map_direct(struct dsp *dsp, u32 iova, u32 phys, u32 size)
 	if (!map)
 		return -ENOMEM;
 
-	ret = iommu_map(dsp->iommu, iova, phys, size, IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
+	ret = iommu_map(dsp->iommu[0], iova, phys, size, IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
 	if (ret) {
 		kfree(map);
 		return ret;
@@ -391,6 +409,7 @@ static int dsp_map_direct(struct dsp *dsp, u32 iova, u32 phys, u32 size)
 	map->table = NULL;
 	map->iova = iova;
 	map->size = size;
+	map->sid = 0;
 
 	spin_lock(&dsp->lock);
 	list_add_tail(&map->node, &dsp->maps);
@@ -400,7 +419,8 @@ static int dsp_map_direct(struct dsp *dsp, u32 iova, u32 phys, u32 size)
 
 static void dsp_unmap(struct dsp *dsp, struct dma_map *map)
 {
-	iommu_unmap(dsp->iommu, map->iova, map->size);
+	size_t unmapped = iommu_unmap(dsp->iommu[map->sid], map->iova, map->size);
+	WARN_ON(unmapped != map->size);
 	if (map->buf) {
 		dma_buf_unmap_attachment_unlocked(map->attach, map->table, DMA_BIDIRECTIONAL);
 		dma_buf_detach(map->buf, map->attach);
@@ -409,13 +429,13 @@ static void dsp_unmap(struct dsp *dsp, struct dma_map *map)
 	kfree(map);
 }
 
-static long dsp_unmap_by_va(struct dsp *dsp, u32 va)
+static long dsp_unmap_by_va(struct dsp *dsp, unsigned long va, u32 sid)
 {
 	struct dma_map *map, *n;
 
 	spin_lock(&dsp->lock);
 	list_for_each_entry_safe(map, n, &dsp->maps, node) {
-		if (map->iova != va)
+		if (map->iova != va || map->sid != sid)
 			continue;
 
 		list_del(&map->node);
@@ -453,7 +473,7 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case DSP_IOCTL_SHUTDOWN:
 		return dsp_shutdown(dsp);
 	case DSP_IOCTL_MAP_DMABUF:
-		return dsp_map_dmabuf(dsp, arg & 0xffffffffu, arg >> 32);
+		return dsp_map_dmabuf(dsp, arg & 0xffffffffu, (arg >> 32) & 0xfffffff0u, (arg >> 32) & 0xfu);
 	case DSP_IOCTL_MAP_DIRECT: {
 		struct map_direct map;
 		if (copy_from_user(&map, argp, sizeof(map)))
@@ -461,7 +481,7 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return dsp_map_direct(dsp, map.va, map.pa, map.size);
 	}
 	case DSP_IOCTL_UNMAP:
-		return dsp_unmap_by_va(dsp, arg);
+		return dsp_unmap_by_va(dsp, arg & 0xfffffff0u, arg & 0xfu);
 	case DSP_IOCTL_HANDOVER:
 		return dsp_handover(dsp);
 	default:
@@ -489,6 +509,7 @@ static int dsp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct dsp *dsp;
+	struct device_node *np;
 	int i, irq, ret;
 	//u32 max_rate;
 	static int x;
@@ -551,9 +572,37 @@ static int dsp_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, dsp);
 	dev_set_drvdata(dev, dsp);
 
-	dsp->iommu = iommu_paging_domain_alloc(dev);
-	ret = iommu_attach_device(dsp->iommu, dev);
+	dsp->iommu[0] = iommu_paging_domain_alloc(dev);
+	dsp->iommu_pdev[0] = pdev;
+	ret = iommu_attach_device(dsp->iommu[0], dev);
 	WARN_ON(ret);
+
+	struct platform_device_info info = {};
+	info.parent = dev;
+	info.name = "dsp_iommu_stream";
+	info.dma_mask = DMA_BIT_MASK(36);
+	info.id = PLATFORM_DEVID_AUTO;
+	for_each_child_of_node(dev->of_node, np) {
+		info.fwnode = &np->fwnode;
+		ret = of_property_read_u32(np, "reg", &i);
+		if (ret)
+			return ret;
+
+		pdev = platform_device_register_full(&info);
+		if (IS_ERR(pdev))
+			return PTR_ERR(pdev);
+
+		ret = of_dma_configure(&pdev->dev, np, true);
+		if (ret)
+			return ret;
+
+		dsp->iommu[i] = iommu_paging_domain_alloc(&pdev->dev);
+		dsp->iommu_pdev[i] = pdev;
+		ret = iommu_attach_device(dsp->iommu[i], &pdev->dev);
+		if (ret)
+			return ret;
+		// XXX: platform_device_unregister on fail/remove
+	}
 
 	dsp->miscdev.minor = MISC_DYNAMIC_MINOR;
 	dsp->miscdev.name = dev->of_node->name;

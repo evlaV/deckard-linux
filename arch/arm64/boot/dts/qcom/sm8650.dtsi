@@ -8238,6 +8238,31 @@
 				 <&apps_smmu 0xc20 0x0>; // UBWCDMA
 
 			//core-max-rate = <1497600000>;
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/* additional iommu stream IDs to use DSP's 36-bit address space
+			 * 0xc0x is the hexagon core
+			 * 0xc2x is UBWCDMA
+			 * upper 4 bits of the DSP's 36-bit PA map to low 4 bits of the iommu SID,
+			 * (only added the first 3 since I haven't needed more than 16GB)
+			 */
+			compute-cb@1 {
+				compatible = "qcom,sm8650-hexagon-stream";
+				reg = <1>;
+				iommus = <&apps_smmu 0x0c01 0x20>;
+			};
+			compute-cb@2 {
+				compatible = "qcom,sm8650-hexagon-stream";
+				reg = <2>;
+				iommus = <&apps_smmu 0x0c02 0x20>;
+			};
+			compute-cb@3 {
+				compatible = "qcom,sm8650-hexagon-stream";
+				reg = <3>;
+				iommus = <&apps_smmu 0x0c03 0x20>;
+			};
 		};
 
 		adsp: adsp@6800000 {
