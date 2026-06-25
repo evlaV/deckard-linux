@@ -7810,6 +7810,7 @@ static void ath12k_vdev_start_resp_event(struct ath12k_base *ab, struct sk_buff 
 	struct wmi_vdev_start_resp_event vdev_start_resp;
 	struct ath12k *ar;
 	u32 status;
+	u32 fw_max_tx_power;
 
 	if (ath12k_pull_vdev_start_resp_tlv(ab, skb, &vdev_start_resp) != 0) {
 		ath12k_warn(ab, "failed to extract vdev start resp");
@@ -7834,7 +7835,16 @@ static void ath12k_vdev_start_resp_event(struct ath12k_base *ab, struct sk_buff 
 		ar->last_wmi_vdev_start_status = status;
 	}
 
-	ar->max_allowed_tx_power = (s8)le32_to_cpu(vdev_start_resp.max_allowed_tx_power);
+	fw_max_tx_power = le32_to_cpu(vdev_start_resp.max_allowed_tx_power);
+	ath12k_dbg(ab, ATH12K_DBG_WMI,
+				   "max allowed tx power %d reported for vdev %d\n",
+				   fw_max_tx_power,
+				   le32_to_cpu(vdev_start_resp.vdev_id));
+	if (fw_max_tx_power > 0 && fw_max_tx_power <= S8_MAX)
+		ar->last_vdev_start_max_tx_power = fw_max_tx_power;
+	else
+		ar->last_vdev_start_max_tx_power = 0;
+
 
 	complete(&ar->vdev_setup_done);
 

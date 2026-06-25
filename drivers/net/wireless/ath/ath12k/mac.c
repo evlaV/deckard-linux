@@ -3865,6 +3865,8 @@ static void ath12k_mac_init_arvif(struct ath12k_vif *ahvif,
 
 	arvif->num_stations = 0;
 
+	arvif->max_allowed_tx_power_dbm = 0;
+
 	for (i = 0; i < ARRAY_SIZE(arvif->bitrate_mask.control); i++) {
 		arvif->bitrate_mask.control[i].legacy = 0xffffffff;
 		arvif->bitrate_mask.control[i].gi = NL80211_TXRATE_DEFAULT_GI;
@@ -10664,6 +10666,8 @@ ath12k_mac_vdev_start_restart(struct ath12k_link_vif *arvif,
 		return ret;
 	}
 
+	arvif->max_allowed_tx_power_dbm = ar->last_vdev_start_max_tx_power;
+
 	/* TODO: For now we only set TPC power here. However when
 	 * channel changes, say CSA, it should be updated again.
 	 */
@@ -11358,7 +11362,7 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 			 */
 			ath12k_dbg(ab, ATH12K_DBG_MAC,
 				   "eirp power : %d firmware report power : %d\n",
-				   eirp_power, ar->max_allowed_tx_power);
+				   eirp_power, arvif->max_allowed_tx_power_dbm);
 			/* Firmware reports lower max_allowed_tx_power during vdev
 			 * start response. In case of 6 GHz, firmware is not aware
 			 * of EIRP power unless driver sets EIRP power through WMI
@@ -11367,10 +11371,10 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 			 * firmware through TPC command without min comparison with
 			 * vdev start response's max_allowed_tx_power.
 			 */
-			if (ar->max_allowed_tx_power && ab->hw_params->idle_ps)
+			if (arvif->max_allowed_tx_power_dbm > 0 && ab->hw_params->idle_ps)
 				eirp_power = min_t(s8,
 						   eirp_power,
-						   ar->max_allowed_tx_power);
+						   arvif->max_allowed_tx_power_dbm);
 		} else {
 			/* If AP local power constraint is present */
 			if (pwr_reduction)
@@ -11380,11 +11384,11 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 			 * the min of firmware updated ap tx power
 			 * and max power derived from above mentioned parameters.
 			 */
-			if (ar->max_allowed_tx_power && ab->hw_params->idle_ps)
+			if (arvif->max_allowed_tx_power_dbm > 0 && ab->hw_params->idle_ps)
 				max_tx_power[pwr_lvl_idx] =
 					min_t(s8,
 					      max_tx_power[pwr_lvl_idx],
-					      ar->max_allowed_tx_power);
+					      arvif->max_allowed_tx_power_dbm);
 		}
 		reg_tpc_info->chan_power_info[pwr_lvl_idx].chan_cfreq = center_freq;
 		reg_tpc_info->chan_power_info[pwr_lvl_idx].tx_power =
