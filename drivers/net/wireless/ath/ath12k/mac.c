@@ -1002,60 +1002,49 @@ static void ath12k_pdev_caps_update(struct ath12k *ar)
 	ar->txpower_scale = WMI_HOST_TP_SCALE_MAX;
 }
 
-static int ath12k_mac_txpower_recalc(struct ath12k *ar)
+static int
+ath12k_mac_update_vdev_txpower(struct ath12k_link_vif *arvif, bool force)
 {
-	struct ath12k_pdev *pdev = ar->pdev;
-	struct ath12k_link_vif *arvif;
-	int ret, txpower = -1;
-	u32 param;
+	struct ath12k *ar = arvif->ar;
+	int txpower;
+	int ret;
 
 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
 
-	list_for_each_entry(arvif, &ar->arvifs, list) {
-		if (arvif->txpower <= 0)
-			continue;
-
-		if (txpower == -1)
-			txpower = arvif->txpower;
-		else
-			txpower = min(txpower, arvif->txpower);
-	}
-
-	if (txpower == -1)
+	if (!arvif->is_created)
 		return 0;
 
-	/* txpwr is set as 2 units per dBm in FW*/
-	txpower = min_t(u32, max_t(u32, ar->min_tx_power, txpower),
-			ar->max_tx_power) * 2;
+	/* Firmware honors WMI_VDEV_PARAM_TX_PWRLIMIT only after vdev start has
+	 * completed. The BSS_CHANGED_TXPOWER caller therefore gates on
+	 * is_started, deferring the write to the vdev start path otherwise; the
+	 * vdev start/restart path itself passes force, as it runs after the vdev
+	 * start response but before arvif->is_started is set by the outer
+	 * mac80211 path.
+	 */
+	if (!force && !arvif->is_started)
+		return 0;
 
-	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "txpower to set in hw %d\n",
-		   txpower / 2);
+	/* INT_MIN is mac80211's "not configured" sentinel; 0 dBm is valid. */
+	if (arvif->txpower == INT_MIN)
+		return 0;
 
-	if ((pdev->cap.supported_bands & WMI_HOST_WLAN_2GHZ_CAP) &&
-	    ar->txpower_limit_2g != txpower) {
-		param = WMI_PDEV_PARAM_TXPOWER_LIMIT2G;
-		ret = ath12k_wmi_pdev_set_param(ar, param,
-						txpower, ar->pdev->pdev_id);
-		if (ret)
-			goto fail;
-		ar->txpower_limit_2g = txpower;
-	}
+	/* WMI_VDEV_PARAM_TX_PWRLIMIT is in whole dBm, matching mac80211's
+	 * bss_conf->txpower (arvif->txpower).
+	 */
+	txpower = arvif->txpower;
 
-	if ((pdev->cap.supported_bands & WMI_HOST_WLAN_5GHZ_CAP) &&
-	    ar->txpower_limit_5g != txpower) {
-		param = WMI_PDEV_PARAM_TXPOWER_LIMIT5G;
-		ret = ath12k_wmi_pdev_set_param(ar, param,
-						txpower, ar->pdev->pdev_id);
-		if (ret)
-			goto fail;
-		ar->txpower_limit_5g = txpower;
-	}
+	if (arvif->max_allowed_tx_power_dbm > 0 &&
+	    txpower > arvif->max_allowed_tx_power_dbm)
+		txpower = arvif->max_allowed_tx_power_dbm;
 
-	return 0;
+	ret = ath12k_wmi_vdev_set_param_cmd(ar, arvif->vdev_id,
+					    WMI_VDEV_PARAM_TX_PWRLIMIT,
+					    txpower);
+	ath12k_dbg(ar->ab, ATH12K_DBG_MAC,
+		   "set txpower limit %d (req %d, fw max %d) for vdev %d ret %d\n",
+		   txpower, arvif->txpower, arvif->max_allowed_tx_power_dbm,
+		   arvif->vdev_id, ret);
 
-fail:
-	ath12k_warn(ar->ab, "failed to recalc txpower limit %d using pdev param %d: %d\n",
-		    txpower / 2, param, ret);
 	return ret;
 }
 
@@ -4402,7 +4391,14 @@ static void ath12k_mac_bss_info_changed(struct ath12k *ar,
 			   arvif->vdev_id, info->txpower);
 
 		arvif->txpower = info->txpower;
-		ath12k_mac_txpower_recalc(ar);
+
+		/* if the vdev has not started yet the helper
+		 * defers the WMI write until the vdev start path
+		 */
+		ret = ath12k_mac_update_vdev_txpower(arvif, false);
+		if (ret)
+			ath12k_warn(ar->ab, "failed to update txpower for vdev %d: %d\n",
+				    arvif->vdev_id, ret);
 	}
 
 	if (changed & BSS_CHANGED_MCAST_RATE &&
@@ -9833,11 +9829,7 @@ int ath12k_mac_vdev_create(struct ath12k *ar, struct ath12k_link_vif *arvif)
 	if (link_conf)
 		arvif->txpower = link_conf->txpower;
 	else
-		arvif->txpower = NL80211_TX_POWER_AUTOMATIC;
-
-	ret = ath12k_mac_txpower_recalc(ar);
-	if (ret)
-		goto err_peer_del;
+		arvif->txpower = INT_MIN;
 
 	param_id = WMI_VDEV_PARAM_RTS_THRESHOLD;
 	param_value = hw->wiphy->rts_threshold;
@@ -10198,9 +10190,6 @@ err_vdev_del:
 
 	ath12k_mac_vif_unref(&ab->dp, vif);
 	ath12k_dp_tx_put_bank_profile(&ab->dp, arvif->bank_id);
-
-	/* Recalc txpower for remaining vdev */
-	ath12k_mac_txpower_recalc(ar);
 
 	/* TODO: recal traffic pause state based on the available vdevs */
 	arvif->is_created = false;
@@ -10667,6 +10656,11 @@ ath12k_mac_vdev_start_restart(struct ath12k_link_vif *arvif,
 	}
 
 	arvif->max_allowed_tx_power_dbm = ar->last_vdev_start_max_tx_power;
+
+	ret = ath12k_mac_update_vdev_txpower(arvif, true);
+	if (ret)
+		ath12k_warn(ab, "failed to set txpower for vdev %d: %d\n",
+			    arvif->vdev_id, ret);
 
 	/* TODO: For now we only set TPC power here. However when
 	 * channel changes, say CSA, it should be updated again.
