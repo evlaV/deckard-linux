@@ -4930,7 +4930,13 @@ static int ath12k_mac_op_get_txpower(struct ieee80211_hw *hw,
 	}
 
 	/* tx power reported by firmware is in units of 0.5 dBm */
-	ar->chan_tx_pwr = pdev->chan_tx_power / 2;
+	/* and seems to be a signed 15 bit int  */
+
+	if (pdev->chan_tx_power < U8_MAX)
+		ar->chan_tx_pwr = pdev->chan_tx_power / 2;
+	else
+		ar->chan_tx_pwr = 0;
+
 	spin_unlock_bh(&ar->data_lock);
 	ar->last_tx_power_update = jiffies;
 
