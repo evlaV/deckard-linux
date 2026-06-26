@@ -256,6 +256,7 @@ static bool is_iris3_hw_power_collapsed(struct iris_core *core)
 
 static int power_off_iris3_hardware(struct iris_core *core)
 {
+	bool handshake_done = false, handshake_busy = false;
 	u32 value = 0;
 	int ret, i, count = 0;
 
@@ -263,6 +264,7 @@ static int power_off_iris3_hardware(struct iris_core *core)
 		goto disable_power;
 
 	dev_err(core->dev, "Video hw is power ON\n");
+	__WARN();
 
 	ret = read_register(core, WRAPPER_CORE_CLOCK_CONFIG_IRIS3, &value);
 	if (ret)
@@ -278,19 +280,43 @@ static int power_off_iris3_hardware(struct iris_core *core)
 		ret = read_register_with_poll_timeout(core, VCODEC_SS_IDLE_STATUSN + 4 * i,
 						      0x400000, 0x400000, 2000, 20000);
 		if (ret)
-			pr_debug("%s:%d timeout\n", __func__, __LINE__);
+			pr_err("%s:%d timeout\n", __func__, __LINE__);
 
 	}
 
-	ret = read_register_with_poll_timeout(core, AON_WRAPPER_MVP_NOC_LPI_CONTROL,
+	/* Retry up to 1000 times as recommended by hardware documentation */
+	do {
+		/* set MNoC to low power, set PD_NOC_QREQ (bit 0) */
+		write_register(core, AON_WRAPPER_MVP_NOC_LPI_CONTROL, BIT(0));
+
+		udelay(15);
+
+		read_register(core, AON_WRAPPER_MVP_NOC_LPI_STATUS, &value);
+
+		handshake_done = value & BIT(0);
+		handshake_busy = value & (BIT(1) | BIT(2));
+
+		if (handshake_done || !handshake_busy)
+			break;
+
+		write_register(core, AON_WRAPPER_MVP_NOC_LPI_CONTROL, 0x0);
+
+		udelay(15);
+
+	} while (++count < 1000);
+
+	if (!handshake_done && handshake_busy)
+		dev_err(core->dev, "LPI handshake timeout\n");
+
+	ret = read_register_with_poll_timeout(core, AON_WRAPPER_MVP_NOC_LPI_STATUS,
 					      0x1, 0x1, 200, 2000);
 	if (ret) {
-		pr_debug("%s:%d timeout\n", __func__, __LINE__);
+		pr_err("%s:%d timeout\n", __func__, __LINE__);
 		goto disable_power;
 	}
 
 	/* set MNoC to low power, set PD_NOC_QREQ (bit 0) */
-	write_register_masked(core, AON_WRAPPER_MVP_NOC_LPI_CONTROL, BIT(0), BIT(0));
+	write_register(core, AON_WRAPPER_MVP_NOC_LPI_CONTROL, 0x0);
 
 	ret = write_register(core, CPU_CS_AHB_BRIDGE_SYNC_RESET, 0x3);
 	if (ret)
@@ -332,15 +358,14 @@ static int power_off_iris3_controller(struct iris_core *core)
 	if (ret)
 		goto disable_power;
 
-	ret = write_register_masked(core, WRAPPER_IRIS_CPU_NOC_LPI_CONTROL,
-				    0x1, BIT(0));
+	ret = write_register(core, WRAPPER_IRIS_CPU_NOC_LPI_CONTROL, BIT(0));
 	if (ret)
 		goto disable_power;
 
 	ret = read_register_with_poll_timeout(core, WRAPPER_IRIS_CPU_NOC_LPI_STATUS,
 					      0x1, 0x1, 200, 2000);
 	if (ret) {
-		pr_debug("%s:%d timeout\n", __func__, __LINE__);
+		pr_err("%s:%d timeout\n", __func__, __LINE__);
 		goto disable_power;
 	}
 
@@ -351,7 +376,7 @@ static int power_off_iris3_controller(struct iris_core *core)
 	ret = read_register_with_poll_timeout(core, WRAPPER_DEBUG_BRIDGE_LPI_STATUS_IRIS3,
 					      0xffffffff, 0x0, 200, 2000);
 	if (ret) {
-		pr_debug("%s:%d timeout\n", __func__, __LINE__);
+		pr_err("%s:%d timeout\n", __func__, __LINE__);
 		goto disable_power;
 	}
 
@@ -382,7 +407,7 @@ static int power_off_iris3_controller(struct iris_core *core)
 	/* poll AON spare register bit0 to become zero with 50ms timeout */
 	ret = read_register_with_poll_timeout(core, AON_WRAPPER_SPARE, BIT(0), 0, 1000, 50000);
 	if (ret) {
-		pr_debug("%s:%d timeout\n", __func__, __LINE__);
+		pr_err("%s:%d timeout\n", __func__, __LINE__);
 		goto disable_power;
 	}
 
@@ -404,6 +429,8 @@ static int power_off_iris3_controller(struct iris_core *core)
 		dev_err(core->dev, "deassert xo failed ret %d\n", ret);
 		ret = 0;
 	}
+
+	write_register(core, AON_WRAPPER_SPARE, 0x0);
 
 	/* Enable MVP NoC clock */
 	write_register_masked(core, AON_WRAPPER_MVP_NOC_CORE_CLK_CONTROL, 0, NOC_HALT);
@@ -528,10 +555,7 @@ static int power_on_iris3(struct iris_core *core)
 
 	core->power_enabled = true;
 
-	freq = core->power.clk_freq ? core->power.clk_freq :
-				      (u32)ULONG_MAX;
-
-	opp_set_rate(core, freq, false);
+	opp_set_rate(core, ULONG_MAX, false);
 
 	set_preset_registers(core);
 

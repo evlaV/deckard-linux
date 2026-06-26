@@ -153,13 +153,6 @@ int iris_hfi_core_init(struct iris_core *core)
 	if (ret)
 		goto error;
 
-	core->use_tz = use_tz(core->dev);
-	if (!core->use_tz) {
-		ret = init_fw_no_tz(core);
-		if (ret)
-			goto error_power_off;
-	}
-
 	pas_id = core->platform_data->pas_id;
 	fw_name = core->platform_data->fwname;
 	ret = load_fw(core->dev, fw_name, &core->fw.mem_phys, &core->fw.mem_size,
@@ -238,9 +231,6 @@ int iris_hfi_core_deinit(struct iris_core *core)
 		unload_fw_no_tz(core);
 
 	iris_power_off(core);
-
-	if (!core->use_tz)
-		deinit_fw_no_tz(core);
 
 	return ret;
 }

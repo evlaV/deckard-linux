@@ -126,4 +126,8 @@ void hfi_queue_deinit(struct device *dev, struct mem_desc *q_table, struct mem_d
 		      struct iface_q_info *cmd_q, struct iface_q_info *msg_q,
 		      struct iface_q_info *dbg_q);
 
+void hfi_queues_reinit(struct device *dev, struct mem_desc *q_table, struct mem_desc *sfr,
+		       struct iface_q_info *cmd_q, struct iface_q_info *msg_q,
+		       struct iface_q_info *dbg_q, void *daddr);
+
 #endif

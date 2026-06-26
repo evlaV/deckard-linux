@@ -193,12 +193,8 @@ int hfi_queue_init(struct device *dev, struct mem_desc *q_table, struct mem_desc
 {
 	struct hfi_queue_table_header *q_tbl_hdr;
 
-	if (q_table->kernel_vaddr) {
-		hfi_set_queue_header(IFACEQ_CMDQ_ID, cmd_q);
-		hfi_set_queue_header(IFACEQ_MSGQ_ID, msg_q);
-		hfi_set_queue_header(IFACEQ_DBGQ_ID, dbg_q);
-		return 0;
-	}
+	if (q_table->kernel_vaddr)
+		goto reinit;
 
 	q_table->kernel_vaddr = dma_alloc_attrs(dev, ALIGNED_QUEUE_SIZE,
 						&q_table->device_addr,
@@ -216,6 +212,7 @@ int hfi_queue_init(struct device *dev, struct mem_desc *q_table, struct mem_desc
 		return -ENOMEM;
 	}
 
+reinit:
 	q_table->size = IFACEQ_TABLE_SIZE;
 
 	__queue_init(q_table, IFACEQ_CMDQ_ID, cmd_q);
@@ -268,4 +265,37 @@ void hfi_queue_deinit(struct device *dev, struct mem_desc *q_table, struct mem_d
 
 	sfr->kernel_vaddr = NULL;
 	sfr->device_addr = 0;
+}
+
+void hfi_queues_reinit(struct device *dev, struct mem_desc *q_table, struct mem_desc *sfr,
+		      struct iface_q_info *cmd_q, struct iface_q_info *msg_q,
+		      struct iface_q_info *dbg_q, void *daddr)
+{
+	struct hfi_queue_table_header *q_tbl_hdr;
+
+	if (!q_table->kernel_vaddr)
+		return;
+
+	q_table->size = IFACEQ_TABLE_SIZE;
+
+	__queue_init(q_table, IFACEQ_CMDQ_ID, cmd_q);
+	__queue_init(q_table, IFACEQ_MSGQ_ID, msg_q);
+	__queue_init(q_table, IFACEQ_DBGQ_ID, dbg_q);
+
+	q_tbl_hdr = (struct hfi_queue_table_header *)q_table->kernel_vaddr;
+	q_tbl_hdr->qtbl_version = 0;
+	q_tbl_hdr->device_addr = (void *)daddr;
+	strscpy(q_tbl_hdr->name, "hfi-queues", sizeof(q_tbl_hdr->name));
+	q_tbl_hdr->qtbl_size = IFACEQ_TABLE_SIZE;
+	q_tbl_hdr->qtbl_qhdr0_offset = sizeof(*q_tbl_hdr);
+	q_tbl_hdr->qtbl_qhdr_size = sizeof(struct hfi_queue_header);
+	q_tbl_hdr->qtbl_num_q = IFACEQ_NUMQ;
+	q_tbl_hdr->qtbl_num_active_q = IFACEQ_NUMQ;
+
+	sfr->size = ALIGNED_SFR_SIZE;
+	/* Write sfr size in first word to be used by firmware */
+	*((u32 *)sfr->kernel_vaddr) = sfr->size;
+
+	/* ensure table and queue header structs are settled in memory */
+	wmb();
 }

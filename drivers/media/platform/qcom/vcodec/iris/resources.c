@@ -47,6 +47,8 @@ int opp_set_rate(struct iris_core *core, u64 freq, bool inc)
 		dev_pm_opp_put(opp);
 	}
 
+	pr_info("%s: %d\n", __func__, opp_freq);
+
 	ret = dev_pm_opp_set_rate(core->dev, opp_freq);
 	if (ret) {
 		dev_err(core->dev, "failed to set rate\n");
@@ -131,12 +133,15 @@ static int init_power_domains(struct iris_core *core)
 
 int power_domain_set_hwmode(struct iris_core *core, enum platform_pm_domain_type id, bool hwmode)
 {
+	pr_info("%s: %d\n", __func__, hwmode);
 	return dev_pm_genpd_set_hwmode(core->pmdomain_tbl->pd_devs[id], hwmode);
 }
 
 int enable_power_domains(struct iris_core *core, enum platform_pm_domain_type id)
 {
 	int ret;
+
+	pr_info("%s: %d\n", __func__, id);
 
 	ret = opp_set_rate(core, ULONG_MAX, false);
 	if (ret)
@@ -152,6 +157,8 @@ int enable_power_domains(struct iris_core *core, enum platform_pm_domain_type id
 int disable_power_domains(struct iris_core *core, enum platform_pm_domain_type id)
 {
 	int ret;
+
+	pr_info("%s: %d\n", __func__, id);
 
 	ret = opp_set_rate(core, 0, false);
 	if (ret)
@@ -228,6 +235,8 @@ int unvote_buses(struct iris_core *core)
 	int ret = 0;
 	u32 i;
 
+	pr_info("%s\n", __func__);
+
 	core->power.bus_bw = 0;
 	core->bus_count = core->platform_data->bus_tbl_size;
 
@@ -250,6 +259,8 @@ int vote_buses(struct iris_core *core, unsigned long bus_bw)
 	struct bus_info *bus = NULL;
 	int ret = 0;
 	u32 i;
+
+	pr_info("%s\n", __func__);
 
 	core->bus_count = core->platform_data->bus_tbl_size;
 
@@ -297,6 +308,7 @@ int deassert_reset_control(struct iris_core *core, char *name)
 			return -EINVAL;
 		if (strcmp(name, rcinfo->name))
 			continue;
+		pr_info("%s: %s\n", __func__, rcinfo->name);
 		ret = reset_control_deassert(rcinfo->rst);
 		if (ret) {
 			dev_err(core->dev, "deassert reset control failed. ret = %d\n", ret);
@@ -324,6 +336,7 @@ int assert_reset_control(struct iris_core *core, char *name)
 		if (strcmp(name, rcinfo->name))
 			continue;
 
+		pr_info("%s: %s\n", __func__, rcinfo->name);
 		ret = reset_control_assert(rcinfo->rst);
 		if (ret) {
 			dev_err(core->dev, "failed to assert reset control %s, ret = %d\n",
@@ -386,6 +399,7 @@ int disable_unprepare_clock(struct iris_core *core, const char *clk_name)
 			continue;
 
 		found = true;
+		pr_info("%s: %s\n", __func__, cl->name);
 		clk_disable_unprepare(cl->clk);
 		cl->prev = 0;
 		break;
@@ -416,6 +430,7 @@ int prepare_enable_clock(struct iris_core *core, const char *clk_name)
 
 		found = true;
 
+		pr_info("%s: %s\n", __func__, cl->name);
 		ret = clk_prepare_enable(cl->clk);
 		if (ret) {
 			dev_err(core->dev, "failed to enable clock %s\n", cl->name);

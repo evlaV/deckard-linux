@@ -9,12 +9,14 @@
 #include <linux/pm_runtime.h>
 
 #include "../hfi_queue.h"
+#include "../firmware.h"
 #include "iris_core.h"
 #include "iris_ctrls.h"
 #include "iris_helpers.h"
 #include "iris_hfi.h"
 #include "iris_vidc.h"
 #include "resources.h"
+#include "firmware_no_tz.h"
 
 static int init_iris_isr(struct iris_core *core)
 {
@@ -87,9 +89,6 @@ static void iris_remove(struct platform_device *pdev)
 	iris_pm_get(core);
 
 	iris_core_deinit(core);
-	hfi_queue_deinit(core->dev, &core->iface_q_table, &core->sfr,
-			 &core->command_queue, &core->message_queue,
-			 &core->debug_queue);
 
 	video_unregister_device(core->vdev_dec);
 
@@ -98,6 +97,9 @@ static void iris_remove(struct platform_device *pdev)
 	v4l2_device_unregister(&core->v4l2_dev);
 
 	iris_pm_put(core, false);
+
+	if (!core->use_tz)
+		deinit_fw_no_tz(core);
 
 	mutex_destroy(&core->lock);
 	mutex_destroy(&core->pm_lock);
@@ -189,6 +191,13 @@ static int iris_probe(struct platform_device *pdev)
 		goto err_runtime_disable;
 	}
 
+	core->use_tz = use_tz(core->dev);
+	if (!core->use_tz) {
+		ret = init_fw_no_tz(core);
+		if (ret)
+			goto err_runtime_disable;
+	}
+
 	ret = iris_init_instance_caps(core);
 	if (ret) {
 		dev_err_probe(core->dev, ret,
@@ -206,15 +215,6 @@ static int iris_probe(struct platform_device *pdev)
 
 	dma_set_max_seg_size(&pdev->dev, (unsigned int)DMA_BIT_MASK(32));
 	dma_set_seg_boundary(&pdev->dev, (unsigned long)DMA_BIT_MASK(64));
-
-	ret = hfi_queue_init(core->dev, &core->iface_q_table, &core->sfr,
-			     &core->command_queue, &core->message_queue,
-			     &core->debug_queue, core);
-	if (ret) {
-		dev_err_probe(core->dev, ret,
-			      "%s: interface queues init failed\n", __func__);
-		goto err_vdev_unreg_enc;
-	}
 
 	ret = iris_pm_get(core);
 	if (ret) {
@@ -252,9 +252,6 @@ static int iris_probe(struct platform_device *pdev)
 err_core_deinit:
 	iris_core_deinit(core);
 err_queue_deinit:
-	hfi_queue_deinit(core->dev, &core->iface_q_table, &core->sfr,
-			 &core->command_queue, &core->message_queue,
-			 &core->debug_queue);
 err_vdev_unreg_enc:
 	video_unregister_device(core->vdev_enc);
 err_vdev_unreg_dec:

@@ -3,6 +3,7 @@
  * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include "../hfi_queue.h"
 #include "hfi_defines.h"
 #include "iris_buffer.h"
 #include "iris_helpers.h"
@@ -277,9 +278,34 @@ static int handle_session_error(struct iris_inst *inst,
 static int handle_system_error(struct iris_core *core,
 			       struct hfi_packet *pkt)
 {
+	int ret;
+
+	__WARN();
+
+	mutex_lock(&core->lock);
+	iris_change_core_state(core, IRIS_CORE_ERROR);
+	mutex_unlock(&core->lock);
+
 	print_sfr_message(core);
 
 	iris_core_deinit(core);
+
+	hfi_queues_reinit(core->dev, &core->iface_q_table, &core->sfr,
+			  &core->command_queue, &core->message_queue,
+			  &core->debug_queue, core);
+
+	ret = iris_core_init(core);
+	if (ret)
+		goto fail;
+
+	ret = iris_core_init_wait(core);
+	if (ret)
+		goto fail;
+
+	return 0;
+
+fail:
+	iris_change_core_state(core, IRIS_CORE_ERROR);
 
 	return 0;
 }
@@ -1008,8 +1034,10 @@ static int handle_response(struct iris_core *core, void *response)
 
 	hdr = (struct hfi_header *)response;
 	ret = validate_hdr_packet(core, hdr);
-	if (ret)
+	if (ret) {
+		__WARN();
 		return handle_system_error(core, NULL);
+	}
 
 	if (!hdr->session_id)
 		return handle_system_response(core, hdr);
