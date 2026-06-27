@@ -45,6 +45,100 @@ typedef enum {
 	VFE_WM_RDI2,
 }vfe_wm_t;
 
+/*
+ * pix_packer_fmt - bus write-master packing for a pixel-path client
+ *
+ * The packer converts the pipeline's internal pixel stream into the byte
+ * layout written to memory, so the value has to agree with both the source
+ * (what feeds this client) and the destination (the V4L2 format). Getting it
+ * wrong produces a bytes-per-line that disagrees with IMAGE_CFG_2, which the
+ * bus reports as an image-size mismatch - and silently absorbs frame after
+ * frame if WM_CFG_AUTO_RECOVERY_EN is set.
+ *
+ * @plane is needed because the Cr/Cb swap distinguishing NV21 from NV12 is a
+ * property of the chroma plane only; both have identical luma.
+ */
+static u32 pix_packer_fmt(u32 v4l2_fmt, u8 plane)
+{
+	switch (v4l2_fmt) {
+	/*
+	 * YUV taken off the pixel pipeline. The IFE pixel path runs at 10 bits
+	 * internally on Titan 480 whatever the sensor sends - demux and
+	 * pedestal normalise the incoming Bayer to pipeline width - so an
+	 * 8-bit output has to be narrowed on the way out. That is what the
+	 * LSB-to-MSB shift encodings do. Plain PLAIN_8 would leave the client
+	 * expecting an 8-bit source and is the wrong choice here even though
+	 * the destination really is 8-bit.
+	 */
+	case V4L2_PIX_FMT_NV12:
+	case V4L2_PIX_FMT_NV12M:
+	case V4L2_PIX_FMT_NV16:
+		return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8_LSB_MSB_10;
+	case V4L2_PIX_FMT_NV21:
+	case V4L2_PIX_FMT_NV21M:
+	case V4L2_PIX_FMT_NV61:
+		/* Cr/Cb order is an even/odd byte swap on the chroma plane. */
+		return plane ? VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8_LSB_MSB_10_ODD_EVEN
+			     : VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8_LSB_MSB_10;
+
+	/*
+	 * Bayer taken off the pixel path via the PIXEL_RAW client. These are a
+	 * passthrough of the CSI wire format, so the packing follows the
+	 * sensor's bit depth rather than the pipeline width - the raw tap sits
+	 * ahead of the point where the pipeline precision applies.
+	 */
+	case V4L2_PIX_FMT_SRGGB10P:
+	case V4L2_PIX_FMT_SGRBG10P:
+	case V4L2_PIX_FMT_SGBRG10P:
+	case V4L2_PIX_FMT_SBGGR10P:
+		return VFE_BUS_WM_PACKER_FMT_V3_MIPI10;
+	case V4L2_PIX_FMT_SRGGB12P:
+	case V4L2_PIX_FMT_SGRBG12P:
+	case V4L2_PIX_FMT_SGBRG12P:
+	case V4L2_PIX_FMT_SBGGR12P:
+		return VFE_BUS_WM_PACKER_FMT_V3_MIPI12;
+	case V4L2_PIX_FMT_SRGGB14P:
+	case V4L2_PIX_FMT_SGRBG14P:
+	case V4L2_PIX_FMT_SGBRG14P:
+	case V4L2_PIX_FMT_SBGGR14P:
+		return VFE_BUS_WM_PACKER_FMT_V3_MIPI14;
+
+	/*
+	 * Unpacked Bayer: one sample per 16-bit word. ALIGNMENT selects which
+	 * end of the word the sample sits in and only has meaning for the
+	 * PLAIN16 encodings; V4L2 defines these as LSB-aligned.
+	 */
+	case V4L2_PIX_FMT_SRGGB10:
+	case V4L2_PIX_FMT_SGRBG10:
+	case V4L2_PIX_FMT_SGBRG10:
+	case V4L2_PIX_FMT_SBGGR10:
+		return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_16_10BPP |
+		       VFE_BUS_WM_PACKER_CFG_ALIGN_LSB;
+	case V4L2_PIX_FMT_SRGGB12:
+	case V4L2_PIX_FMT_SGRBG12:
+	case V4L2_PIX_FMT_SGBRG12:
+	case V4L2_PIX_FMT_SBGGR12:
+		return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_16_12BPP |
+		       VFE_BUS_WM_PACKER_CFG_ALIGN_LSB;
+
+	/* 8-bit Bayer needs no repacking - one sample per byte. */
+	case V4L2_PIX_FMT_SRGGB8:
+	case V4L2_PIX_FMT_SGRBG8:
+	case V4L2_PIX_FMT_SGBRG8:
+	case V4L2_PIX_FMT_SBGGR8:
+		return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8;
+	}
+
+	/*
+	 * Reaching here means the format passed try_fmt but has no packing
+	 * rule, which is a driver bug rather than a user error. PLAIN_128 is
+	 * the inert choice - an unstructured 128-bit dump - but the caller
+	 * should never rely on it.
+	 */
+	WARN_ONCE(1, "no packer format for 0x%08x\n", v4l2_fmt);
+	return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_128;
+}
+
 static void vfe_global_reset(struct vfe_device *vfe)
 {
 	writel_relaxed(IRQ_MASK_0_RESET_ACK, vfe->base + VFE_IRQ_MASK(0));
