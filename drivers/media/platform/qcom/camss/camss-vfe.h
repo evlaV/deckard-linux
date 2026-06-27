@@ -56,6 +56,27 @@ enum vfe_line_id {
 	VFE_LINE_NUM_MAX = 4
 };
 
+enum vfe_packer_format_v3 {
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_128 = 0,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8_ODD_EVEN,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8_LSB_MSB_10,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8_LSB_MSB_10_ODD_EVEN,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_16_10BPP,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_16_12BPP,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_16_14BPP,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_16_16BPP,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_32,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN_64,
+	VFE_BUS_WM_PACKER_FMT_V3_TP_10,
+	VFE_BUS_WM_PACKER_FMT_V3_MIPI10,
+	VFE_BUS_WM_PACKER_FMT_V3_MIPI12,
+	VFE_BUS_WM_PACKER_FMT_V3_MIPI14,
+	VFE_BUS_WM_PACKER_FMT_V3_MIPI20,
+	VFE_BUS_WM_PACKER_FMT_V3_PLAIN32_20BPP,
+	VFE_BUS_WM_PACKER_FMT_V3_MAX,
+};
+
 struct vfe_output {
 	u8 wm_num;
 	u8 wm_idx[3];
@@ -314,5 +335,16 @@ int vfe_enable_output_v2(struct vfe_line *line);
  */
 int vfe_queue_buffer_v2(struct camss_video *vid,
 			struct camss_buffer *buf);
+
+/*
+ * vfe_bus_v3_packer_fmt
+ *
+ * @v4l2_fmt: v4l2 format
+ * @plane: plane for the given format
+ * @align_shift: bit position of the PLAIN16 LSB alignment flag
+ *
+ * Return: the bus packer format for the register
+ */
+u32 vfe_bus_v3_packer_fmt(u32 v4l2_fmt, u8 plane, u8 align_shift);
 
 #endif /* QC_MSM_CAMSS_VFE_H */

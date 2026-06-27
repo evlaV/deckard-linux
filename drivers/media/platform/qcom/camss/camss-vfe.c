@@ -370,6 +370,59 @@ const struct camss_formats vfe_formats_pix_845 = {
 	.formats = formats_pix_845
 };
 
+u32 vfe_bus_v3_packer_fmt(u32 v4l2_fmt, u8 plane, u8 align_shift)
+{
+	switch (v4l2_fmt) {
+	case V4L2_PIX_FMT_NV12:
+	case V4L2_PIX_FMT_NV12M:
+	case V4L2_PIX_FMT_NV16:
+		return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8_LSB_MSB_10;
+	case V4L2_PIX_FMT_NV21:
+	case V4L2_PIX_FMT_NV21M:
+	case V4L2_PIX_FMT_NV61:
+		return plane ? VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8_LSB_MSB_10_ODD_EVEN
+			     : VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8_LSB_MSB_10;
+
+	case V4L2_PIX_FMT_SRGGB10P:
+	case V4L2_PIX_FMT_SGRBG10P:
+	case V4L2_PIX_FMT_SGBRG10P:
+	case V4L2_PIX_FMT_SBGGR10P:
+		return VFE_BUS_WM_PACKER_FMT_V3_MIPI10;
+	case V4L2_PIX_FMT_SRGGB12P:
+	case V4L2_PIX_FMT_SGRBG12P:
+	case V4L2_PIX_FMT_SGBRG12P:
+	case V4L2_PIX_FMT_SBGGR12P:
+		return VFE_BUS_WM_PACKER_FMT_V3_MIPI12;
+	case V4L2_PIX_FMT_SRGGB14P:
+	case V4L2_PIX_FMT_SGRBG14P:
+	case V4L2_PIX_FMT_SGBRG14P:
+	case V4L2_PIX_FMT_SBGGR14P:
+		return VFE_BUS_WM_PACKER_FMT_V3_MIPI14;
+
+	case V4L2_PIX_FMT_SRGGB10:
+	case V4L2_PIX_FMT_SGRBG10:
+	case V4L2_PIX_FMT_SGBRG10:
+	case V4L2_PIX_FMT_SBGGR10:
+		return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_16_10BPP |
+		       BIT(align_shift);
+	case V4L2_PIX_FMT_SRGGB12:
+	case V4L2_PIX_FMT_SGRBG12:
+	case V4L2_PIX_FMT_SGBRG12:
+	case V4L2_PIX_FMT_SBGGR12:
+		return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_16_12BPP |
+		       BIT(align_shift);
+
+	case V4L2_PIX_FMT_SRGGB8:
+	case V4L2_PIX_FMT_SGRBG8:
+	case V4L2_PIX_FMT_SGBRG8:
+	case V4L2_PIX_FMT_SBGGR8:
+		return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_8;
+	}
+
+	WARN_ONCE(1, "no packer format for 0x%08x\n", v4l2_fmt);
+	return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_128;
+}
+
 static u32 vfe_src_pad_code(struct vfe_line *line, u32 sink_code,
 			    unsigned int index, u32 src_req_code)
 {
