@@ -3,6 +3,7 @@
  * Copyright (C) 2025 Linaro Ltd.
  */
 
+#define DEBUG 1
 #include <linux/auxiliary_bus.h>
 #include <linux/cleanup.h>
 #include <linux/device.h>

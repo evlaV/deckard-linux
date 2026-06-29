@@ -993,7 +993,6 @@ int msm_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 	if (funcs->progress)
 		priv->hangcheck_period /= 2;
 
-	spin_lock_init(&gpu->perf_lock);
 	spin_lock_init(&gpu->id_lock);
 
 	/* Map registers: */

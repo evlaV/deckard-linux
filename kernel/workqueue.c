@@ -7398,7 +7398,7 @@ static ssize_t wq_prio_store(struct device *dev, struct device_attribute *attr,
 	struct workqueue_attrs *attrs;
 	int ret = -ENOMEM;
 
-	apply_wqattrs_lock();
+	mutex_lock(&wq_pool_mutex);
 
 	attrs = wq_sysfs_prep_attrs(wq);
 	if (!attrs)
@@ -7412,7 +7412,7 @@ static ssize_t wq_prio_store(struct device *dev, struct device_attribute *attr,
 		ret = -EINVAL;
 
 out_unlock:
-	apply_wqattrs_unlock();
+	mutex_unlock(&wq_pool_mutex);
 	free_workqueue_attrs(attrs);
 	return ret ?: count;
 }
