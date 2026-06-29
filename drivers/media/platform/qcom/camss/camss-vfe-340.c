@@ -282,7 +282,7 @@ static u32 vfe_packer_format(struct vfe_device *vfe, u32 pixelformat)
 
 static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 {
-	struct v4l2_pix_format_mplane *pix = &line->video_out.active_fmt.fmt.pix_mp;
+	struct v4l2_pix_format_mplane *pix = &line->output[0].video_out.active_fmt.fmt.pix_mp;
 	u32 stride = pix->plane_fmt[0].bytesperline;
 	u8 client = tfe_wm_client_map[wm];
 	u32 cfg = TFE_BUS_CLIENT_CFG_EN;

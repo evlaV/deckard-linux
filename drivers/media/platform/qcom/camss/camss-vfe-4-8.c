@@ -537,7 +537,7 @@ static void vfe_set_xbar_cfg(struct vfe_device *vfe, struct vfe_output *output,
 			     u8 enable)
 {
 	struct vfe_line *line = output->line;
-	u32 p = line->video_out.active_fmt.fmt.pix_mp.pixelformat;
+	u32 p = line->output[0].video_out.active_fmt.fmt.pix_mp.pixelformat;
 	u32 reg;
 
 	switch (p) {
@@ -606,7 +606,7 @@ static void vfe_set_xbar_cfg(struct vfe_device *vfe, struct vfe_output *output,
 static void vfe_set_realign_cfg(struct vfe_device *vfe, struct vfe_line *line,
 				u8 enable)
 {
-	u32 p = line->video_out.active_fmt.fmt.pix_mp.pixelformat;
+	u32 p = line->output[0].video_out.active_fmt.fmt.pix_mp.pixelformat;
 	u32 val = VFE_0_MODULE_ZOOM_EN_REALIGN_BUF;
 
 	if (p != V4L2_PIX_FMT_YUYV && p != V4L2_PIX_FMT_YVYU &&
@@ -753,7 +753,7 @@ static void vfe_set_demux_cfg(struct vfe_device *vfe, struct vfe_line *line)
 
 static void vfe_set_scale_cfg(struct vfe_device *vfe, struct vfe_line *line)
 {
-	u32 p = line->video_out.active_fmt.fmt.pix_mp.pixelformat;
+	u32 p = line->output[0].video_out.active_fmt.fmt.pix_mp.pixelformat;
 	u32 reg;
 	u16 input, output;
 	u8 interp_reso;
@@ -808,7 +808,7 @@ static void vfe_set_scale_cfg(struct vfe_device *vfe, struct vfe_line *line)
 
 static void vfe_set_crop_cfg(struct vfe_device *vfe, struct vfe_line *line)
 {
-	u32 p = line->video_out.active_fmt.fmt.pix_mp.pixelformat;
+	u32 p = line->output[0].video_out.active_fmt.fmt.pix_mp.pixelformat;
 	u32 reg;
 	u16 first, last;
 

@@ -99,7 +99,7 @@ static void vfe_global_reset(struct vfe_device *vfe)
 static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 {
 	struct v4l2_pix_format_mplane *pix =
-		&line->video_out.active_fmt.fmt.pix_mp;
+		&line->output[0].video_out.active_fmt.fmt.pix_mp;
 
 	wm = RDI_WM(wm); /* map to actual WM used (from wm=RDI index) */
 
