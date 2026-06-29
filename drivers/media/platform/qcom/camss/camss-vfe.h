@@ -22,6 +22,7 @@
 #define MSM_VFE_PAD_SINK 0
 #define MSM_VFE_PAD_SRC 1
 #define MSM_VFE_PADS_NUM 2
+#define MSM_VFE_NUM_OUTPUTS 1
 
 #define MSM_VFE_IMAGE_MASTERS_NUM 7
 #define MSM_VFE_COMPOSITE_IRQ_NUM 4
@@ -102,6 +103,8 @@ struct vfe_output {
 	int wait_reg_update;
 	struct completion sof;
 	struct completion reg_update;
+
+	struct vfe_line *line;
 };
 
 struct vfe_line {
@@ -112,7 +115,8 @@ struct vfe_line {
 	struct v4l2_rect compose;
 	struct v4l2_rect crop;
 	struct camss_video video_out;
-	struct vfe_output output;
+	struct vfe_output output[MSM_VFE_NUM_OUTPUTS];
+	u32 num_outputs;
 	const struct camss_format_info *formats;
 	unsigned int nformats;
 };

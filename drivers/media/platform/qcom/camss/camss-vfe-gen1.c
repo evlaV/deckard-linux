@@ -36,7 +36,7 @@ int vfe_gen1_halt(struct vfe_device *vfe)
 static int vfe_disable_output(struct vfe_line *line)
 {
 	struct vfe_device *vfe = to_vfe(line);
-	struct vfe_output *output = &line->output;
+	struct vfe_output *output = &line->output[0];
 	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
 	unsigned long flags;
 	unsigned long time;
@@ -162,13 +162,13 @@ static void vfe_output_frame_drop(struct vfe_device *vfe,
 		vfe->ops_gen1->wm_set_framedrop_pattern(vfe, output->wm_idx[i], drop_pattern);
 	}
 
-	vfe->res->hw_ops->reg_update(vfe, container_of(output, struct vfe_line, output)->id);
+	vfe->res->hw_ops->reg_update(vfe, output->line->id);
 }
 
 static int vfe_enable_output(struct vfe_line *line)
 {
 	struct vfe_device *vfe = to_vfe(line);
-	struct vfe_output *output = &line->output;
+	struct vfe_output *output = &line->output[0];
 	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
 	struct media_pad *sensor_pad;
 	unsigned long flags;
@@ -289,7 +289,7 @@ static int vfe_get_output(struct vfe_line *line)
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
-	output = &line->output;
+	output = &line->output[0];
 	if (output->state > VFE_OUTPUT_RESERVED) {
 		dev_err(vfe->camss->dev, "Output is running\n");
 		goto error;
@@ -526,7 +526,7 @@ static void vfe_isr_sof(struct vfe_device *vfe, enum vfe_line_id line_id)
 	unsigned long flags;
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
-	output = &vfe->line[line_id].output;
+	output = &vfe->line[line_id].output[0];
 	if (output->gen1.wait_sof) {
 		output->gen1.wait_sof = 0;
 		complete(&output->sof);
@@ -548,7 +548,7 @@ static void vfe_isr_reg_update(struct vfe_device *vfe, enum vfe_line_id line_id)
 	spin_lock_irqsave(&vfe->output_lock, flags);
 	vfe->res->hw_ops->reg_update_clear(vfe, line_id);
 
-	output = &line->output;
+	output = &line->output[0];
 
 	if (output->wait_reg_update) {
 		output->wait_reg_update = 0;
@@ -625,7 +625,7 @@ static void vfe_isr_wm_done(struct vfe_device *vfe, u8 wm)
 				    "Received wm done for unmapped index\n");
 		goto out_unlock;
 	}
-	output = &vfe->line[vfe->wm_output_map[wm]].output;
+	output = &vfe->line[vfe->wm_output_map[wm]].output[0];
 
 	if (output->gen1.active_buf == active_index && 0) {
 		dev_err_ratelimited(vfe->camss->dev,
@@ -693,7 +693,7 @@ static int vfe_queue_buffer(struct camss_video *vid, struct camss_buffer *buf)
 	struct vfe_output *output;
 	unsigned long flags;
 
-	output = &line->output;
+	output = &line->output[0];
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 

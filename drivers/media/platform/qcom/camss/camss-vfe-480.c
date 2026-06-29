@@ -164,8 +164,8 @@ static void vfe_enable_irq(struct vfe_device *vfe)
 
 	for (i = 0; i < MAX_VFE_OUTPUT_LINES; i++) {
 		/* Enable IRQ for newly added lines, but also keep already running lines's IRQ */
-		if (vfe->line[i].output.state == VFE_OUTPUT_RESERVED ||
-		    vfe->line[i].output.state == VFE_OUTPUT_ON) {
+		if (vfe->line[i].output[0].state == VFE_OUTPUT_RESERVED ||
+		    vfe->line[i].output[0].state == VFE_OUTPUT_ON) {
 			bus_irq_mask |= BUS_IRQ_MASK_0_RDI_RUP(vfe, i)
 					| BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i));
 			}
@@ -242,7 +242,7 @@ static void vfe_isr_reg_update(struct vfe_device *vfe, enum vfe_line_id line_id)
 	spin_lock_irqsave(&vfe->output_lock, flags);
 	vfe_reg_update_clear(vfe, line_id);
 
-	output = &vfe->line[line_id].output;
+	output = &vfe->line[line_id].output[0];
 
 	if (output->wait_reg_update) {
 		output->wait_reg_update = 0;
