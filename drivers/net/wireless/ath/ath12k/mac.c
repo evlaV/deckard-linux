@@ -258,6 +258,11 @@ static int ath12k_start_vdev_delay(struct ath12k *ar,
 static void ath12k_mac_stop(struct ath12k *ar);
 static int ath12k_mac_vdev_create(struct ath12k *ar, struct ath12k_link_vif *arvif);
 static int ath12k_mac_vdev_delete(struct ath12k *ar, struct ath12k_link_vif *arvif);
+static bool ath12k_mac_supports_tpc(struct ath12k *ar, struct ath12k_vif *ahvif,
+				    const struct cfg80211_chan_def *chandef);
+static void ath12k_mac_parse_tx_pwr_env(struct ath12k *ar,
+					struct ath12k_link_vif *arvif,
+					struct ath12k_reg_tpc_power_info *tpc);
 
 static const char *ath12k_mac_phymode_str(enum wmi_phy_mode mode)
 {
@@ -1046,6 +1051,51 @@ ath12k_mac_update_vdev_txpower(struct ath12k_link_vif *arvif, bool force)
 		   arvif->vdev_id, ret);
 
 	return ret;
+}
+
+static struct ieee80211_chanctx_conf *
+ath12k_mac_get_current_chanctx(struct ath12k_link_vif *arvif)
+{
+	struct ath12k *ar = arvif->ar;
+	struct ieee80211_bss_conf *link_conf;
+
+	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
+
+	link_conf = ath12k_mac_get_link_bss_conf(arvif);
+	if (!link_conf)
+		return NULL;
+
+	return wiphy_dereference(ath12k_ar_to_hw(ar)->wiphy,
+				 link_conf->chanctx_conf);
+}
+
+/* Recompute the 6 GHz TPC payload from live state into a fresh buffer and send
+ * it; nothing is cached on the arvif. @ctx is the caller's chanctx (vdev start,
+ * where link_conf->chanctx_conf may not be published yet) or NULL to use the
+ * current one. @force sends before arvif->is_started is set.
+ */
+static int ath12k_mac_recalc_tpc(struct ath12k_link_vif *arvif,
+				 struct ieee80211_chanctx_conf *ctx, bool force)
+{
+	struct ath12k *ar = arvif->ar;
+	struct ath12k_reg_tpc_power_info tpc = {};
+
+	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
+
+	if (!arvif->is_created || (!force && !arvif->is_started))
+		return 0;
+
+	if (!ctx)
+		ctx = ath12k_mac_get_current_chanctx(arvif);
+	if (!ctx || !ath12k_mac_supports_tpc(ar, arvif->ahvif, &ctx->def))
+		return 0;
+
+	if (arvif->ahvif->vdev_type == WMI_VDEV_TYPE_STA)
+		ath12k_mac_parse_tx_pwr_env(ar, arvif, &tpc);
+
+	ath12k_mac_fill_reg_tpc_info(ar, arvif, ctx, &tpc);
+
+	return ath12k_wmi_send_vdev_set_tpc_power(ar, arvif->vdev_id, &tpc);
 }
 
 static int ath12k_recalc_rtscts_prot(struct ath12k_link_vif *arvif)
@@ -4066,6 +4116,7 @@ static void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
 	struct ath12k_sta *ahsta;
 	struct ath12k *ar;
 	u8 link_id;
+	int ret;
 
 	lockdep_assert_wiphy(hw->wiphy);
 
@@ -4101,6 +4152,20 @@ static void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
 			info = ath12k_mac_get_link_bss_conf(arvif);
 			ath12k_bss_assoc(ar, arvif, info);
 
+			/* Sent at association, which can precede the
+			 * asynchronous AP-power-type regdomain swap done at
+			 * STA authorization (ath12k_reg_handle_chan_list()).
+			 * The TPC then reflects pre-swap channel limits and is
+			 * not re-sent afterwards. The old single-shot 
+			 * implementation has the same problem, but even worse
+			 * as it does not handle CSA.
+			 */
+			ret = ath12k_mac_recalc_tpc(arvif, NULL, false);
+			if (ret)
+				ath12k_warn(ar->ab,
+					    "failed to update TPC power after assoc for vdev %d: %d\n",
+					    arvif->vdev_id, ret);
+
 			/* exclude assoc link as it is done above */
 			links &= ~BIT(ahsta->assoc_link_id);
 		}
@@ -4118,6 +4183,11 @@ static void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
 					continue;
 
 				ath12k_bss_assoc(ar, arvif, info);
+				ret = ath12k_mac_recalc_tpc(arvif, NULL, false);
+				if (ret)
+					ath12k_warn(ar->ab,
+						    "failed to update TPC power after assoc for vdev %d: %d\n",
+						    arvif->vdev_id, ret);
 			} else {
 				ath12k_bss_disassoc(ar, arvif);
 			}
@@ -4398,6 +4468,17 @@ static void ath12k_mac_bss_info_changed(struct ath12k *ar,
 		ret = ath12k_mac_update_vdev_txpower(arvif, false);
 		if (ret)
 			ath12k_warn(ar->ab, "failed to update txpower for vdev %d: %d\n",
+				    arvif->vdev_id, ret);
+	}
+
+	if (changed & BSS_CHANGED_TPE) {
+		ath12k_dbg(ar->ab, ATH12K_DBG_MAC,
+			   "mac vdev_id %i tpe changed\n", arvif->vdev_id);
+
+		ret = ath12k_mac_recalc_tpc(arvif, NULL, false);
+		if (ret)
+			ath12k_warn(ar->ab,
+				    "failed to update TPC power on TPE change for vdev %d: %d\n",
 				    arvif->vdev_id, ret);
 	}
 
@@ -10668,14 +10749,10 @@ ath12k_mac_vdev_start_restart(struct ath12k_link_vif *arvif,
 		ath12k_warn(ab, "failed to set txpower for vdev %d: %d\n",
 			    arvif->vdev_id, ret);
 
-	/* TODO: For now we only set TPC power here. However when
-	 * channel changes, say CSA, it should be updated again.
-	 */
-	if (ath12k_mac_supports_tpc(ar, ahvif, chandef)) {
-		ath12k_mac_fill_reg_tpc_info(ar, arvif, ctx);
-		ath12k_wmi_send_vdev_set_tpc_power(ar, arvif->vdev_id,
-						   &arvif->reg_tpc_info);
-	}
+	ret = ath12k_mac_recalc_tpc(arvif, ctx, true);
+	if (ret)
+		ath12k_warn(ab, "failed to set TPC power for vdev %d: %d\n",
+			    arvif->vdev_id, ret);
 
 	ar->num_started_vdevs++;
 	ath12k_dbg(ab, ATH12K_DBG_MAC,  "vdev %pM started, vdev_id %d\n",
@@ -11228,40 +11305,89 @@ static void ath12k_mac_get_eirp_power(struct ath12k *ar,
 	*tx_power = (*temp_chan)->max_reg_power;
 }
 
+static const char *ath12k_mac_power_type_str(enum wmi_reg_6g_ap_type type)
+{
+	switch (type) {
+	case WMI_REG_INDOOR_AP:
+		return "LPI";
+	case WMI_REG_STD_POWER_AP:
+		return "SP";
+	case WMI_REG_VLP_AP:
+		return "VLP";
+	case WMI_REG_MAX_AP_TYPE:
+	case WMI_REG_CURRENT_MAX_AP_TYPE:
+		return "undef";
+	}
+
+	return "undef";
+}
+
+static const char *ath12k_mac_vdev_type_str(enum wmi_vdev_type type)
+{
+	switch (type) {
+	case WMI_VDEV_TYPE_UNSPEC:
+		return "UNSPEC";
+	case WMI_VDEV_TYPE_AP:
+		return "AP";
+	case WMI_VDEV_TYPE_STA:
+		return "STA";
+	case WMI_VDEV_TYPE_IBSS:
+		return "IBSS";
+	case WMI_VDEV_TYPE_MONITOR:
+		return "MONITOR";
+	}
+
+	return "undef";
+}
+
 void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 				  struct ath12k_link_vif *arvif,
-				  struct ieee80211_chanctx_conf *ctx)
+				  struct ieee80211_chanctx_conf *ctx,
+				  struct ath12k_reg_tpc_power_info *tpc)
 {
 	struct ath12k_base *ab = ar->ab;
-	struct ath12k_reg_tpc_power_info *reg_tpc_info = &arvif->reg_tpc_info;
+	struct ath12k_reg_tpc_power_info *reg_tpc_info = tpc;
 	struct ieee80211_bss_conf *bss_conf = ath12k_mac_get_link_bss_conf(arvif);
 	struct ieee80211_channel *chan, *temp_chan;
 	u8 pwr_lvl_idx, num_pwr_levels, pwr_reduction;
 	bool is_psd_power = false, is_tpe_present = false;
-	s8 max_tx_power[ATH12K_NUM_PWR_LEVELS], psd_power, tx_power;
+	s8 max_tx_power[ATH12K_NUM_PWR_LEVELS], psd_power = 0, tx_power;
 	s8 eirp_power = 0;
 	struct ath12k_vif *ahvif = arvif->ahvif;
 	u16 start_freq, center_freq;
 	u8 reg_6ghz_power_mode;
+	const char *branch;
 
 	chan = ctx->def.chan;
 	start_freq = ath12k_mac_get_6ghz_start_frequency(&ctx->def);
 	pwr_reduction = bss_conf->pwr_reduction;
 
-	if (arvif->reg_tpc_info.num_pwr_levels) {
+	/* non-zero num_pwr_levels means parse found an AP TPE in this buffer */
+	if (tpc->num_pwr_levels) {
 		is_tpe_present = true;
-		num_pwr_levels = arvif->reg_tpc_info.num_pwr_levels;
+		num_pwr_levels = tpc->num_pwr_levels;
 	} else {
 		num_pwr_levels = ath12k_mac_get_num_pwr_levels(&ctx->def);
 	}
 
+	ath12k_dbg(ab, ATH12K_DBG_MAC,
+		   "tpc fill vdev %d type %s freq %u bw %d chan_psd %d tpe_present %d ap_psd %d num_pwr_levels %d start_freq %u pwr_reduction %d fw_max %d idle_ps %d\n",
+		   arvif->vdev_id, ath12k_mac_vdev_type_str(ahvif->vdev_type),
+		   chan->center_freq, ctx->def.width,
+		   !!(chan->flags & IEEE80211_CHAN_PSD), is_tpe_present,
+		   reg_tpc_info->is_psd_power, num_pwr_levels, start_freq,
+		   pwr_reduction, arvif->max_allowed_tx_power_dbm,
+		   ab->hw_params->idle_ps);
+
 	for (pwr_lvl_idx = 0; pwr_lvl_idx < num_pwr_levels; pwr_lvl_idx++) {
+		branch = "none";
 		/* STA received TPE IE*/
 		if (is_tpe_present) {
 			/* local power is PSD power*/
 			if (chan->flags & IEEE80211_CHAN_PSD) {
 				/* Connecting AP is psd power */
 				if (reg_tpc_info->is_psd_power) {
+					branch = "tpe/localPSD/apPSD";
 					is_psd_power = true;
 					ath12k_mac_get_psd_channel(ar, 20,
 								   &start_freq,
@@ -11277,6 +11403,7 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 						      reg_tpc_info->tpe[pwr_lvl_idx]);
 				/* Connecting AP is not psd power */
 				} else {
+					branch = "tpe/localPSD/apEIRP";
 					ath12k_mac_get_eirp_power(ar,
 								  &start_freq,
 								  &center_freq,
@@ -11300,6 +11427,7 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 			} else {
 				/* Connecting AP is psd power */
 				if (reg_tpc_info->is_psd_power) {
+					branch = "tpe/localEIRP/apPSD";
 					is_psd_power = true;
 					ath12k_mac_get_psd_channel(ar, 20,
 								   &start_freq,
@@ -11312,6 +11440,7 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 						reg_tpc_info->tpe[pwr_lvl_idx];
 				/* Connecting AP is not psd power */
 				} else {
+					branch = "tpe/localEIRP/apEIRP";
 					ath12k_mac_get_eirp_power(ar,
 								  &start_freq,
 								  &center_freq,
@@ -11329,6 +11458,7 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 		} else {
 			/* local power is PSD power*/
 			if (chan->flags & IEEE80211_CHAN_PSD) {
+				branch = "noTPE/localPSD";
 				is_psd_power = true;
 				ath12k_mac_get_psd_channel(ar, 20,
 							   &start_freq,
@@ -11340,6 +11470,7 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 				eirp_power = tx_power;
 				max_tx_power[pwr_lvl_idx] = psd_power;
 			} else {
+				branch = "noTPE/localEIRP";
 				ath12k_mac_get_eirp_power(ar,
 							  &start_freq,
 							  &center_freq,
@@ -11371,10 +11502,15 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 			 * firmware through TPC command without min comparison with
 			 * vdev start response's max_allowed_tx_power.
 			 */
-			if (arvif->max_allowed_tx_power_dbm > 0 && ab->hw_params->idle_ps)
+			if (arvif->max_allowed_tx_power_dbm > 0 && ab->hw_params->idle_ps) {
+				ath12k_dbg(ab, ATH12K_DBG_MAC,
+					   "tpc lvl %d clamp eirp %d to fw_max %d\n",
+					   pwr_lvl_idx, eirp_power,
+					   arvif->max_allowed_tx_power_dbm);
 				eirp_power = min_t(s8,
 						   eirp_power,
 						   arvif->max_allowed_tx_power_dbm);
+			}
 		} else {
 			/* If AP local power constraint is present */
 			if (pwr_reduction)
@@ -11384,15 +11520,27 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 			 * the min of firmware updated ap tx power
 			 * and max power derived from above mentioned parameters.
 			 */
-			if (arvif->max_allowed_tx_power_dbm > 0 && ab->hw_params->idle_ps)
+			if (arvif->max_allowed_tx_power_dbm > 0 && ab->hw_params->idle_ps) {
+				ath12k_dbg(ab, ATH12K_DBG_MAC,
+					   "tpc lvl %d clamp max_tx_power %d to fw_max %d\n",
+					   pwr_lvl_idx, max_tx_power[pwr_lvl_idx],
+					   arvif->max_allowed_tx_power_dbm);
 				max_tx_power[pwr_lvl_idx] =
 					min_t(s8,
 					      max_tx_power[pwr_lvl_idx],
 					      arvif->max_allowed_tx_power_dbm);
+			}
 		}
 		reg_tpc_info->chan_power_info[pwr_lvl_idx].chan_cfreq = center_freq;
 		reg_tpc_info->chan_power_info[pwr_lvl_idx].tx_power =
 			max_tx_power[pwr_lvl_idx];
+
+		ath12k_dbg(ab, ATH12K_DBG_MAC,
+			   "tpc lvl %d branch %s cfreq %u psd_power %d eirp_power %d tpe %d -> tx_power %d\n",
+			   pwr_lvl_idx, branch, center_freq,
+			   psd_power, eirp_power,
+			   is_tpe_present ? reg_tpc_info->tpe[pwr_lvl_idx] : 0,
+			   max_tx_power[pwr_lvl_idx]);
 	}
 
 	reg_tpc_info->num_pwr_levels = num_pwr_levels;
@@ -11406,21 +11554,33 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 
 	reg_tpc_info->ap_power_type =
 		ath12k_reg_ap_pwr_convert(reg_6ghz_power_mode);
+
+	ath12k_dbg(ab, ATH12K_DBG_MAC,
+		   "tpc fill done vdev %d num_pwr_levels %d is_psd_power %d eirp_power %d power_mode %d ap_power_type %d (%s)\n",
+		   arvif->vdev_id, reg_tpc_info->num_pwr_levels,
+		   reg_tpc_info->is_psd_power, reg_tpc_info->eirp_power,
+		   reg_6ghz_power_mode, reg_tpc_info->ap_power_type,
+		   ath12k_mac_power_type_str(reg_tpc_info->ap_power_type));
 }
 
 static void ath12k_mac_parse_tx_pwr_env(struct ath12k *ar,
-					struct ath12k_link_vif *arvif)
+					struct ath12k_link_vif *arvif,
+					struct ath12k_reg_tpc_power_info *tpc)
 {
 	struct ieee80211_bss_conf *bss_conf = ath12k_mac_get_link_bss_conf(arvif);
-	struct ath12k_reg_tpc_power_info *tpc_info = &arvif->reg_tpc_info;
+	struct ath12k_reg_tpc_power_info *tpc_info = tpc;
 	struct ieee80211_parsed_tpe_eirp *local_non_psd, *reg_non_psd;
 	struct ieee80211_parsed_tpe_psd *local_psd, *reg_psd;
-	struct ieee80211_parsed_tpe *tpe = &bss_conf->tpe;
+	struct ieee80211_parsed_tpe *tpe;
 	enum wmi_reg_6g_client_type client_type;
 	struct ath12k_reg_info *reg_info;
 	struct ath12k_base *ab = ar->ab;
 	bool psd_valid, non_psd_valid;
 	int i;
+
+	if (!bss_conf)
+		return;
+	tpe = &bss_conf->tpe;
 
 	reg_info = ab->reg_info[ar->pdev_idx];
 	client_type = reg_info->client_type;
@@ -11434,21 +11594,24 @@ static void ath12k_mac_parse_tx_pwr_env(struct ath12k *ar,
 	non_psd_valid = local_non_psd->valid | reg_non_psd->valid;
 
 	if (!psd_valid && !non_psd_valid) {
-		ath12k_warn(ab,
-			    "no transmit power envelope match client power type %d\n",
-			    client_type);
+		ath12k_dbg(ab, ATH12K_DBG_MAC,
+			   "no transmit power envelope match client power type %d\n",
+			   client_type);
 		return;
 	}
 
+	/* count only valid envelopes; missing entries are the min() identity */
 	if (psd_valid) {
 		tpc_info->is_psd_power = true;
-
-		tpc_info->num_pwr_levels = max(local_psd->count,
-					       reg_psd->count);
 		tpc_info->num_pwr_levels =
-				min3(tpc_info->num_pwr_levels,
-				     IEEE80211_TPE_PSD_ENTRIES_320MHZ,
-				     ATH12K_NUM_PWR_LEVELS);
+			max_t(u8, local_psd->valid ? local_psd->count : 0,
+			      reg_psd->valid ? reg_psd->count : 0);
+		tpc_info->num_pwr_levels = min3(tpc_info->num_pwr_levels,
+						IEEE80211_TPE_PSD_ENTRIES_320MHZ,
+						ATH12K_NUM_PWR_LEVELS);
+
+		if (!tpc_info->num_pwr_levels)
+			return;
 
 		for (i = 0; i < tpc_info->num_pwr_levels; i++) {
 			tpc_info->tpe[i] = min(local_psd->power[i],
@@ -11460,13 +11623,15 @@ static void ath12k_mac_parse_tx_pwr_env(struct ath12k *ar,
 	} else {
 		tpc_info->is_psd_power = false;
 		tpc_info->eirp_power = 0;
-
-		tpc_info->num_pwr_levels = max(local_non_psd->count,
-					       reg_non_psd->count);
 		tpc_info->num_pwr_levels =
-				min3(tpc_info->num_pwr_levels,
-				     IEEE80211_TPE_EIRP_ENTRIES_320MHZ,
-				     ATH12K_NUM_PWR_LEVELS);
+			max_t(u8, local_non_psd->valid ? local_non_psd->count : 0,
+			      reg_non_psd->valid ? reg_non_psd->count : 0);
+		tpc_info->num_pwr_levels = min3(tpc_info->num_pwr_levels,
+						IEEE80211_TPE_EIRP_ENTRIES_320MHZ,
+						ATH12K_NUM_PWR_LEVELS);
+
+		if (!tpc_info->num_pwr_levels)
+			return;
 
 		for (i = 0; i < tpc_info->num_pwr_levels; i++) {
 			tpc_info->tpe[i] = min(local_non_psd->power[i],
@@ -11515,11 +11680,6 @@ ath12k_mac_op_assign_vif_chanctx(struct ieee80211_hw *hw,
 	ath12k_dbg(ab, ATH12K_DBG_MAC,
 		   "mac chanctx assign ptr %p vdev_id %i\n",
 		   ctx, arvif->vdev_id);
-
-	if (ath12k_wmi_supports_6ghz_cc_ext(ar) &&
-	    ctx->def.chan->band == NL80211_BAND_6GHZ &&
-	    ahvif->vdev_type == WMI_VDEV_TYPE_STA)
-		ath12k_mac_parse_tx_pwr_env(ar, arvif);
 
 	arvif->punct_bitmap = ctx->def.punctured;
 
