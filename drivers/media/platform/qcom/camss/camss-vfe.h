@@ -105,6 +105,7 @@ struct vfe_output {
 	struct completion reg_update;
 
 	struct vfe_line *line;
+	struct camss_video video_out;
 };
 
 struct vfe_line {
@@ -114,7 +115,6 @@ struct vfe_line {
 	struct v4l2_mbus_framefmt fmt[MSM_VFE_PADS_NUM];
 	struct v4l2_rect compose;
 	struct v4l2_rect crop;
-	struct camss_video video_out;
 	struct vfe_output output[MSM_VFE_NUM_OUTPUTS];
 	u32 num_outputs;
 	const struct camss_format_info *formats;

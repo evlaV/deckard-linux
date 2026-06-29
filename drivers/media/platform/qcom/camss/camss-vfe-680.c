@@ -155,7 +155,7 @@ static void vfe_wm_update(struct vfe_device *vfe, u8 rdi, u32 addr,
 static void vfe_wm_start(struct vfe_device *vfe, u8 rdi, struct vfe_line *line)
 {
 	struct v4l2_pix_format_mplane *pix =
-		&line->video_out.active_fmt.fmt.pix_mp;
+		&line->output[0].video_out.active_fmt.fmt.pix_mp;
 	u32 stride = pix->plane_fmt[0].bytesperline;
 	u32 cfg;
 	u8 wm;

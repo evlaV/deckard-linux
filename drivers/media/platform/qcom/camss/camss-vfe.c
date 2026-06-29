@@ -660,13 +660,11 @@ int vfe_enable_output_v2(struct vfe_line *line)
 int vfe_queue_buffer_v2(struct camss_video *vid,
 			struct camss_buffer *buf)
 {
-	struct vfe_line *line = container_of(vid, struct vfe_line, video_out);
+	struct vfe_output *output = container_of(vid, struct vfe_output, video_out);
+	struct vfe_line *line = output->line;
 	struct vfe_device *vfe = to_vfe(line);
 	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
-	struct vfe_output *output;
 	unsigned long flags;
-
-	output = &line->output[0];
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
@@ -1263,12 +1261,10 @@ exit:
 int vfe_flush_buffers(struct camss_video *vid,
 		      enum vb2_buffer_state state)
 {
-	struct vfe_line *line = container_of(vid, struct vfe_line, video_out);
+	struct vfe_output *output = container_of(vid, struct vfe_output, video_out);
+	struct vfe_line *line = output->line;
 	struct vfe_device *vfe = to_vfe(line);
-	struct vfe_output *output;
 	unsigned long flags;
-
-	output = &line->output[0];
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
@@ -1995,8 +1991,8 @@ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
 	for (i = VFE_LINE_RDI0; i < vfe->res->line_num; i++) {
 		struct vfe_line *l = &vfe->line[i];
 
-		l->video_out.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-		l->video_out.camss = camss;
+		l->output[0].video_out.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+		l->output[0].video_out.camss = camss;
 		l->id = i;
 
 		l->num_outputs = 1;
@@ -2155,7 +2151,7 @@ int msm_vfe_register_entities(struct vfe_device *vfe,
 
 		sd = &vfe->line[i].subdev;
 		pads = vfe->line[i].pads;
-		video_out = &vfe->line[i].video_out;
+		video_out = &vfe->line[i].output[0].video_out;
 
 		v4l2_subdev_init(sd, &vfe_v4l2_ops);
 		sd->internal_ops = &vfe_v4l2_internal_ops;
@@ -2240,7 +2236,7 @@ error_reg_subdev:
 error_init:
 	for (i--; i >= 0; i--) {
 		sd = &vfe->line[i].subdev;
-		video_out = &vfe->line[i].video_out;
+		video_out = &vfe->line[i].output[0].video_out;
 
 		msm_video_unregister(video_out);
 		v4l2_device_unregister_subdev(sd);
@@ -2263,7 +2259,7 @@ void msm_vfe_unregister_entities(struct vfe_device *vfe)
 
 	for (i = 0; i < vfe->res->line_num; i++) {
 		struct v4l2_subdev *sd = &vfe->line[i].subdev;
-		struct camss_video *video_out = &vfe->line[i].video_out;
+		struct camss_video *video_out = &vfe->line[i].output[0].video_out;
 
 		msm_video_unregister(video_out);
 		v4l2_device_unregister_subdev(sd);

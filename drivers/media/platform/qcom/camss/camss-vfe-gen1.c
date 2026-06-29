@@ -255,7 +255,7 @@ static int vfe_enable_output(struct vfe_line *line)
 			vfe->ops_gen1->wm_set_ub_cfg(vfe, output->wm_idx[i],
 						     (ub_size + 1) * output->wm_idx[i], ub_size);
 			vfe->ops_gen1->wm_line_based(vfe, output->wm_idx[i],
-						     &line->video_out.active_fmt.fmt.pix_mp, i, 1);
+						     &line->output[0].video_out.active_fmt.fmt.pix_mp, i, 1);
 			vfe->ops_gen1->wm_enable(vfe, output->wm_idx[i], 1);
 			vfe->ops_gen1->bus_reload_wm(vfe, output->wm_idx[i]);
 		}
@@ -282,7 +282,7 @@ static int vfe_get_output(struct vfe_line *line)
 {
 	struct vfe_device *vfe = to_vfe(line);
 	struct vfe_output *output;
-	struct v4l2_format *f = &line->video_out.active_fmt;
+	struct v4l2_format *f = &line->output[0].video_out.active_fmt;
 	unsigned long flags;
 	int i;
 	int wm_idx;
@@ -688,12 +688,10 @@ out_unlock:
  */
 static int vfe_queue_buffer(struct camss_video *vid, struct camss_buffer *buf)
 {
-	struct vfe_line *line = container_of(vid, struct vfe_line, video_out);
+	struct vfe_output *output = container_of(vid, struct vfe_output, video_out);
+	struct vfe_line *line = output->line;
 	struct vfe_device *vfe = to_vfe(line);
-	struct vfe_output *output;
 	unsigned long flags;
-
-	output = &line->output[0];
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
