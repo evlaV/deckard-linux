@@ -4214,30 +4214,6 @@ static void ath12k_mac_bss_info_changed(struct ath12k *ar,
 
 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
 
-	if (changed & BSS_CHANGED_TPE) {
-		bool tpc_supported = false;
-		bool have_chanctx;
-		int width = -1;
-		int freq = 0;
-
-		have_chanctx = !ath12k_mac_vif_link_chan(vif, arvif->link_id, &def);
-		if (have_chanctx) {
-			tpc_supported = ath12k_mac_supports_tpc(ar, ahvif, &def);
-			width = def.width;
-			if (def.chan)
-				freq = def.chan->center_freq;
-		}
-
-		ath12k_warn(ar->ab,
-			    "TPC probe: BSS_CHANGED_TPE vdev %d link %u tpc_supported %d created %d started %d assoc %d freq %d width %d pwr_type %u pwr_reduction %u cached_levels %u cached_psd %d cached_eirp %d\n",
-			    arvif->vdev_id, arvif->link_id, tpc_supported,
-			    arvif->is_created, arvif->is_started, vif->cfg.assoc,
-			    freq, width, info->power_type, info->pwr_reduction,
-			    arvif->reg_tpc_info.num_pwr_levels,
-			    arvif->reg_tpc_info.is_psd_power,
-			    arvif->reg_tpc_info.eirp_power);
-	}
-
 	if (changed & BSS_CHANGED_BEACON_INT) {
 		arvif->beacon_interval = info->beacon_int;
 
@@ -10696,14 +10672,6 @@ ath12k_mac_vdev_start_restart(struct ath12k_link_vif *arvif,
 	 * channel changes, say CSA, it should be updated again.
 	 */
 	if (ath12k_mac_supports_tpc(ar, ahvif, chandef)) {
-		if (restart)
-			ath12k_warn(ab,
-				    "TPC probe: 6 GHz vdev restart will resend cached TPC vdev %d link %u cached_levels %u cached_psd %d cached_eirp %d max_dbm %d\n",
-				    arvif->vdev_id, arvif->link_id,
-				    arvif->reg_tpc_info.num_pwr_levels,
-				    arvif->reg_tpc_info.is_psd_power,
-				    arvif->reg_tpc_info.eirp_power,
-				    arvif->max_allowed_tx_power_dbm);
 		ath12k_mac_fill_reg_tpc_info(ar, arvif, ctx);
 		ath12k_wmi_send_vdev_set_tpc_power(ar, arvif->vdev_id,
 						   &arvif->reg_tpc_info);
