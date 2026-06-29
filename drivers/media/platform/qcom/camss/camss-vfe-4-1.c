@@ -475,7 +475,7 @@ static void vfe_bus_disconnect_wm_from_rdi(struct vfe_device *vfe, u8 wm,
 static void vfe_set_xbar_cfg(struct vfe_device *vfe, struct vfe_output *output,
 			     u8 enable)
 {
-	struct vfe_line *line = container_of(output, struct vfe_line, output);
+	struct vfe_line *line = output->line;
 	u32 p = line->video_out.active_fmt.fmt.pix_mp.pixelformat;
 	u32 reg;
 	unsigned int i;
@@ -555,7 +555,7 @@ static void vfe_enable_irq_wm_line(struct vfe_device *vfe, u8 wm,
 static void vfe_enable_irq_pix_line(struct vfe_device *vfe, u8 comp,
 				    enum vfe_line_id line_id, u8 enable)
 {
-	struct vfe_output *output = &vfe->line[line_id].output;
+	struct vfe_output *output = &vfe->line[line_id].output[0];
 	unsigned int i;
 	u32 irq_en0;
 	u32 irq_en1;

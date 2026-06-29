@@ -551,7 +551,7 @@ void vfe_buf_done(struct vfe_device *vfe, int wm)
 				    "Received wm done for unmapped index\n");
 		goto out_unlock;
 	}
-	output = &vfe->line[vfe->wm_output_map[wm]].output;
+	output = &vfe->line[vfe->wm_output_map[wm]].output[0];
 
 	ready_buf = output->buf[0];
 	if (!ready_buf) {
@@ -592,7 +592,7 @@ out_unlock:
 int vfe_enable_output_v2(struct vfe_line *line)
 {
 	struct vfe_device *vfe = to_vfe(line);
-	struct vfe_output *output = &line->output;
+	struct vfe_output *output = &line->output[0];
 	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
 	struct media_pad *sensor_pad;
 	unsigned long flags;
@@ -666,7 +666,7 @@ int vfe_queue_buffer_v2(struct camss_video *vid,
 	struct vfe_output *output;
 	unsigned long flags;
 
-	output = &line->output;
+	output = &line->output[0];
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
@@ -745,7 +745,7 @@ int vfe_get_output_v2(struct vfe_line *line)
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
-	output = &line->output;
+	output = &line->output[0];
 	if (output->state > VFE_OUTPUT_RESERVED) {
 		dev_err(vfe->camss->dev, "Output is running\n");
 		goto error;
@@ -796,7 +796,7 @@ static void vfe_init_outputs(struct vfe_device *vfe)
 	int i;
 
 	for (i = 0; i < vfe->res->line_num; i++) {
-		struct vfe_output *output = &vfe->line[i].output;
+		struct vfe_output *output = &vfe->line[i].output[0];
 
 		output->state = VFE_OUTPUT_OFF;
 		output->buf[0] = NULL;
@@ -880,7 +880,7 @@ static void vfe_buf_flush_pending(struct vfe_output *output,
 int vfe_put_output(struct vfe_line *line)
 {
 	struct vfe_device *vfe = to_vfe(line);
-	struct vfe_output *output = &line->output;
+	struct vfe_output *output = &line->output[0];
 	unsigned long flags;
 	unsigned int i;
 
@@ -898,7 +898,7 @@ int vfe_put_output(struct vfe_line *line)
 static void vfe_disable_output(struct vfe_line *line)
 {
 	struct vfe_device *vfe = to_vfe(line);
-	struct vfe_output *output = &line->output;
+	struct vfe_output *output = &line->output[0];
 	unsigned long flags;
 	unsigned int i;
 
@@ -1268,7 +1268,7 @@ int vfe_flush_buffers(struct camss_video *vid,
 	struct vfe_output *output;
 	unsigned long flags;
 
-	output = &line->output;
+	output = &line->output[0];
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
@@ -1330,7 +1330,7 @@ static int vfe_set_stream(struct v4l2_subdev *sd, int enable)
 	int ret;
 
 	if (enable) {
-		line->output.state = VFE_OUTPUT_RESERVED;
+		line->output[0].state = VFE_OUTPUT_RESERVED;
 		ret = vfe->res->hw_ops->vfe_enable(line);
 		if (ret < 0)
 			dev_err(vfe->camss->dev,
@@ -1998,8 +1998,12 @@ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
 		l->video_out.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 		l->video_out.camss = camss;
 		l->id = i;
-		init_completion(&l->output.sof);
-		init_completion(&l->output.reg_update);
+
+		l->num_outputs = 1;
+		l->output[0].line = l;
+
+		init_completion(&l->output[0].sof);
+		init_completion(&l->output[0].reg_update);
 
 		if (i == VFE_LINE_PIX) {
 			l->nformats = res->vfe.formats_pix->nformats;
