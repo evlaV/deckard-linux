@@ -206,7 +206,8 @@ void ath12k_mac_update_freq_range(struct ath12k *ar,
 				  u32 freq_low, u32 freq_high);
 void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 				  struct ath12k_link_vif *arvif,
-				  struct ieee80211_chanctx_conf *ctx);
+				  struct ieee80211_chanctx_conf *ctx,
+				  struct ath12k_reg_tpc_power_info *tpc);
 int ath12k_mac_op_start(struct ieee80211_hw *hw);
 void ath12k_mac_op_stop(struct ieee80211_hw *hw, bool suspend);
 void
