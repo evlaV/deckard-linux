@@ -3172,7 +3172,7 @@ struct ath12k_wmi_rx_reorder_queue_remove_arg {
 #define REG_RULE_MAX_BW				0x0000ffff
 #define REG_RULE_REG_PWR			0x00ff0000
 #define REG_RULE_ANT_GAIN			0xff000000
-#define REG_RULE_PSD_INFO			BIT(2)
+#define REG_RULE_PSD_INFO			BIT(0)
 #define REG_RULE_PSD_EIRP			0xffff0000
 
 #define WMI_VDEV_PARAM_TXBF_SU_TX_BFEE BIT(0)
