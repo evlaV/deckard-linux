@@ -11340,12 +11340,42 @@ static const char *ath12k_mac_vdev_type_str(enum wmi_vdev_type type)
 	return "undef";
 }
 
+static struct ath12k_reg_rule *
+ath12k_reg_ap_mode_rule(struct ath12k_reg_info *reg_info,
+			enum wmi_reg_6g_ap_type ap_type, u16 freq)
+{
+	struct ath12k_reg_rule *rr;
+	u32 n, i;
+
+	if (!reg_info || ap_type >= WMI_REG_CURRENT_MAX_AP_TYPE)
+		return NULL;
+
+	rr = reg_info->reg_rules_6g_ap_ptr[ap_type];
+	n = reg_info->num_6g_reg_rules_ap[ap_type];
+
+	for (i = 0; rr && i < n; i++)
+		if (freq >= rr[i].start_freq && freq < rr[i].end_freq)
+			return &rr[i];
+
+	return NULL;
+}
+
+static s8 ath12k_reg_ap_mode_psd(struct ath12k_reg_info *reg_info,
+				 enum wmi_reg_6g_ap_type ap_type, u16 freq)
+{
+	struct ath12k_reg_rule *rr = ath12k_reg_ap_mode_rule(reg_info, ap_type, freq);
+
+	return (rr && rr->psd_flag) ? (s8)rr->psd_eirp : S8_MIN;
+}
+
 void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 				  struct ath12k_link_vif *arvif,
 				  struct ieee80211_chanctx_conf *ctx,
 				  struct ath12k_reg_tpc_power_info *tpc)
 {
 	struct ath12k_base *ab = ar->ab;
+	struct ath12k_reg_info *reg_info = ab->reg_info[ar->pdev_idx];
+	struct ath12k_reg_rule *rule;
 	struct ath12k_reg_tpc_power_info *reg_tpc_info = tpc;
 	struct ieee80211_bss_conf *bss_conf = ath12k_mac_get_link_bss_conf(arvif);
 	struct ieee80211_channel *chan, *temp_chan;
@@ -11378,6 +11408,18 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 		   reg_tpc_info->is_psd_power, num_pwr_levels, start_freq,
 		   pwr_reduction, arvif->max_allowed_tx_power_dbm,
 		   ab->hw_params->idle_ps);
+
+	/* Resolve the AP's 6 GHz power mode before the per-level loop so each
+	 * level's PSD can be taken from that mode's reg rule. The regdomain is
+	 * built from the LPI rules, so otherwise temp_chan->psd feeds
+	 * the LPI PSD into (potentially) a VLP/SP TPC.
+	 */
+	if (ahvif->vdev_type == WMI_VDEV_TYPE_STA)
+		reg_6ghz_power_mode = bss_conf->power_type;
+	else
+		/* For now, VLP is the only supported AP power mode */
+		reg_6ghz_power_mode = IEEE80211_REG_VLP_AP;
+	reg_tpc_info->ap_power_type = ath12k_reg_ap_pwr_convert(reg_6ghz_power_mode);
 
 	for (pwr_lvl_idx = 0; pwr_lvl_idx < num_pwr_levels; pwr_lvl_idx++) {
 		branch = "none";
@@ -11468,6 +11510,30 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 							   &tx_power);
 				psd_power = temp_chan->psd;
 				eirp_power = tx_power;
+				/* AP regd is built from LPI rules so
+				 * override PSD/EIRP from the AP's own power-mode
+				 * rule. A STA regd already uses the client rules,
+				 * so temp_chan is correct there.
+				 */
+				if (ahvif->vdev_type == WMI_VDEV_TYPE_AP)
+					rule = ath12k_reg_ap_mode_rule(reg_info,
+								       reg_tpc_info->ap_power_type,
+								       center_freq);
+				else
+					rule = NULL;
+				if (rule) {
+					if (rule->psd_flag)
+						psd_power = (s8)rule->psd_eirp;
+					eirp_power = min_t(s8, eirp_power, (s8)rule->reg_power);
+				}
+				/* An AP has no client rules to fall back on, a
+				 * missing or non-PSD mode rule leaves psd_power at
+				 * the LPI-derived regdomain value.
+				 */
+				if (ahvif->vdev_type == WMI_VDEV_TYPE_AP &&
+				    (!rule || !rule->psd_flag))
+					ath12k_warn(ab, "no PSD AP rule for cfreq %u mode %d\n",
+						    center_freq, reg_tpc_info->ap_power_type);
 				max_tx_power[pwr_lvl_idx] = psd_power;
 			} else {
 				branch = "noTPE/localEIRP";
@@ -11535,6 +11601,17 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 		reg_tpc_info->chan_power_info[pwr_lvl_idx].tx_power =
 			max_tx_power[pwr_lvl_idx];
 
+		if (is_psd_power) {
+			s8 vlp = ath12k_reg_ap_mode_psd(reg_info, WMI_REG_VLP_AP,
+							center_freq);
+			s8 lpi = ath12k_reg_ap_mode_psd(reg_info, WMI_REG_INDOOR_AP,
+							center_freq);
+
+			ath12k_dbg(ab, ATH12K_DBG_MAC,
+				   "tpc lvl %d cfreq %u: sending psd %d | fw rule psd VLP=%d LPI=%d\n",
+				   pwr_lvl_idx, center_freq, psd_power, vlp, lpi);
+		}
+
 		ath12k_dbg(ab, ATH12K_DBG_MAC,
 			   "tpc lvl %d branch %s cfreq %u psd_power %d eirp_power %d tpe %d -> tx_power %d\n",
 			   pwr_lvl_idx, branch, center_freq,
@@ -11546,14 +11623,6 @@ void ath12k_mac_fill_reg_tpc_info(struct ath12k *ar,
 	reg_tpc_info->num_pwr_levels = num_pwr_levels;
 	reg_tpc_info->is_psd_power = is_psd_power;
 	reg_tpc_info->eirp_power = eirp_power;
-	if (ahvif->vdev_type == WMI_VDEV_TYPE_STA)
-		reg_6ghz_power_mode = bss_conf->power_type;
-	else
-		/* For now, VLP is the only supported AP power mode */
-		reg_6ghz_power_mode = IEEE80211_REG_VLP_AP;
-
-	reg_tpc_info->ap_power_type =
-		ath12k_reg_ap_pwr_convert(reg_6ghz_power_mode);
 
 	ath12k_dbg(ab, ATH12K_DBG_MAC,
 		   "tpc fill done vdev %d num_pwr_levels %d is_psd_power %d eirp_power %d power_mode %d ap_power_type %d (%s)\n",
