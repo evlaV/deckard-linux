@@ -2501,6 +2501,24 @@ struct ath12k_wmi_pdev_set_hw_mode_cmd {
 	__le32 num_band_to_mac;
 } __packed;
 
+struct wmi_pdev_hw_mode_transition_event {
+	__le32 pdev_id;
+	__le32 old_hw_mode_index;
+	__le32 new_hw_mode_index;
+	__le32 num_vdev_mac_entries;
+} __packed;
+
+struct wmi_pdev_set_hw_mode_response_vdev_mac_entry {
+	__le32 pdev_id;
+	__le32 vdev_id;
+} __packed;
+
+struct wmi_pdev_band_to_mac_entry {
+	__le32 pdev_id;
+	__le32 start_freq;
+	__le32 end_freq;
+} __packed;
+
 struct ath12k_wmi_ppe_threshold_params {
 	__le32 numss_m1; /** NSS - 1*/
 	__le32 ru_info;

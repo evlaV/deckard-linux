@@ -10579,6 +10579,180 @@ out_unlock:
 	rcu_read_unlock();
 }
 
+/* WMI_HW_MODE_CONFIG_TYPE names; WCN7851 firmware reports 10 as its
+ * pre-vdev boot state, not AUX_EMLSR_SPLIT.
+ */
+static const char *ath12k_wmi_hw_mode_config_str(u32 index)
+{
+	static const char * const names[] = {
+		[0] = "SINGLE",
+		[1] = "DBS",
+		[2] = "SBS_PASSIVE",
+		[3] = "SBS",
+		[4] = "DBS_SBS",
+		[5] = "DBS_OR_SBS",
+		[6] = "DBS_2G_5G",
+		[7] = "2G_PHYB",
+		[8] = "EMLSR",
+		[9] = "AUX_EMLSR_SINGLE",
+		[10] = "BOOT/10",
+	};
+
+	if (index >= ARRAY_SIZE(names) || !names[index])
+		return "UNKNOWN";
+
+	return names[index];
+}
+
+static void ath12k_wmi_hw_mode_vdev_entry_print(struct ath12k_base *ab,
+						u32 w0, u32 w1,
+						bool soc_tagged)
+{
+	struct ieee80211_chanctx_conf *conf;
+	struct ieee80211_bss_conf *link_conf;
+	struct ath12k_link_vif *arvif;
+	struct wireless_dev *wdev;
+	const char *type = "unknown";
+	const char *name = "?";
+	u32 vdev_id = w1;
+	u32 mac_id = w0;
+	u32 freq = 0;
+#if defined(CONFIG_ATH12K_DEBUG) && \
+	(defined(CONFIG_DYNAMIC_DEBUG) || \
+	 (defined(CONFIG_DYNAMIC_DEBUG_CORE) && defined(DYNAMIC_DEBUG_MODULE)))
+	DEFINE_DYNAMIC_DEBUG_METADATA(descriptor,
+				      "hw mode transition vdev map lookup");
+	bool dyndbg_enabled = DYNAMIC_DEBUG_BRANCH(descriptor);
+#else
+	bool dyndbg_enabled = false;
+#endif
+
+	/* skip the lookup work unless a print consumer is enabled */
+	if (!dyndbg_enabled && !(ath12k_debug_mask & ATH12K_DBG_WMI))
+		return;
+
+	guard(rcu)();
+
+	/* Both tags carry {pdev_id, vdev_id} on IOE_HMT firmware, the
+	 * soc-tagged one despite declaring {vdev_id, mac_id}; fall back to
+	 * the declared order if the words exclude the pdev layout.
+	 */
+	if (soc_tagged && !(w0 >= 1 && w0 <= MAX_RADIOS && w1 < 64)) {
+		ath12k_warn(ab,
+			    "vdev mac entry 0x%x 0x%x not in pdev layout, assuming {vdev_id, mac_id}\n",
+			    w0, w1);
+		vdev_id = w0;
+		mac_id = w1;
+	}
+
+	arvif = ath12k_mac_get_arvif_by_vdev_id(ab, vdev_id);
+	if (!arvif || !arvif->ahvif) {
+		ath12k_dbg(ab, ATH12K_DBG_WMI,
+			   "hw mode transition vdev %u on mac %u\n",
+			   vdev_id, mac_id);
+		return;
+	}
+
+	switch (arvif->ahvif->vdev_type) {
+	case WMI_VDEV_TYPE_AP:
+		type = "AP";
+		break;
+	case WMI_VDEV_TYPE_STA:
+		type = "STA";
+		break;
+	case WMI_VDEV_TYPE_IBSS:
+		type = "IBSS";
+		break;
+	case WMI_VDEV_TYPE_MONITOR:
+		type = "MONITOR";
+		break;
+	default:
+		break;
+	}
+
+	wdev = ieee80211_vif_to_wdev(arvif->ahvif->vif);
+	if (wdev && wdev->netdev)
+		name = wdev->netdev->name;
+
+	link_conf = rcu_dereference(arvif->ahvif->vif->link_conf[arvif->link_id]);
+	if (link_conf) {
+		conf = rcu_dereference(link_conf->chanctx_conf);
+		if (conf)
+			freq = conf->def.chan->center_freq;
+		else if (link_conf->chanreq.oper.chan)
+			/* not yet published while the vdev is starting */
+			freq = link_conf->chanreq.oper.chan->center_freq;
+	}
+
+	ath12k_dbg(ab, ATH12K_DBG_WMI,
+		   "hw mode transition vdev %u (%s %s %u MHz) on mac %u\n",
+		   vdev_id, name, type, freq, mac_id);
+}
+
+static int ath12k_wmi_hw_mode_transition_parse(struct ath12k_base *ab,
+					       u16 tag, u16 len,
+					       const void *ptr, void *data)
+{
+	const struct wmi_pdev_set_hw_mode_response_vdev_mac_entry *vdev_entry;
+	const struct wmi_pdev_hw_mode_transition_event *ev;
+	const struct wmi_pdev_band_to_mac_entry *band_entry;
+	bool soc_tagged;
+
+	switch (tag) {
+	case WMI_TAG_PDEV_HW_MODE_TRANSITION_EVENT:
+		if (len < sizeof(*ev))
+			return -EPROTO;
+		ev = ptr;
+		ath12k_dbg(ab, ATH12K_DBG_WMI,
+			   "hw mode transition %s -> %s num vdev mac entries %u\n",
+			   ath12k_wmi_hw_mode_config_str(le32_to_cpu(ev->old_hw_mode_index)),
+			   ath12k_wmi_hw_mode_config_str(le32_to_cpu(ev->new_hw_mode_index)),
+			   le32_to_cpu(ev->num_vdev_mac_entries));
+		break;
+	case WMI_TAG_ARRAY_STRUCT:
+		return ath12k_wmi_tlv_iter(ab, ptr, len,
+					   ath12k_wmi_hw_mode_transition_parse,
+					   NULL);
+	case WMI_TAG_PDEV_SET_HW_MODE_RESPONSE_VDEV_MAC_ENTRY:
+	case WMI_TAG_SOC_SET_HW_MODE_RESPONSE_VDEV_MAC_ENTRY:
+		if (len < sizeof(*vdev_entry))
+			return -EPROTO;
+		vdev_entry = ptr;
+		soc_tagged = tag == WMI_TAG_SOC_SET_HW_MODE_RESPONSE_VDEV_MAC_ENTRY;
+		ath12k_wmi_hw_mode_vdev_entry_print(ab,
+						    le32_to_cpu(vdev_entry->pdev_id),
+						    le32_to_cpu(vdev_entry->vdev_id),
+						    soc_tagged);
+		break;
+	case WMI_TAG_PDEV_BAND_TO_MAC:
+		if (len < sizeof(*band_entry))
+			return -EPROTO;
+		band_entry = ptr;
+		ath12k_dbg(ab, ATH12K_DBG_WMI,
+			   "hw mode transition mac %u freq range %u - %u\n",
+			   le32_to_cpu(band_entry->pdev_id),
+			   le32_to_cpu(band_entry->start_freq),
+			   le32_to_cpu(band_entry->end_freq));
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+static void ath12k_wmi_pdev_hw_mode_transition_event(struct ath12k_base *ab,
+						     struct sk_buff *skb)
+{
+	int ret;
+
+	ret = ath12k_wmi_tlv_iter(ab, skb->data, skb->len,
+				  ath12k_wmi_hw_mode_transition_parse, NULL);
+	if (ret)
+		ath12k_warn(ab, "failed to parse hw mode transition event: %d\n",
+			    ret);
+}
+
 static void ath12k_wmi_op_rx(struct ath12k_base *ab, struct sk_buff *skb)
 {
 	struct wmi_cmd_hdr *cmd_hdr;
@@ -10711,6 +10885,9 @@ static void ath12k_wmi_op_rx(struct ath12k_base *ab, struct sk_buff *skb)
 		break;
 	case WMI_11D_NEW_COUNTRY_EVENTID:
 		ath12k_reg_11d_new_cc_event(ab, skb);
+		break;
+	case WMI_PDEV_HW_MODE_TRANSITION_EVENTID:
+		ath12k_wmi_pdev_hw_mode_transition_event(ab, skb);
 		break;
 	case WMI_PDEV_RSSI_DBM_CONVERSION_PARAMS_INFO_EVENTID:
 		ath12k_wmi_rssi_dbm_conversion_params_info_event(ab, skb);
