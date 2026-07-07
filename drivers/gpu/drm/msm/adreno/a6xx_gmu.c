@@ -11,6 +11,7 @@
 #include <soc/qcom/cmd-db.h>
 #include <soc/qcom/tcs.h>
 #include <drm/drm_gem.h>
+#include <linux/firmware/qcom/qcom_scm_addon.h>
 
 #include "a6xx_gpu.h"
 #include "a6xx_gmu.xml.h"
@@ -1020,6 +1021,19 @@ static int a6xx_gmu_fw_start(struct a6xx_gmu *gmu, unsigned int state)
 
 	/* FIXME: Do we need this wmb() here? */
 	wmb();
+
+	/*
+	 * Enable BCL throttling -
+	 * XOCLK1: countable: 0x13 (25% throttle)
+	 * XOCLK2: countable: 0x17 (58% throttle)
+	 * XOCLK3: countable: 0x19 (75% throttle)
+	 * POWER_CONTROL_SELECT_0 controls counters 0 - 3, each selector
+	 * is 8 bits wide.
+	 */
+	gmu_rmw(gmu, REG_A6XX_GMU_CX_GMU_POWER_COUNTER_SELECT_0,
+			0xffffff00, FIELD_PREP(GENMASK(31, 24), 0x19) |
+			FIELD_PREP(GENMASK(23, 16), 0x17) |
+			FIELD_PREP(GENMASK(15, 8), 0x13));
 
 	return 0;
 }
@@ -2313,6 +2327,10 @@ int a6xx_gmu_init(struct a6xx_gpu *a6xx_gpu, struct device_node *node)
 	a6xx_gmu_pwrlevels_probe(gmu);
 
 	ret = a6xx_gmu_acd_probe(gmu);
+	if (ret)
+		goto detach_gxpd;
+
+	ret = qcom_scm_kgsl_init_regs(GMU_BCL_EN_REQ);
 	if (ret)
 		goto detach_gxpd;
 
