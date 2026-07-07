@@ -24,6 +24,8 @@ struct a6xx_gmu_bo {
 #define GMU_MAX_CX_FREQS	6
 #define GMU_MAX_BCMS		3
 
+#define GMU_BCL_EN_REQ		BIT(1)
+
 struct a6xx_bcm {
 	char *name;
 	unsigned int buswidth;

@@ -888,6 +888,22 @@ static int a6xx_hfi_enable_acd(struct a6xx_gmu *gmu)
 	return 0;
 }
 
+#define HFI_FEATURE_BCL 11
+#define GEN_X_BCL_DATA ((62 << 15) | (75 << 8) | (83 << 1) | 0x1)
+
+static int a6xx_hfi_enable_bcl(struct a6xx_gmu *gmu)
+{
+	int ret;
+
+	ret = a6xx_hfi_feature_ctrl_msg(gmu, HFI_FEATURE_BCL, 1, GEN_X_BCL_DATA);
+	if (ret) {
+		DRM_DEV_ERROR(gmu->dev, "Unable to enable BCL (%d)\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int a6xx_hfi_send_test(struct a6xx_gmu *gmu)
 {
 	struct a6xx_hfi_msg_test msg = { 0 };
@@ -986,6 +1002,10 @@ int a6xx_hfi_start(struct a6xx_gmu *gmu, int boot_state)
 		return ret;
 
 	ret = a6xx_hfi_enable_acd(gmu);
+	if (ret)
+		return ret;
+
+	ret = a6xx_hfi_enable_bcl(gmu);
 	if (ret)
 		return ret;
 
