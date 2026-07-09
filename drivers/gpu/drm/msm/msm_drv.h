@@ -240,6 +240,7 @@ int msm_ioctl_vm_bind(struct drm_device *dev, void *data,
 unsigned long msm_gem_shrinker_shrink(struct drm_device *dev, unsigned long nr_to_scan);
 #endif
 
+unsigned long msm_gem_shrinker_evict_all_ctx(struct drm_device *dev, struct drm_file *file);
 int msm_gem_shrinker_init(struct drm_device *dev);
 void msm_gem_shrinker_cleanup(struct drm_device *dev);
 
