@@ -53,7 +53,7 @@ static int vfe_disable_output(struct vfe_line *line)
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 	for (i = 0; i < output->wm_num; i++)
-		vfe->ops_gen1->wm_enable(vfe, output->wm_idx[i], 0);
+		vfe->ops_gen1->wm_enable(vfe, output->wm[i].bus_client, 0);
 
 	ops->reg_update(vfe, line->id);
 	output->wait_reg_update = 1;
@@ -66,15 +66,15 @@ static int vfe_disable_output(struct vfe_line *line)
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
 	if (line->id != VFE_LINE_PIX) {
-		vfe->ops_gen1->wm_frame_based(vfe, output->wm_idx[0], 0);
-		vfe->ops_gen1->bus_disconnect_wm_from_rdi(vfe, output->wm_idx[0], line->id);
-		vfe->ops_gen1->enable_irq_wm_line(vfe, output->wm_idx[0], line->id, 0);
-		vfe->ops_gen1->set_cgc_override(vfe, output->wm_idx[0], 0);
+		vfe->ops_gen1->wm_frame_based(vfe, output->wm[0].bus_client, 0);
+		vfe->ops_gen1->bus_disconnect_wm_from_rdi(vfe, output->wm[0].bus_client, line->id);
+		vfe->ops_gen1->enable_irq_wm_line(vfe, output->wm[0].bus_client, line->id, 0);
+		vfe->ops_gen1->set_cgc_override(vfe, output->wm[0].bus_client, 0);
 		spin_unlock_irqrestore(&vfe->output_lock, flags);
 	} else {
 		for (i = 0; i < output->wm_num; i++) {
-			vfe->ops_gen1->wm_line_based(vfe, output->wm_idx[i], NULL, i, 0);
-			vfe->ops_gen1->set_cgc_override(vfe, output->wm_idx[i], 0);
+			vfe->ops_gen1->wm_line_based(vfe, output->wm[i].bus_client, NULL, i, 0);
+			vfe->ops_gen1->set_cgc_override(vfe, output->wm[i].bus_client, 0);
 		}
 
 		vfe->ops_gen1->enable_irq_pix_line(vfe, 0, line->id, 0);
@@ -138,10 +138,10 @@ static void vfe_output_init_addrs(struct vfe_device *vfe,
 		else
 			pong_addr = ping_addr;
 
-		vfe->ops_gen1->wm_set_ping_addr(vfe, output->wm_idx[i], ping_addr);
-		vfe->ops_gen1->wm_set_pong_addr(vfe, output->wm_idx[i], pong_addr);
+		vfe->ops_gen1->wm_set_ping_addr(vfe, output->wm[i].bus_client, ping_addr);
+		vfe->ops_gen1->wm_set_pong_addr(vfe, output->wm[i].bus_client, pong_addr);
 		if (sync)
-			vfe->ops_gen1->bus_reload_wm(vfe, output->wm_idx[i]);
+			vfe->ops_gen1->bus_reload_wm(vfe, output->wm[i].bus_client);
 	}
 }
 
@@ -158,8 +158,8 @@ static void vfe_output_frame_drop(struct vfe_device *vfe,
 	drop_period = VFE_FRAME_DROP_VAL + output->drop_update_idx;
 
 	for (i = 0; i < output->wm_num; i++) {
-		vfe->ops_gen1->wm_set_framedrop_period(vfe, output->wm_idx[i], drop_period);
-		vfe->ops_gen1->wm_set_framedrop_pattern(vfe, output->wm_idx[i], drop_pattern);
+		vfe->ops_gen1->wm_set_framedrop_period(vfe, output->wm[i].bus_client, drop_period);
+		vfe->ops_gen1->wm_set_framedrop_pattern(vfe, output->wm[i].bus_client, drop_pattern);
 	}
 
 	vfe->res->hw_ops->reg_update(vfe, output->line->id);
@@ -237,27 +237,27 @@ static int vfe_enable_output(struct vfe_line *line)
 	vfe_output_init_addrs(vfe, output, 0, line);
 
 	if (line->id != VFE_LINE_PIX) {
-		vfe->ops_gen1->set_cgc_override(vfe, output->wm_idx[0], 1);
-		vfe->ops_gen1->enable_irq_wm_line(vfe, output->wm_idx[0], line->id, 1);
-		vfe->ops_gen1->bus_connect_wm_to_rdi(vfe, output->wm_idx[0], line->id);
-		vfe->ops_gen1->wm_set_subsample(vfe, output->wm_idx[0]);
+		vfe->ops_gen1->set_cgc_override(vfe, output->wm[0].bus_client, 1);
+		vfe->ops_gen1->enable_irq_wm_line(vfe, output->wm[0].bus_client, line->id, 1);
+		vfe->ops_gen1->bus_connect_wm_to_rdi(vfe, output->wm[0].bus_client, line->id);
+		vfe->ops_gen1->wm_set_subsample(vfe, output->wm[0].bus_client);
 		vfe->ops_gen1->set_rdi_cid(vfe, line->id, 0);
-		vfe->ops_gen1->wm_set_ub_cfg(vfe, output->wm_idx[0],
-					    (ub_size + 1) * output->wm_idx[0], ub_size);
-		vfe->ops_gen1->wm_frame_based(vfe, output->wm_idx[0], 1);
-		vfe->ops_gen1->wm_enable(vfe, output->wm_idx[0], 1);
-		vfe->ops_gen1->bus_reload_wm(vfe, output->wm_idx[0]);
+		vfe->ops_gen1->wm_set_ub_cfg(vfe, output->wm[0].bus_client,
+					    (ub_size + 1) * output->wm[0].bus_client, ub_size);
+		vfe->ops_gen1->wm_frame_based(vfe, output->wm[0].bus_client, 1);
+		vfe->ops_gen1->wm_enable(vfe, output->wm[0].bus_client, 1);
+		vfe->ops_gen1->bus_reload_wm(vfe, output->wm[0].bus_client);
 	} else {
 		ub_size /= output->wm_num;
 		for (i = 0; i < output->wm_num; i++) {
-			vfe->ops_gen1->set_cgc_override(vfe, output->wm_idx[i], 1);
-			vfe->ops_gen1->wm_set_subsample(vfe, output->wm_idx[i]);
-			vfe->ops_gen1->wm_set_ub_cfg(vfe, output->wm_idx[i],
-						     (ub_size + 1) * output->wm_idx[i], ub_size);
-			vfe->ops_gen1->wm_line_based(vfe, output->wm_idx[i],
+			vfe->ops_gen1->set_cgc_override(vfe, output->wm[i].bus_client, 1);
+			vfe->ops_gen1->wm_set_subsample(vfe, output->wm[i].bus_client);
+			vfe->ops_gen1->wm_set_ub_cfg(vfe, output->wm[i].bus_client,
+						     (ub_size + 1) * output->wm[i].bus_client, ub_size);
+			vfe->ops_gen1->wm_line_based(vfe, output->wm[i].bus_client,
 						     &line->output[0].video_out.active_fmt.fmt.pix_mp, i, 1);
-			vfe->ops_gen1->wm_enable(vfe, output->wm_idx[i], 1);
-			vfe->ops_gen1->bus_reload_wm(vfe, output->wm_idx[i]);
+			vfe->ops_gen1->wm_enable(vfe, output->wm[i].bus_client, 1);
+			vfe->ops_gen1->bus_reload_wm(vfe, output->wm[i].bus_client);
 		}
 		vfe->ops_gen1->enable_irq_pix_line(vfe, 0, line->id, 1);
 		vfe->ops_gen1->set_module_cfg(vfe, 1);
@@ -316,7 +316,7 @@ static int vfe_get_output(struct vfe_line *line)
 			dev_err(vfe->camss->dev, "Can not reserve wm\n");
 			goto error_get_wm;
 		}
-		output->wm_idx[i] = wm_idx;
+		output->wm[i].bus_client = wm_idx;
 	}
 
 	output->drop_update_idx = 0;
@@ -327,7 +327,7 @@ static int vfe_get_output(struct vfe_line *line)
 
 error_get_wm:
 	for (i--; i >= 0; i--)
-		vfe_release_wm(vfe, output->wm_idx[i]);
+		vfe_release_wm(vfe, output->wm[i].bus_client);
 	output->state = VFE_OUTPUT_OFF;
 error:
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
@@ -394,9 +394,9 @@ static void vfe_output_update_ping_addr(struct vfe_device *vfe,
 		else
 			addr = 0;
 
-		vfe->ops_gen1->wm_set_ping_addr(vfe, output->wm_idx[i], addr);
+		vfe->ops_gen1->wm_set_ping_addr(vfe, output->wm[i].bus_client, addr);
 		if (sync)
-			vfe->ops_gen1->bus_reload_wm(vfe, output->wm_idx[i]);
+			vfe->ops_gen1->bus_reload_wm(vfe, output->wm[i].bus_client);
 	}
 }
 
@@ -413,9 +413,9 @@ static void vfe_output_update_pong_addr(struct vfe_device *vfe,
 		else
 			addr = 0;
 
-		vfe->ops_gen1->wm_set_pong_addr(vfe, output->wm_idx[i], addr);
+		vfe->ops_gen1->wm_set_pong_addr(vfe, output->wm[i].bus_client, addr);
 		if (sync)
-			vfe->ops_gen1->bus_reload_wm(vfe, output->wm_idx[i]);
+			vfe->ops_gen1->bus_reload_wm(vfe, output->wm[i].bus_client);
 	}
 }
 
@@ -658,10 +658,10 @@ static void vfe_isr_wm_done(struct vfe_device *vfe, u8 wm)
 
 	if (active_index)
 		for (i = 0; i < output->wm_num; i++)
-			vfe->ops_gen1->wm_set_ping_addr(vfe, output->wm_idx[i], new_addr[i]);
+			vfe->ops_gen1->wm_set_ping_addr(vfe, output->wm[i].bus_client, new_addr[i]);
 	else
 		for (i = 0; i < output->wm_num; i++)
-			vfe->ops_gen1->wm_set_pong_addr(vfe, output->wm_idx[i], new_addr[i]);
+			vfe->ops_gen1->wm_set_pong_addr(vfe, output->wm[i].bus_client, new_addr[i]);
 
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 

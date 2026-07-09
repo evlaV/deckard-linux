@@ -624,7 +624,7 @@ void vfe_buf_done(struct vfe_device *vfe, int wm)
 	output->buf[index] = vfe_buf_get_pending(output);
 
 	if (output->buf[index]) {
-		ops->vfe_wm_update(vfe, output->wm_idx[0],
+		ops->vfe_wm_update(vfe, output->wm[0].bus_client,
 				   output->buf[index]->addr[0],
 				   line);
 		ops->reg_update(vfe, line->id);
@@ -683,14 +683,14 @@ int vfe_enable_output_v2(struct vfe_line *line)
 	output->wait_reg_update = 0;
 	reinit_completion(&output->reg_update);
 
-	ops->vfe_wm_start(vfe, output->wm_idx[0], line);
+	ops->vfe_wm_start(vfe, output->wm[0].bus_client, line);
 
 	for (i = 0; i < CAMSS_INIT_BUF_COUNT; i++) {
 		output->buf[i] = vfe_buf_get_pending(output);
 		if (!output->buf[i])
 			break;
 		output->gen2.active_num++;
-		ops->vfe_wm_update(vfe, output->wm_idx[0],
+		ops->vfe_wm_update(vfe, output->wm[0].bus_client,
 				   output->buf[i]->addr[0], line);
 		ops->reg_update(vfe, line->id);
 	}
@@ -724,7 +724,7 @@ int vfe_queue_buffer_v2(struct camss_video *vid,
 	if (output->state == VFE_OUTPUT_ON &&
 	    output->gen2.active_num < 2) {
 		output->buf[output->gen2.active_num++] = buf;
-		ops->vfe_wm_update(vfe, output->wm_idx[0],
+		ops->vfe_wm_update(vfe, output->wm[0].bus_client,
 				   buf->addr[0], line);
 		ops->reg_update(vfe, line->id);
 	} else {
@@ -808,7 +808,7 @@ int vfe_get_output_v2(struct vfe_line *line)
 	 * line 0 -> RDI 0, line 1 -> RDI1, line 2 -> RDI2, line 3 -> PIX/RDI3
 	 * Note this 1:1 mapping will not work for PIX streams.
 	 */
-	output->wm_idx[0] = line->id;
+	output->wm[0].bus_client = line->id;
 	vfe->wm_output_map[line->id] = line->id;
 
 	output->drop_update_idx = 0;
@@ -938,7 +938,7 @@ int vfe_put_output(struct vfe_line *line)
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
 	for (i = 0; i < output->wm_num; i++)
-		vfe_release_wm(vfe, output->wm_idx[i]);
+		vfe_release_wm(vfe, output->wm[i].bus_client);
 
 	output->state = VFE_OUTPUT_OFF;
 
@@ -955,7 +955,7 @@ static void vfe_disable_output(struct vfe_line *line)
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 	for (i = 0; i < output->wm_num; i++)
-		vfe->res->hw_ops->vfe_wm_stop(vfe, output->wm_idx[i]);
+		vfe->res->hw_ops->vfe_wm_stop(vfe, output->wm[i].bus_client);
 	output->gen2.active_num = 0;
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 }

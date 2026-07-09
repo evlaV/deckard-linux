@@ -493,16 +493,16 @@ static void vfe_set_xbar_cfg(struct vfe_device *vfe, struct vfe_output *output,
 			break;
 		}
 
-		if (output->wm_idx[i] % 2 == 1)
+		if (output->wm[i].bus_client % 2 == 1)
 			reg <<= 16;
 
 		if (enable)
 			vfe_reg_set(vfe,
-				    VFE_0_BUS_XBAR_CFG_x(output->wm_idx[i]),
+				    VFE_0_BUS_XBAR_CFG_x(output->wm[i].bus_client),
 				    reg);
 		else
 			vfe_reg_clr(vfe,
-				    VFE_0_BUS_XBAR_CFG_x(output->wm_idx[i]),
+				    VFE_0_BUS_XBAR_CFG_x(output->wm[i].bus_client),
 				    reg);
 	}
 }
@@ -568,8 +568,8 @@ static void vfe_enable_irq_pix_line(struct vfe_device *vfe, u8 comp,
 	irq_en1 = VFE_0_IRQ_MASK_1_CAMIF_ERROR;
 	for (i = 0; i < output->wm_num; i++) {
 		irq_en1 |= VFE_0_IRQ_MASK_1_IMAGE_MASTER_n_BUS_OVERFLOW(
-							output->wm_idx[i]);
-		comp_mask |= (1 << output->wm_idx[i]) << comp * 8;
+							output->wm[i].bus_client);
+		comp_mask |= (1 << output->wm[i].bus_client) << comp * 8;
 	}
 
 	if (enable) {
