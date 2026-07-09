@@ -7,6 +7,8 @@
 #include <linux/vmalloc.h>
 #include <linux/sched/mm.h>
 
+#include <drm/drm_file.h>
+
 #include "msm_drv.h"
 #include "msm_gem.h"
 #include "msm_gpu.h"
@@ -269,6 +271,51 @@ msm_gem_shrinker_vmap(struct notifier_block *nb, unsigned long event, void *ptr)
 		trace_msm_gem_purge_vmaps(unmapped);
 
 	return NOTIFY_DONE;
+}
+
+struct drm_gem_object *tmp_objs[4096];
+
+unsigned long msm_gem_shrinker_evict_all_ctx(struct drm_device *dev, struct drm_file *file) {
+	struct ww_acquire_ctx ticket;
+	struct drm_gem_object *obj;
+	unsigned long obj_size, freed = 0;
+	int id, count = 0;
+
+	/* TODO handle non vmbind? */
+	// if (msm_context_is_vmbind(ctx))
+	// 	return;
+
+	// drm_file.c:915
+	spin_lock(&file->table_lock);
+	idr_for_each_entry (&file->object_idr, obj, id) {
+		tmp_objs[count++] = obj;
+		if (count == 4096) {
+			printk("shrink_pid: too many BOs\n");
+			break;
+		}
+	}
+	spin_unlock(&file->table_lock);
+
+	for (int i = 0; i < count; i++) {
+		obj = tmp_objs[i];
+		struct msm_gem_object *msm_obj = to_msm_bo(obj);
+
+		if (drm_gem_is_imported(obj) || msm_obj->pin_count)
+			continue;
+
+		/* If resident count up*/
+		if (msm_obj->pages)
+			obj_size = obj->size;
+		else
+			continue;
+
+		msm_gem_lock(obj);
+		if (active_evict(obj, &ticket))
+			freed += obj_size;
+		msm_gem_unlock(obj);
+	}
+
+	return freed;
 }
 
 /**
