@@ -85,6 +85,7 @@ struct vfe_wm {
 #define VFE_MAX_WM_PER_OUTPUT 3
 
 struct vfe_output {
+	u8 comp_group;
 	u8 wm_num;
 	struct vfe_wm wm[VFE_MAX_WM_PER_OUTPUT];
 
