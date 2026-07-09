@@ -116,6 +116,7 @@ struct vfe_output {
 
 struct vfe_line {
 	enum vfe_line_id id;
+	bool is_pix;
 	struct v4l2_subdev subdev;
 	struct media_pad pads[MSM_VFE_PADS_NUM];
 	struct v4l2_mbus_framefmt fmt[MSM_VFE_PADS_NUM];
