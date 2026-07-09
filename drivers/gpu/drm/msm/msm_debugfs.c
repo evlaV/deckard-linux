@@ -259,6 +259,43 @@ DEFINE_DEBUGFS_ATTRIBUTE(shrink_fops,
 			 shrink_get, shrink_set,
 			 "0x%08llx\n");
 
+static unsigned long last_pid_shrink_freed;
+
+static int
+shrink_pid_get(void *data, u64 *val)
+{
+	*val = last_pid_shrink_freed;
+
+	return 0;
+}
+
+static int
+shrink_pid_set(void *data, u64 val)
+{
+	struct drm_device *dev = data;
+	struct drm_file *priv;
+	int ret = -EINVAL;
+
+	mutex_lock(&dev->filelist_mutex);
+	list_for_each_entry_reverse(priv, &dev->filelist, lhead) {
+		struct pid *pid = rcu_dereference(priv->pid);
+
+		pid_t pid_nr = pid_vnr(pid);
+		if (pid_nr == val) {
+			last_pid_shrink_freed = msm_gem_shrinker_evict_all_ctx(dev, priv);
+			//printk("%d %ld\n",pid_nr,last_pid_shrink_freed);
+			ret = 0;
+		}
+	}
+	mutex_unlock(&dev->filelist_mutex);
+
+	return ret;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(shrink_pid_fops,
+			 shrink_pid_get, shrink_pid_set,
+			 "0x%08llx\n");
+
 /*
  * Return the number of microseconds to wait until stall-on-fault is
  * re-enabled. If 0 then it is already enabled or will be re-enabled on the
@@ -487,6 +524,9 @@ void msm_debugfs_init(struct drm_minor *minor)
 
 	debugfs_create_file("shrink", S_IRWXU, minor->debugfs_root,
 		dev, &shrink_fops);
+
+	debugfs_create_file("shrink_pid", S_IRWXU, minor->debugfs_root,
+		dev, &shrink_pid_fops);
 
 	fault_create_debugfs_attr("fail_gem_alloc", minor->debugfs_root,
 				  &fail_gem_alloc);
