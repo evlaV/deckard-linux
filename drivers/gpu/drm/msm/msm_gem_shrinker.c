@@ -331,7 +331,7 @@ int msm_gem_shrinker_init(struct drm_device *dev)
 	priv->shrinker->scan_objects = msm_gem_shrinker_scan;
 	priv->shrinker->private_data = priv;
 
-	//shrinker_register(priv->shrinker);
+	shrinker_register(priv->shrinker);
 
 	priv->msm_shrinker_enable = false;
 
