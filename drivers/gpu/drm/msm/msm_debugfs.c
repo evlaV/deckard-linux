@@ -280,8 +280,11 @@ shrink_pid_set(void *data, u64 val)
 	list_for_each_entry_reverse(priv, &dev->filelist, lhead) {
 		struct pid *pid = rcu_dereference(priv->pid);
 
-		if (pid_vnr(pid) == val) {
+		pid_t pid_nr = pid_vnr(pid);
+		if (pid_nr == val) {
+			
 			last_pid_shrink_freed = msm_gem_shrinker_evict_all_ctx(dev, priv);
+			printk("%d %ld\n",pid_nr,last_pid_shrink_freed);
 			ret = 0;
 		}
 	}
