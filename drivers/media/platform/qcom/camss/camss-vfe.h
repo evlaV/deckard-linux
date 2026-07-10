@@ -168,12 +168,22 @@ struct vfe_hw_ops {
 	int (*vfe_enable)(struct vfe_line *line);
 	int (*vfe_halt)(struct vfe_device *vfe);
 	void (*violation_read)(struct vfe_device *vfe);
+
+	/* RDI based API - deprecated */
 	void (*vfe_wm_start)(struct vfe_device *vfe, u8 wm,
 			     struct vfe_line *line);
 	void (*vfe_wm_stop)(struct vfe_device *vfe, u8 wm);
 	void (*vfe_buf_done)(struct vfe_device *vfe, int port_id);
 	void (*vfe_wm_update)(struct vfe_device *vfe, u8 wm, u32 addr,
 			      struct vfe_line *line);
+
+	/* Output based API - new and shiny */
+	void (*vfe_output_start)(struct vfe_device *vfe, struct vfe_output *output);
+	void (*vfe_output_stop)(struct vfe_device *vfe, struct vfe_output *output);
+	void (*vfe_output_buf_done)(struct vfe_device *vfe, struct vfe_output *output);
+	void (*vfe_output_update)(struct vfe_device *vfe, struct vfe_output *output,
+				  struct camss_buffer *buf);
+
 };
 
 struct vfe_isr_ops {
