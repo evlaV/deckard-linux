@@ -30,6 +30,8 @@
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
 
+#include <trace/gpuvis.h>
+
 #define V4L2_CID_TEMPERATURE (V4L2_CID_USER_OG01A1B_BASE + 0)
 
 #define OG01A1B_REG_CHIP_ID 0x300a
@@ -292,7 +294,7 @@ static const s64 link_freq_menu_items[] = {
 	OG01A1B_LINK_FREQUENCY,
 };
 
-static int og0ve10_write_reg(struct og0ve10_dev *sensor, u16 reg, u8 val)
+static int og0ve10_write_reg(struct og0ve10_dev *sensor, u16 reg, u8 val, int *num_i2c)
 {
 	struct i2c_client *client = sensor->i2c_client;
 	struct i2c_msg msg;
@@ -308,6 +310,9 @@ static int og0ve10_write_reg(struct og0ve10_dev *sensor, u16 reg, u8 val)
 	msg.buf = buf;
 	msg.len = sizeof(buf);
 
+	if (num_i2c) {
+		++(*num_i2c);
+	}
 	ret = i2c_transfer(client->adapter, &msg, 1);
 	if (ret < 0) {
 		dev_err(&client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
@@ -413,7 +418,7 @@ static int og0ve10_read_reg_len(struct og0ve10_dev *sensor, u16 reg, u16 len, u3
 	return 0;
 }
 
-static int og0ve10_write_reg16(struct og0ve10_dev *sensor, u16 reg, u16 val)
+static int og0ve10_write_reg16(struct og0ve10_dev *sensor, u16 reg, u16 val, int *num_i2c)
 {
 	// Use the og0ve10 sequential write feature to use a single i2c transfer
 	struct i2c_client *client = sensor->i2c_client;
@@ -431,6 +436,9 @@ static int og0ve10_write_reg16(struct og0ve10_dev *sensor, u16 reg, u16 val)
 	msg.buf = buf;
 	msg.len = sizeof(buf);
 
+	if (num_i2c) {
+		++(*num_i2c);
+	}
 	ret = i2c_transfer(client->adapter, &msg, 1);
 	if (ret < 0) {
 		dev_err(&client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
@@ -440,7 +448,7 @@ static int og0ve10_write_reg16(struct og0ve10_dev *sensor, u16 reg, u16 val)
 	return 0;
 }
 
-static int og0ve10_write_reg_dual(struct og0ve10_dev *sensor, u16 reg, u8 val)
+static int og0ve10_write_reg_dual(struct og0ve10_dev *sensor, u16 reg, u8 val, int *num_i2c)
 {
 	struct i2c_msg msg;
 	u8 buf[3];
@@ -460,6 +468,9 @@ static int og0ve10_write_reg_dual(struct og0ve10_dev *sensor, u16 reg, u8 val)
 	msg.buf = buf;
 	msg.len = sizeof(buf);
 
+	if (num_i2c) {
+		++(*num_i2c);
+	}
 	ret = i2c_transfer(g_dual_i2c_client_og0ve10->adapter, &msg, 1);
 	if (ret < 0) {
 		dev_err(&sensor->i2c_client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
@@ -470,7 +481,7 @@ static int og0ve10_write_reg_dual(struct og0ve10_dev *sensor, u16 reg, u8 val)
 	return 0;
 }
 
-static int og0ve10_write_reg16_dual(struct og0ve10_dev *sensor, u16 reg, u16 val)
+static int og0ve10_write_reg16_dual(struct og0ve10_dev *sensor, u16 reg, u16 val, int *num_i2c)
 {
 	// Use the og0ve10 sequential write feature to use a single i2c transfer
 	struct i2c_msg msg;
@@ -492,6 +503,9 @@ static int og0ve10_write_reg16_dual(struct og0ve10_dev *sensor, u16 reg, u16 val
 	msg.buf = buf;
 	msg.len = sizeof(buf);
 
+	if (num_i2c) {
+		++(*num_i2c);
+	}
 	ret = i2c_transfer(g_dual_i2c_client_og0ve10->adapter, &msg, 1);
 	if (ret < 0) {
 		dev_err(&sensor->i2c_client->dev, "%s: error: reg=%x, val=%x ret=%d\n",
@@ -517,7 +531,7 @@ static int og0ve10_load_regs(struct og0ve10_dev *sensor,
 		val = regs->val;
 		mask = regs->mask;
 
-		ret = og0ve10_write_reg(sensor, reg_addr, val);
+		ret = og0ve10_write_reg(sensor, reg_addr, val, NULL);
 		if (ret)
 			break;
 
@@ -603,13 +617,13 @@ static int og0ve10_read_otp_once(struct og0ve10_dev *sensor, u8 *otp_data)
 	
 	/* Clear OTP buffer registers */
 	for (int i = 0x3d00; i <= 0x3d1f; i++) {
-		ret = og0ve10_write_reg(sensor, i, 0x00);
+		ret = og0ve10_write_reg(sensor, i, 0x00, NULL);
 		if (ret)
 			return ret;
 	}
 
 	/* Start OTP read */
-	ret = og0ve10_write_reg(sensor, 0x3d81, 0x01);
+	ret = og0ve10_write_reg(sensor, 0x3d81, 0x01, NULL);
 	if (ret)
 		return ret;
 
@@ -634,7 +648,7 @@ static void og0ve10_fill_otp_cache_locked(struct og0ve10_dev *sensor)
 	if (sensor->otp_valid)
 		return;
 
-	ret = og0ve10_write_reg(sensor, 0x100, 0x01);
+	ret = og0ve10_write_reg(sensor, 0x100, 0x01, NULL);
 	if (ret) {
 		dev_err(&sensor->i2c_client->dev,
 			"OTP: failed to start sensor: %d\n", ret);
@@ -710,9 +724,9 @@ static int og0ve10_set_ctrl(struct v4l2_ctrl *ctrl)
 		 * value in 5.4 fractional format
 		 */
 		ret = og0ve10_write_reg(sensor, 0x3508,
-					(ctrl->val >> 4) & 0x1f);
+					(ctrl->val >> 4) & 0x1f, NULL);
 		ret = og0ve10_write_reg(sensor, 0x3509,
-					(ctrl->val << 4) & 0xf0);
+					(ctrl->val << 4) & 0xf0, NULL);
 
 		break;
 
@@ -948,10 +962,10 @@ static int og0ve10_s_stream(struct v4l2_subdev *sd, int enable)
 	sensor->is_streaming = !!enable;
 
 	if(sensor->is_vc_interleaved) {
-		og0ve10_write_reg_dual(sensor, 0x100, !!enable);
+		og0ve10_write_reg_dual(sensor, 0x100, !!enable, NULL);
 	}
 	else {
-		og0ve10_write_reg(sensor, 0x100, !!enable);
+		og0ve10_write_reg(sensor, 0x100, !!enable, NULL);
 	}
 
 	return 0;
@@ -981,7 +995,7 @@ static long og0ve10_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 		arg; // argument is passed as an integer value
 		mutex_lock(&sensor->lock);
 		
-		ret = og0ve10_write_reg(sensor, val & 0xffff, val >> 16 & 0xff);
+		ret = og0ve10_write_reg(sensor, val & 0xffff, val >> 16 & 0xff, NULL);
 		mutex_unlock(&sensor->lock);	
 		break;
 	}
@@ -1047,9 +1061,9 @@ static long og0ve10_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 				ret = -EINVAL;
 			}
 			else {
-				og0ve10_write_reg_dual(sensor, 0x100, 0);
+				og0ve10_write_reg_dual(sensor, 0x100, 0, NULL);
 				usleep_range(1000 * 4, 1000 * 4 + 100); // brief sleep to ensure streaming fully stops
-				og0ve10_write_reg_dual(sensor, 0x100, 1);
+				og0ve10_write_reg_dual(sensor, 0x100, 1, NULL);
 			}
 		}
 		break;
@@ -1188,7 +1202,7 @@ power_off:
 	return ret;
 }
 
-static int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int group, bool use_dual_i2c)
+static int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int group, bool use_dual_i2c, int *num_i2c)
 {
 	int ret;
 
@@ -1224,7 +1238,7 @@ static int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int gro
 				  sensor->active_group_registers
 					  .group_register_sets[group]
 					  .group_reg_values[i + 1];
-			ret = use_dual_i2c ? og0ve10_write_reg16_dual(sensor, reg, val) : og0ve10_write_reg16(sensor, reg, val);
+			ret = use_dual_i2c ? og0ve10_write_reg16_dual(sensor, reg, val, num_i2c) : og0ve10_write_reg16(sensor, reg, val, num_i2c);
 			i++; // bump i since we wrote two registers
 		} else {
 			ret = use_dual_i2c ? og0ve10_write_reg_dual(sensor, 
@@ -1233,14 +1247,16 @@ static int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int gro
 					.group_reg_addresses[i],
 				sensor->active_group_registers
 					.group_register_sets[group]
-					.group_reg_values[i]) :
+					.group_reg_values[i],
+				num_i2c) :
 				og0ve10_write_reg(sensor, 
 				sensor->active_group_registers
 					.group_register_sets[group]
 					.group_reg_addresses[i],
 				sensor->active_group_registers
 					.group_register_sets[group]
-					.group_reg_values[i]);
+					.group_reg_values[i],
+				num_i2c);
 		}
 
 		if (ret != 0) {
@@ -1253,14 +1269,16 @@ static int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int gro
 		    TIMING_ADJUSTMENT_REQUESTED) {
 			ret = og0ve10_write_reg16(
 				sensor, 0x380e,
-				sensor->current_timing_adjustment.new_rows);
+				sensor->current_timing_adjustment.new_rows,
+				num_i2c);
 			if (ret != 0) {
 				return ret;
 			}
 			ret = og0ve10_write_reg16(
 				sensor, 0x382c,
 				sensor->current_timing_adjustment
-					.new_global_row);
+					.new_global_row,
+				num_i2c);
 			if (ret != 0) {
 				return ret;
 			}
@@ -1271,14 +1289,16 @@ static int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int gro
 			ret = og0ve10_write_reg16(
 				sensor, 0x380e,
 				sensor->current_timing_adjustment
-					.rows_to_restore);
+					.rows_to_restore,
+				num_i2c);
 			if (ret != 0) {
 				return ret;
 			}
 			ret = og0ve10_write_reg16(
 				sensor, 0x382c,
 				sensor->current_timing_adjustment
-					.global_row_to_restore);
+					.global_row_to_restore,
+				num_i2c);
 			if (ret != 0) {
 				return ret;
 			}
@@ -1291,14 +1311,16 @@ static int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int gro
 		    TIMING_ADJUSTMENT_REQUESTED) {
 			ret = og0ve10_write_reg16_dual(
 				sensor, 0x380e,
-				sensor->current_timing_adjustment.new_rows);
+				sensor->current_timing_adjustment.new_rows,
+				num_i2c);
 			if (ret != 0) {
 				return ret;
 			}
 			ret = og0ve10_write_reg16_dual(
 				sensor, 0x382c,
 				sensor->current_timing_adjustment
-					.new_global_row);
+					.new_global_row,
+				num_i2c);
 			if (ret != 0) {
 				return ret;
 			}
@@ -1309,14 +1331,16 @@ static int og0VE10_write_registers_for_group(struct og0ve10_dev *sensor, int gro
 			ret = og0ve10_write_reg16_dual(
 				sensor, 0x380e,
 				sensor->current_timing_adjustment
-					.rows_to_restore);
+					.rows_to_restore,
+				num_i2c);
 			if (ret != 0) {
 				return ret;
 			}
 			ret = og0ve10_write_reg16_dual(
 				sensor, 0x382c,
 				sensor->current_timing_adjustment
-					.global_row_to_restore);
+					.global_row_to_restore,
+				num_i2c);
 			if (ret != 0) {
 				return ret;
 			}
@@ -1335,12 +1359,15 @@ int last_set_group_og0VE10 = 0;
 
 static void update_groups_og0VE10(struct og0ve10_dev *sensor)
 {
+	TRACE_BEGIN_CTX();
 	u64 last_group_pre_write_timestamp = 0;
 	u64 lastGroupPostWriteTimestamp = 0;
 	unsigned long flags;
+	int num_i2c = 0;
 
 	mutex_lock(&sensor->lock);
 
+	TRACE_BEGIN_CTX_NAMED(group_write_critical_og0VE10);
 	last_group_pre_write_timestamp = ktime_get_raw_ns();
 
 	if (sensor->group_mode == MODE_2GROUPS) {
@@ -1351,18 +1378,19 @@ static void update_groups_og0VE10(struct og0ve10_dev *sensor)
 
 	if (last_time_in_sync_og0VE10 != 0 || sensor->is_vc_interleaved) {
 		if (sensor->dual_i2c_main) {
-			og0VE10_write_registers_for_group(sensor, sensor->lastGroup, true);
+			og0VE10_write_registers_for_group(sensor, sensor->lastGroup, true, &num_i2c);
 			last_dual_write_time_og0VE10 = ktime_get_raw_ns();
 		} else if (last_dual_write_time_og0VE10 < last_time_in_sync_og0VE10 && !sensor->is_vc_interleaved) {
 			//printk("og0ve10 dual write safety write on non main sensor\n");
-			og0VE10_write_registers_for_group(sensor, sensor->lastGroup, false);
+			og0VE10_write_registers_for_group(sensor, sensor->lastGroup, false, &num_i2c);
 		}
 	} else {
 		//printk("og0ve10 non dual write write on non main sensor\n");
-		og0VE10_write_registers_for_group(sensor, sensor->lastGroup, false);
+		og0VE10_write_registers_for_group(sensor, sensor->lastGroup, false, &num_i2c);
 	}
 
 	lastGroupPostWriteTimestamp = ktime_get_raw_ns();
+	TRACE_END_CTX_NAMED(group_write_critical_og0VE10);
 
 	//for(int i = 0; i < numSensors_og0VE10; i++)
 	{
@@ -1380,6 +1408,20 @@ static void update_groups_og0VE10(struct og0ve10_dev *sensor)
 			lastGroupPostWriteTimestamp;
 	}
 	spin_lock_irqsave(&metadata_spinlock_og0VE10, flags);
+	// const u64 ambigousZoneStartPriorToSOFInNs = 2000000;
+	// const u64 ambgiousZoneEndPriorToSOFInNs = 100000;
+	// // Very rough estimate of frame time
+	// // Problematic code in DeckardCaptureSource is using EOF timestamps, but not sure where those might be here
+	// u64 frameTimeInNS = sensor->active_group_registers.sof_ts - sensor->sensorMetaData.group_and_reg[0].sof_ts;
+	// u64 ambiguousZoneStart = sensor->last_sof_ts - frameTimeInNS - ambigousZoneStartPriorToSOFInNs;
+	// u64 ambiguousZoneEnd = sensor->last_sof_ts - frameTimeInNS - ambgiousZoneEndPriorToSOFInNs;
+	// printk("[group_write] type:og0ve10_top sensor:%d sof:%llu isr:%llu ft:%llu, azs:%llu aze:%llu gws:%llu gwe%llu i2c:%d\n",
+	// 	sensor->sensor_index, sensor->last_sof_ts, sensor->last_sof_isr_ts, frameTimeInNS,
+	// 	ambiguousZoneStart, ambiguousZoneEnd, last_group_pre_write_timestamp, lastGroupPostWriteTimestamp,
+	// 	num_i2c
+	// );
+
+
 	//for(int i = 0; i < numSensors_og0VE10; i++)
 	{
 		if (sensor->power_count < 1) {
@@ -1500,7 +1542,7 @@ static ssize_t otp_show(struct device *dev,
 			return ret;
 		}
 
-		ret = og0ve10_write_reg(sensor, 0x100, 0x01);
+		ret = og0ve10_write_reg(sensor, 0x100, 0x01, NULL);
 		if (ret) {
 			dev_err(dev, "Failed to start sensor for OTP read: %d\n", ret);
 			goto power_off;

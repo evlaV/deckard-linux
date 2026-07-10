@@ -17,6 +17,8 @@
 #include "camss-csid.h"
 #include "camss-csid-gen3.h"
 
+#include <trace/gpuvis.h>
+
 #define CREATE_TRACE_POINTS
 #include "trace.h"
 
@@ -476,6 +478,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	struct csid_device *csid = dev;
 	u32 top_val, val, buf_done_val;
 	u8 reset_done;
+	TRACE_INSTANTANEOUS_NAMED(group_write_camss_isr);
 	u64 ts_monotonic_raw = ktime_get_raw_ns();
 	int i = 0;
 
