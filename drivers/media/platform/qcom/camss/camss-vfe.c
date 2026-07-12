@@ -1873,7 +1873,6 @@ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
 		return -EINVAL;
 
 	vfe->res = &res->vfe;
-	vfe->res->hw_ops->subdev_init(dev, vfe);
 
 	/* Power domain */
 
@@ -2009,6 +2008,8 @@ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
 			l->formats = res->vfe.formats_rdi->formats;
 		}
 	}
+
+	vfe->res->hw_ops->subdev_init(dev, vfe);
 
 	init_completion(&vfe->reset_complete);
 	init_completion(&vfe->halt_complete);
