@@ -749,13 +749,6 @@ int vfe_get_output_v2(struct vfe_line *line)
 		goto error;
 	}
 
-	output->wm_num = 1;
-
-	/* Correspondence between VFE line number and WM number.
-	 * line 0 -> RDI 0, line 1 -> RDI1, line 2 -> RDI2, line 3 -> PIX/RDI3
-	 * Note this 1:1 mapping will not work for PIX streams.
-	 */
-	output->wm[0].bus_client = line->id;
 	vfe->wm_output_map[line->id] = line->id;
 
 	output->drop_update_idx = 0;
@@ -1997,6 +1990,9 @@ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
 		l->num_outputs = 1;
 		l->output[0].line = l;
 
+		l->output[0].wm_num = 1;
+		l->output[0].wm[0].bus_client = l->id;
+
 		init_completion(&l->output[0].sof);
 		init_completion(&l->output[0].reg_update);
 
@@ -2007,6 +2003,7 @@ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
 			l->nformats = res->vfe.formats_rdi->nformats;
 			l->formats = res->vfe.formats_rdi->formats;
 		}
+
 	}
 
 	vfe->res->hw_ops->subdev_init(dev, vfe);
