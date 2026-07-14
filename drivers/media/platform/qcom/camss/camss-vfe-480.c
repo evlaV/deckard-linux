@@ -215,8 +215,8 @@ static void vfe_enable_irq(struct vfe_device *vfe)
 		/* Enable IRQ for newly added lines, but also keep already running lines's IRQ */
 		if (vfe->line[i].output[0].state == VFE_OUTPUT_RESERVED ||
 		    vfe->line[i].output[0].state == VFE_OUTPUT_ON) {
-			bus_irq_mask |= BUS_IRQ_MASK_0_RDI_RUP(vfe, i)
-					| BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i));
+			bus_irq_mask |= bus_irq_mask_rup(vfe, i)
+					| bus_irq_mask_comp_done(vfe, RDI_COMP_GROUP(i));
 			}
 	}
 
@@ -252,13 +252,13 @@ static irqreturn_t vfe_isr(int irq, void *dev)
 		writel_relaxed(1, vfe->base + VFE_BUS_IRQ_CLEAR_GLOBAL);
 
 		for (i = 0; i < MAX_VFE_OUTPUT_LINES; i++) {
-			if (status & BUS_IRQ_MASK_0_RDI_RUP(vfe, i))
+			if (status & bus_irq_mask_rup(vfe, i))
 				vfe_isr_reg_update(vfe, i);
 		}
 
 		/* Loop through all WMs IRQs */
 		for (i = 0; i < MSM_VFE_IMAGE_MASTERS_NUM; i++) {
-			if (status & BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i)))
+			if (status & bus_irq_mask_comp_done(vfe, RDI_COMP_GROUP(i)))
 				vfe_buf_done(vfe, i);
 		}
 	}

@@ -37,21 +37,45 @@ static inline int reg_update_rdi(struct vfe_device *vfe, int n)
 #define VFE_BUS_WM_TEST_BUS_CTRL	(BUS_REG_BASE + 0xdc)
 
 #define VFE_BUS_IRQ_MASK(n)		(BUS_REG_BASE + 0x18 + (n) * 4)
-static inline int bus_irq_mask_0_rdi_rup(struct vfe_device *vfe, int n)
-{
-	return vfe_is_lite(vfe) ? BIT(n) : BIT(3 + (n));
-}
+#define 	VFE_BUS_IRQ_MASK_RUP_IPP		BIT(0)
+#define 	VFE_BUS_IRQ_MASK_RUP_PD			BIT(1)
+#define 	VFE_BUS_IRQ_MASK_RUP_LCR		BIT(2)
+#define 	VFE_BUS_IRQ_MASK_RUP_RDI(n)		BIT(3 + (n))
+#define 	VFE_BUS_IRQ_MASK_COMP_DONE(grp)		BIT(6 + (grp))
+#define 	VFE_BUS_IRQ_MASK_CCIF_VIOLATION		BIT(30)
+#define 	VFE_BUS_IRQ_MASK_IMAGE_SIZE_VIOLATION	BIT(31)
 
-#define     BUS_IRQ_MASK_0_RDI_RUP	bus_irq_mask_0_rdi_rup
-static inline int bus_irq_mask_0_comp_done(struct vfe_device *vfe, int n)
-{
-	return vfe_is_lite(vfe) ? BIT(4 + (n)) : BIT(6 + (n));
-}
+#define		VFE_LITE_BUS_IRQ_MASK_RUP_RDI(n)	BIT(n)
+#define		VFE_LITE_BUS_IRQ_MASK_COMP_DONE(grp)	BIT(4 + (grp))
 
-#define     BUS_IRQ_MASK_0_COMP_DONE	bus_irq_mask_0_comp_done
 #define VFE_BUS_IRQ_CLEAR(n)		(BUS_REG_BASE + 0x20 + (n) * 4)
 #define VFE_BUS_IRQ_STATUS(n)		(BUS_REG_BASE + 0x28 + (n) * 4)
 #define VFE_BUS_IRQ_CLEAR_GLOBAL	(BUS_REG_BASE + 0x30)
+
+/*
+ * INPUT_IF_IRQ_MASK_1 bit field.
+ * JSON: "WR_CLIENT_BUF_DONE", bits [27:0]: "Buf done for each client."
+ */
+#define VFE_BUS_IRQ_1_WR_CLIENT_BUF_DONE(c)	BIT(c)
+
+static inline u32 bus_irq_mask_rup(struct vfe_device *vfe, int line_id)
+{
+	if (vfe_is_lite(vfe))
+		return VFE_LITE_BUS_IRQ_MASK_RUP_RDI(line_id);
+
+	if (vfe->line[line_id].is_pix)
+		return VFE_BUS_IRQ_MASK_RUP_IPP;
+
+	return VFE_BUS_IRQ_MASK_RUP_RDI(line_id);
+}
+
+static inline u32 bus_irq_mask_comp_done(struct vfe_device *vfe, u8 grp)
+{
+	if (vfe_is_lite(vfe))
+		return VFE_LITE_BUS_IRQ_MASK_COMP_DONE(grp);
+
+	return VFE_BUS_IRQ_MASK_COMP_DONE(grp);
+}
 
 /* Pixel path registers on full VFE only */
 #define VFE_PP_CLC_CAMIF_HW_VERSION	0x2600
