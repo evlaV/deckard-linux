@@ -156,7 +156,7 @@ struct SensorMetaData {
 };
 
 struct GroupRegisterFlags {
-	u8 group_reg_dirty[GROUP_REGMAP_MAX_SIZE];
+	bool group_reg_dirty[GROUP_REGMAP_MAX_SIZE];
 };
 
 
@@ -223,7 +223,7 @@ struct og01a1b_dev {
 
 	struct group_and_registers active_group_registers;
 	bool updateGroupRegisters[NUM_REGISTER_GROUPS];
-  struct GroupRegisterFlags group_register_flags[NUM_REGISTER_GROUPS];
+    struct GroupRegisterFlags group_register_flags[NUM_REGISTER_GROUPS];
 	enum og01a1b_ir_emitter_mode ir_emitter_mode;
 	bool emittersPresent;
 	bool ir_control_gpio_present;
@@ -244,8 +244,7 @@ struct og01a1b_dev {
 	bool skip_regmap;
 
   bool cache_group_registers;
-  u64 group_write_history[GROUP_WRITE_TIME_BUFFER_LENGTH];
-  int group_write_history_offset;
+  struct group_reg_stats group_reg_stats;
 };
 
 struct og01a1b_dev* sensors[4];
@@ -259,64 +258,6 @@ static struct i2c_client *g_dual_i2c_client = NULL;
 // Because that means we do not have a danger of missing an update to one sensor
 u64 last_time_in_sync = 0;
 u64 last_dual_write_time = 0;
-
-// #define I2C_TRACE_BUF_SIZE (1*1024*1024) /* 1 MiB */
-// #define I2C_TRACE_EVENT_READWRITE_BIT    0 /* read = 0, write = 1 */
-// #define I2C_TRACE_EVENT_READ_FLAG       (0<<I2C_TRACE_EVENT_READWRITE_BIT)
-// #define I2C_TRACE_EVENT_WRITE_FLAG      (1<<I2C_TRACE_EVENT_READWRITE_BIT)
-// #define I2C_TRACE_EVENT_DTYPE_BIT        1 /* u8 = 0, u16 = 1 */
-// #define I2C_TRACE_EVENT_U8_FLAG         (0<<I2C_TRACE_EVENT_DTYPE_BIT)
-// #define I2C_TRACE_EVENT_U16_FLAG        (1<<I2C_TRACE_EVENT_U16_FLAG)
-// struct i2c_trace_event {
-//   u64 timestamp_begin;
-//   u64 timestamp_end;
-//   u8 dest;
-//   u8 flags;
-//   u16 addr;
-//   u16 value;
-// } __packed;
-
-// static u8 *i2c_trace_buf;
-// static atomic_t trace_offset = ATOMIC_INIT(0);
-// static struct debugfs_blob_wrapper trace_blob;
-
-
-// /* call this from your xfer hook */
-// void i2c_trace_record(int sensor_index, u64 begin, u64 end, u8 flags, u16 addr, u8 value)
-// {
-//     int offset, new_offset;
-//     struct i2c_trace_rec *entry;
-
-//     do {
-//         offset = atomic_read(&trace_offset);
-//         new_offset = offset + sizeof(struct i2c_trace_event);
-//         if (new_off > TRACE_BUF_SIZE)
-//             return; /* full, stop recording */
-//     } while (atomic_cmpxchg(&trace_offset, offset, new_offset) != offset);
-
-//     entry = (struct i2c_trace_event*)i2c_trace_buf + offset;
-//     entry->timestamp_begin = begin;
-//     entry->timestamp_end = end;
-//     entry->dest = i2c_trace_dest(sensor_index);
-//     entry->addr = addr;
-//     entry->value = value;
-//     entry->flags = flags | I2C_TRACE_EVENT_U8_FLAG;
-// }
-
-// int i2c_trace_init(struct dentry *parent)
-// {
-//     trace_buf = vzalloc(TRACE_BUF_SIZE);
-//     if (!trace_buf)
-//         return -ENOMEM;
-
-//     trace_blob.data = trace_buf;
-//     trace_blob.size = TRACE_BUF_SIZE; /* or track actual used size separately */
-
-//     debugfs_create_blob("i2c_trace", 0400, parent, &trace_blob);
-//     return 0;
-// }
-
-
 
 // These workqueues are shared between multiple sensors that are either og01a1b or og0ve10
 // They should be assigned the same workqueue if they share an i2c bus
@@ -1022,38 +963,53 @@ static void clear_group_register_sets(struct og01a1b_dev *sensor)
 	}
 }
 
+static int og01a1b_find_group_reg_index(struct register_set *reg_set, u16 address)
+{
+	for (int idx=0; idx < reg_set->num_group_reg; ++idx) {
+		if (reg_set->group_reg_addresses[idx] == address) { return idx; }
+		else if (reg_set->group_reg_addresses[idx] > address) { return -1; }
+	}
+	return -1;
+}
+
 static int og01a1b_add_or_set_group_reg(struct og01a1b_dev *sensor, u16 address, u8 val, u8 group)
 {
 	struct register_set *reg_set =  &sensor->active_group_registers.group_register_sets[group];
-	int index = -1;
-	for(int i = 0; i < reg_set->num_group_reg; i++) 
-	{
-		if(reg_set->group_reg_addresses[i] == address)
-		{
-			index = i;
-			break;
+	struct GroupRegisterFlags *flags = &sensor->group_register_flags[group];
+	
+	int idx=0;
+	// search for where to insert
+	//  technically this could be a binary search, but with <=20 elements that's almost certainly slower than a linear scan
+	for(; idx < reg_set->num_group_reg; ++idx) {
+		if (reg_set->group_reg_addresses[idx] == address) {
+			// existing address, compare value and update if needed
+			if (reg_set->group_reg_values[idx] != val) {
+				reg_set->group_reg_values[idx] = val;
+				sensor->updateGroupRegisters[group] = true;
+				flags->group_reg_dirty[idx] = true;
+			}
+			return 0;
 		}
+		else if (reg_set->group_reg_addresses[idx] > address) { break; }  // found place to insert
 	}
-	if(index == -1) 
-	{
-		if(reg_set->num_group_reg >= GROUP_REGMAP_MAX_SIZE) 
-		{
-			struct i2c_client *client = sensor->i2c_client;
-			dev_err(&client->dev, "Group register map exceeded maximum size");
-			return -1;
-		}
-		index = reg_set->num_group_reg;
-		reg_set->num_group_reg++;
-		reg_set->group_reg_addresses[index] = address;
-		sensor->updateGroupRegisters[group] = true;
-    sensor->group_register_flags[group].group_reg_dirty[index] = 1; 
+	if (reg_set->num_group_reg >= GROUP_REGMAP_MAX_SIZE) {
+		struct i2c_client *client = sensor->i2c_client;
+		dev_err(&client->dev, "Group register map exceeded maximum size");
+		return -1;
 	}
-	if(reg_set->group_reg_values[index] != val)
-	{
-		reg_set->group_reg_values[index] = val;
-    sensor->group_register_flags[group].group_reg_dirty[index] = 1; 
-		sensor->updateGroupRegisters[group] = true;
+	
+	// move elements up to make space (keep sorted)
+	for (int j=reg_set->num_group_reg; j > idx; --j) {
+		reg_set->group_reg_addresses[j] = reg_set->group_reg_addresses[j-1];
+		reg_set->group_reg_values[j] = reg_set->group_reg_values[j-1];
+		flags->group_reg_dirty[j] = flags->group_reg_dirty[j-1];
 	}
+	// insert new (addr, value)
+	reg_set->num_group_reg++;
+	reg_set->group_reg_addresses[idx] = address;
+	reg_set->group_reg_values[idx] = val;
+	sensor->updateGroupRegisters[group] = true;
+	flags->group_reg_dirty[idx] = true;
 	return 0;
 }
 
@@ -1066,18 +1022,39 @@ static int og01a1b_add_or_set_group_reg_from_ctrlval(struct og01a1b_dev *sensor,
 	return og01a1b_add_or_set_group_reg(sensor, address, val, group);
 }
 
-static bool emitter_enabled_for_group(struct og01a1b_dev *sensor, int group) {
-	//printk("sensor->ir_emitter_mode:%d group:%d",sensor->ir_emitter_mode,group);
-	if(sensor->ir_emitter_mode == IR_EMITTER_MODE_ALL_FRAMES) {
-		return true;
+static void set_strobe_group_registers(struct og01a1b_dev *sensor, u32 emitter_mode)
+{
+	u16 strobe_address = 0x3920;
+	switch(emitter_mode) {
+	case IR_EMITTER_MODE_ALL_FRAMES:
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0xFF, 0);
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0xFF, 1);
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0xFF, 2);
+		break;
+	case IR_EMITTER_MODE_GROUP_1_ONLY:
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0x00, 0);
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0xFF, 1);
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0x00, 2);
+		break;
+	case IR_EMITTER_MODE_GROUP_0_AND_2_ONLY:
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0xFF, 0);
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0x00, 1);
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0xFF, 2);
+		break;
+	default:
+		// invalid emitter mode
+		return;
 	}
-	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_1_ONLY) {
-		return group == 1;
-	}
-	else if(sensor->ir_emitter_mode == IR_EMITTER_MODE_GROUP_0_AND_2_ONLY) {
-		return (group == 0) || (group == 2);
-	}
-	return false;
+}
+
+static int og01a1b_write_reg_maybe_dual(struct og01a1b_dev *sensor, u16 addr, u8 value, bool use_dual_i2c) {
+	if (use_dual_i2c) { return og01a1b_write_reg_dual(sensor, addr, value); }
+	else { return og01a1b_write_reg(sensor, addr, value); }
+}
+
+static int og01a1b_write_reg16_maybe_dual(struct og01a1b_dev *sensor, u16 addr, u16 value, bool use_dual_i2c) {
+	if (use_dual_i2c) { return og01a1b_write_reg16_dual(sensor, addr, value); }
+	else { return og01a1b_write_reg16(sensor, addr, value); }
 }
 
 static int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, bool use_dual_i2c)
@@ -1086,6 +1063,9 @@ static int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, b
 
 	for(int group = 0; group < NUM_REGISTER_GROUPS; group++) 
 	{
+		struct register_set *regs = &sensor->active_group_registers.group_register_sets[group];
+		bool *dirty = (bool*)sensor->group_register_flags[group].group_reg_dirty;
+
 		bool doingTimingAdjustment = ((sensor->timing_adjustment_state == TIMING_READY_FOR_INITIAL_GROUP_WRITE) || (sensor->timing_adjustment_state == TIMING_READY_FOR_GROUP_RESTORE)) && group == sensor->current_timing_adjustment.group_to_adjust;
 		//printk("doing timing adjustment:%d group:%d sensor->current_timing_adjustment.group_to_adjust:%d\n",doingTimingAdjustment,group,sensor->current_timing_adjustment.group_to_adjust);
 		if(!sensor->updateGroupRegisters[group] && !doingTimingAdjustment)
@@ -1093,80 +1073,29 @@ static int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, b
 			continue;
 		}
 		sensor->updateGroupRegisters[group] = false;
-		ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, 0x3208, 0x00 | group) : og01a1b_write_reg(sensor, 0x3208, 0x00 | group);
+		ret = og01a1b_write_reg16_maybe_dual(sensor, 0x3208, 0x00 | group, use_dual_i2c);
 		if(ret != 0) {
 			return ret;
 		}
-		for(int i = 0; i < sensor->active_group_registers.group_register_sets[group].num_group_reg; i++) 
+		for(int i = 0; i < regs->num_group_reg; i++) 
 		{
-			if (i < sensor->active_group_registers.group_register_sets[group].num_group_reg - 1 &&
-				sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i + 1] == 
-				sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i] + 1) {
-        // Sequential registers, use og01a1b_write_reg16
-
-        u16 val = (sensor->active_group_registers.group_register_sets[group].group_reg_values[i] << 8) |
-          sensor->active_group_registers.group_register_sets[group].group_reg_values[i + 1];
-
-        // if neither register is dirty, skip write
-        u16 addr = sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i]; 
-        if (sensor->cache_group_registers &&
-            sensor->group_register_flags[group].group_reg_dirty[i] == 0 && 
-            sensor->group_register_flags[group].group_reg_dirty[i+1] == 0 &&
-            addr != 0x3920 && addr != 0x380e && addr != 0x382c && addr != 0x5000 && addr != 0x4813) 
-        { 
-          printk("[group_write] sensor:%d SKIP g:%d 0x%04x = 0x%04x\n", sensor->sensor_index, group, addr, val);
-          i++; // skip 2 registers
-          continue; 
-        }
-
-				ret = use_dual_i2c ? og01a1b_write_reg16_dual(sensor, 
-					sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i], val) :
-					og01a1b_write_reg16(sensor, 
-					sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i], val);
-        // mark both registers as not dirty
-        sensor->group_register_flags[group].group_reg_dirty[i] = 0;
-        sensor->group_register_flags[group].group_reg_dirty[i+1] = 0;
+			u16 addr = regs->group_reg_addresses[i];
+			if (!dirty[i]) { continue; }
+			if (i < regs->num_group_reg-1 && addr+1 == regs->group_reg_addresses[i+1] && dirty[i+1]) {
+        		// Sequential registers, use og01a1b_write_reg16
+        		u16 value = (regs->group_reg_values[i] << 8) | regs->group_reg_values[i+1];
+				ret = og01a1b_write_reg16_maybe_dual(sensor, addr, value, use_dual_i2c);
+				if (ret == 0) {
+					dirty[i] = false;
+					dirty[i+1] = false;
+				}
 				i++; // Skip the next register as we've already written it
 			} else {
 				// Non-sequential registers, use og01a1b_write_reg
-        u16 addr = sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i];
-        // if register is not dirty, skip write 
-        if (sensor->cache_group_registers &&
-            sensor->group_register_flags[group].group_reg_dirty[i] == 0 &&
-            addr != 0x3920 && addr != 0x380e && addr != 0x382c && addr != 0x5000 && addr != 0x4813) 
-        { 
-          u8 val = sensor->active_group_registers.group_register_sets[group].group_reg_values[i]; 
-          printk("[group_write] sensor:%d SKIP g:%d 0x%04x = 0x%02x\n", sensor->sensor_index, group, addr, val);
-          continue; 
-        }
-
-				ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, 
-					sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i],
-					sensor->active_group_registers.group_register_sets[group].group_reg_values[i]) :
-					og01a1b_write_reg(sensor, 
-					sensor->active_group_registers.group_register_sets[group].group_reg_addresses[i],
-					sensor->active_group_registers.group_register_sets[group].group_reg_values[i]);
-
-        // mark register as not dirty
-        sensor->group_register_flags[group].group_reg_dirty[i] = 0;
+				u8 value = regs->group_reg_values[i];
+				ret = og01a1b_write_reg_maybe_dual(sensor, addr, value, use_dual_i2c);
+				if (ret == 0) { dirty[i] = false; }
 			}
-			if(ret != 0) 
-			{
-				return ret;
-			}
-		}
-		if(emitter_enabled_for_group(sensor, group))
-		{
-      //printk("[group_write] sensor:%d EMITTER ON g:%d 0x%04x = 0x%02x\n", sensor->sensor_index, group, 0x3920, 0xff);
-			ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, 0x3920, 0xff) : og01a1b_write_reg(sensor, 0x3920, 0xff);
-			if(ret != 0) 
-			{
-				return ret;
-			}
-		}
-		else{
-      //printk("[group_write] sensor:%d EMITTER OFF g:%d 0x%04x = 0x%02x\n", sensor->sensor_index, group, 0x3920, 0x00);
-			ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, 0x3920, 0x00) : og01a1b_write_reg(sensor, 0x3920, 0x00);
 			if(ret != 0) 
 			{
 				return ret;
@@ -1174,19 +1103,25 @@ static int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, b
 		}
 		if(sensor->timing_adjustment_state == TIMING_READY_FOR_INITIAL_GROUP_WRITE && sensor->current_timing_adjustment.group_to_adjust == group)
 		{
-      //printk("[group_write] sensor:%d TIME ADJUST g:%d 0x%04x = 0x%04x\n", sensor->sensor_index, group, 0x380e, sensor->current_timing_adjustment.new_rows);
-			ret = use_dual_i2c ? og01a1b_write_reg16_dual(sensor, 0x380e, sensor->current_timing_adjustment.new_rows) :
-				og01a1b_write_reg16(sensor, 0x380e, sensor->current_timing_adjustment.new_rows);
+			int rows_address_index = og01a1b_find_group_reg_index(regs, 0x380e);
+			ret = og01a1b_write_reg16_maybe_dual(sensor, 0x380e, sensor->current_timing_adjustment.new_rows, use_dual_i2c);
 			if(ret != 0) 
 			{
 				return ret;
 			}
-      //printk("[group_write] sensor:%d TIME ADJUST g:%d 0x%04x = 0x%04x\n", sensor->sensor_index, group, 0x382c, sensor->current_timing_adjustment.new_global_row);
-			ret = use_dual_i2c ? og01a1b_write_reg16_dual(sensor, 0x382c, sensor->current_timing_adjustment.new_global_row) :
-				og01a1b_write_reg16(sensor, 0x382c, sensor->current_timing_adjustment.new_global_row);
+			if (rows_address_index >= 0)
+			{
+				dirty[rows_address_index] = true; // force dirty flag for next frame to restore
+			}
+			int global_row_address_index = og01a1b_find_group_reg_index(regs, 0x382c);
+			ret = og01a1b_write_reg16_maybe_dual(sensor, 0x382c, sensor->current_timing_adjustment.new_global_row, use_dual_i2c);
 			if(ret != 0) 
 			{
 				return ret;
+			}
+			if (global_row_address_index >= 0)
+			{
+				dirty[global_row_address_index] = true; // force dirty flag for next frame to restore
 			}
 			sensor->timing_adjustment_state = TIMING_ADJUSTMENT_IN_PROGRESS;
 		}
@@ -1197,7 +1132,7 @@ static int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, b
 			// ( we could also get rid of the restore )
 			sensor->timing_adjustment_state = TIMING_ADJUSTMENT_NOT_IN_PROGRESS;
 		}
-		ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, 0x3208, 0x10 | group) : og01a1b_write_reg(sensor, 0x3208, 0x10 | group);
+		ret = og01a1b_write_reg_maybe_dual(sensor, 0x3208, 0x10 | group, use_dual_i2c);
 		if(ret!= 0)
 		{
 			return ret;
@@ -1550,7 +1485,6 @@ static void do_post_sof_work(struct v4l2_subdev *sd, u64 sof_timestamp, u64 sof_
 
 	if(/*vc == 1 && */ sensor->timing_adjustment_state == TIMING_ADJUSTMENT_REQUESTED) {
 		sensor->timing_adjustment_state = TIMING_READY_FOR_INITIAL_GROUP_WRITE;
-		//printk("Asked for it here:%d\n", sensor->sensor_index);
 	}
 	else if( /*vc == 1 && */ sensor->timing_adjustment_state == TIMING_ADJUSTMENT_IN_PROGRESS && sensor->current_timing_adjustment.number_of_frames_to_hold_adjustment == 0) {
 		sensor->timing_adjustment_state = TIMING_READY_FOR_GROUP_RESTORE;
@@ -1752,6 +1686,7 @@ static long og01a1b_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void
         {
 			
 			sensor->ir_emitter_mode = *a;
+			set_strobe_group_registers(sensor, sensor->ir_emitter_mode);
 			// strobe configuration is done as part of the group registers update so we need
 			// to re-update these when updating IR emitter mode
 			for(int i = 0; i < NUM_REGISTER_GROUPS; i++) {
