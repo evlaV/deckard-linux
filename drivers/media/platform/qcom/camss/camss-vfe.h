@@ -101,6 +101,7 @@ enum vfe_v3_comp_group {
 
 struct vfe_wm {
 	u8 bus_client;
+	u8 plane;
 };
 
 #define VFE_MAX_WM_PER_OUTPUT 3
