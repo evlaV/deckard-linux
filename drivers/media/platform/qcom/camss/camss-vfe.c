@@ -673,8 +673,11 @@ static int vfe_enable_one_output(struct vfe_line *line, struct vfe_output *outpu
 		if (!output->buf[i])
 			break;
 		output->gen2.active_num++;
-		ops->vfe_wm_update(vfe, output->wm[0].bus_client,
-				   output->buf[i]->addr[0], line);
+		if (ops->vfe_output_update)
+			ops->vfe_output_update(vfe, output, output->buf[i]);
+		else
+			ops->vfe_wm_update(vfe, output->wm[0].bus_client,
+					   output->buf[i]->addr[0], line);
 		ops->reg_update(vfe, line->id);
 	}
 
@@ -741,8 +744,11 @@ int vfe_queue_buffer_v2(struct camss_video *vid,
 	if (output->state == VFE_OUTPUT_ON &&
 	    output->gen2.active_num < 2) {
 		output->buf[output->gen2.active_num++] = buf;
-		ops->vfe_wm_update(vfe, output->wm[0].bus_client,
-				   buf->addr[0], line);
+		if (ops->vfe_output_update)
+			ops->vfe_output_update(vfe, output, buf);
+		else
+			ops->vfe_wm_update(vfe, output->wm[0].bus_client,
+					   buf->addr[0], line);
 		ops->reg_update(vfe, line->id);
 	} else {
 		vfe_buf_add_pending(output, buf);
