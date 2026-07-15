@@ -168,6 +168,10 @@ msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 {
 	struct msm_drm_private *priv = shrinker->private_data;
 	struct ww_acquire_ctx ticket;
+    
+	if (!priv->msm_shrinker_enable) 
+		return 0;
+
 	struct {
 		struct drm_gem_lru *lru;
 		bool (*shrink)(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket);
@@ -337,6 +341,8 @@ int msm_gem_shrinker_init(struct drm_device *dev)
 	priv->shrinker->private_data = priv;
 
 	//shrinker_register(priv->shrinker);
+
+	priv->msm_shrinker_enable = false;
 
 	priv->vmap_notifier.notifier_call = msm_gem_shrinker_vmap;
 	WARN_ON(register_vmap_purge_notifier(&priv->vmap_notifier));
