@@ -34,6 +34,7 @@
 #include <linux/cpuhotplug.h>
 #include <linux/part_stat.h>
 #include <linux/kernel_read_file.h>
+#include <trace/gpuvis.h>
 
 #include "zram_drv.h"
 
@@ -1996,6 +1997,8 @@ static int recompress_slot(struct zram *zram, u32 index, struct page *page,
 	unsigned int class_index_new;
 	void *src;
 	int ret = 0;
+
+	TRACE_BEGIN_CTX();
 
 	handle_old = zram_get_handle(zram, index);
 	if (!handle_old)

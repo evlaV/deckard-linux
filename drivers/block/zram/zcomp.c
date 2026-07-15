@@ -9,6 +9,7 @@
 #include <linux/cpuhotplug.h>
 #include <linux/vmalloc.h>
 #include <linux/sysfs.h>
+#include <trace/gpuvis.h>
 
 #include "zcomp.h"
 
@@ -144,6 +145,8 @@ int zcomp_compress(struct zcomp *comp, struct zcomp_strm *zstrm,
 		.dst_len = 2 * PAGE_SIZE,
 	};
 	int ret;
+
+	TRACE_BEGIN_CTX();
 
 	might_sleep();
 	ret = comp->ops->compress(comp->params, &zstrm->ctx, &req);
