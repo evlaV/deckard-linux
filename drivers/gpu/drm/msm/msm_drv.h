@@ -207,6 +207,8 @@ struct msm_drm_private {
 	 * @fault_stall_lock.
 	 */
 	bool stall_enabled;
+
+	bool msm_shrinker_enable;
 };
 
 const struct msm_format *mdp_get_format(struct msm_kms *kms, uint32_t format, uint64_t modifier);
