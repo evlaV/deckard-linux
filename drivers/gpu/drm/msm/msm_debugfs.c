@@ -496,6 +496,9 @@ static void msm_debugfs_gpu_init(struct drm_minor *minor)
 	debugfs_create_bool("disable_err_irq", 0600, minor->debugfs_root,
 		&priv->disable_err_irq);
 
+	debugfs_create_bool("shrinker_enable",0600, minor->debugfs_root,
+		&priv->msm_shrinker_enable);
+
 	debugfs_create_file("stall_reenable_time_us", 0400, minor->debugfs_root,
 		priv, &stall_reenable_time_fops);
 
