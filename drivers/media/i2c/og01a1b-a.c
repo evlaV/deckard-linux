@@ -159,7 +159,6 @@ struct GroupRegisterFlags {
 	bool group_reg_dirty[GROUP_REGMAP_MAX_SIZE];
 };
 
-
 enum og01a1b_group_mode {
 	MODE_NOGROUPS = 0,
 	MODE_1GROUPs = 1,
@@ -181,6 +180,46 @@ enum og01a1b_timing_adjustment_state {
 	TIMING_READY_FOR_INITIAL_GROUP_WRITE = 3,
 	TIMING_ADJUSTMENT_REQUESTED = 4
 };
+
+#define UPDATE_GROUPS_STAT_BUFFER_LENGTH 256
+#define I2C_WRITE_STAT_BUFFER_LENGTH 1024
+
+struct update_groups_stat_entry {
+	u64 duration_ns;
+	u32 i2c_writes_issued;
+	u32 i2c_writes_skipped;
+};
+
+struct i2c_write_stat_entry {
+	u64 duration_ns;
+};
+
+struct group_reg_stats {
+	struct update_groups_stat_entry update_groups_stats[UPDATE_GROUPS_STAT_BUFFER_LENGTH];
+	u32 index_update_groups;
+	u32 count_update_groups;
+	struct i2c_write_stat_entry i2c_writes[I2C_WRITE_STAT_BUFFER_LENGTH];
+	u32 index_i2c_writes;
+	u32 count_i2c_writes;
+};
+
+void group_reg_stats_record_i2c_write(struct group_reg_stats *stats, u64 duration) {
+	struct i2c_write_stat_entry *entry = &stats->i2c_writes[stats->index_i2c_writes];
+	entry->duration_ns = duration;
+
+	stats->index_i2c_writes = (stats->index_i2c_writes+1)%I2C_WRITE_STAT_BUFFER_LENGTH;
+	if (stats->count_i2c_writes < I2C_WRITE_STAT_BUFFER_LENGTH) { stats->count_i2c_writes++; }
+}
+void group_reg_stats_end_update_groups(struct group_reg_stats *stats, u64 duration, u32 i2c_writes, u32 i2c_skipped) {
+	struct update_groups_stat_entry *entry = &stats->update_groups_stats[stats->index_update_groups];
+	entry->duration_ns = duration;
+	entry->i2c_writes_issued = i2c_writes;
+	entry->i2c_writes_skipped = i2c_skipped;
+
+	stats->index_update_groups = (stats->index_update_groups+1)%UPDATE_GROUPS_STAT_BUFFER_LENGTH;
+	if (stats->count_update_groups < UPDATE_GROUPS_STAT_BUFFER_LENGTH) { stats->count_update_groups++; }
+}
+
 
 struct og01a1b_dev {
 	struct i2c_client *i2c_client;
@@ -243,8 +282,7 @@ struct og01a1b_dev {
 	u8 otp_data[256];
 	bool skip_regmap;
 
-  bool cache_group_registers;
-  struct group_reg_stats group_reg_stats;
+	struct group_reg_stats group_reg_stats;
 };
 
 struct og01a1b_dev* sensors[4];
@@ -984,6 +1022,7 @@ static int og01a1b_add_or_set_group_reg(struct og01a1b_dev *sensor, u16 address,
 		if (reg_set->group_reg_addresses[idx] == address) {
 			// existing address, compare value and update if needed
 			if (reg_set->group_reg_values[idx] != val) {
+				//printk("[group_write] update sensor:%d g:%d 0x%04x = 0x%02x (idx=%d)\n", sensor->sensor_index, group, address, val, idx);
 				reg_set->group_reg_values[idx] = val;
 				sensor->updateGroupRegisters[group] = true;
 				flags->group_reg_dirty[idx] = true;
@@ -1000,12 +1039,14 @@ static int og01a1b_add_or_set_group_reg(struct og01a1b_dev *sensor, u16 address,
 	
 	// move elements up to make space (keep sorted)
 	for (int j=reg_set->num_group_reg; j > idx; --j) {
+		//printk("[group_write] move sensor:%d g:%d  0x%04x = 0x%02x from %d to %d\n", sensor->sensor_index, group, reg_set->group_reg_addresses[j-1], reg_set->group_reg_values[j-1], j-1, j);
 		reg_set->group_reg_addresses[j] = reg_set->group_reg_addresses[j-1];
 		reg_set->group_reg_values[j] = reg_set->group_reg_values[j-1];
 		flags->group_reg_dirty[j] = flags->group_reg_dirty[j-1];
 	}
 	// insert new (addr, value)
 	reg_set->num_group_reg++;
+	//printk("[group_write] add new sensor:%d g:%d  0x%04x = 0x%02x (idx=%d)\n", sensor->sensor_index, group, address, val, idx);
 	reg_set->group_reg_addresses[idx] = address;
 	reg_set->group_reg_values[idx] = val;
 	sensor->updateGroupRegisters[group] = true;
@@ -1026,6 +1067,11 @@ static void set_strobe_group_registers(struct og01a1b_dev *sensor, u32 emitter_m
 {
 	u16 strobe_address = 0x3920;
 	switch(emitter_mode) {
+	case IR_EMITTER_MODE_OFF:
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0x00, 0);
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0x00, 1);
+		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0x00, 2);
+		break;
 	case IR_EMITTER_MODE_ALL_FRAMES:
 		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0xFF, 0);
 		og01a1b_add_or_set_group_reg(sensor, strobe_address, 0xFF, 1);
@@ -1047,19 +1093,32 @@ static void set_strobe_group_registers(struct og01a1b_dev *sensor, u32 emitter_m
 	}
 }
 
-static int og01a1b_write_reg_maybe_dual(struct og01a1b_dev *sensor, u16 addr, u8 value, bool use_dual_i2c) {
-	if (use_dual_i2c) { return og01a1b_write_reg_dual(sensor, addr, value); }
-	else { return og01a1b_write_reg(sensor, addr, value); }
+static int og01a1b_write_reg_maybe_dual(struct og01a1b_dev *sensor, u16 addr, u8 value, bool use_dual_i2c, u64 *duration) {
+	u64 start_time = ktime_get_raw_ns();
+	printk("[group_write] s:%d a:0x%04x v:0x%02x\n", sensor->sensor_index, addr, value);
+	int ret = use_dual_i2c ? og01a1b_write_reg_dual(sensor, addr, value) : og01a1b_write_reg(sensor, addr, value);
+	*duration = ktime_get_raw_ns() - start_time;
+	if (ret != 0) { printk("[group_write] i2c write (0x%04x=0x%02x) returned %d\n", addr, value, ret); }
+	return ret;
 }
 
-static int og01a1b_write_reg16_maybe_dual(struct og01a1b_dev *sensor, u16 addr, u16 value, bool use_dual_i2c) {
-	if (use_dual_i2c) { return og01a1b_write_reg16_dual(sensor, addr, value); }
-	else { return og01a1b_write_reg16(sensor, addr, value); }
+static int og01a1b_write_reg16_maybe_dual(struct og01a1b_dev *sensor, u16 addr, u16 value, bool use_dual_i2c, u64 *duration) {
+	u64 start_time = ktime_get_raw_ns();
+	printk("[group_write] s:%d a:0x%04x v:0x%04x\n", sensor->sensor_index, addr, value);
+	int ret = use_dual_i2c ? og01a1b_write_reg16_dual(sensor, addr, value) : og01a1b_write_reg16(sensor, addr, value);
+	*duration = ktime_get_raw_ns() - start_time;
+	if (ret != 0) { printk("[group_write] i2c write (0x%04x=0x%04x) returned %d\n", addr, value, ret); }
+	return ret;
 }
 
 static int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, bool use_dual_i2c)
 {
 	int ret;
+	struct group_reg_stats *stats = &sensor->group_reg_stats;
+	u64 start_time = ktime_get_raw_ns();
+	u64 i2c_duration = 0;
+	u32 count_i2c_write = 0;
+	u32 count_i2c_skipped = 0;
 
 	for(int group = 0; group < NUM_REGISTER_GROUPS; group++) 
 	{
@@ -1073,18 +1132,23 @@ static int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, b
 			continue;
 		}
 		sensor->updateGroupRegisters[group] = false;
-		ret = og01a1b_write_reg16_maybe_dual(sensor, 0x3208, 0x00 | group, use_dual_i2c);
+		ret = og01a1b_write_reg16_maybe_dual(sensor, 0x3208, 0x00 | group, use_dual_i2c, &i2c_duration);
 		if(ret != 0) {
-			return ret;
+			goto exit_group_write;
 		}
+		count_i2c_write++;
+		group_reg_stats_record_i2c_write(stats, i2c_duration);
 		for(int i = 0; i < regs->num_group_reg; i++) 
 		{
 			u16 addr = regs->group_reg_addresses[i];
-			if (!dirty[i]) { continue; }
+			if (!dirty[i]) {
+				count_i2c_skipped++;
+				//continue;
+			}
 			if (i < regs->num_group_reg-1 && addr+1 == regs->group_reg_addresses[i+1] && dirty[i+1]) {
         		// Sequential registers, use og01a1b_write_reg16
         		u16 value = (regs->group_reg_values[i] << 8) | regs->group_reg_values[i+1];
-				ret = og01a1b_write_reg16_maybe_dual(sensor, addr, value, use_dual_i2c);
+				ret = og01a1b_write_reg16_maybe_dual(sensor, addr, value, use_dual_i2c, &i2c_duration);
 				if (ret == 0) {
 					dirty[i] = false;
 					dirty[i+1] = false;
@@ -1093,36 +1157,44 @@ static int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, b
 			} else {
 				// Non-sequential registers, use og01a1b_write_reg
 				u8 value = regs->group_reg_values[i];
-				ret = og01a1b_write_reg_maybe_dual(sensor, addr, value, use_dual_i2c);
+				ret = og01a1b_write_reg_maybe_dual(sensor, addr, value, use_dual_i2c, &i2c_duration);
 				if (ret == 0) { dirty[i] = false; }
 			}
 			if(ret != 0) 
 			{
-				return ret;
+				goto exit_group_write;
 			}
+			count_i2c_write++;
+			group_reg_stats_record_i2c_write(stats, i2c_duration);
 		}
 		if(sensor->timing_adjustment_state == TIMING_READY_FOR_INITIAL_GROUP_WRITE && sensor->current_timing_adjustment.group_to_adjust == group)
 		{
 			int rows_address_index = og01a1b_find_group_reg_index(regs, 0x380e);
-			ret = og01a1b_write_reg16_maybe_dual(sensor, 0x380e, sensor->current_timing_adjustment.new_rows, use_dual_i2c);
+			ret = og01a1b_write_reg16_maybe_dual(sensor, 0x380e, sensor->current_timing_adjustment.new_rows, use_dual_i2c, &i2c_duration);
 			if(ret != 0) 
 			{
-				return ret;
+				goto exit_group_write;
 			}
+			count_i2c_write++;
+			group_reg_stats_record_i2c_write(stats, i2c_duration);
 			if (rows_address_index >= 0)
 			{
 				dirty[rows_address_index] = true; // force dirty flag for next frame to restore
 			}
+
 			int global_row_address_index = og01a1b_find_group_reg_index(regs, 0x382c);
-			ret = og01a1b_write_reg16_maybe_dual(sensor, 0x382c, sensor->current_timing_adjustment.new_global_row, use_dual_i2c);
+			ret = og01a1b_write_reg16_maybe_dual(sensor, 0x382c, sensor->current_timing_adjustment.new_global_row, use_dual_i2c, &i2c_duration);
 			if(ret != 0) 
 			{
-				return ret;
+				goto exit_group_write;
 			}
+			count_i2c_write++;
+			group_reg_stats_record_i2c_write(stats, i2c_duration);
 			if (global_row_address_index >= 0)
 			{
 				dirty[global_row_address_index] = true; // force dirty flag for next frame to restore
 			}
+
 			sensor->timing_adjustment_state = TIMING_ADJUSTMENT_IN_PROGRESS;
 		}
 		// WHAT happens is we update group registers during a timing adjustment? 
@@ -1132,16 +1204,21 @@ static int og01a1b_write_group_registers_if_needed(struct og01a1b_dev *sensor, b
 			// ( we could also get rid of the restore )
 			sensor->timing_adjustment_state = TIMING_ADJUSTMENT_NOT_IN_PROGRESS;
 		}
-		ret = og01a1b_write_reg_maybe_dual(sensor, 0x3208, 0x10 | group, use_dual_i2c);
+		ret = og01a1b_write_reg_maybe_dual(sensor, 0x3208, 0x10 | group, use_dual_i2c, &i2c_duration);
 		if(ret!= 0)
 		{
-			return ret;
+			goto exit_group_write;
 		}
+		count_i2c_write++;
+		group_reg_stats_record_i2c_write(stats, i2c_duration);
 	}
 	if(sensor->current_timing_adjustment.number_of_frames_to_hold_adjustment > 0)
 	{
 		sensor->current_timing_adjustment.number_of_frames_to_hold_adjustment--;
 	}
+	ret = 0;
+exit_group_write:
+	group_reg_stats_end_update_groups(stats, ktime_get_raw_ns()-start_time, count_i2c_write, count_i2c_skipped);
 	return 0;
 }
 
@@ -1595,6 +1672,7 @@ static int og01a1b_s_power(struct v4l2_subdev *sd, int on)
 	if(sensor->is_sync_sensor) {
 		struct i2c_client *client = sensor->i2c_client;
 		sensor->ir_emitter_mode = IR_EMITTER_MODE_OFF;
+		set_strobe_group_registers(sensor, sensor->ir_emitter_mode);
 		unsigned long flags;
 		spin_lock_irqsave(&ir_spinlock, flags);
 		if(!!on) {
@@ -1912,14 +1990,11 @@ int last_set_group = 0;
 
 static void update_groups(struct og01a1b_dev *sensor)
 {
-	TRACE_BEGIN_CTX();
     u64 last_group_pre_write_timestamp = 0;
     u64 lastGroupPostWriteTimestamp = 0;
     unsigned long flags;
 
 	mutex_lock(&sensor->lock);
-	
-	TRACE_BEGIN_CTX_NAMED(group_write_critical_og01a1b_a);
 	last_group_pre_write_timestamp = ktime_get_raw_ns();
 	//printk("updating groups for sensor:%d\n", sensor->sensor_index);
 	if(last_time_in_sync != 0) {
@@ -1963,22 +2038,6 @@ static void update_groups(struct og01a1b_dev *sensor)
 	//og01a1b_write_reg(sensors[i], 0x3208, 0xa0 | last_set_group );
   }
   lastGroupPostWriteTimestamp = ktime_get_raw_ns();
-  TRACE_END_CTX_NAMED(group_write_critical_og01a1b_a);
-
-  u64 group_write_duration = lastGroupPostWriteTimestamp - last_group_pre_write_timestamp;
-  sensor->group_write_history[sensor->group_write_history_offset] = group_write_duration;
-  sensor->group_write_history_offset = (sensor->group_write_history_offset+1);
-  if (sensor->group_write_history_offset >= GROUP_WRITE_TIME_BUFFER_LENGTH) { sensor->group_write_history_offset = 0; }
-
-  u64 max_duration = 0;
-  for (int i=0; i != GROUP_WRITE_TIME_BUFFER_LENGTH; ++i) {
-    if (sensor->group_write_history[i] > max_duration) {
-      max_duration = sensor->group_write_history[i];
-    }
-  }
-  if (max_duration == group_write_duration) {
-    printk("[group_write] max duration over window = %llu ns\n", max_duration);
-  }
 
 	sensor->active_group_registers.group_written = last_set_group;
 	sensor->active_group_registers.pre_group_write_timestamp = last_group_pre_write_timestamp;
@@ -2184,58 +2243,65 @@ static ssize_t skip_regmap_store(struct device *dev,
 	return count;
 }
 
-static ssize_t cache_group_regs_show(struct device *dev,
+static ssize_t group_reg_stats_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
 	struct v4l2_subdev *sd = dev_get_drvdata(dev);
 	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
+	struct group_reg_stats *stats = &sensor->group_reg_stats;
 
-	return sysfs_emit(buf, "%d\n", sensor->cache_group_registers);
-}
+	u64 total_group_write_duration = 0;
+	u64 max_group_write_duration = 0;
+	u32 total_writes_issued = 0;
+	u32 total_writes_skipped = 0;
 
-static ssize_t cache_group_regs_store(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t count)
-{
-	struct v4l2_subdev *sd = dev_get_drvdata(dev);
-	struct og01a1b_dev *sensor = to_og01a1b_dev(sd);
-	bool val;
-	int ret;
-
-	ret = kstrtobool(buf, &val);
-	if (ret)
-		return ret;
+	u64 max_i2c_duration = 0;
+	u64 total_i2c_duration = 0;
 
 	mutex_lock(&sensor->lock);
-	sensor->cache_group_registers = val;
-  if (val) {
-    // set all to dirty
-    for (int group = 0; group < NUM_REGISTER_GROUPS; ++group)
-    {
-      struct register_set *regs = &sensor->active_group_registers.group_register_sets[group];
-      for (int i = 0; i < regs->num_group_reg; ++i)
-      {
-        sensor->group_register_flags[group].group_reg_dirty[i] = 1;
-      }
-    }
-  }
+	for (u32 i=0; i < stats->count_update_groups; ++i) {
+		struct update_groups_stat_entry *entry = &stats->update_groups_stats[i];
+		if (entry->duration_ns > max_group_write_duration) { max_group_write_duration = entry->duration_ns; }
+		total_group_write_duration += entry->duration_ns;
+		total_writes_issued  += entry->i2c_writes_issued;
+		total_writes_skipped += entry->i2c_writes_skipped;
+	}
+	u64 mean_group_write_duration = total_group_write_duration / ((u64)stats->count_update_groups);
+	u32 mean_writes_issued  = total_writes_issued / stats->count_update_groups;
+	u32 mean_writes_skipped = total_writes_skipped / stats->count_update_groups;
+
+	for (u32 i=0; i < stats->count_i2c_writes; ++i) {
+		struct i2c_write_stat_entry *entry = &stats->i2c_writes[i];
+		if (entry->duration_ns > max_i2c_duration) { max_i2c_duration = entry->duration_ns; }
+		total_i2c_duration  += entry->duration_ns;
+	}
+	u64 mean_i2c_duration = total_i2c_duration / ((u64)stats->count_i2c_writes);
+
 	mutex_unlock(&sensor->lock);
 
-  printk("[group_write] Setting cache_group_registers to %s\n", val ? "true" : "false");
-
-	return count;
+	return sysfs_emit(buf,
+		"Update Groups:\n"
+		"  Duration (mean/max): %lluns/%lluns\n"
+		"  I2C write count (mean): %u\n"
+		"  I2C skipped count (mean): %u\n"
+		"  I2C write duration (mean/max): %lluns/%lluns\n",
+		mean_group_write_duration, max_group_write_duration,
+		mean_writes_issued, mean_writes_skipped,
+		mean_i2c_duration, max_i2c_duration
+	);
 }
+
 
 static DEVICE_ATTR_RO(otp);
 static DEVICE_ATTR_RW(otp_valid);
 static DEVICE_ATTR_RW(skip_regmap);
-static DEVICE_ATTR_RW(cache_group_regs);
+static DEVICE_ATTR_RO(group_reg_stats);
 
 static struct attribute *og01a1b_dev_attrs[] = {
 	&dev_attr_otp.attr,
 	&dev_attr_otp_valid.attr,
 	&dev_attr_skip_regmap.attr,
-  &dev_attr_cache_group_regs.attr,
+	&dev_attr_group_reg_stats.attr,
 	NULL,
 };
 static const struct attribute_group og01a1b_attr_group = {
@@ -2422,9 +2488,6 @@ static int og01a1b_probe(struct i2c_client *client)
 		goto free_ctrls;
 
 	sensor->current_mode = &og01a1b_mode_data_1280x1024;
-  sensor->cache_group_registers = false;
-  memset(&sensor->group_write_history, 0, sizeof(sensor->group_write_history));
-  sensor->group_write_history_offset = 0;
 
 	// Read the sensor queue index from the device tree
     ret = of_property_read_u32(dev->of_node, "sensor-queue-index", &sensor->queue_index);
