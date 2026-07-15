@@ -968,13 +968,17 @@ int vfe_put_output(struct vfe_line *line)
 static void vfe_disable_output(struct vfe_line *line)
 {
 	struct vfe_device *vfe = to_vfe(line);
+	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
 	struct vfe_output *output = &line->output[0];
 	unsigned long flags;
 	unsigned int i;
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 	for (i = 0; i < output->wm_num; i++)
-		vfe->res->hw_ops->vfe_wm_stop(vfe, output->wm[i].bus_client);
+		if (ops->vfe_output_stop)
+			ops->vfe_output_stop(vfe, output);
+		else
+			ops->vfe_wm_stop(vfe, output->wm[i].bus_client);
 	output->gen2.active_num = 0;
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 }
