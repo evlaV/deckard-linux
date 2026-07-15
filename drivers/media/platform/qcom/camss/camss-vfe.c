@@ -642,15 +642,54 @@ out_unlock:
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 }
 
+static int vfe_enable_one_output(struct vfe_line *line, struct vfe_output *output)
+{
+	struct vfe_device *vfe = to_vfe(line);
+	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
+	unsigned int i;
+
+	if (output->state > VFE_OUTPUT_RESERVED) {
+		dev_err(vfe->camss->dev,
+			"Output is not in reserved state %d\n",
+			output->state);
+		return -EINVAL;
+	}
+
+	WARN_ON(output->gen2.active_num);
+
+	output->state = VFE_OUTPUT_ON;
+
+	output->sequence = 0;
+	output->wait_reg_update = 0;
+	reinit_completion(&output->reg_update);
+
+	if (ops->vfe_output_start)
+		ops->vfe_output_start(vfe, output);
+	else
+		ops->vfe_wm_start(vfe, output->wm[0].bus_client, line);
+
+	for (i = 0; i < CAMSS_INIT_BUF_COUNT; i++) {
+		output->buf[i] = vfe_buf_get_pending(output);
+		if (!output->buf[i])
+			break;
+		output->gen2.active_num++;
+		ops->vfe_wm_update(vfe, output->wm[0].bus_client,
+				   output->buf[i]->addr[0], line);
+		ops->reg_update(vfe, line->id);
+	}
+
+	return 0;
+}
+
 int vfe_enable_output_v2(struct vfe_line *line)
 {
 	struct vfe_device *vfe = to_vfe(line);
-	struct vfe_output *output = &line->output[0];
 	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
 	struct media_pad *sensor_pad;
 	unsigned long flags;
 	unsigned int frame_skip = 0;
 	unsigned int i;
+	int ret;
 
 	sensor_pad = camss_find_sensor_pad(&line->subdev.entity);
 	if (sensor_pad) {
@@ -667,37 +706,15 @@ int vfe_enable_output_v2(struct vfe_line *line)
 
 	ops->reg_update_clear(vfe, line->id);
 
-	if (output->state > VFE_OUTPUT_RESERVED) {
-		dev_err(vfe->camss->dev,
-			"Output is not in reserved state %d\n",
-			output->state);
-		spin_unlock_irqrestore(&vfe->output_lock, flags);
-		return -EINVAL;
-	}
-
-	WARN_ON(output->gen2.active_num);
-
-	output->state = VFE_OUTPUT_ON;
-
-	output->sequence = 0;
-	output->wait_reg_update = 0;
-	reinit_completion(&output->reg_update);
-
-	ops->vfe_wm_start(vfe, output->wm[0].bus_client, line);
-
-	for (i = 0; i < CAMSS_INIT_BUF_COUNT; i++) {
-		output->buf[i] = vfe_buf_get_pending(output);
-		if (!output->buf[i])
+	for (i = 0; i < line->num_outputs; i++) {
+		ret = vfe_enable_one_output(line, &line->output[i]);
+		if (ret)
 			break;
-		output->gen2.active_num++;
-		ops->vfe_wm_update(vfe, output->wm[0].bus_client,
-				   output->buf[i]->addr[0], line);
-		ops->reg_update(vfe, line->id);
 	}
 
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 
-	return 0;
+	return ret;
 }
 
 /*
