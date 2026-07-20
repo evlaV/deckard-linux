@@ -49,6 +49,8 @@
 
 #include "drm_crtc_internal.h"
 
+#include <linux/printk.h>
+
 /**
  * drm_mode_debug_printmodeline - print a mode to dmesg
  * @mode: mode to print
@@ -1399,7 +1401,28 @@ void drm_mode_set_crtcinfo(struct drm_display_mode *p, int adjust_flags)
 			p->crtc_vsync_end += p->crtc_vtotal;
 			p->crtc_vtotal += p->crtc_vtotal;
 			break;
+		//Plano panel rowdouble feature requires full res horz, so target half res width height FB and upscale width
+		//Warning in drm_mode.h about adding new flags breaking things, so for testing purposes, usurp an existing flag
+		//TODO: Add more appropriate flag?  Or handle in a different way?
+		case DRM_MODE_FLAG_3D_SIDE_BY_SIDE_FULL:
+			p->crtc_hdisplay *= 2;
+			p->crtc_hsync_start *= 2;
+			p->crtc_hsync_end *= 2;
+			p->crtc_htotal *= 2;
+			p->crtc_clock *= 2;
+			printk(KERN_ERR "drm_mode_set_crtcinfo: using DRM_MODE_FLAG_3D_SIDE_BY_SIDE_FULL\n");		//TODO: Temp Plano testing
+			break;
 		}
+	}
+
+	//TODO: hmmm... warning in drm_mode.h about adding new flags breaking things...
+	//if (p->flags & CRTC_DOUBLE_WIDTH) {
+	if(0)	//TODO: Temp Plano test for scanout-scaling width doubling for 120Hz panel rowdouble mode
+	{
+		p->crtc_hdisplay *= 2;
+		p->crtc_hsync_start *= 2;
+		p->crtc_hsync_end *= 2;
+		p->crtc_htotal *= 2;
 	}
 
 	p->crtc_vblank_start = min(p->crtc_vsync_start, p->crtc_vdisplay);
@@ -2692,7 +2715,8 @@ int drm_mode_convert_umode(struct drm_device *dev,
 	if (out->status != MODE_OK)
 		return -EINVAL;
 
-	drm_mode_set_crtcinfo(out, CRTC_INTERLACE_HALVE_V);
+	//drm_mode_set_crtcinfo(out, CRTC_INTERLACE_HALVE_V);
+	drm_mode_set_crtcinfo(out, CRTC_INTERLACE_HALVE_V | CRTC_STEREO_DOUBLE_ONLY);		//TODO: Temp Plano testing
 
 	return 0;
 }

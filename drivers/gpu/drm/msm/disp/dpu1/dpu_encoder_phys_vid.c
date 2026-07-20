@@ -139,6 +139,7 @@ static void drm_mode_to_intf_timing_params(
 #else
 		//TODO: In additional to fractional compression ratio, also need to handle fractional width if not an integer multiple of compression ratio
 		//i.e. for DSC 3:1, while 24bpp byte count is always divisible by 3, we're dealing with units of pixels here, so width / 3 need to be rounded up
+		//TODO: Does CPHY need different consideration than DPHY?
 		u8 rem = timing->width % (dsc->bits_per_component * 3 / drm_dsc_get_bpp_int(dsc));
 		timing->width = timing->width * drm_dsc_get_bpp_int(dsc) /
 				//(dsc->bits_per_component * 3) + 1;	//TODO: TEMP TEST
@@ -303,6 +304,22 @@ static void dpu_encoder_phys_vid_setup_timing_engine(
 	drm_mode_debug_printmodeline(&mode);
 
 	fmt_fourcc = dpu_encoder_get_drm_fmt(phys_enc);
+
+	//Plano -- adjust timings for scanout-scaling width doubling to satisfy display input requirements for row-doubling mode
+	if (mode.crtc_hdisplay == (mode.hdisplay << 1)) {
+		mode.hdisplay <<= 1;
+		mode.htotal <<= 1;
+		mode.hsync_start <<= 1;
+		mode.hsync_end <<= 1;
+		mode.hskew <<= 1;
+		//note: mode.clock not used here
+
+		DPU_DEBUG_VIDENC(phys_enc,
+			"accommodate scan-out scale doubling, double horizontal %d %d %d %d %d\n",
+			mode.hdisplay, mode.htotal,
+			mode.hsync_start, mode.hsync_end,
+			mode.hskew);
+	}
 
 	if (phys_enc->split_role != ENC_ROLE_SOLO || fmt_fourcc == DRM_FORMAT_YUV420) {
 		mode.hdisplay >>= 1;
