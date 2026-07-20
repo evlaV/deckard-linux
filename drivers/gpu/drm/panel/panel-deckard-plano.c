@@ -23,7 +23,7 @@
 #include <drm/display/drm_dsc.h>
 #include <drm/display/drm_dsc_helper.h>
 
-#define CPHY_DEBUG
+//#define CPHY_DEBUG
 //#define NOLPM_AFTER_PREP
 
 // Panel settings
@@ -169,10 +169,11 @@ struct extmode_s {
 	plano_gscale_t	gscale;
 	plano_fscale_t	fscale;
 	bool		rowdouble_en;
-
+	u8			h_scanout_scale;	//TODO: float for fractional scaling?
+	u8			v_scanout_scale;	//TODO: float for fractional scaling?
 };
 
-#define MODE_CNT			39
+#define MODE_CNT			49
 
 //Each enable define may enable multiple modes, but they must all share the same DSC settings
 //TODO:  Currenly only the DSC settings of the first enabled mode are used when checking
@@ -180,25 +181,29 @@ struct extmode_s {
 //  after plano_get_modes tries to add them.
 //  Also, mixing non-DSC modes in w/ DSC mdoes won't work, as DSC settings will still apply
 //  So, for now, must be selective about which modes to enable at the same time
-#define GLOBAL_2X_MODE_EN					true
+#define GLOBAL_2X_MODE_EN					true	//Working for dphy & cphy
 #define GLOBAL_2X_LOFPS_MODE_EN				false
 #define GLOBAL_2X_HIFPS_MODE_EN				false	//TEST ONLY -- not working
-#define GLOBAL_2X_LOBW_MODE_EN				false
+#define GLOBAL_2X_LOBW_MODE_EN				false	//Working for dphy & cphy
+#define GLOBAL_2X_LOBW_NODSC_MODE_EN		false
 #define GLOBAL_2X_NODSC_MODE_EN				false
-#define GLOBAL_2X_HIBW_NODSC_MODE_EN		false
+#define GLOBAL_2X_HIBW_NODSC_MODE_EN		false	//Working for dphy & cphy
 #define GLOBAL_2X_HIFPS_NODSC_MODE_EN		false	//TEST ONLY -- not working
 #define GLOBAL_2X_ROWDOUBLE_MODE_EN			false
 #define GLOBAL_2X_ROWDOUBLE_NODSC_MODE_EN	false
 #define GLOBAL_1_5X_MODE_EN					false
 #define GLOBAL_1_5X_NODSC_MODE_EN			false
-#define GLOBAL_1_5X_HIBW_NODSC_MODE_EN		false
+#define GLOBAL_1_5X_HIBW_NODSC_MODE_EN		false	//Working w/ dphy & cphy for low-level display tools, but not steamvr
+#define GLOBAL_1_5X_CPHY_HIBW_NODSC_MODE_EN	false
 #define FOVIAL_2_5X_MODE_EN					false	//WIP
 #define FOVIAL_2_75X_MODE_EN				false	//WIP
 #define FOVIAL_3_25X_MODE_EN				false	//WIP
 #define TEST_MODE_EN						false
-#define GLOBAL_1X_MODE_EN					false
+#define GLOBAL_1X_MODE_EN					false	//Working for dphy
 #define GLOBAL_1X_NODSC_MODE_EN				false	//WIP -- too wide
 #define GLOBAL_1X_ROWDOUBLE_MODE_EN			false
+#define GLOBAL_1X_ROWDOUBLE_MODE_SS_EN		false	//WIP -- attempting to use scanout-scaling
+#define DAKAR_EQUIV_MODE_EN					false	//Not intended to be used w/ display attached -- just for debug
 
 //Will get converted to drm_display_mode later
 static struct extmode_s extmodes[MODE_CNT] = {
@@ -216,19 +221,87 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.vfp_m =				21,
 		.vs =					1,
 		.vbp_p =				17,
-		.vbp_m =				8,
+		//.vbp_m =				8,
 		.dsc_en =				true,
 		.dsc_vslice_height =	48,
-		.dsc_hslice_count =		4,
-		.vid_vs_delay =			2, //dsc_hslice_count / 2,
+		//.dsc_hslice_count =		4,
+		//.vid_vs_delay =			2, //dsc_hslice_count / 2,
 		.h_dummy =				0,
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
 		.rowdouble_en =			false,
+
+		//Works
+		//.vbp_m =				7,
+		//.dsc_hslice_count =		4,
+		//.vid_vs_delay =			1,
+
+		//DSC garbage
+		//manual override of vid_vs_delay=1 displays all gray
+		//.vbp_m =				6,
+		//.dsc_hslice_count =		4,
+		//.vid_vs_delay =			0,
+
+		//Works for dphy & cphy
+		.vbp_m =				6,
+		.dsc_hslice_count =		2,
+		.vid_vs_delay =			0,
+		//scanline: [ 214: 3853:3853] [   0: 10000:   0]
+
+
+		//CPhy turn-on
+		//App note recommendations:
+		//.hfp =					28,
+		//.hs =					8,
+		//.hbp =					20,
+		//.dsc_hslice_count =		2,
+
+		//.vfp_p =				8,
+		//.vfp_m =				17,
+		//.vs =					1,
+		//.vbp_p =				8,
+		//.vbp_m =				7,
+		//.vid_vs_delay =			0,
+
+		//.vfp_p =				17,
+		//.vfp_m =				22,
+		//.vs =					1,
+		//.vbp_p =				17,
+		//.vbp_m =				22,
+		//.vid_vs_delay =			0,
+
+		//DDIC datahseet recommendations:
+		//.vfp_p =				24,
+		//.vfp_m =				17,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				6,
+		//.vid_vs_delay =			0,
+
+		//.hfp =					20,
+		//.hs =					8,
+		//.hbp =					28,
+		//.dsc_hslice_count =		2,
+
+		//DSC garbage at top (away from DDIC) and bottom
+		//Pushes to top as increase vid_vs_delay
+		//at vid_vs_delay = 0xd, turns from random noise to repeated color stripes per row
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				23,
+		//.vid_vs_delay =			0,
+		//scanline: [ 184: 3805:3818] [   0: 10000:   0]
+		//vid_vs_delay = 0xd:
+		//  scanline: [ 159: 3772:3785] [   0: 10000:   0]
+		//  scanline: [  57: 3764:3783] [   0: 10000:   0]
+		//  scanline: [   0: 4000:   0] [  43: 7644:7663]
 	},
 	//2X global scaling; 80Hz; DSC
 	{
+		//DPHY scanline: [ 210: 3852:3852] [   0: 10000:   0]
 		.enabled =				GLOBAL_2X_MODE_EN,
 		.name =					"1776x1920_80",
 		.fps =					80,
@@ -241,16 +314,256 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.vfp_m =				21,
 		.vs =					1,
 		.vbp_p =				17,
-		.vbp_m =				8,
+		.vbp_m =				6,
 		.dsc_en =				true,
 		.dsc_vslice_height =	48,
-		.dsc_hslice_count =		4,
-		.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.dsc_hslice_count =		2,
+		.vid_vs_delay =			0,	//dsc_hslice_count / 2,
 		.h_dummy =				0,
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
 		.rowdouble_en =			false,
+
+		//CPhy turn-on
+		//App note recommendations:
+		//.hfp =					28,
+		//.hs =					8,
+		//.hbp =					20,
+		//.dsc_hslice_count =		2,
+
+		//	       [VBP, VS, VFP]	VTOT
+		//	Panel: [ 17,  -,  17]	3840 + 17 + 17 = 3874	/2 = 1937
+		//	MIPI:  [  8,  1,  21]	1920 + 8 + 1 + 21 = 1950
+		//	Diff:  [ 17,  -,   7]	-13
+		//	Diff2: [ 0.5,  -, - 12.5]
+		//scanline: [ 125: 3773:3785] [ 119: 7648:7671]		//3874 - 3773 = 101
+
+
+		//DDIC datahseet recommendations:
+		//DSI errors
+		//.vfp_p =				24,
+		//.vfp_m =				17,	// (24 + 24) / 2 - 6 - 1 = 17
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				6,	// 24 / 2 - 5 - vs = 6
+		//.vid_vs_delay =			0,
+
+		//.vfp_p =				24,
+		//.vfp_m =				17,	// (24 + 24) / 2 - 6 - 1 = 17
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				7,	// 24 / 2 - 5 = 7
+		//.vid_vs_delay =			0,
+		//
+		//	       [VBP, VS, VFP]	VTOT
+		//	Panel: [ 24,  -,  24]	3840 + 24 + 24 = 3888	/2 = 1944
+		//	MIPI:  [  7,  1,  17]	1920 + 7 + 1 + 17 = 1945
+		//	Diff:  [ 17,  -,   7]	-1
+		//	Diff2: [  5,  -, - 5]
+		//scanline: [ 125: 3773:3785] [ 119: 7648:7671]		//3888 - 3773 = 115
+
+		//DSI errors
+		//.vfp_p =				24,
+		//.vfp_m =				16,	// (24 + 24) / 2 - 7 - 1 = 16
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				7,	// 24 / 2 - 5 = 7
+		//.vid_vs_delay =			0,
+
+		//.vfp_p =				26,
+		//.vfp_m =				17,	// (26 + 24) / 2 - 7 - 1 = 17
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				7,	// 24 / 2 - 5 = 7
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 118: 3774:3785] [  94: 7648:7671]
+
+		//.vfp_p =				26,
+		//.vfp_m =				16,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				8,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 123: 3776:3794] [ 119: 7650:7674]
+
+		//.vfp_p =				26,
+		//.vfp_m =				12,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				12,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 133: 3784:3803] [ 132: 7666:7693]
+
+		//.vfp_p =				26,
+		//.vfp_m =				6,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				18,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 136: 3795:3814] [ 119: 7671:7698]
+
+		//TODO: check on display output when in-office
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				23,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 184: 3805:3818] [   0: 10000:   0]
+		//scanline: [   0: 4000:   0] [ 335: 7677:7706]
+
+		//.vfp_p =				26,
+		//.vfp_m =				2,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				22,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [  41: 3806:3817] [ 243: 7682:426225]
+
+		//DSI errors... seems like need a vblank_m >= 25?
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				22,
+		//.vid_vs_delay =			0,
+
+		//couple lines of DSC garbage at top (away for DDIC) and multiple lines at bottom
+		//Increasing vid_vs_delay pushes bottom rows to top
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					1,
+		//.vbp_p =				44,
+		//.vbp_m =				43,
+		//.vid_vs_delay =			0,
+		//
+		//	       [VBP, VS, VFP]	VTOT
+		//	Panel: [ 44,  -,  26]	3840 + 44 + 26 = 3910	/2 = 1955
+		//	MIPI:  [ 43,  1,   1]	1920 + 43 + 1 + 1 = 1970
+		//	Diff:  [- 1,  -,  25]	-15
+		//	Diff2: [-21,  -, 12]
+		//scanline: [   0: 4000:   0] [ 227: 7761:7789]
+		//scanline: [ 190: 3841:3863] [   0: 10000:   0]
+
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					1,
+		//.vbp_p =				50,
+		//.vbp_m =				49,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 204: 3858:3871] [  94: 7783:7809]
+
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					1,
+		//.vbp_p =				48,
+		//.vbp_m =				47,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [  88: 3851:3871] [ 196: 7773:7797]
+
+		//1 line of DSC garbage at top (away from DDIC) and multiple lines at bottom
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					1,
+		//.vbp_p =				49,
+		//.vbp_m =				48,
+		//.vid_vs_delay =			0,
+		//
+		//	       [VBP, VS, VFP]	VTOT
+		//	Panel: [ 49,  -,  26]	3840 + 49 + 26 = 3915	/2 = 1957.5
+		//	MIPI:  [ 48,  1,   1]	1920 + 48 + 1 + 1 = 1970
+		//	Diff:  [- 1,  -,  25]	-12.5
+		//	Diff2: [-23.5,  -, 12]
+		//scanline: [ 138: 3858:3871] [ 120: 7781:7801]		//3915 - 3858 = 57
+
+		//TODO: continue tweaking
+
+		//1 line of DSC garbage at top (away from DDIC) and multiple lines at bottom
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					2,
+		//.vbp_p =				49,
+		//.vbp_m =				48,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 106: 3858:3871] [  78: 7782:7805]
+
+
+
+
+
+		//.hfp =					20,
+		//.hs =					8,
+		//.hbp =					28,
+		//.dsc_hslice_count =		2,
+
+		//.vfp_p =				24,
+		//.vfp_m =				18,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				6,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 168: 3771:3789] [ 160: 7645:7672]
+
+		//.vfp_p =				24,
+		//.vfp_m =				18,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				18,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 276: 3794:3812] [ 319: 7693:7725]
+
+		//.vfp_p =				24,
+		//.vfp_m =				18,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				20,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 366: 3799:3819] [ 344: 7702:7729]
+
+		//.vfp_p =				24,
+		//.vfp_m =				20,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				20,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 203: 3796:3816] [ 210: 7714:7737]
+		//vid_vs_delay = 1: [ 192: 3800:3813] [ 167: 7705:7732]
+		//vid_vs_delay = 2: [ 102: 3798:3811] [  79: 7709:7729]
+		//vid_vs_delay = 3: [ 113: 3797:3809] [ 104: 7701:7727]
+		//vid_vs_delay = 4: [  95: 3794:3807] [ 105: 7701:7725]
+
+		//.vfp_p =				24,
+		//.vfp_m =				16,		//(24 + 24) / 2 - 22 - 1 = 1
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				22,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 118: 3804:3821] [ 106: 7706:7732]
+
+		//.vfp_p =				24,
+		//.vfp_m =				12,		//(24 + 24) / 2 - 22 - 1 = 1
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				22,
+		//.vid_vs_delay =			0,
+		//
+		//scanline: [ 152: 3802:3821] [ 155: 7701:7730]
+
 	},
 	//2X global scaling; 72Hz; DSC
 	{
@@ -266,11 +579,11 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.vfp_m =				21,
 		.vs =					1,
 		.vbp_p =				17,
-		.vbp_m =				8,
+		.vbp_m =				6,
 		.dsc_en =				true,
 		.dsc_vslice_height =	48,
-		.dsc_hslice_count =		4,
-		.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.dsc_hslice_count =		2,
+		.vid_vs_delay =			0,	//dsc_hslice_count / 2,
 		.h_dummy =				0,
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
@@ -301,6 +614,8 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
 		.rowdouble_en =			true,
+		.h_scanout_scale =		1,
+		.v_scanout_scale =		1,
 	},
 	//2X global scaling; 60Hz; DSC
 	{
@@ -416,16 +731,42 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.vfp_m =				21,
 		.vs =					1,
 		.vbp_p =				17,
-		.vbp_m =				8,
+		.vbp_m =				6,
 		.dsc_en =				true,
 		.dsc_vslice_height =	48,
-		.dsc_hslice_count =		4,
-		.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.dsc_hslice_count =		2,
+		.vid_vs_delay =			0,	//dsc_hslice_count / 2,
 		.h_dummy =				0,
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
 		.rowdouble_en =			false,
+
+		//CPhy turn-on
+		//need to double for cphy...
+		//DDIC: min 20 WordClock/lane for HFP & HBP+HS
+		//  1 WordClock = 2 pixels
+		//  40 pixels / lane
+		//Now doubled in plano_init_modes
+
+		//Black screen
+		//.hfp =					20,
+		//.hs =					8,
+		//.hbp =					12,
+
+		//.hfp =					28,
+		//.hs =					8,
+		//.hbp =					20,
+
+		//Black screen
+		//.vbp_m =				6,
+		//.dsc_hslice_count =		2,
+		//.vid_vs_delay =			0,
+
+		//Black screen
+		//.vbp_m =				8,
+		//.dsc_hslice_count =		2,
+		//.vid_vs_delay =			0,
 	},
 	//2X global scaling; 30Hz; DSC
 	{
@@ -441,16 +782,30 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.vfp_m =				21,
 		.vs =					1,
 		.vbp_p =				17,
-		.vbp_m =				8,
+		.vbp_m =				6,
 		.dsc_en =				true,
 		.dsc_vslice_height =	48,
-		.dsc_hslice_count =		4,
-		.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.dsc_hslice_count =		2,
+		.vid_vs_delay =			0,
 		.h_dummy =				0,
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
 		.rowdouble_en =			false,
+
+		//CPhy turn-on
+		//Black screen
+		//.hfp =					20,
+		//.hs =					8,
+		//.hbp =					12,
+
+		//.hfp =					28,
+		//.hs =					8,
+		//.hbp =					20,
+
+		//.vbp_m =				6,
+		//.dsc_hslice_count =		2,
+		//.vid_vs_delay =			0,
 	},
 	//2X global scaling; 15Hz; DSC
 	{
@@ -466,11 +821,50 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.vfp_m =				21,
 		.vs =					1,
 		.vbp_p =				17,
-		.vbp_m =				8,
+		.vbp_m =				6,
 		.dsc_en =				true,
 		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		2,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_2X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+
+		//CPhy turn-on
+		//Black screen
+		//.hfp =					20,
+		//.hs =					8,
+		//.hbp =					12,
+
+		//.hfp =					28,
+		//.hs =					8,
+		//.hbp =					20,
+
+		//.vbp_m =				6,
+		//.dsc_hslice_count =		2,
+		//.vid_vs_delay =			0,
+	},
+	//2X global scaling; 15Hz; No DSC
+	{
+		.enabled =				GLOBAL_2X_LOBW_NODSC_MODE_EN,
+		.name =					"1776x1920_15",
+		.fps =					15,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+		.vfp_p =				17,
+		.vfp_m =				21,
+		.vs =					1,
+		.vbp_p =				17,
+		.vbp_m =				8,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
 		.dsc_hslice_count =		4,
-		.vid_vs_delay =			2,	//dsc_hslice_count / 2,
+		.vid_vs_delay =			0,	//dsc_hslice_count / 2,
 		.h_dummy =				0,
 		.v_dummy =				0,
 		.gscale =				GSCALE_2X,
@@ -483,9 +877,12 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.name =					"1776x1920_60",
 		.fps =					60,
 		.haa =					1776,
+
+		//Works for DPHY
 		.hfp =					20,
 		.hs =					8,
 		.hbp =					28,
+
 		.vaa =					1920,
 		.vfp_p =				17,
 		.vfp_m =				21,
@@ -501,6 +898,122 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
 		.rowdouble_en =			false,
+
+		//CPHY debug
+		//         [VBP, VS, VFP]	VTOT
+		//  Panel: [ 17,  -,  17]	3840 + 17 + 17 = 3874	/2 = 1937
+		//  MIPI:  [  8,  1,  21]	1920 + 8 + 1 + 21 = 1950
+		//  Diff:  [- 9,  -,  +4]	13
+		//  Diff2: [  0.5,  -, -12.5]
+		//[ 208: 3857:3857] [   0: 10000:   0]
+		//
+		//pre-lane-count-fix:
+		//scanline: [ 184: 3805:3818] [   0: 10000:   0]
+		//
+		//Black screen
+		//.hfp =					20,
+		//.hs =					8,
+		//.hbp =					12,
+
+		//Black screen
+		//.vfp_p =				17,
+		//.vfp_m =				21,
+		//.vs =					1,
+		//.vbp_p =				12,
+		//.vbp_m =				8,
+		//.vid_vs_delay =			0,
+
+
+		//TODO: Continue iterating on CPHY timings
+		//.vs =					2,
+
+
+		//colored vertical stipes, repeated per row, at both top (away from DDIC) and bottom
+		//Shifts entirely to top at vid_vs_delay=0xc
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					1,
+		//.vbp_p =				24,
+		//.vbp_m =				23,
+		//.vid_vs_delay =			0,
+		//
+		//	       [VBP, VS, VFP]	VTOT
+		//	Panel: [ 24,  -,  26]	3840 + 24 + 26 = 3890	/2 = 1945
+		//	MIPI:  [ 23,  1,   1]	1920 + 23 + 1 + 1 = 1945
+		//	Diff:  [- 1,  -,  25]	0
+		//	Diff2: [-11,  -,  12]
+		//
+		//[ 119: 3825:3839] [   0: 10000:   0]
+		//[   0: 4000:   0] [ 139: 7705:7724]
+
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					1,
+		//.vbp_p =				44,
+		//.vbp_m =				23,
+		//.vid_vs_delay =			0,
+		//
+		//	       [VBP, VS, VFP]	VTOT
+		//	Panel: [ 44,  -,  26]	3840 + 44 + 26 = 3910	/2 = 1955
+		//	MIPI:  [ 23,  1,   1]	1920 + 23 + 1 + 1 = 1945
+		//	Diff:  [-21,  -,  25]	10
+		//	Diff2: [- 1,  -,  12]
+		//[ 202: 3825:3840] [   0: 10000:   0]
+		//[   0: 4000:   0] [ 108: 7703:7726]
+
+		//DSI errors... need vblank >= 25
+		//.vfp_p =				26,
+		//.vfp_m =				1,
+		//.vs =					1,
+		//.vbp_p =				44,
+		//.vbp_m =				13,
+		//.vid_vs_delay =			0,
+		//	       [VBP, VS, VFP]	VTOT
+		//	Panel: [ 44,  -,  26]	3840 + 44 + 26 = 3910	/2 = 1955
+		//	MIPI:  [ 13,  1,   1]	1920 + 13 + 1 + 1 = 1935
+		//	Diff:  [-31,  -,  25]	20
+		//	Diff2: [-11,  -,  12]
+
+		//Colored vertical lines on a few top (away from the DDIC) rows, and two rows at the bottom
+		//vid_vs_delay=2 pushes them all to the top
+		//all-pixels-on turns them all white
+		//increasing vid_vs_delay increase number of white lines
+		//Flashing though... updating at 1/2 frame rate?
+		//Seeing that getscanline is reporting counts up to 7707, essentially, yes
+		//.vfp_p =				26,
+		//.vfp_m =				11,
+		//.vs =					1,
+		//.vbp_p =				44,
+		//.vbp_m =				13,
+		//.vid_vs_delay =			0,
+		//	       [VBP, VS, VFP]	VTOT
+		//	Panel: [ 44,  -,  26]	3840 + 44 + 26 = 3910	/2 = 1955
+		//	MIPI:  [ 13,  1,  11]	1920 + 13 + 1 + 11 = 1945
+		//	Diff:  [-31,  -,  15]	10
+		//	Diff2: [-11,  -,   2]
+		//	[ 104: 3806:3820] [ 109: 7688:7707]
+
+		//If driver is holding off reg reads until next vblank, (is it?) then implies that driver thinks AA done, but getscanline shows panel hasn't recognized all AA's, or VS...
+		//Does increased hblank help?
+
+		//.hfp =					20,
+		//.hs =					16,
+		//.hbp =					20,
+		// [ 110: 3806:3821] [ 115: 7685:7704]
+
+		//.hfp =					30,
+		//.hs =					16,
+		//.hbp =					30,
+		// [ 101: 3806:3820] [ 111: 7684:7708]
+
+		//Nope
+
+		//Try just lowering the frame rate?
+		//.name =					"1776x1920_45",
+		//.fps =					45,
+		//[ 104: 3823:3832] [ 132: 7703:7721]
+
+		//ALl of the above is moot!  Reg SELDL (0x1B1, param 1, [5:4]) must be set to 0x2 to select 3 data lanes.  Default is undefined!
 	},
 	//2X global scaling; 90Hz; No DSC
 	{
@@ -626,6 +1139,8 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.gscale =				GSCALE_2X,
 		.fscale =				FSCALE_1X,
 		.rowdouble_en =			true,
+		.h_scanout_scale =		1,
+		.v_scanout_scale =		1,
 	},
 	//Test mode:
 	//1.5X global scaling; 60Hz; No DSC
@@ -694,7 +1209,7 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		//Overriding display_color vertical lines to 2560 didn't help
 		//Also, dummy lines need to be added to mode.vdisplay, otherwise get mode validation errors about pic_height not being a multiple of slice height...
 		//  DSI: pic_height 2568 has to be multiple of slice 48
-		//TODO:  But, pic_height should already account for dummy lines, so is error miscalculated?  
+		//TODO:  But, pic_height should already account for dummy lines, so is error miscalculated?
 		//.dsc_vslice_height =	48,
 		//.v_dummy =				32,
 		//.vid_vs_delay =			1,
@@ -900,6 +1415,205 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.fscale =				FSCALE_1X,
 		.rowdouble_en =			false,
 	},
+
+
+	//1.5X global scaling; 44Hz; No DSC; ~0.99Gsps
+	{
+		.enabled =				GLOBAL_1_5X_CPHY_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_44",
+		.fps =					44,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 47Hz; No DSC; ~1.06Gsps
+	{
+		.enabled =				GLOBAL_1_5X_CPHY_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_47",
+		.fps =					47,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 49Hz; No DSC; ~1.10Gsps
+	//W/ test patterns:
+	//  Flicker at CRMASK=0x16; clean at CRMASK=0XA
+	//  No DSI errors at either CRMASK setting though
+	{
+		.enabled =				GLOBAL_1_5X_CPHY_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_49",
+		.fps =					49,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 53Hz; No DSC; ~1.19Gsps
+	//W/ test patterns:
+	//  No image at CRMASK=0x16 and lots of DSI errors
+	//  Some flicker at CRMASK=0XA but no DSI errors
+	//  Infrequent flicker at CRMASK=0x12 and no DSI errors
+	//  Significant increase in flicker at 0xA & 0x14, so try 0xF
+	//  Clean at 0xF and no DSI errors
+	//  wait... some flickering w/ black square on white, but no DSI errors
+	//  0x9 seems better for 1px checkerboard and random pix
+	{
+		.enabled =				GLOBAL_1_5X_CPHY_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_53",
+		.fps =					53,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 58Hz; No DSC; ~1.30Gsps
+	//White stable w/ CRMASK 0x8-0x13
+	//W/ test patterns:
+	//  0xb seems pretty stable, but some flicker on 1pix checker
+	//  0xc stable for 1pix checker
+	//  Significant increase in flicker at 0x8 and 0x12
+	//  Flicker increased as sat on big box room texture at 0xc; eliminated at 0xb, but then started again... probably temperature dependency
+	{
+		.enabled =				GLOBAL_1_5X_CPHY_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_58",
+		.fps =					58,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 64Hz; No DSC; ~1.44Gsps (close to max achieved dphy BW)
+	//Test patterns stable w/ CRMASK=0x9... actually, random dot only error free from 0xA-0xB
+	{
+		.enabled =				GLOBAL_1_5X_CPHY_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_64",
+		.fps =					64,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+	//1.5X global scaling; 67Hz; No DSC; ~1.51Gsps
+	//Flicker w/ random color test pattern at 0x9; looks stable at 0xA, but errors
+	//BBR texture looks stable at 0xA, but some errors; fewer at 0x9; falls apart at 0x8; lots at 0xB
+	{
+		.enabled =				GLOBAL_1_5X_CPHY_HIBW_NODSC_MODE_EN,
+		.name =					"2368x2560_67",
+		.fps =					67,
+		.haa =					2368,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					2560,
+		.vfp_p =				8,
+		.vfp_m =				22,
+		.vs =					1,
+		.vbp_p =				8,
+		.vbp_m =				10,
+		.dsc_en =				false,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1_5X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
+	},
+
+
 	//2.5X Fovial scale; 45Hz; DSC
 	//Foveated and background size (per-panel): 1424x1536
 	//TODO: WIP -- Not working yet
@@ -1479,14 +2193,14 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.hbp =					28,
 		.vaa =					3840,
 		//.vfp_p =				17,	//g2x
-		.vfp_p =				29,
 		//.vfp_m =				21,	//g2x
-		.vfp_m =				33,
-		.vs =					1,
 		//.vbp_p =				17,	//g2x
-		.vbp_p =				28,
 		//.vbp_m =				8,	//g2x
+		.vfp_p =				29,
+		.vfp_m =				33,
+		.vbp_p =				28,
 		.vbp_m =				19,
+		.vs =					1,
 		.dsc_en =				false,
 		.dsc_vslice_height =	48,
 		.dsc_hslice_count =		4,
@@ -1500,7 +2214,7 @@ static struct extmode_s extmodes[MODE_CNT] = {
 	//1X no scaling; 120Hz; DSC; row-doubled
 	{
 		.enabled =				GLOBAL_1X_ROWDOUBLE_MODE_EN,
-		.name =					"3552x3840_120",
+		.name =					"3552x1920_120",
 		.fps =					120,
 		.haa =					3552,
 		.hfp =					20,
@@ -1508,24 +2222,173 @@ static struct extmode_s extmodes[MODE_CNT] = {
 		.hbp =					28,
 		.vaa =					1920,
 		//.vfp_p =				17,	//g2x
-		.vfp_p =				29,
 		//.vfp_m =				21,	//g2x
-		.vfp_m =				33,
-		.vs =					1,
 		//.vbp_p =				17,	//g2x
-		.vbp_p =				28,
 		//.vbp_m =				8,	//g2x
-		.vbp_m =				19,
+		//.vid_vs_delay =			2,	//dsc_hslice_count / 2
+
+		//Works
+		//.vfp_p =				29,
+		//.vfp_m =				33,
+		//.vbp_p =				28,
+		//.vbp_m =				19,
+		//.vid_vs_delay =			1,	//dsc_hslice_count / 4 ? due to row doubling?
+
+		//DSC garbage; works w/ manual override of vid_vs_delay=1
+		//.vfp_p =				29,
+		//.vfp_m =				33,
+		//.vbp_p =				29,
+		//.vbp_m =				19,
+		//.vid_vs_delay =			0,
+
+		//DSC garbage; works w/ manual override of vid_vs_delay=1
+		//.vfp_p =				30,
+		//.vfp_m =				33,
+		//.vbp_p =				28,
+		//.vbp_m =				19,
+		//.vid_vs_delay =			0,
+
+		//DSC garbage; works w/ manual override of vid_vs_delay=1
+		//.vfp_p =				28,
+		//.vfp_m =				33,
+		//.vbp_p =				28,
+		//.vbp_m =				19,
+		//.vid_vs_delay =			0,
+
+		//DSI errors
+		//also: [drm:programmable_fetch_get_num_lines:216] low vbp+vfp may lead to perf issues in some cases
+		//.vfp_p =				8,
+		//.vfp_m =				4,
+		//.vbp_p =				8,
+		//.vbp_m =				12,
+		//.vid_vs_delay =			0,
+
+		//DSI errors
+		//also: [drm:programmable_fetch_get_num_lines:216] low vbp+vfp may lead to perf issues in some cases
+		//.vfp_p =				8,
+		//.vfp_m =				12,
+		//.vbp_p =				8,
+		//.vbp_m =				4,
+		//.vid_vs_delay =			0,
+
+		//DSC garbage; works w/ manual override of vid_vs_delay = 2A
+		//.vfp_p =				16,
+		//.vfp_m =				20,
+		//.vbp_p =				16,
+		//.vbp_m =				12,
+		//.vid_vs_delay =			0,
+
+
+		//DSC garbage; works w/ manual override of vid_vs_delay=1
+		//.vfp_p =				8,	//Rec
+		//.vfp_m =				29,	//Rec non-upscale (2 port)
+		//.vbp_p =				8,	//Rec
+		//.vbp_m =				19,	//Rec non-upscale (2 port)
+		//.vid_vs_delay =			0,
+
+		//DSC garbage; works w/ manual override of vid_vs_delay=1
+		//.vfp_p =				9,
+		//.vfp_m =				29,	//Rec non-upscale (2 port)
+		//.vbp_p =				8,	//Rec
+		//.vbp_m =				19,	//Rec non-upscale (2 port)
+		//.vid_vs_delay =			0,
+
+		//DSC garbage; works w/ manual override of vid_vs_delay=1
+		//.vfp_p =				8,	//Rec
+		//.vfp_m =				29,	//Rec non-upscale (2 port)
+		//.vbp_p =				9,
+		//.vbp_m =				19,	//Rec non-upscale (2 port)
+		//.vid_vs_delay =			0,
+
+		//DSC garbage; works w/ manual override of vid_vs_delay=1
+		//.vfp_p =				8,	//Rec
+		//.vfp_m =				29,	//Rec non-upscale (2 port)
+		//.vbp_p =				10,
+		//.vbp_m =				19,	//Rec non-upscale (2 port)
+		//.vid_vs_delay =			0,
+
+		//WORKS!!!
+		//Reducing MIPI VBP by one provides 1 more line for DSC latency I guess?
+		//Still illuminating 3x per frame though
+		.vfp_p =				8,	//Rec
+		.vfp_m =				29,	//Rec non-upscale (2 port)
+		.vbp_p =				8,	//Rec
+		.vbp_m =				18,
+		.vid_vs_delay =			0,
+
+		.vs =					1,
 		.dsc_en =				true,
 		.dsc_vslice_height =	48,
+		//.dsc_vslice_height =	24,	//doesn't change 3x/frame illum
 		.dsc_hslice_count =		4,
-		//.vid_vs_delay =			2,	//dsc_hslice_count / 2,
-		.vid_vs_delay =			1,
 		.h_dummy =				0,
 		.v_dummy =				0,
 		.gscale =				GSCALE_1X,
 		.fscale =				FSCALE_1X,
 		.rowdouble_en =			true,
+		.h_scanout_scale =		1,
+		.v_scanout_scale =		1,
+	},
+	//1X no scaling; 120Hz; DSC; row-doubled
+	//Use w/ scanout scaling of (2,1) to get to desired panel input res
+	//WIP -- DSI
+	{
+		.enabled =				GLOBAL_1X_ROWDOUBLE_MODE_SS_EN,
+		.name =					"1776x1920_120",
+		.fps =					120,
+		.haa =					1776,
+		.hfp =					20,
+		.hs =					8,
+		.hbp =					28,
+		.vaa =					1920,
+
+		.vfp_p =				8,	//Rec
+		.vfp_m =				29,	//Rec non-upscale (2 port)
+		.vbp_p =				8,	//Rec
+		.vbp_m =				18,
+		.vid_vs_delay =			0,
+
+		.vs =					1,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			true,
+		.h_scanout_scale =		2,
+		.v_scanout_scale =		1,
+	},
+	//1X no scaling; 90Hz; DSC; Dakar equivalent; not intended to be used w/ display attached
+	//Added to debug cphy DSI fifo underflow issues
+	{
+		.enabled =				DAKAR_EQUIV_MODE_EN,
+		.name =					"2160x2160_90",
+		.fps =					90,
+		.haa =					2160,
+		.hfp =					24,
+		//.hfp =					20,
+		//.hs =					20,
+		.hs =					8,
+		//.hbp =					20,
+		.hbp =					28,
+		.vaa =					2160,
+		.vfp_p =				1265,
+		//.vfp_m =				1265,
+		.vfp_m =				20,
+		.vs =					1,
+		.vbp_p =				20,
+		.vbp_m =				20,
+		.dsc_en =				true,
+		.dsc_vslice_height =	48,
+		.dsc_hslice_count =		4,
+		.vid_vs_delay =			0,
+		.h_dummy =				0,
+		.v_dummy =				0,
+		.gscale =				GSCALE_1X,
+		.fscale =				FSCALE_1X,
+		.rowdouble_en =			false,
 	},
 };
 
@@ -1599,7 +2462,9 @@ static int plano_init_dsc_config(struct plano_ctx *ctx)
 		//.slice_width = 888,	//Note: need to also change dsc_slice_per_pkt below
 		//.slice_count = 2,	//Larger slide width results in initial_dec_delay = 2BC = 700, which satisfies requirement of <= slice_wdith - 64, but still displaying garbage
 		//.slice_width = extmodes[ctx->current_mode].haa / extmodes[ctx->current_mode].dsc_hslice_count,
-		.slice_width = ( extmodes[ctx->current_mode].haa + extmodes[ctx->current_mode].h_dummy ) / extmodes[ctx->current_mode].dsc_hslice_count,
+		.slice_width = ( extmodes[ctx->current_mode].haa + extmodes[ctx->current_mode].h_dummy )
+						* ( extmodes[ctx->current_mode].rowdouble_en ? extmodes[ctx->current_mode].h_scanout_scale : 1 )
+						/ extmodes[ctx->current_mode].dsc_hslice_count,
 		.slice_count = extmodes[ctx->current_mode].dsc_hslice_count,
 		.bits_per_component = 8,
 		.bits_per_pixel = 8 << 4,
@@ -1609,9 +2474,11 @@ static int plano_init_dsc_config(struct plano_ctx *ctx)
 		//.initial_dec_delay = 380,	//<= slice_with - 64 (444 - 64 = 380 (0x17C)) //can't set here... gets overwritten later
 
 		//.pic_width = extmodes[ctx->current_mode].haa,
-		.pic_width = extmodes[ctx->current_mode].haa + extmodes[ctx->current_mode].h_dummy,
+		.pic_width = ( extmodes[ctx->current_mode].haa + extmodes[ctx->current_mode].h_dummy )
+						* ( extmodes[ctx->current_mode].rowdouble_en ? extmodes[ctx->current_mode].h_scanout_scale : 1 ),
 		//.pic_height = extmodes[ctx->current_mode].vaa,
-		.pic_height = extmodes[ctx->current_mode].vaa + extmodes[ctx->current_mode].v_dummy,
+		.pic_height = ( extmodes[ctx->current_mode].vaa + extmodes[ctx->current_mode].v_dummy )
+						* ( extmodes[ctx->current_mode].rowdouble_en ? extmodes[ctx->current_mode].v_scanout_scale : 1 ),
 	};
 
 	//TODO: get_modes getting called often, spamming dmesg... disable for now
@@ -1759,30 +2626,45 @@ static void dsi_write_plano_panel_scaling(struct plano_ctx *ctx)
 	DRM_DEV_INFO(ctx->dev, "Wrote scaling reg to 0x%02x\n", val);
 }
 
-static void dsi_write_plano_panel_doubler(struct plano_ctx *ctx)
+static void dsi_write_plano_panel_rowdouble(struct plano_ctx *ctx)
 {
-	if(extmodes[ctx->current_mode].rowdouble_en)
-	{
-		plano_dsi_write_seq(ctx, 0x61, 0x02);	//Doubler driving mode
-		plano_dsi_write_seq(ctx, 0xB0, 0x00);	//Manufacturer command (MC) access enable
-		plano_dsi_write_seq(ctx, 0xFF, 0x01);	//MC page 1
-		plano_dsi_write_seq(ctx, 0xEC, 0x20);	//OTP reload after sleep out turns off
-		plano_dsi_write_seq(ctx, 0xD6, 0x01);	//?
-		plano_dsi_write_seq(ctx, 0xFF, 0x01);	//MC Page 1
-		plano_dsi_write_seq(ctx, 0xF1, 0x14);	//?
-		plano_dsi_write_seq(ctx, 0xCB, 0x00, 0x00, 0x00, 0x01, 0x01, 0x02, 0x02,
-									   0x03, 0x03, 0x04, 0x00, 0x00, 0x00, 0x01,
-									   0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x0A,
-									   0x0A, 0x0A, 0x0B, 0x0B, 0x0C, 0x0C, 0x0D,
-									   0x0D, 0x0E, 0x0A, 0x0A, 0x0A, 0x0B, 0x0B,
-									   0x0C, 0x0C, 0x0D, 0x0D, 0x0E);	//?
-		plano_dsi_write_seq(ctx, 0xFF, 0x00);	//MC Page 0
-		DRM_DEV_INFO(ctx->dev, "Wrote row doubler regs\n");
-	}
-	else
-	{
-		plano_dsi_write_seq(ctx, 0x61, 0x00);	//Normal driving mode
-	}
+	plano_dsi_write_seq(ctx, 0x61, 0x02);	//Doubler driving mode
+
+	plano_dsi_write_seq(ctx, 0xB0, 0x00);	//Manufacturer command (MC) access enable
+	plano_dsi_write_seq(ctx, 0xFF, 0x01);	//MC page 1
+	plano_dsi_write_seq(ctx, 0xEC, 0x20);	//Disable OTP reload after sleep out
+	//plano_dsi_write_seq(ctx, 0xD6, 0x01);	//Emission control
+	plano_dsi_write_seq(ctx, 0xD6, 0x02);	//Seems to be necessary to only illuminate 1x / frame rather than 3x
+	plano_dsi_write_seq(ctx, 0xFF, 0x01);	//MC Page 1
+	plano_dsi_write_seq(ctx, 0xF1, 0x14);	//Start parameter (+1) of next command (0x14 = parameter 0x15)
+	plano_dsi_write_seq(ctx, 0xCB, 0x00, 0x00, 0x00, 0x01, 0x01, 0x02, 0x02,
+								   0x03, 0x03, 0x04, 0x00, 0x00, 0x00, 0x01,
+								   0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x0A,
+								   0x0A, 0x0A, 0x0B, 0x0B, 0x0C, 0x0C, 0x0D,
+								   0x0D, 0x0E, 0x0A, 0x0A, 0x0A, 0x0B, 0x0B,
+								   0x0C, 0x0C, 0x0D, 0x0D, 0x0E);	//?
+	plano_dsi_write_seq(ctx, 0xFF, 0x00);	//MC Page 0
+	DRM_DEV_INFO(ctx->dev, "Wrote row doubler regs\n");
+}
+
+static void dsi_write_plano_panel_cphy(struct plano_ctx *ctx)
+{
+	plano_dsi_write_seq(ctx, 0xB0, 0x00);	//Manufacturer command (MC) access enable
+	plano_dsi_write_seq(ctx, 0xFF, 0x01);	//MC page 1
+	plano_dsi_write_seq(ctx, 0xB1, 0x20);	//Set SELDL (# of lanes) to 3 (default is undefined)
+	plano_dsi_write_seq(ctx, 0xEC, 0x20);	//Disable OTP reload after sleep out
+	plano_dsi_write_seq(ctx, 0xF1, 0x0B);	//Start parameter (+1) of next command
+	plano_dsi_write_seq(ctx, 0xB1, 0x09);	//CRMASK[5:0]
+	//plano_dsi_write_seq(ctx, 0xB1, 0x16);	//CRMASK[5:0]	//0x16 = recommended
+	//plano_dsi_write_seq(ctx, 0xB1, 0x20);	//CRMASK[5:0]
+	//plano_dsi_write_seq(ctx, 0xB1, 0x0B);	//CRMASK[5:0]
+	plano_dsi_write_seq(ctx, 0xFF, 0x00);	//MC page 0
+
+	//CPHY Debug:
+	plano_dsi_write_seq(ctx, 0x35, 0x01);			//Enable TE1
+	plano_dsi_write_seq(ctx, 0xBC, 0x01, 0x83);		//Enable TE2: VSync output
+	//plano_dsi_write_seq(ctx, 0xBC, 0x01, 0x84);	//Enable TE2: HSync output
+
 }
 
 static void dsi_write_plano_panel_video_control(struct plano_ctx *ctx)
@@ -1884,22 +2766,22 @@ static int dsi_write_plano_panel_setup(struct drm_panel *panel)
 
 	dsi_write_plano_panel_video_control(ctx);
 
+	if(extmodes[ctx->current_mode].rowdouble_en) {
+		dsi_write_plano_panel_rowdouble(ctx);
+	}
+
 	plano_dsi_write_seq(ctx, 0x51, 0xFF); // full brightness
 	plano_dsi_write_seq(ctx, 0x53, 0x20); // manual brightness, dimming off
 	plano_dsi_write_seq(ctx, 0x26, 0x01); // default gamma set
 
-	dsi_write_plano_panel_doubler(ctx);
-
 	dsi_write_plano_panel_scaling(ctx);
 
+	if (!ctx->dphy ) {
+		//TODO: CPHY debug: try default settings
+		dsi_write_plano_panel_cphy(ctx);
+	}
 
-	//  Moved to plano_enable -- need to start video stream before sleep-out
-	/*
-	plano_dsi_write_seq(ctx, MIPI_DCS_EXIT_SLEEP_MODE);
-	//Wait at least three frames
-	msleep(170);
-	plano_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_ON);
-	*/
+	// Don't sleep-out and display-on here -- need to start video stream first
 
 	return 0;
 }
@@ -2283,6 +3165,19 @@ static plano_modes_t plano_init_modes(struct plano_ctx *ctx)
 
 		strncpy(extmodes[i].mode.name, extmodes[i].name, DRM_DISPLAY_MODE_LEN);
 
+		//need to double hblank for cphy...
+		//DDIC requirement:
+		//  CPHY: min 20 WordClock/lane for HFP & HBP+HS
+		//    1 WordClock = 2 pixels -> 40 pixels / lane
+		//  DPHY: min 20 ByteClock/lane for HFP & HBP+HS
+		//    1 ByteClock = 1 pixel  -> 20 pixels / lane
+		if(!ctx->dphy)
+		{
+			extmodes[i].hfp *= 2;
+			extmodes[i].hbp *= 2;
+			extmodes[i].hs  *= 2;
+		}
+
 		extmodes[i].mode.hdisplay = extmodes[i].haa;
 		//extmodes[i].mode.hdisplay = extmodes[i].haa + extmodes[i].h_dummy;
 		//extmodes[i].mode.hsync_start = extmodes[i].mode.hdisplay + extmodes[i].hfp;
@@ -2300,6 +3195,24 @@ static plano_modes_t plano_init_modes(struct plano_ctx *ctx)
 		//extmodes[i].mode.vtotal = extmodes[i].mode.vsync_end + extmodes[i].vbp_m + extmodes[i].v_dummy;
 		//extmodes[i].mode.clock =  (extmodes[i].haa + 20 + 8 + 28) * (extmodes[i].vaa + extmodes[i].vfp_m + 1 + extmodes[i].vbp_m) * extmodes[i].fps / 1000;
 		extmodes[i].mode.clock =  extmodes[i].mode.htotal * extmodes[i].mode.vtotal * extmodes[i].fps / 1000;
+		//TEMP: CPHY debug
+		//extmodes[i].mode.clock =  (extmodes[i].haa + (extmodes[i].hfp + extmodes[i].hs + extmodes[i].hbp)/2 ) * extmodes[i].mode.vtotal * extmodes[i].fps / 1000;
+
+		if(extmodes[i].rowdouble_en && extmodes[i].h_scanout_scale == 2)
+		{
+			//Plano panel rowdouble feature requires full res horz, so target half res width height FB and upscale width
+			//Warning in drm_mode.h about adding new flags breaking things, so for testing purposes, usurp an existing flag
+			//TODO: Add more appropriate flag?  Or handle in a different way?
+			extmodes[i].mode.flags |= DRM_MODE_FLAG_3D_SIDE_BY_SIDE_FULL;
+			/*
+			// Cant set crtc_* in plano driver -- gets overwritten by drm_mode_set_crtcinfo(...)
+			extmodes[i].mode.crtc_hdisplay = extmodes[i].mode.hdisplay * extmodes[i].h_scanout_scale;
+			extmodes[i].mode.crtc_hsync_start = extmodes[i].mode.hsync_start * extmodes[i].h_scanout_scale;	//TODO: scale or recalc?
+			extmodes[i].mode.crtc_hsync_end = extmodes[i].mode.hsync_end * extmodes[i].h_scanout_scale;	//TODO: scale or recalc?
+			extmodes[i].mode.crtc_htotal = extmodes[i].mode.htotal * extmodes[i].h_scanout_scale;	//TODO: scale or recalc?
+			extmodes[i].mode.crtc_clock = extmodes[i].mode.clock * extmodes[i].h_scanout_scale;
+			*/
+		}
 
 
 		extmodes[i].mode.width_mm = 50;
@@ -2354,16 +3267,25 @@ static int plano_get_modes(struct drm_panel *panel,
 				mode->width_mm *= 2;
 			}
 
+			if (extmodes[i].rowdouble_en && extmodes[i].h_scanout_scale == 2)
+			{
+				//TODO: Testing rowdouble mode by usurping DRM_MODE_FLAG_3D_SIDE_BY_SIDE_FULL flag
+				// For that to be accepted by the mode checker, connector needs to support streo modes
+				connector->stereo_allowed = true;
+			}
+
 			//TODO: modes rejected if aren't compatible w/ DSC settings... using default mode dsc settings though?
 			//TODO: Ok to change dsc config here?  Need to support multiple dsc configs in ctx?
 			//	TODO: Supporting different DSC configs needs more work, if even possible
 			//get_modes doesn't appear to be called while a mode is active, so should be ok to change dsc config in order to add mode?
 			//but, mode validity not checked until later, so ctx may have changed?
 
+			/*
 			ret = plano_set_dsi_dsc(ctx, i);
 			if (ret < 0) {
 				DRM_DEV_ERROR(ctx->dev, "DSI DSC set failed\n");
 			}
+			*/
 
 			/*
 			if(extmodes[i].dsc_en)
@@ -2396,7 +3318,7 @@ static int plano_get_modes(struct drm_panel *panel,
 			drm_mode_probed_add(connector, mode);
 			//TODO: This is getting called many times and periodically?
 			//  disabled for now... too spammy
-			DRM_DEV_INFO(ctx->dev, "Added mode[%d] %s (extmode[%d] %s): %d x %d @ %dHz; dsc: %s \n", n, mode->name, i, extmodes[i].mode.name, mode->hdisplay, mode->vdisplay, extmodes[i].fps, extmodes[i].dsc_en ? "on" : "off");
+			DRM_DEV_INFO(ctx->dev, "Added mode[%d] %s (extmode[%d] %s): %d x %d @ %dHz; dsc: %s; rowdouble: %s \n", n, mode->name, i, extmodes[i].mode.name, mode->hdisplay, mode->vdisplay, extmodes[i].fps, extmodes[i].dsc_en ? "on" : "off", extmodes[i].rowdouble_en ? "en" : "dis");
 			n++;
 		}
 	}
@@ -2404,7 +3326,7 @@ static int plano_get_modes(struct drm_panel *panel,
 	ctx->current_mode = current_mode;
 
 	//Restore dsi config to current_mode
-	ret = plano_set_dsi_dsc(ctx, current_mode);
+	//ret = plano_set_dsi_dsc(ctx, current_mode);
 	if (ret < 0) {
 		DRM_DEV_ERROR(ctx->dev, "DSI DSC restore failed\n");
 	}
@@ -2617,8 +3539,7 @@ static int panel_read_show(struct seq_file *s, void *data)
 	}
 	*/
 
-	//DRM_DEV_INFO(ctx->dev, "Attempting to read %d bytes from panel %d reg 0x%02X into buf at %d\n", ctx->panel_read_num_bytes, ctx->panel_read_id, ctx->panel_read_reg_addr, &(ctx->panel_read_data[0]));
-	DRM_DEV_INFO(ctx->dev, "Attempting to read %d bytes from panel %d reg 0x%02X\n", ctx->panel_read_num_bytes, ctx->panel_read_id, ctx->panel_read_reg_addr);
+	//DRM_DEV_INFO(ctx->dev, "Attempting to read %d bytes from panel %d reg 0x%02X\n", ctx->panel_read_num_bytes, ctx->panel_read_id, ctx->panel_read_reg_addr);
 	if (ctx->panel_read_reg_addr >= 0xb0) {
 		ret = mipi_dsi_generic_read(ctx->dsi[ctx->panel_read_id], &ctx->panel_read_reg_addr, 1, ctx->panel_read_data, ctx->panel_read_num_bytes);
 	} else {
@@ -2995,11 +3916,11 @@ static int plano_probe(struct mipi_dsi_device *dsi)
 	if (!ctx)
 		return -ENOMEM;
 
-	ctx->current_mode = plano_init_modes(ctx);
-
 	ctx->panel.prepare_prev_first = true;
 
 	ctx->dphy = of_property_read_bool(dev->of_node, "dphy");
+
+	ctx->current_mode = plano_init_modes(ctx);
 
 	ctx->is_dual_panel = of_property_read_bool(dev->of_node, "dual-panel");
 	if (!ctx->is_dual_panel)

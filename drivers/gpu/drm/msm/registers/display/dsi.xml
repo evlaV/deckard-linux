@@ -385,6 +385,136 @@ xsi:schemaLocation="https://gitlab.freedesktop.org/freedreno/ rules-fd.xsd">
 		<bitfield name="STREAM0_SLICE_WIDTH" low="0" high="15" type="uint"/>
 	</reg32>
 
+<!-- Plano new -->
+	<reg32 offset="0x002bc" name="DESKEW_DELAY_CTRL">
+		<bitfield name="DESKEW_DELAY" low="16" high="31" type="uint"/>
+		<bitfield name="CKLN_EOT_DELAY" low="8" high="15" type="uint"/>
+		<bitfield name="DLN_EOT_DELAY" low="0" high="7" type="uint"/>
+	</reg32>
+	<reg32 offset="0x002c0" name="DESKEW_SW_TRIGGER">
+		<bitfield name="SW_TRIGGER" pos="0" type="boolean"/>
+	</reg32>
+	<reg32 offset="0x002cc" name="DEBUG_CTRL">
+		<bitfield name="INTERLEAVE_OPT_BYPASS" pos="29" type="boolean"/>
+		<bitfield name="ISOLATION_ENABLE" pos="28" type="boolean"/>
+		<bitfield name="CPHY_FIFO_FULL_SIZE" low="21" high="26" type="uint"/>
+		<bitfield name="CPHY_FIFO_FULL_OVERRIDE" pos="20" type="boolean"/>
+		<bitfield name="CMD_DMA_DEBUG_MODE" pos="16" type="boolean"/>
+		<bitfield name="BTA_DEBUG_MODE" pos="12" type="boolean"/>
+		<bitfield name="PROTOCOL_LAYER_FIFO_FULL_SIZE" low="6" high="10" type="uint"/>
+		<bitfield name="PROTOCOL_LAYER_FIFO_FULL_OVERRIDE" pos="5" type="boolean"/>
+		<bitfield name="PROTOCOL_LAYER_DEBUG_MODE" pos="4" type="boolean"/>
+		<bitfield name="VIDEO_DROP_MODE" low="2" high="3" type="uint"/>
+		<bitfield name="VIDEO_DMA_DEBUG_MODE" pos="1" type="boolean"/>
+		<bitfield name="COMMAND_MODE_COMPRSS_SPLIT_OVERRIDE" pos="0" type="boolean"/>
+	</reg32>
+	<reg32 offset="0x00308" name="DEBUG_CTRL2">
+		<bitfield name="LANE_LAYER_UNDERFLOW_MONITOR_MODE" pos="20" type="boolean"/>
+		<bitfield name="LANE_LAYER_UNDERFLOW_BLOCK_DISABLE" pos="16" type="boolean"/>
+		<bitfield name="LANE_FIFO_FULL_SIZE" low="8" high="10" type="uint"/>
+		<bitfield name="LANE_FIFO_FULL_OVERRIDE" pos="4" type="boolean"/>
+		<bitfield name="LANE_LAYER_TG_BYPASS" pos="0" type="boolean"/>
+	</reg32>
+	<reg32 offset="0x0030c" name="LOGICAL_LANE_SWAP_CTRL">
+		<bitfield name="LOGICAL_LANE3_SEL" low="12" high="15" type="uint"/>
+		<bitfield name="LOGICAL_LANE2_SEL" low="8" high="11" type="uint"/>
+		<bitfield name="LOGICAL_LANE1_SEL" low="4" high="7" type="uint"/>
+		<bitfield name="LOGICAL_LANE0_SEL" low="0" high="3" type="uint"/>
+	</reg32>
+	<reg32 offset="0x00310" name="ERR_INT_MASK1">
+		<bitfield name="RTB_LOW_FLAG_MASK" pos="23" type="boolean"/>
+		<bitfield name="RTB_HIGH_FLAG_MASK" pos="22" type="boolean"/>
+		<bitfield name="DYNAMIC_REFRESH_ERROR_MASK" pos="21" type="boolean"/>
+		<bitfield name="VIDEO_DROP_MASK" pos="20" type="boolean"/>
+		<bitfield name="SUBLINK1_PENDING_HS_TX_TO_MASK" pos="17" type="boolean"/>
+		<bitfield name="SUBLINK1_BTA_TO_MASK" pos="16" type="boolean"/>
+		<bitfield name="SUBLINK1_HS_TX_TO_MASK" pos="15" type="boolean"/>
+		<bitfield name="SUBLINK1_LP_RX_TO_MASK" pos="14" type="boolean"/>
+		<bitfield name="SUBLINK1_ERROR_PACKET_MASK" pos="13" type="boolean"/>
+		<bitfield name="SUBLINK1_RDBK_INCOMPLETE_PACKET_ERR_MASK" pos="12" type="boolean"/>
+		<bitfield name="SUBLINK1_RDBK_DATA_CRC_ERR_MASK" pos="11" type="boolean"/>
+		<bitfield name="SUBLINK1_RDBK_DATA_MULTI_ECC_ERR_MASK" pos="10" type="boolean"/>
+		<bitfield name="SUBLINK1_RDBK_DATA_ECC_ERR_MASK" pos="9" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTROL_MASK" pos="8" type="boolean"/>
+		<bitfield name="DLN2_ERR_SYNC_ESC_MASK" pos="7" type="boolean"/>
+		<bitfield name="DLN2_ERR_ESC_MASK" pos="6" type="boolean"/>
+		<bitfield name="DLN3_ERR_CONTENTION_LP1_MASK" pos="5" type="boolean"/>
+		<bitfield name="DLN3_ERR_CONTENTION_LP0_MASK" pos="4" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTENTION_LP1_MASK" pos="3" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTENTION_LP0_MASK" pos="2" type="boolean"/>
+		<bitfield name="DLN1_ERR_CONTENTION_LP1_MASK" pos="1" type="boolean"/>
+		<bitfield name="DLN1_ERR_CONTENTION_LP0_MASK" pos="0" type="boolean"/>
+	</reg32>
+	<reg32 offset="0x00314" name="DLN_PHY_ERR">
+		<bitfield name="DLN2_ERR_CONTROL_MASK" pos="17" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTROL_CLR" pos="16" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTROL" pos="16" type="boolean"/>
+		<bitfield name="DLN2_ERR_SYNC_ESC_MASK" pos="15" type="boolean"/>
+		<bitfield name="DLN2_ERR_SYNC_ESC_CLR" pos="14" type="boolean"/>
+		<bitfield name="DLN2_ERR_SYNC_ESC" pos="14" type="boolean"/>
+		<bitfield name="DLN2_ERR_ESC_MASK" pos="13" type="boolean"/>
+		<bitfield name="DLN2_ERR_ESC_CLR" pos="12" type="boolean"/>
+		<bitfield name="DLN2_ERR_ESC" pos="12" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTENTION_LP1_MASK" pos="9" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTENTION_LP0_MASK" pos="8" type="boolean"/>
+		<bitfield name="DLN3_ERR_CONTENTION_LP1_CLR" pos="6" type="boolean"/>
+		<bitfield name="DLN3_ERR_CONTENTION_LP1" pos="6" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTENTION_LP1_CLR" pos="5" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTENTION_LP1" pos="5" type="boolean"/>
+		<bitfield name="DLN1_ERR_CONTENTION_LP1_CLR" pos="4" type="boolean"/>
+		<bitfield name="DLN1_ERR_CONTENTION_LP1" pos="4" type="boolean"/>
+		<bitfield name="DLN3_ERR_CONTENTION_LP0_CLR" pos="2" type="boolean"/>
+		<bitfield name="DLN3_ERR_CONTENTION_LP0" pos="2" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTENTION_LP0_CLR" pos="1" type="boolean"/>
+		<bitfield name="DLN2_ERR_CONTENTION_LP0" pos="1" type="boolean"/>
+		<bitfield name="DLN1_ERR_CONTENTION_LP0_CLR" pos="0" type="boolean"/>
+		<bitfield name="DLN1_ERR_CONTENTION_LP0" pos="0" type="boolean"/>
+	</reg32>
+	<reg32 offset="0x0033c" name="SUBLINK1_ACK_ERR_STATUS">
+		<bitfield name="ACK_CLR" pos="28" type="boolean"/>
+		<bitfield name="ACK" pos="28" type="boolean"/>
+		<bitfield name="ERROR_REPORT_DETECTED_CLR" pos="24" type="boolean"/>
+		<bitfield name="ERROR_REPORT_DETECTED" pos="24" type="boolean"/>
+		<bitfield name="RDBK_INCOMPLETE_PACKET_ERR_CLR" pos="23" type="boolean"/>
+		<bitfield name="RDBK_INCOMPLETE_PACKET_ERR" pos="23" type="boolean"/>
+		<bitfield name="RDBK_DATA_CRC_ERR_CLR" pos="20" type="boolean"/>
+		<bitfield name="RDBK_DATA_CRC_ERR" pos="20" type="boolean"/>
+		<bitfield name="RDBK_DATA_MULTI_ECC_ERR_CLR" pos="17" type="boolean"/>
+		<bitfield name="RDBK_DATA_MULTI_ECC_ERR" pos="17" type="boolean"/>
+		<bitfield name="RDBK_DATA_ECC_ERR_CLR" pos="16" type="boolean"/>
+		<bitfield name="RDBK_DATA_ECC_ERR" pos="16" type="boolean"/>
+		<bitfield name="PANEL_SPECIFIC_ERR_CLR" pos="15" type="boolean"/>
+		<bitfield name="PANEL_SPECIFIC_ERR" pos="15" type="boolean"/>
+		<bitfield name="PROTOCOL_VIOLATION_CLR" pos="13" type="boolean"/>
+		<bitfield name="PROTOCOL_VIOLATION" pos="13" type="boolean"/>
+		<bitfield name="VC_ERR_CLR" pos="12" type="boolean"/>
+		<bitfield name="VC_ERR" pos="12" type="boolean"/>
+		<bitfield name="DT_ERR_CLR" pos="11" type="boolean"/>
+		<bitfield name="DT_ERR" pos="11" type="boolean"/>
+		<bitfield name="CRC_ERR_CLR" pos="10" type="boolean"/>
+		<bitfield name="CRC_ERR" pos="10" type="boolean"/>
+		<bitfield name="MULTI_ECC_ERR_CLR" pos="9" type="boolean"/>
+		<bitfield name="MULTI_ECC_ERR" pos="9" type="boolean"/>
+		<bitfield name="ECC_ERR_CLR" pos="8" type="boolean"/>
+		<bitfield name="ECC_ERR" pos="8" type="boolean"/>
+		<bitfield name="CONTENTION_CLR" pos="7" type="boolean"/>
+		<bitfield name="CONTENTION" pos="7" type="boolean"/>
+		<bitfield name="FALSE_CTRL_ERR_CLR" pos="6" type="boolean"/>
+		<bitfield name="FALSE_CTRL_ERR" pos="6" type="boolean"/>
+		<bitfield name="TIMEOUT_CLR" pos="5" type="boolean"/>
+		<bitfield name="TIMEOUT" pos="5" type="boolean"/>
+		<bitfield name="LP_ERR_CLR" pos="4" type="boolean"/>
+		<bitfield name="LP_ERR" pos="4" type="boolean"/>
+		<bitfield name="ESC_ERR_CLR" pos="3" type="boolean"/>
+		<bitfield name="ESC_ERR" pos="3" type="boolean"/>
+		<bitfield name="EOT_ERR_CLR" pos="2" type="boolean"/>
+		<bitfield name="EOT_ERR" pos="2" type="boolean"/>
+		<bitfield name="SOT_SYNC_ERR_CLR" pos="1" type="boolean"/>
+		<bitfield name="SOT_SYNC_ERR" pos="1" type="boolean"/>
+		<bitfield name="SOT_ERR_CLR" pos="0" type="boolean"/>
+		<bitfield name="SOT_ERR" pos="0" type="boolean"/>
+	</reg32>
+
 </domain>
 
 </database>

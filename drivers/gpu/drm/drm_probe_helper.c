@@ -702,7 +702,8 @@ exit:
 		    connector->base.id, connector->name);
 
 	list_for_each_entry(mode, &connector->modes, head) {
-		drm_mode_set_crtcinfo(mode, CRTC_INTERLACE_HALVE_V);
+		//drm_mode_set_crtcinfo(mode, CRTC_INTERLACE_HALVE_V);
+		drm_mode_set_crtcinfo(mode, CRTC_INTERLACE_HALVE_V | CRTC_STEREO_DOUBLE_ONLY);		//TODO: Temp Plano testing
 		drm_dbg_kms(dev, "Probed mode: " DRM_MODE_FMT "\n",
 			    DRM_MODE_ARG(mode));
 	}
