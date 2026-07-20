@@ -4,6 +4,7 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/zstd.h>
+#include <trace/gpuvis.h>
 
 #include "backend_zstd.h"
 
@@ -173,6 +174,8 @@ static int zstd_compress(struct zcomp_params *params, struct zcomp_ctx *ctx,
 	struct zstd_ctx *zctx = ctx->context;
 	size_t ret;
 
+	//TRACE_BEGIN_CTX(TRACE_BASIC "zstd_compress");
+	
 	if (params->dict_sz == 0)
 		ret = zstd_compress_cctx(zctx->cctx, req->dst, req->dst_len,
 					 req->src, req->src_len, &zp->cprm);
@@ -193,6 +196,8 @@ static int zstd_decompress(struct zcomp_params *params, struct zcomp_ctx *ctx,
 	struct zstd_params *zp = params->drv_data;
 	struct zstd_ctx *zctx = ctx->context;
 	size_t ret;
+
+	//TRACE_BEGIN_CTX(TRACE_BASIC "zstd_decompress");
 
 	if (params->dict_sz == 0)
 		ret = zstd_decompress_dctx(zctx->dctx, req->dst, req->dst_len,

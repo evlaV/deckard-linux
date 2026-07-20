@@ -146,10 +146,11 @@ int zcomp_compress(struct zcomp *comp, struct zcomp_strm *zstrm,
 	};
 	int ret;
 
-	TRACE_BEGIN_CTX();
-
 	might_sleep();
-	ret = comp->ops->compress(comp->params, &zstrm->ctx, &req);
+	{
+		TRACE_BEGIN_CTX(TRACE_BASIC "zcomp_compress %d",2 * PAGE_SIZE);
+		ret = comp->ops->compress(comp->params, &zstrm->ctx, &req);
+	}
 	if (!ret)
 		*dst_len = req.dst_len;
 	return ret;
@@ -165,8 +166,13 @@ int zcomp_decompress(struct zcomp *comp, struct zcomp_strm *zstrm,
 		.dst_len = PAGE_SIZE,
 	};
 
+	int ret;
 	might_sleep();
-	return comp->ops->decompress(comp->params, &zstrm->ctx, &req);
+	{
+		TRACE_BEGIN_CTX(TRACE_BASIC "zcomp_decompress");
+		ret = comp->ops->decompress(comp->params, &zstrm->ctx, &req);
+	}
+	return ret;
 }
 
 int zcomp_cpu_up_prepare(unsigned int cpu, struct hlist_node *node)

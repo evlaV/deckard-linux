@@ -69,7 +69,8 @@
 #include "internal.h"
 #include "swap.h"
 
-#define CREATE_TRACE_POINTS
+#include <trace/gpuvis.h>
+//#define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
 
 struct scan_control {
@@ -6644,7 +6645,11 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 	set_task_reclaim_state(current, &sc.reclaim_state);
 	trace_mm_vmscan_direct_reclaim_begin(order, sc.gfp_mask);
 
-	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
+	{
+		TRACE_BEGIN_CTX(TRACE_BASIC "do_try_to_free_pages");
+		nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
+		TRACE_END_CTX(TRACE_BASIC "nr_reclaimed = %d",nr_reclaimed);
+	}
 
 	trace_mm_vmscan_direct_reclaim_end(nr_reclaimed);
 	set_task_reclaim_state(current, NULL);
