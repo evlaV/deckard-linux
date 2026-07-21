@@ -35,6 +35,23 @@ struct qcom_pon_data {
 	bool pmk8550_pon_reason;
 };
 
+struct pm_pon_reason_type
+{
+  u32 hard_reset : 1;     /* Hard reset event trigger */
+  u32 smpl : 1;           /* SMPL trigger */
+  u32 rtc : 1;            /* RTC trigger */
+  u32 dc_chg : 1;         /* DC Charger trigger */
+  u32 usb_chg : 1;        /* USB Charger trigger */
+  u32 pon1 : 1;           /* PON1 trigger */
+  u32 cblpwr : 1;         /* CBL_PWR1_N trigger */
+  u32 kpdpwr : 1;         /* KPDPWR_N trigger */
+  u32 known_rsn : 1;      /* known reason. If unknown read sid, pid and irq field */
+  u32 sid : 4;            /* slave id */
+  u32 pid: 8;             /* peripheral id */
+  u32 irq: 3;             /* interrupt */
+  u32 reserved:8;         /* reserved  */
+};
+
 struct qcom_pon {
 	struct device *dev;
 	struct regmap *regmap;
@@ -43,7 +60,10 @@ struct qcom_pon {
 	struct reboot_mode_driver reboot_mode;
 	long reason_shift;
 	bool needs_pbs_ps_hold_sw_ctl;
-	u32 pmic_pon_reason_regval;
+	union {
+		u32 reason_regval;
+		struct pm_pon_reason_type reason_fields;
+	} pmic_pon;
 };
 
 static void qcom_reboot_ps_hold_type_setup(struct qcom_pon *pon, unsigned int type)
@@ -98,13 +118,31 @@ static int qcom_pon_reboot_mode_write(struct reboot_mode_driver *reboot,
 static ssize_t pon_reason_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct qcom_pon *pon = dev_get_drvdata(dev);
-	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon_reason_regval);
+	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon.reason_regval);
 }
 
 static DEVICE_ATTR_RO(pon_reason);
 
+#define PON_REASON_FIELD(field) \
+static ssize_t pon_reason_##field##_show(struct device *dev, struct device_attribute *attr, \
+			        char *buf)					\
+{										\
+	struct qcom_pon *pon = dev_get_drvdata(dev);				\
+										\
+	return sysfs_emit(buf, "%d\n", pon->pmic_pon.reason_fields.field);		\
+}										\
+static DEVICE_ATTR_RO(pon_reason_##field);
+
+PON_REASON_FIELD(smpl);
+PON_REASON_FIELD(hard_reset);
+PON_REASON_FIELD(usb_chg);
+
+
 static struct attribute *attrs[] = {
 	&dev_attr_pon_reason.attr,
+	&dev_attr_pon_reason_smpl.attr,
+	&dev_attr_pon_reason_hard_reset.attr,
+	&dev_attr_pon_reason_usb_chg.attr,
 	NULL,
 };
 
@@ -188,7 +226,7 @@ static int qcom_pon_probe(struct platform_device *pdev)
 			* but otherwise the codes are unchanged from XR2 */
 		error = regmap_read(pon->regmap, PON_AOP_PON_REASON1, &pmic_pon_reason_regval);
 		dev_warn(&pdev->dev, "PON_PON_REASON1 0x%02X ret=%d\n", pmic_pon_reason_regval, error);
-		pon->pmic_pon_reason_regval = pmic_pon_reason_regval;
+		pon->pmic_pon.reason_regval = pmic_pon_reason_regval;
 	}
 
 	platform_set_drvdata(pdev, pon);
