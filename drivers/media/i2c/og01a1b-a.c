@@ -2186,6 +2186,7 @@ static int og01a1b_probe(struct i2c_client *client)
                 // Handle allocation failure
                 return -ENOMEM;
             }
+            cpumask_clear(attrs->cpumask);
             cpumask_set_cpu(i + 2, attrs->cpumask); // Set CPU affinity to CPU 2 and 3
 
             // Apply workqueue attributes
