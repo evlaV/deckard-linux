@@ -86,6 +86,8 @@ static struct vfsmount *shm_mnt __ro_after_init;
 
 #include "internal.h"
 
+#include <trace/gpuvis.h>
+
 #define VM_ACCT(size)    (PAGE_ALIGN(size) >> PAGE_SHIFT)
 
 /* Pretend that each entry is of this size in directory's i_size */
@@ -2271,6 +2273,8 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 	if (is_poisoned_swp_entry(index_entry))
 		return -EIO;
 
+	TRACE_BEGIN_CTX(TRACE_BASIC "shmem_swapin_folio");
+
 	si = get_swap_device(index_entry);
 	order = shmem_confirm_swap(mapping, index, index_entry);
 	if (unlikely(!si)) {
@@ -2452,6 +2456,8 @@ repeat:
 	if (sgp <= SGP_CACHE &&
 	    ((loff_t)index << PAGE_SHIFT) >= i_size_read(inode))
 		return -EINVAL;
+
+	TRACE_BEGIN_CTX(TRACE_BASIC "shmem_get_folio_gfp");
 
 	alloced = false;
 	fault_mm = vma ? vma->vm_mm : NULL;

@@ -53,6 +53,8 @@
 
 #include "drm_internal.h"
 
+#include <trace/gpuvis.h>
+
 /** @file drm_gem.c
  *
  * This file provides some of the base ioctls and library routines for
@@ -647,6 +649,8 @@ struct page **drm_gem_get_pages(struct drm_gem_object *obj)
 	pages = kvmalloc_array(npages, sizeof(struct page *), GFP_KERNEL);
 	if (pages == NULL)
 		return ERR_PTR(-ENOMEM);
+
+	TRACE_BEGIN_CTX(TRACE_BASIC "drm_gem_get_pages");
 
 	mapping_set_unevictable(mapping);
 
