@@ -3,15 +3,18 @@
 
 #include <linux/delay.h>
 #include <linux/errno.h>
+#include <linux/input.h>
+#include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/kmsg_dump.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
-#include <linux/reboot.h>
 #include <linux/reboot-mode.h>
+#include <linux/reboot.h>
 #include <linux/regmap.h>
+#include <linux/spinlock.h>
 
 #define PON_SOFT_RB_SPARE		0x8f
 
@@ -27,6 +30,12 @@
 #define  PON_PS_HOLD_TYPE_WARM_RESET	1
 #define  PON_PS_HOLD_TYPE_SHUTDOWN	4
 #define  PON_PS_HOLD_TYPE_HARD_RESET	7
+
+static void qcom_pon_kmsg_dump(struct work_struct *work);
+
+#define QCOM_PON_COMBO_TIMEOUT_MS 3000
+static DEFINE_SPINLOCK(qcom_pon_combo_lock);
+static DECLARE_DELAYED_WORK(qcom_pon_kmsg_dump_work, qcom_pon_kmsg_dump);
 
 #define PON_AOP_PON_REASON1		0x7269
 
@@ -60,6 +69,10 @@ struct qcom_pon {
 	u32 pbs_baseaddr;
 	struct reboot_mode_driver reboot_mode;
 	long reason_shift;
+	bool key_power_pressed;
+	bool key_voldown_pressed;
+	bool combo_timer_started;
+	struct input_handler input_handler;
 	bool needs_pbs_ps_hold_sw_ctl;
 	union {
 		u32 reason_regval;
@@ -148,7 +161,6 @@ static ssize_t pon_reason_show(struct device *dev, struct device_attribute *attr
 	struct qcom_pon *pon = dev_get_drvdata(dev);
 	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon.reason_regval);
 }
-
 static DEVICE_ATTR_RO(pon_reason);
 
 #define PON_REASON_FIELD(field) \
@@ -165,7 +177,6 @@ PON_REASON_FIELD(smpl);
 PON_REASON_FIELD(hard_reset);
 PON_REASON_FIELD(usb_chg);
 
-
 static struct attribute *attrs[] = {
 	&dev_attr_pon_reason.attr,
 	&dev_attr_pon_reason_smpl.attr,
@@ -176,6 +187,111 @@ static struct attribute *attrs[] = {
 
 static struct attribute_group sysfs_group = {
 	.attrs = attrs,
+};
+
+static void qcom_pon_kmsg_dump(struct work_struct *work)
+{
+	kmsg_dump(KMSG_DUMP_PANIC);
+	pr_info("%s: dumping dmesg to pstore\n", __func__);
+}
+
+static struct qcom_pon *qcom_pon_input_handler_to_qcom_pon(struct input_handler *handler)
+{
+	return container_of(handler, struct qcom_pon, input_handler);
+}
+
+static void qcom_pon_combo_event(struct input_handle *handle, unsigned int type,
+				 unsigned int code, int value)
+{
+	struct qcom_pon *pon = qcom_pon_input_handler_to_qcom_pon(handle->handler);
+	unsigned long flags;
+	bool combo_pressed;
+
+	if (type != EV_KEY)
+		return;
+
+	if (code != KEY_POWER && code != KEY_VOLUMEDOWN)
+		return;
+
+	spin_lock_irqsave(&qcom_pon_combo_lock, flags);
+
+	if (code == KEY_POWER)
+		pon->key_power_pressed = !!value;
+	else if (code == KEY_VOLUMEDOWN)
+		pon->key_voldown_pressed = !!value;
+
+	combo_pressed = (pon->key_voldown_pressed && pon->key_power_pressed);
+
+	if (combo_pressed && !pon->combo_timer_started) {
+		schedule_delayed_work(&qcom_pon_kmsg_dump_work,
+					msecs_to_jiffies(QCOM_PON_COMBO_TIMEOUT_MS));
+		pon->combo_timer_started = true;
+		dev_info(pon->dev, "timer started for key combo\n");
+	} else if (!combo_pressed && pon->combo_timer_started) {
+		cancel_delayed_work(&qcom_pon_kmsg_dump_work);
+		pon->combo_timer_started = false;
+		dev_info(pon->dev, "timer stopped for key combo\n");
+	}
+
+	spin_unlock_irqrestore(&qcom_pon_combo_lock, flags);
+}
+
+static int qcom_pon_combo_connect(struct input_handler *handler,
+				  struct input_dev *dev,
+				  const struct input_device_id *id)
+{
+	struct input_handle *handle;
+	int ret;
+
+	handle = kzalloc(sizeof(struct input_handle), GFP_KERNEL);
+	if (!handle)
+		return -ENOMEM;
+
+	handle->dev = dev;
+	handle->handler = handler;
+	handle->name = "qcom_pon_combo_timer_listener";
+
+	ret = input_register_handle(handle);
+	if (ret)
+		goto err_free;
+
+	ret = input_open_device(handle);
+	if (ret)
+		goto err_unregister;
+
+	return 0;
+
+err_unregister:
+	input_unregister_handle(handle);
+
+err_free:
+	kfree(handle);
+
+	return ret;
+}
+
+static void qcom_pon_combo_disconnect(struct input_handle *handle)
+{
+	input_close_device(handle);
+	input_unregister_handle(handle);
+	kfree(handle);
+}
+
+static const struct input_device_id qcom_pon_combo_ids[] = {
+	{
+		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
+		.evbit = { BIT_MASK(EV_KEY) },
+	},
+	{ },
+};
+MODULE_DEVICE_TABLE(input, qcom_pon_combo_ids);
+
+static struct input_handler qcom_pon_combo_handler = {
+	.event      = qcom_pon_combo_event,
+	.connect    = qcom_pon_combo_connect,
+	.disconnect = qcom_pon_combo_disconnect,
+	.name       = "qcom_pon_combo_timer_handler",
+	.id_table   = qcom_pon_combo_ids,
 };
 
 static int qcom_pon_probe(struct platform_device *pdev)
@@ -261,6 +377,13 @@ static int qcom_pon_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "PON_PON_REASON1 0x%02X ret=%d\n", pmic_pon_reason_regval, error);
 		pon->pmic_pon.reason_regval = pmic_pon_reason_regval;
 	}
+
+	/* register input handler to get combo keys pressed to trigger warm reset */
+	memcpy(&pon->input_handler, &qcom_pon_combo_handler,
+		sizeof(qcom_pon_combo_handler));
+	error = input_register_handler(&pon->input_handler);
+	if (error)
+		dev_err(&pdev->dev, "could not registered input combo handler\n");
 
 	platform_set_drvdata(pdev, pon);
 
