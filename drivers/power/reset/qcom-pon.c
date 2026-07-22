@@ -79,10 +79,18 @@ static void qcom_reboot_ps_hold_type_setup(struct qcom_pon *pon, unsigned int ty
 static int qcom_pon_restart_prepare(struct sys_off_data *data)
 {
 	struct qcom_pon *pon = data->cb_data;
+	unsigned int reset_type;
 
-	dev_info(pon->dev, "Setting PON-PBS for Reset\n");
+	dev_err(pon->dev, "Setting PON-PBS for Reset: %s reboot_mode: %d\n",
+		data->cmd, reboot_mode);
 
-	qcom_reboot_ps_hold_type_setup(pon, PON_PS_HOLD_TYPE_HARD_RESET);
+	if (reboot_mode == REBOOT_WARM) {
+		reset_type = PON_PS_HOLD_TYPE_WARM_RESET;
+	} else {
+		reset_type = PON_PS_HOLD_TYPE_HARD_RESET;
+	}
+
+	qcom_reboot_ps_hold_type_setup(pon, reset_type);
 
 	return NOTIFY_OK;
 }
