@@ -15,7 +15,8 @@
 #include "sm8650-el2.dtsi"
 
 / {
-	model = "SM8650 MP dphy plano rev1 4slam 2et";
+	model = "SM8650 MP dphy rev1 4slam 2et";
+	//TODO: change to sm8650-mpd???
 	compatible = "qcom,sm8650-dv1", "qcom,sm8650";
 
 	aliases {
@@ -1336,7 +1337,7 @@
 
 	panel: panel@0 {
 		reg = <0>;
-		compatible = "deckard-panel-plano";
+		compatible = "deckard-panel-dphy";
 		dual-panel;
 		low-fps-support;
         dphy;
@@ -1346,6 +1347,9 @@
 
 		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
 			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
+
+		te-gpios = <&tlmm 162 GPIO_ACTIVE_HIGH>,	//162: TE2_LEFT
+                    <&tlmm 178 GPIO_ACTIVE_HIGH>;	//178: TE2_RIGHT
 
 		//Bias supplies enabled via GPIO
 		left-pos-supply = <&vpos_left>;
@@ -1381,12 +1385,12 @@
 
 &mdss_dsi0_out {
 	remote-endpoint = <&panel0_in>;
-	data-lanes = <0 1 2>;
+	data-lanes = <0 1 2 3>;
 };
 
 &mdss_dsi0_phy {
 	vdds-supply = <&vreg_l1i_0p88>;
-	phy-type = <PHY_TYPE_CPHY>;
+	phy-type = <PHY_TYPE_DPHY>;
 	status = "okay";
 };
 
@@ -1402,13 +1406,13 @@
 
 &mdss_dsi1_out {
 	remote-endpoint = <&panel1_in>;
-	data-lanes = <0 1 2>;
+	data-lanes = <0 1 2 3>;
 };
 
 &mdss_dsi1_phy {
 	vdds-supply = <&vreg_l1i_0p88>;
 	status = "okay";
-	phy-type = <PHY_TYPE_CPHY>;
+	phy-type = <PHY_TYPE_DPHY>;
 };
 
 &pcie0 {
@@ -1855,15 +1859,15 @@
 				regulator-name = "lcd_right_vpos";
 				enp-gpios = <&pm8550_gpios 8 GPIO_ACTIVE_HIGH>;
 				regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				regulator-min-microvolt = <5400000>;
-				regulator-max-microvolt = <5500000>;
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
 			};
 			vneg_right: vneg{
 				regulator-name = "lcd_right_vneg";
 				enn-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
 				regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				regulator-min-microvolt = <5400000>;
-				regulator-max-microvolt = <6300000>;
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
 			};
 		};
 	};
@@ -1915,15 +1919,15 @@
 				regulator-name = "lcd_left_vpos";
 				enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
 				regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				regulator-min-microvolt = <5400000>;
-				regulator-max-microvolt = <5500000>;
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
 			};
 			vneg_left: vneg{
 				regulator-name = "lcd_left_vneg";
 				enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
 				regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				regulator-min-microvolt = <5400000>;
-				regulator-max-microvolt = <6300000>;
+				regulator-min-microvolt = <5700000>;
+				regulator-max-microvolt = <5700000>;
 			};
 		};
 	};
@@ -2106,13 +2110,15 @@
 };
 
 &i2c5 {
+    clock-frequency = <400000>;
+    
     // BOOT EEPROM
     eeprom@50 {
         compatible  = "atmel,24c64";
         status      = "okay";
         label		= "core_v2_eeprom";
         reg         = <0x50>;
-		pagesize    = <32>;
+		pagesize    = <16>;
 		size        = <8192>;
 		address-width = <16>;
         wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
