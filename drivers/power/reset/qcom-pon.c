@@ -4,6 +4,7 @@
 #include <linux/delay.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
+#include <linux/kmsg_dump.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
@@ -86,6 +87,7 @@ static int qcom_pon_restart_prepare(struct sys_off_data *data)
 
 	if (reboot_mode == REBOOT_WARM) {
 		reset_type = PON_PS_HOLD_TYPE_WARM_RESET;
+		kmsg_dump(KMSG_DUMP_PANIC);
 	} else {
 		reset_type = PON_PS_HOLD_TYPE_HARD_RESET;
 	}
