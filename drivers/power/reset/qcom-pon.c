@@ -67,6 +67,24 @@ struct qcom_pon {
 	} pmic_pon;
 };
 
+static int qcom_pon_reboot(struct notifier_block *nb,
+			   unsigned long action, void *data)
+{
+	char *cmd = data;
+
+	if (cmd && !strncmp(cmd, "warm", sizeof("warm"))) {
+		printk("%s: action: %lu cmd: %s reboot_mode: %d\n",
+			__func__, action, cmd, reboot_mode);
+		reboot_mode = REBOOT_WARM;
+	}
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block qcom_pon_reboot_notifier = {
+	.notifier_call = qcom_pon_reboot,
+};
+
 static void qcom_reboot_ps_hold_type_setup(struct qcom_pon *pon, unsigned int type)
 {
 	regmap_write(pon->regmap, pon->pbs_baseaddr + PON_PBS_PS_HOLD_RESET_CTL2, 0);
@@ -201,6 +219,11 @@ static int qcom_pon_probe(struct platform_device *pdev)
 				      SYS_OFF_PRIO_FIRMWARE, qcom_pon_poweroff_prepare,
 				      pon);
 	}
+
+
+	error = devm_register_reboot_notifier(&pdev->dev, &qcom_pon_reboot_notifier);
+	if (error)
+		dev_err(&pdev->dev, "failed to regitster restart handler\n");
 
 	if (data->reason_shift != NO_REASON_SHIFT) {
 		pon->reboot_mode.dev = &pdev->dev;
