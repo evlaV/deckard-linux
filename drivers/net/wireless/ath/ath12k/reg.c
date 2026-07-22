@@ -92,6 +92,26 @@ ath12k_reg_notifier(struct wiphy *wiphy, struct regulatory_request *request)
 		return;
 	}
 
+#if IS_ENABLED(CONFIG_ATH_REG_DYNAMIC_USER_REG_HINTS)
+	/* cfg80211 replays the last regulatory_hint_user synchronously from
+	 * within ieee80211_register_hw(), for example after a module reload.
+	 * On WCN7851 issuing it while registration is still in progress crashes the
+	 * firmware in some circumstances. Instead stash the alpha2 
+	 * so ath12k_mac_hw_register() programs it once registration has completed.
+	 */
+	if (ar->ab->hw_params->current_cc_support &&
+	    !test_bit(ATH12K_FLAG_REGISTERED, &ar->ab->dev_flags)) {
+		memcpy(ar->ab->new_alpha2, request->alpha2, 2);
+		ath12k_dbg(ar->ab, ATH12K_DBG_REG,
+			   "defer country %c%c until registration completes\n",
+			   request->alpha2[0], request->alpha2[1]);
+
+		for_each_ar(ah, ar, i)
+			ar->regdom_set_by_user = true;
+		return;
+	}
+#endif
+
 	if (!ath12k_regdom_changes(hw, request->alpha2)) {
 		ath12k_dbg(ar->ab, ATH12K_DBG_REG, "Country is already set\n");
 		return;
