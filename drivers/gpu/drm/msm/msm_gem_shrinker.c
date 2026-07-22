@@ -333,7 +333,7 @@ int msm_gem_shrinker_init(struct drm_device *dev)
 
 	shrinker_register(priv->shrinker);
 
-	priv->msm_shrinker_enable = false;
+	priv->msm_shrinker_enable = true;
 
 	priv->vmap_notifier.notifier_call = msm_gem_shrinker_vmap;
 	WARN_ON(register_vmap_purge_notifier(&priv->vmap_notifier));
