@@ -232,6 +232,10 @@ static ssize_t msm_gpu_devcoredump_read(char *buffer, loff_t offset, size_t coun
 			gpu->crashstate = NULL;
 	}
 
+	// Failed allocation so read nothing
+	if (!gpu->devcd_saved_buffer)
+		return 0;
+
 	ssize_t remain = gpu->devcd_size - offset;
 	ssize_t read_count = 0;
 	if( remain > 0 && gpu->devcd_size > 0 )
