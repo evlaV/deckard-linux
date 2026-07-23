@@ -678,12 +678,6 @@ static void hangcheck_ring_timer_reset(struct msm_gpu *gpu, struct msm_ringbuffe
 			  round_jiffies_up(jiffies + msecs_to_jiffies(priv->hangcheck_period)));
 }
 
-static void hangcheck_timer_reset(struct msm_gpu *gpu)
-{
-	for (int i = 0; i < gpu->nr_rings; i++)
-		hangcheck_ring_timer_reset(gpu, gpu->rb[i]);
-}
-
 static bool made_progress(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
 {
 	if (ring->hangcheck_progress_retries >= DRM_MSM_HANGCHECK_PROGRESS_RETRIES)
@@ -749,7 +743,7 @@ static void hangcheck_handler(struct timer_list *t)
 
 	/* if still more pending work, reset the hangcheck timer: */
 	if (fence_after(ring->fctx->last_fence, ring->hangcheck_fence))
-		hangcheck_timer_reset(gpu);
+		hangcheck_ring_timer_reset(gpu, ring);
 
 	/* workaround for missing irq: */
 	msm_gpu_retire(gpu);
