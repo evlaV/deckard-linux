@@ -1447,7 +1447,10 @@ __drm_gpuvm_validate(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
 			break;
 	}
 	
-	TRACE_BEGIN_CTX(TRACE_BASIC "__drm_gpuvm_validate %d",count);
+	if(count > 0)
+	{
+		TRACE_BEGIN_CTX(TRACE_BASIC "__drm_gpuvm_validate %d",count);
+	}
 
 	/* Drop ref in case we break out of the loop. */
 	drm_gpuvm_bo_put(vm_bo);

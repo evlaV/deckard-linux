@@ -1115,6 +1115,7 @@ static unsigned int shrink_folio_list(struct list_head *folio_list,
 	cond_resched();
 	do_demote_pass = can_demote(pgdat->node_id, sc, memcg);
 
+	TRACE_BEGIN_CTX(TRACE_BASIC "shrink_folio_list");
 retry:
 	while (!list_empty(folio_list)) {
 		struct address_space *mapping;
@@ -1643,6 +1644,8 @@ keep:
 
 	if (plug)
 		swap_write_unplug(plug);
+	//gabe
+	TRACE_END_CTX(TRACE_BASIC "shrink_folio_list %d",nr_reclaimed);
 	return nr_reclaimed;
 }
 

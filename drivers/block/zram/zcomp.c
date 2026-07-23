@@ -148,7 +148,7 @@ int zcomp_compress(struct zcomp *comp, struct zcomp_strm *zstrm,
 
 	might_sleep();
 	{
-		TRACE_BEGIN_CTX(TRACE_BASIC "zcomp_compress %d",2 * PAGE_SIZE);
+		//TRACE_BEGIN_CTX(TRACE_BASIC "zcomp_compress %d",2 * PAGE_SIZE);
 		ret = comp->ops->compress(comp->params, &zstrm->ctx, &req);
 	}
 	if (!ret)
@@ -169,7 +169,7 @@ int zcomp_decompress(struct zcomp *comp, struct zcomp_strm *zstrm,
 	int ret;
 	might_sleep();
 	{
-		TRACE_BEGIN_CTX(TRACE_BASIC "zcomp_decompress");
+		//TRACE_BEGIN_CTX(TRACE_BASIC "zcomp_decompress");
 		ret = comp->ops->decompress(comp->params, &zstrm->ctx, &req);
 	}
 	return ret;
