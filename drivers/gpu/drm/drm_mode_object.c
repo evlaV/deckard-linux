@@ -448,10 +448,12 @@ int drm_mode_obj_get_properties_ioctl(struct drm_device *dev, void *data,
 
 	obj = drm_mode_object_find(dev, file_priv, arg->obj_id, arg->obj_type);
 	if (!obj) {
+		drm_dbg_kms(dev, "[OBJECT:%d] not found", arg->obj_id);	//Plano rowdouble debug
 		ret = -ENOENT;
 		goto out;
 	}
 	if (!obj->properties) {
+		drm_dbg_kms(dev, "[OBJECT:%d] doesn't have any properties", arg->obj_id);	//Plano rowdouble debug
 		ret = -EINVAL;
 		goto out_unref;
 	}
@@ -460,6 +462,7 @@ int drm_mode_obj_get_properties_ioctl(struct drm_device *dev, void *data,
 			(uint32_t __user *)(unsigned long)(arg->props_ptr),
 			(uint64_t __user *)(unsigned long)(arg->prop_values_ptr),
 			&arg->count_props);
+	drm_dbg_kms(dev, "[OBJECT:%d] got property %lld: %lld", arg->obj_id, arg->props_ptr, arg->prop_values_ptr);	//Plano rowdouble debug
 
 out_unref:
 	drm_mode_object_put(obj);
@@ -572,11 +575,15 @@ int drm_mode_obj_set_property_ioctl(struct drm_device *dev, void *data,
 		return -EOPNOTSUPP;
 
 	arg_obj = drm_mode_object_find(dev, file_priv, arg->obj_id, arg->obj_type);
-	if (!arg_obj)
+	if (!arg_obj) {
+		drm_dbg_kms(dev, "[OBJECT:%d] not found", arg->obj_id);	//Plano rowdouble debug
 		return -ENOENT;
+	}
 
-	if (!arg_obj->properties)
+	if (!arg_obj->properties) {
+		drm_dbg_kms(dev, "[OBJECT:%d] doesn't have any properties", arg->obj_id);	//Plano rowdouble debug
 		goto out_unref;
+	}
 
 	property = drm_mode_obj_find_prop_id(arg_obj, arg->prop_id);
 	if (!property)
@@ -587,6 +594,7 @@ int drm_mode_obj_set_property_ioctl(struct drm_device *dev, void *data,
 	else
 		ret = set_property_legacy(arg_obj, property, arg->value);
 
+	drm_dbg_kms(dev, "[OBJECT:%d] set property %s to %lld", arg->obj_id, property->name, arg->value);	//Plano rowdouble debug
 out_unref:
 	drm_mode_object_put(arg_obj);
 	return ret;

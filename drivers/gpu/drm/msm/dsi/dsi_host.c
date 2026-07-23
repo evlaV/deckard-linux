@@ -202,30 +202,35 @@ static inline u32 dsi_read(struct msm_dsi_host *msm_host, u32 reg)
 	data = readl(msm_host->ctrl_base + reg);
 	//TODO: Temp Plano debug
 	struct device *dev = &msm_host->pdev->dev;
-	//base = ctrl_base - 4
-	//DBG("%s: Read DSI Base %p Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
-		//[drm:dsi_host_irq] dsi_read: Read DSI Base 00000000705528fb Reg 0xB0: 0x89888
+	if(0)
+	{
+		//TODO: Filter out interrupt related regs... too spammy
+		DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base - 4, reg, data);
+			//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x896C5004 Reg 0xB0: 0x88888
 
-	DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base - 4, reg, data);
-		//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x896C5004 Reg 0xB0: 0x88888
 
-	//DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(msm_host->ctrl_base), reg, data);
-		//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x896C5004 Reg 0xB0: 0x89888
-		//                                           0x800000
-		//                                           0x096000
-		//                                           0x0000B0
+		//base = ctrl_base - 4
+		//DBG("%s: Read DSI Base %p Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
+			//[drm:dsi_host_irq] dsi_read: Read DSI Base 00000000705528fb Reg 0xB0: 0x89888
 
-	//DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (*(u32 *)(msm_host->ctrl_base)), reg, data);
-		//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x173 Reg 0xB0: 0x88888
+		//DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(msm_host->ctrl_base), reg, data);
+			//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x896C5004 Reg 0xB0: 0x89888
+			//                                           0x800000
+			//                                           0x096000
+			//                                           0x0000B0
 
-	//DBG("%s: Read DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, (*(u64 *)(msm_host->ctrl_base)), reg, data);
-		//crashes: Unable to handle kernel paging request at virtual address ffffffc0896bd004
+		//DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (*(u32 *)(msm_host->ctrl_base)), reg, data);
+			//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x173 Reg 0xB0: 0x88888
 
-	//DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(*(u64 *)(msm_host->ctrl_base)), reg, data);
-		//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x173 Reg 0xB0: 0x88888
+		//DBG("%s: Read DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, (*(u64 *)(msm_host->ctrl_base)), reg, data);
+			//crashes: Unable to handle kernel paging request at virtual address ffffffc0896bd004
 
-	//DBG("%s: Read DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
-		//[drm:dsi_host_irq] dsi_write: Writing DSI Base 0xFFFFFFC0896BD004 Reg 0xB0: 0x89888
+		//DBG("%s: Read DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(*(u64 *)(msm_host->ctrl_base)), reg, data);
+			//[drm:dsi_host_irq] dsi_read: Read DSI Base 0x173 Reg 0xB0: 0x88888
+
+		//DBG("%s: Read DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
+			//[drm:dsi_host_irq] dsi_write: Writing DSI Base 0xFFFFFFC0896BD004 Reg 0xB0: 0x89888
+	}
 
 	return data;
 }
@@ -234,13 +239,17 @@ static inline void dsi_write(struct msm_dsi_host *msm_host, u32 reg, u32 data)
 {
 	//TODO: Temp Plano debug
 	struct device *dev = &msm_host->pdev->dev;
-	//DBG("%s: Writing DSI Base %p Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
-	DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base - 4, reg, data);
-	//DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(msm_host->ctrl_base), reg, data);
-	//DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (*(u32 *)(msm_host->ctrl_base)), reg, data);
-	//DBG("%s: Writing DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, (*(u64 *)(msm_host->ctrl_base)), reg, data);
-	//DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(*(u64 *)(msm_host->ctrl_base)), reg, data);
-	//DBG("%s: Writing DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
+	if(0)
+	{
+		//TODO: Filter out interrupt related regs... too spammy
+		DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base - 4, reg, data);
+		//DBG("%s: Writing DSI Base %p Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
+		//DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(msm_host->ctrl_base), reg, data);
+		//DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (*(u32 *)(msm_host->ctrl_base)), reg, data);
+		//DBG("%s: Writing DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, (*(u64 *)(msm_host->ctrl_base)), reg, data);
+		//DBG("%s: Writing DSI Base 0x%0X Reg 0x%0X: 0x%0X\n", __func__, (u32)(*(u64 *)(msm_host->ctrl_base)), reg, data);
+		//DBG("%s: Writing DSI Base 0x%0llX Reg 0x%0X: 0x%0X\n", __func__, msm_host->ctrl_base, reg, data);
+	}
 
 	writel(data, msm_host->ctrl_base + reg);
 }
@@ -767,7 +776,8 @@ static void dsi_intr_ctrl(struct msm_dsi_host *msm_host, u32 mask, int enable)
 	else
 		intr &= ~mask;
 
-	DBG("mask=0x%08x intr=0x%08x enable=%d", mask, intr, enable);
+	if(0)	//Too spammy
+		DBG("mask=0x%08x intr=0x%08x enable=%d", mask, intr, enable);
 
 	dsi_write(msm_host, REG_DSI_INTR_CTRL, intr);
 	spin_unlock_irqrestore(&msm_host->intr_lock, flags);
@@ -1836,7 +1846,8 @@ static irqreturn_t dsi_host_irq(int irq, void *ptr)
 	dsi_write(msm_host, REG_DSI_INTR_CTRL, isr);
 	spin_unlock_irqrestore(&msm_host->intr_lock, flags);
 
-	DBG("isr=0x%x, id=%d", isr, msm_host->id);
+	if(0)	//Too spammy
+		DBG("isr=0x%x, id=%d", isr, msm_host->id);
 
 	if (isr & DSI_IRQ_ERROR)
 		dsi_error(msm_host);

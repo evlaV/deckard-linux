@@ -1326,6 +1326,7 @@ void drm_mode_get_hv_timing(const struct drm_display_mode *mode,
 
 	drm_mode_init(&adjusted, mode);
 
+	printk(KERN_ERR "drm_mode_get_hv_timing: calling drm_mode_set_crtcinfo\n");		//TODO: Temp Plano testing
 	drm_mode_set_crtcinfo(&adjusted, CRTC_STEREO_DOUBLE_ONLY);
 	*hdisplay = adjusted.crtc_hdisplay;
 	*vdisplay = adjusted.crtc_vdisplay;
@@ -1363,6 +1364,8 @@ void drm_mode_set_crtcinfo(struct drm_display_mode *p, int adjust_flags)
 	p->crtc_vsync_end = p->vsync_end;
 	p->crtc_vtotal = p->vtotal;
 
+	printk(KERN_ERR "drm_mode_set_crtcinfo: adjust_flags: 0x%X; p->crtc_hdisplay: %d\n", adjust_flags, p->crtc_hdisplay);		//TODO: Temp Plano testing
+
 	if (p->flags & DRM_MODE_FLAG_INTERLACE) {
 		if (adjust_flags & CRTC_INTERLACE_HALVE_V) {
 			p->crtc_vdisplay /= 2;
@@ -1393,6 +1396,7 @@ void drm_mode_set_crtcinfo(struct drm_display_mode *p, int adjust_flags)
 	if (adjust_flags & CRTC_STEREO_DOUBLE) {
 		unsigned int layout = p->flags & DRM_MODE_FLAG_3D_MASK;
 
+		printk(KERN_ERR "drm_mode_set_crtcinfo: Adjusting for 3D layout 0x%X\n", p->flags);		//TODO: Temp Plano testing
 		switch (layout) {
 		case DRM_MODE_FLAG_3D_FRAME_PACKING:
 			p->crtc_clock *= 2;
@@ -1429,6 +1433,8 @@ void drm_mode_set_crtcinfo(struct drm_display_mode *p, int adjust_flags)
 	p->crtc_vblank_end = max(p->crtc_vsync_end, p->crtc_vtotal);
 	p->crtc_hblank_start = min(p->crtc_hsync_start, p->crtc_hdisplay);
 	p->crtc_hblank_end = max(p->crtc_hsync_end, p->crtc_htotal);
+
+	printk(KERN_ERR "drm_mode_set_crtcinfo: crtc_hdisplay: %d; crtc_hsync_start: %d; crtc_hsync_end: %d; crtc_htotal: %d\n", p->crtc_hdisplay, p->crtc_hsync_start, p->crtc_hsync_end, p->crtc_htotal);		//TODO: Temp Plano testing
 }
 EXPORT_SYMBOL(drm_mode_set_crtcinfo);
 
@@ -1698,10 +1704,20 @@ drm_mode_validate_driver(struct drm_device *dev,
 
 	status = drm_mode_validate_basic(mode);
 	if (status != MODE_OK)
+	{
+		//DRM_DEV_ERROR(dev->dev, "MODE_VAL: Failed drm_mode_validate_basic: %d\n", status);
+		printk(KERN_ERR "MODE_VAL: Failed drm_mode_validate_basic: %d\n", status);
 		return status;
+	}
 
 	if (dev->mode_config.funcs->mode_valid)
-		return dev->mode_config.funcs->mode_valid(dev, mode);
+	{
+		status = dev->mode_config.funcs->mode_valid(dev, mode);
+		//DRM_DEV_ERROR(dev->dev, "MODE_VAL: Failed mode_config->mode_valid: %d\n", status);
+		printk(KERN_ERR "MODE_VAL: Failed mode_config->mode_valid: %d\n", status);
+		//return dev->mode_config.funcs->mode_valid(dev, mode);
+		return status;
+	}
 	else
 		return MODE_OK;
 }
@@ -2589,6 +2605,7 @@ drm_mode_create_from_cmdline_mode(struct drm_device *dev,
 	/* fix up 1368x768: GFT/CVT can't express 1366 width due to alignment */
 	if (cmd->xres == 1366)
 		drm_mode_fixup_1366x768(mode);
+	printk(KERN_ERR "drm_mode_create_from_cmdline_mode: calling drm_mode_set_crtcinfo\n");		//TODO: Temp Plano testing
 	drm_mode_set_crtcinfo(mode, CRTC_INTERLACE_HALVE_V);
 	return mode;
 }
@@ -2715,6 +2732,7 @@ int drm_mode_convert_umode(struct drm_device *dev,
 	if (out->status != MODE_OK)
 		return -EINVAL;
 
+	printk(KERN_ERR "drm_mode_convert_umode: calling drm_mode_set_crtcinfo\n");		//TODO: Temp Plano testing
 	//drm_mode_set_crtcinfo(out, CRTC_INTERLACE_HALVE_V);
 	drm_mode_set_crtcinfo(out, CRTC_INTERLACE_HALVE_V | CRTC_STEREO_DOUBLE_ONLY);		//TODO: Temp Plano testing
 

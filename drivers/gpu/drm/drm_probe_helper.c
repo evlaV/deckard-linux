@@ -45,6 +45,9 @@
 
 #include "drm_crtc_helper_internal.h"
 
+//Already included via drm_print.h
+//#include <linux/printk.h>
+
 /**
  * DOC: output probing helper overview
  *
@@ -96,10 +99,15 @@ drm_mode_validate_pipeline(struct drm_display_mode *mode,
 	struct drm_encoder *encoder;
 	int ret;
 
+	printk(KERN_ERR "MODE_VALIDATE: Starting validation\n");
 	/* Step 1: Validate against connector */
 	ret = drm_connector_mode_valid(connector, mode, ctx, status);
 	if (ret || *status != MODE_OK)
+	{
+		printk(KERN_ERR "MODE_VALIDATE: Failed connector validation: ret: %d; status: %d\n", ret, *status);
 		return ret;
+	}
+	printk(KERN_ERR "MODE_VALIDATE: Passed connector validation\n");
 
 	/* Step 2: Validate against encoders and crtcs */
 	drm_connector_for_each_possible_encoder(connector, encoder) {
@@ -112,8 +120,10 @@ drm_mode_validate_pipeline(struct drm_display_mode *mode,
 			 * will not accept the mode anyway. If all encoders
 			 * reject the mode then, at exit, ret will not be
 			 * MODE_OK. */
+			printk(KERN_ERR "MODE_VALIDATE: Failed encoder validation: %d\n", *status);
 			continue;
 		}
+		printk(KERN_ERR "MODE_VALIDATE: Passed encoder validation\n");
 
 		bridge = drm_bridge_chain_get_first_bridge(encoder);
 		*status = drm_bridge_chain_mode_valid(bridge,
@@ -123,20 +133,29 @@ drm_mode_validate_pipeline(struct drm_display_mode *mode,
 		if (*status != MODE_OK) {
 			/* There is also no point in continuing for crtc check
 			 * here. */
+			printk(KERN_ERR "MODE_VALIDATE: Failed bridge chain validation: %d\n", *status);
 			continue;
 		}
+		printk(KERN_ERR "MODE_VALIDATE: Passed bridge validation\n");
 
 		drm_for_each_crtc(crtc, dev) {
 			if (!drm_encoder_crtc_ok(encoder, crtc))
+			{
+				printk(KERN_ERR "MODE_VALIDATE: Failed... crtc not ok\n");
 				continue;
+			}
+			printk(KERN_ERR "MODE_VALIDATE: Passed encoder crtc validation\n");
 
 			*status = drm_crtc_mode_valid(crtc, mode);
 			if (*status == MODE_OK) {
 				/* If we get to this point there is at least
 				 * one combination of encoder+crtc that works
 				 * for this mode. Lets return now. */
+				printk(KERN_ERR "MODE_VALIDATE: Passed all validations\n");
 				return 0;
 			}
+			else
+				printk(KERN_ERR "MODE_VALIDATE: Failed crtc validation: %d\n", *status);
 		}
 	}
 
@@ -462,27 +481,43 @@ static int __drm_helper_update_and_validate(struct drm_connector *connector,
 
 	list_for_each_entry(mode, &connector->modes, head) {
 		if (mode->status != MODE_OK)
+		{
+			printk(KERN_ERR "MODE_VALIDATE: Failed mode->status: %d\n", mode->status);
 			continue;
+		}
 
 		mode->status = drm_mode_validate_driver(dev, mode);
 		if (mode->status != MODE_OK)
+		{
+			printk(KERN_ERR "MODE_VALIDATE: Failed driver validation: %d\n", mode->status);
 			continue;
+		}
 
 		mode->status = drm_mode_validate_size(mode, maxX, maxY);
 		if (mode->status != MODE_OK)
+		{
+			printk(KERN_ERR "MODE_VALIDATE: Failed size validation: %d\n", mode->status);
 			continue;
+		}
 
 		mode->status = drm_mode_validate_flag(mode, mode_flags);
 		if (mode->status != MODE_OK)
+		{
+			printk(KERN_ERR "MODE_VALIDATE: Failed flag validation: %d\n", mode->status);
 			continue;
+		}
 
 		mode->status = drm_mode_validate_ycbcr420(mode, connector);
 		if (mode->status != MODE_OK)
+		{
+			printk(KERN_ERR "MODE_VALIDATE: Failed ycbcr420 validation: %d\n", mode->status);
 			continue;
+		}
 
 		ret = drm_mode_validate_pipeline(mode, connector, ctx,
 						 &mode->status);
 		if (ret) {
+			printk(KERN_ERR "MODE_VALIDATE: Failed pipeline validation: %d\n", ret);
 			drm_dbg_kms(dev,
 				    "drm_mode_validate_pipeline failed: %d\n",
 				    ret);
@@ -702,6 +737,7 @@ exit:
 		    connector->base.id, connector->name);
 
 	list_for_each_entry(mode, &connector->modes, head) {
+		printk(KERN_ERR "drm_helper_probe_single_connector_modes: calling drm_mode_set_crtcinfo\n");		//TODO: Temp Plano testing
 		//drm_mode_set_crtcinfo(mode, CRTC_INTERLACE_HALVE_V);
 		drm_mode_set_crtcinfo(mode, CRTC_INTERLACE_HALVE_V | CRTC_STEREO_DOUBLE_ONLY);		//TODO: Temp Plano testing
 		drm_dbg_kms(dev, "Probed mode: " DRM_MODE_FMT "\n",

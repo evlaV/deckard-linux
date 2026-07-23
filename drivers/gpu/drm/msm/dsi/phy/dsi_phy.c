@@ -506,7 +506,7 @@ int msm_dsi_cphy_timing_calc_v4(struct msm_dsi_dphy_timing *timing,
 	tmax = 64;
 	timing->shared_timings.clk_pre = linear_inter(tmax, tmin, 20, 0, false);
 
-	DBG("%d, %d, %d, %d, %d",
+	DBG("clk_pre: %d, clk_post: %d, clk_prepare: %d, hs_exit: %d, hs_rqst: %d",
 		timing->shared_timings.clk_pre, timing->shared_timings.clk_post,
 		timing->clk_prepare, timing->hs_exit, timing->hs_rqst);
 

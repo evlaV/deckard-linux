@@ -43,6 +43,8 @@
 #include "drm_crtc_internal.h"
 #include "drm_internal.h"
 
+#include <linux/printk.h>
+
 /**
  * DOC: getunique and setversion story
  *
@@ -320,13 +322,16 @@ drm_setclientcap(struct drm_device *dev, void *data, struct drm_file *file_priv)
 
 	/* No render-only settable capabilities for now */
 
+	printk(KERN_ERR "drm_setclientcap called\n");		//TODO: Temp Plano testing
 	/* Below caps that only works with KMS drivers */
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EOPNOTSUPP;
 
 	switch (req->capability) {
 	case DRM_CLIENT_CAP_STEREO_3D:
-		if (req->value > 1)
+		printk(KERN_ERR "req->capability = DRM_CLIENT_CAP_STEREO_3D; req->value = %lld\n", req->value);		//TODO: Temp Plano testing
+		//if (req->value > 1)
+		if (req->value > 2)		//TODO: Temp Plano testing
 			return -EINVAL;
 		file_priv->stereo_allowed = req->value;
 		break;

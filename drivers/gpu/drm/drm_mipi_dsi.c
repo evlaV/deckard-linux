@@ -41,6 +41,20 @@
 
 #include <video/mipi_display.h>
 
+//Plano debug
+static void mipi_dsi_reg_access_print(struct mipi_dsi_device *dsi, u8 addr, u8* data, u8 len, bool read)
+{
+	struct device *dev = &dsi->dev;
+
+	char data_s[1024];
+	int max_str = ARRAY_SIZE(data_s);
+	//snprintf(data_s, max_str, "%s panel %d reg 0x%02X (%d bytes): ", read ? "Read" : "Write", dsi->channel, addr, len);	//channel is 0 for both displays
+	snprintf(data_s, max_str, "%s panel reg 0x%02X (%d bytes): ", read ? "Read" : "Write", addr, len);
+	for(int i=0; i<len; i++)
+		snprintf(data_s + strlen(data_s), max_str - strlen(data_s), "%02X ", data[i]);
+	dev_info(dev, "%s\n", data_s);
+}
+
 /**
  * DOC: dsi helpers
  *
@@ -866,7 +880,11 @@ ssize_t mipi_dsi_generic_read(struct mipi_dsi_device *dsi, const void *params,
 		return -EINVAL;
 	}
 
-	return mipi_dsi_device_transfer(dsi, &msg);
+	ssize_t ret;
+	ret = mipi_dsi_device_transfer(dsi, &msg);
+	mipi_dsi_reg_access_print(dsi, ((u8 *)params)[0], (u8 *)data, (u8)size, true);
+
+	return ret;
 }
 EXPORT_SYMBOL(mipi_dsi_generic_read);
 
@@ -994,6 +1012,17 @@ void mipi_dsi_dcs_write_buffer_multi(struct mipi_dsi_multi_context *ctx,
 	if (ctx->accum_err)
 		return;
 
+	mipi_dsi_reg_access_print(dsi, ((u8 *)data)[0], (u8 *)data + 1, (u8)len - 1, false);
+	/*
+	char data_s[1024];
+	int max_str = ARRAY_SIZE(data_s);
+	snprintf(data_s, max_str, "Write panel %d reg 0x%02X (%d bytes): ", dsi->channel, ((u8 *)data)[0], (u8)len - 1);
+	for(int i=1; i<len; i++)
+		snprintf(data_s + strlen(data_s), max_str - strlen(data_s), "%02X ", ((u8 *)data)[i]);
+	dev_info(dev, "%s\n", data_s);
+	//dev_info(dev, "Write panel reg 0x%02X (%d bytes): %s\n", ((u8 *)data)[0], (u8)len, data_s);
+	*/
+
 	ret = mipi_dsi_dcs_write_buffer(dsi, data, len);
 	if (ret < 0) {
 		ctx->accum_err = ret;
@@ -1092,9 +1121,14 @@ ssize_t mipi_dsi_dcs_read(struct mipi_dsi_device *dsi, u8 cmd, void *data,
 		.rx_len = len
 	};
 
-	return mipi_dsi_device_transfer(dsi, &msg);
+	ssize_t ret;
+	ret = mipi_dsi_device_transfer(dsi, &msg);
+	mipi_dsi_reg_access_print(dsi, cmd, (u8 *)data, (u8)len, true);
+
+	return ret;
 }
 EXPORT_SYMBOL(mipi_dsi_dcs_read);
+
 
 /**
  * mipi_dsi_dcs_read_multi() - mipi_dsi_dcs_read() w/ accum_err
@@ -1124,12 +1158,23 @@ void mipi_dsi_dcs_read_multi(struct mipi_dsi_multi_context *ctx, u8 cmd,
 	if (ctx->accum_err)
 		return;
 
+	/*
+	char data_s[1024];
+	int max_str = ARRAY_SIZE(data_s);
+	snprintf(data_s, max_str, "Read panel %d reg 0x%02X (%d bytes): ", dsi->channel, cmd, (u8)len);
+	for(int i=1; i<len; i++)
+		snprintf(data_s + strlen(data_s), max_str - strlen(data_s), "%02X ", ((u8 *)msg.rx_buf)[i]);
+	dev_info(dev, "%s\n", data_s);
+	*/
+
 	ret = mipi_dsi_device_transfer(dsi, &msg);
 	if (ret < 0) {
 		ctx->accum_err = ret;
 		dev_err(dev, "dcs read with command %#x failed: %d\n", cmd,
 			ctx->accum_err);
 	}
+	else
+		mipi_dsi_reg_access_print(dsi, cmd, (u8 *)data, (u8)len, true);
 }
 EXPORT_SYMBOL(mipi_dsi_dcs_read_multi);
 

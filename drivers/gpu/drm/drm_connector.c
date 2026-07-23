@@ -43,6 +43,8 @@
 #include "drm_crtc_internal.h"
 #include "drm_internal.h"
 
+#include <linux/printk.h>
+
 /**
  * DOC: overview
  *
@@ -3282,8 +3284,12 @@ drm_mode_expose_to_userspace(const struct drm_display_mode *mode,
 	 * If user-space hasn't configured the driver to expose the stereo 3D
 	 * modes, don't expose them.
 	 */
-	if (!file_priv->stereo_allowed && drm_mode_is_stereo(mode))
+	//if (!file_priv->stereo_allowed && drm_mode_is_stereo(mode)) {
+	if (0) {		//TODO: Temp Plano testing
+		//drm_dbg_kms(dev, "user-space not allowing stereo modes: stereo_allowed: %d; drm_mode_is_stereo: %d\n", file_priv->stereo_allowed, drm_mode_is_stereo(mode));		//TODO: Temp Plano testing
+		printk(KERN_ERR "user-space not allowing stereo modes: stereo_allowed: %d; drm_mode_is_stereo: %d\n", file_priv->stereo_allowed, drm_mode_is_stereo(mode));		//TODO: Temp Plano testing
 		return false;
+	}
 	/*
 	 * If user-space hasn't configured the driver to expose the modes
 	 * with aspect-ratio, don't expose them. However if such a mode
@@ -3299,8 +3305,11 @@ drm_mode_expose_to_userspace(const struct drm_display_mode *mode,
 					   DRM_MODE_MATCH_TIMINGS |
 					   DRM_MODE_MATCH_CLOCK |
 					   DRM_MODE_MATCH_FLAGS |
-					   DRM_MODE_MATCH_3D_FLAGS))
+					   DRM_MODE_MATCH_3D_FLAGS)) {
+				//drm_dbg_kms(dev, "user-space not allowing mode aspect ratio?\n");		//TODO: Temp Plano testing
+				printk(KERN_ERR "user-space not allowing mode aspect ratio?\n");		//TODO: Temp Plano testing
 				return false;
+			}
 		}
 	}
 

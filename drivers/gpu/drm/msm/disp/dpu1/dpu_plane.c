@@ -28,6 +28,8 @@
 #include "dpu_vbif.h"
 #include "dpu_plane.h"
 
+#include <linux/printk.h>
+
 #define DPU_DEBUG_PLANE(pl, fmt, ...) DRM_DEBUG_ATOMIC("plane%d " fmt,\
 		(pl) ? (pl)->base.base.id : -1, ##__VA_ARGS__)
 
@@ -833,6 +835,8 @@ static int dpu_plane_atomic_check_nosspp(struct drm_plane *plane,
 	u32 num_lm;
 	int stage_id, num_stages;
 
+	printk(KERN_ERR "dpu_plane_atomic_check_nosspp: Start\n");		//TODO: Temp Plano testing
+
 	min_scale = FRAC_16_16(1, MAX_UPSCALE_RATIO);
 	max_scale = MAX_DOWNSCALE_RATIO << 16;
 
@@ -973,6 +977,7 @@ static int dpu_plane_atomic_check_nosspp(struct drm_plane *plane,
 
 	pstate->needs_qos_remap = drm_atomic_crtc_needs_modeset(crtc_state);
 
+	printk(KERN_ERR "dpu_plane_atomic_check_nosspp: Done\n");		//TODO: Temp Plano testing
 	return 0;
 }
 
@@ -1265,6 +1270,7 @@ static int dpu_plane_assign_resource_in_stage(struct dpu_sw_pipe *pipe,
 					      struct drm_crtc *crtc,
 					      struct dpu_rm_sspp_requirements *reqs)
 {
+	printk(KERN_ERR "dpu_plane_assign_resource_in_stage: Starting\n");		//TODO: Temp Plano testing
 	struct drm_plane *plane = plane_state->plane;
 	struct dpu_kms *dpu_kms = _dpu_plane_get_kms(plane);
 	struct dpu_sw_pipe *r_pipe = pipe + 1;
@@ -1274,8 +1280,10 @@ static int dpu_plane_assign_resource_in_stage(struct dpu_sw_pipe *pipe,
 		return 0;
 
 	pipe->sspp = dpu_rm_reserve_sspp(&dpu_kms->rm, global_state, crtc, reqs);
-	if (!pipe->sspp)
+	if (!pipe->sspp) {
+		printk(KERN_ERR "dpu_plane_assign_resource_in_stage: Failed to reserve sspp for crtc %s; reqs: yuv: %d; scale: %d; rot90: %d\n", crtc->name, reqs->yuv, reqs->scale, reqs->rot90);		//TODO: Temp Plano testing
 		return -ENODEV;
+	}
 	pipe->multirect_index = DPU_SSPP_RECT_SOLO;
 	pipe->multirect_mode = DPU_SSPP_MULTIRECT_NONE;
 
@@ -1295,6 +1303,7 @@ static int dpu_plane_assign_resource_in_stage(struct dpu_sw_pipe *pipe,
 	r_pipe->multirect_index = DPU_SSPP_RECT_SOLO;
 	r_pipe->multirect_mode = DPU_SSPP_MULTIRECT_NONE;
 
+	printk(KERN_ERR "dpu_plane_assign_resource_in_stage: Done\n");		//TODO: Temp Plano testing
 	return 0;
 }
 
@@ -1304,6 +1313,8 @@ static int dpu_plane_virtual_assign_resources(struct drm_crtc *crtc,
 					      struct drm_plane_state *plane_state,
 					      struct drm_plane_state **prev_adjacent_plane_state)
 {
+	printk(KERN_ERR "dpu_plane_virtual_assign_resources: Starting\n");		//TODO: Temp Plano testing
+
 	const struct drm_crtc_state *crtc_state = NULL;
 	struct drm_plane *plane = plane_state->plane;
 	struct dpu_kms *dpu_kms = _dpu_plane_get_kms(plane);
@@ -1356,6 +1367,7 @@ static int dpu_plane_virtual_assign_resources(struct drm_crtc *crtc,
 			return ret;
 	}
 
+	printk(KERN_ERR "dpu_plane_virtual_assign_resources: Done\n");		//TODO: Temp Plano testing
 	return dpu_plane_atomic_check_sspp(plane, state, crtc_state);
 }
 
@@ -1365,6 +1377,8 @@ int dpu_assign_plane_resources(struct dpu_global_state *global_state,
 			       struct drm_plane_state **states,
 			       unsigned int num_planes)
 {
+	printk(KERN_ERR "dpu_assign_plane_resources: Starting\n");		//TODO: Temp Plano testing
+
 	unsigned int i;
 	struct drm_plane_state *prev_adjacent_plane_state[STAGES_PER_PLANE] = { NULL };
 
@@ -1382,6 +1396,7 @@ int dpu_assign_plane_resources(struct dpu_global_state *global_state,
 			return ret;
 	}
 
+	printk(KERN_ERR "dpu_assign_plane_resources: Done\n");		//TODO: Temp Plano testing
 	return 0;
 }
 

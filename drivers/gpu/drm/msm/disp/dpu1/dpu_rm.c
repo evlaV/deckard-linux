@@ -20,6 +20,7 @@
 #include "dpu_encoder.h"
 #include "dpu_trace.h"
 
+#include <linux/printk.h>
 
 static inline bool reserved_by_other(uint32_t *res_map, int idx,
 				     uint32_t crtc_id)
@@ -806,28 +807,40 @@ static struct dpu_hw_sspp *dpu_rm_try_sspp(struct dpu_rm *rm,
 					   struct dpu_rm_sspp_requirements *reqs,
 					   unsigned int type)
 {
+	printk(KERN_ERR "dpu_rm_try_sspp: Starting\n");		//TODO: Temp Plano testing
 	uint32_t crtc_id = crtc->base.id;
 	struct dpu_hw_sspp *hw_sspp;
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(rm->hw_sspp); i++) {
-		if (!rm->hw_sspp[i])
-			continue;
 
-		if (global_state->sspp_to_crtc_id[i])
+		if (!rm->hw_sspp[i]) {
+			printk(KERN_ERR "dpu_rm_try_sspp: Pipe %d doesn't exist\n", i);		//TODO: Temp Plano testing
 			continue;
+		}
+
+		if (global_state->sspp_to_crtc_id[i]) {
+			printk(KERN_ERR "dpu_rm_try_sspp: Pipe %d alrady assigned to crtc_id %d\n", i, global_state->sspp_to_crtc_id[i]);		//TODO: Temp Plano testing
+			continue;
+		}
 
 		hw_sspp = rm->hw_sspp[i];
 
-		if (hw_sspp->cap->type != type)
+		if (hw_sspp->cap->type != type) {
+			printk(KERN_ERR "dpu_rm_try_sspp: Pipe %d cap->type (%d) doesn't match %d\n", i, hw_sspp->cap->type, type);		//TODO: Temp Plano testing
 			continue;
+		}
 
-		if (reqs->scale && !hw_sspp->cap->sblk->scaler_blk.len)
+		if (reqs->scale && !hw_sspp->cap->sblk->scaler_blk.len) {
+			printk(KERN_ERR "dpu_rm_try_sspp: Pipe %d rejected due to (reqs->scale && !hw_sspp->cap->sblk->scaler_blk.len (%d) )\n", i, hw_sspp->cap->sblk->scaler_blk.len);		//TODO: Temp Plano testing
 			continue;
+		}
 
 		// TODO: QSEED2 and RGB scalers are not yet supported
-		if (reqs->scale && !hw_sspp->ops.setup_scaler)
+		if (reqs->scale && !hw_sspp->ops.setup_scaler) {
+			printk(KERN_ERR "dpu_rm_try_sspp: Pipe %d rejected due to (reqs->scale && !hw_sspp->ops.setup_scaler) //TODO: QSEED2 and RGB scalers are not yet supported\n", i);		//TODO: Temp Plano testing
 			continue;
+		}
 
 		if (reqs->yuv && !hw_sspp->cap->sblk->csc_blk.len)
 			continue;
@@ -836,10 +849,12 @@ static struct dpu_hw_sspp *dpu_rm_try_sspp(struct dpu_rm *rm,
 			continue;
 
 		global_state->sspp_to_crtc_id[i] = crtc_id;
+		printk(KERN_ERR "dpu_rm_try_sspp: Pipe %d assigned to crtc %d\n", i, crtc_id);		//TODO: Temp Plano testing
 
 		return rm->hw_sspp[i];
 	}
 
+	printk(KERN_ERR "dpu_rm_try_sspp: Failed to assign all pipes to crtc %d\n", crtc_id);		//TODO: Temp Plano testing
 	return NULL;
 }
 
@@ -855,6 +870,7 @@ struct dpu_hw_sspp *dpu_rm_reserve_sspp(struct dpu_rm *rm,
 					struct drm_crtc *crtc,
 					struct dpu_rm_sspp_requirements *reqs)
 {
+	printk(KERN_ERR "dpu_rm_reserve_sspp: Starting\n");		//TODO: Temp Plano testing
 	struct dpu_hw_sspp *hw_sspp = NULL;
 
 	if (!reqs->scale && !reqs->yuv)
@@ -864,6 +880,7 @@ struct dpu_hw_sspp *dpu_rm_reserve_sspp(struct dpu_rm *rm,
 	if (!hw_sspp)
 		hw_sspp = dpu_rm_try_sspp(rm, global_state, crtc, reqs, SSPP_TYPE_VIG);
 
+	printk(KERN_ERR "dpu_rm_reserve_sspp: Done\n");		//TODO: Temp Plano testing
 	return hw_sspp;
 }
 

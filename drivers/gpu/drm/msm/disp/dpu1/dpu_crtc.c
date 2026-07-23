@@ -34,6 +34,8 @@
 #include "dpu_core_perf.h"
 #include "dpu_trace.h"
 
+#include <linux/printk.h>
+
 /* layer mixer index on dpu_crtc */
 #define LEFT_MIXER 0
 #define RIGHT_MIXER 1
@@ -1445,6 +1447,8 @@ static bool dpu_crtc_needs_dirtyfb(struct drm_crtc_state *cstate)
 
 static int dpu_crtc_reassign_planes(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
 {
+	printk(KERN_ERR "dpu_crtc_reassign_planes: Starting\n");		//TODO: Temp Plano testing
+
 	int total_planes = crtc->dev->mode_config.num_total_plane;
 	struct drm_atomic_state *state = crtc_state->state;
 	struct dpu_global_state *global_state;
@@ -1453,8 +1457,10 @@ static int dpu_crtc_reassign_planes(struct drm_crtc *crtc, struct drm_crtc_state
 	int ret;
 
 	global_state = dpu_kms_get_global_state(crtc_state->state);
-	if (IS_ERR(global_state))
+	if (IS_ERR(global_state)) {
+		printk(KERN_ERR "dpu_crtc_reassign_planes: dpu_kms_get_global_state FAILED (%ld)\n", PTR_ERR(global_state));		//TODO: Temp Plano testing
 		return PTR_ERR(global_state);
+	}
 
 	dpu_rm_release_all_sspp(global_state, crtc);
 
@@ -1470,6 +1476,7 @@ static int dpu_crtc_reassign_planes(struct drm_crtc *crtc, struct drm_crtc_state
 			drm_atomic_get_plane_state(state, plane);
 
 		if (IS_ERR(plane_state)) {
+			printk(KERN_ERR "dpu_crtc_reassign_planes: drm_atomic_get_plane_state FAILED for plane %s (%ld)\n", plane->name, PTR_ERR(plane_state));		//TODO: Temp Plano testing
 			ret = PTR_ERR(plane_state);
 			goto done;
 		}
@@ -1478,9 +1485,10 @@ static int dpu_crtc_reassign_planes(struct drm_crtc *crtc, struct drm_crtc_state
 	}
 
 	ret = dpu_assign_plane_resources(global_state, state, crtc, states, total_planes);
-
+	printk(KERN_ERR "dpu_crtc_reassign_planes: dpu_assign_plane_resources: ret: %d; total_planes: %d\n", ret, total_planes);		//TODO: Temp Plano testing
 done:
 	kfree(states);
+	printk(KERN_ERR "dpu_crtc_reassign_planes: Done\n");		//TODO: Temp Plano testing
 	return ret;
 }
 
@@ -1646,6 +1654,8 @@ int dpu_crtc_check_mode_changed(struct drm_crtc_state *old_crtc_state,
 static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 		struct drm_atomic_state *state)
 {
+	printk(KERN_ERR "dpu_crtc_atomic_check: Starting\n");		//TODO: Temp Plano testing
+
 	struct drm_crtc_state *crtc_state = drm_atomic_get_new_crtc_state(state,
 									  crtc);
 	struct dpu_crtc *dpu_crtc = to_dpu_crtc(crtc);
@@ -1658,18 +1668,25 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 
 	bool needs_dirtyfb = dpu_crtc_needs_dirtyfb(crtc_state);
 
+
 	/* don't reallocate resources if only ACTIVE has beeen changed */
 	if (crtc_state->mode_changed || crtc_state->connectors_changed) {
+		printk(KERN_ERR "dpu_crtc_atomic_check: dpu_crtc_assign_resources\n");		//TODO: Temp Plano testing
 		rc = dpu_crtc_assign_resources(crtc, crtc_state);
-		if (rc < 0)
+		if (rc < 0) {
+			printk(KERN_ERR "dpu_crtc_atomic_check: dpu_crtc_assign_resources FAILED (%d)\n", rc);		//TODO: Temp Plano testing
 			return rc;
+		}
 	}
 
 	if (dpu_use_virtual_planes &&
 	    (crtc_state->planes_changed || crtc_state->zpos_changed)) {
+		printk(KERN_ERR "dpu_crtc_atomic_check: dpu_crtc_reassign_planes: planes_changed: %d; zpos_changed: %d\n", crtc_state->planes_changed, crtc_state->zpos_changed);		//TODO: Temp Plano testing
 		rc = dpu_crtc_reassign_planes(crtc, crtc_state);
-		if (rc < 0)
+		if (rc < 0) {
+			printk(KERN_ERR "dpu_crtc_atomic_check: dpu_crtc_reassign_planes FAILED (%d)\n", rc);		//TODO: Temp Plano testing
 			return rc;
+		}
 	}
 
 	if (!crtc_state->enable || !drm_atomic_crtc_effectively_active(crtc_state)) {
@@ -1683,9 +1700,12 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 	DRM_DEBUG_ATOMIC("%s: check\n", dpu_crtc->name);
 
 	if (cstate->num_mixers) {
+		printk(KERN_ERR "dpu_crtc_atomic_check: _dpu_crtc_check_and_setup_lm_bounds\n");		//TODO: Temp Plano testing
 		rc = _dpu_crtc_check_and_setup_lm_bounds(crtc, crtc_state);
-		if (rc)
+		if (rc) {
+			printk(KERN_ERR "dpu_crtc_atomic_check: _dpu_crtc_check_and_setup_lm_bounds FAILED (%d)\n", rc);		//TODO: Temp Plano testing
 			return rc;
+		}
 	}
 
 	/* FIXME: move this to dpu_plane_atomic_check? */
@@ -1714,6 +1734,7 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 		return rc;
 	}
 
+	printk(KERN_ERR "dpu_crtc_atomic_check: Done\n");		//TODO: Temp Plano testing
 	return 0;
 }
 
@@ -2092,8 +2113,12 @@ static int _dpu_debugfs_status_show(struct seq_file *s, void *data)
 			seq_puts(s, "\n");
 		}
 
-		seq_printf(s, "\tsrc_x:%4d src_y:%4d src_w:%4d src_h:%4d\n",
-			state->src_x, state->src_y, state->src_w, state->src_h);
+		seq_printf(s, "\tsrc_x:%d.%d src_y:%d.%d src_w:%d.%d src_h:%d.%d\n",
+			state->src_x >> 16, state->src_x & 0xffff,	//16.16 fixed point
+			state->src_y >> 16, state->src_y & 0xffff,	//16.16 fixed point
+			state->src_w >> 16, state->src_w & 0xffff,	//16.16 fixed point
+			state->src_h >> 16, state->src_h & 0xffff);	//16.16 fixed point
+			//state->src_x, state->src_y, state->src_w, state->src_h);
 
 		seq_printf(s, "\tdst x:%4d dst_y:%4d dst_w:%4d dst_h:%4d\n",
 			state->crtc_x, state->crtc_y, state->crtc_w,
@@ -2107,6 +2132,16 @@ static int _dpu_debugfs_status_show(struct seq_file *s, void *data)
 			seq_printf(s, "\tmultirect[%d]: mode: %d index: %d\n",
 				   i, pstate->pipe[i].multirect_mode,
 				   pstate->pipe[i].multirect_index);
+			seq_printf(s, "\tsrc_rect[%d]: (%4d x %4d) + (%4d, %4d)\n", i,
+				   pstate->pipe_cfg[i].src_rect.x2, pstate->pipe_cfg[i].src_rect.y2,
+				   pstate->pipe_cfg[i].src_rect.x1, pstate->pipe_cfg[i].src_rect.y1);
+			seq_printf(s, "\tdst_rect[%d]: (%4d x %4d) + (%4d, %4d)\n", i,
+				   pstate->pipe_cfg[i].dst_rect.x2, pstate->pipe_cfg[i].dst_rect.y2,
+				   pstate->pipe_cfg[i].dst_rect.x1, pstate->pipe_cfg[i].dst_rect.y1);
+			seq_printf(s, "\timg_rect[%d]: (%4d x %4d) + (%4d, %4d)\n", i,
+				   pstate->pipe_cfg[i].img_rect.x2, pstate->pipe_cfg[i].img_rect.y2,
+				   pstate->pipe_cfg[i].img_rect.x1, pstate->pipe_cfg[i].img_rect.y1);
+			seq_printf(s, "\trotation[%d]: %d \n", i, pstate->pipe_cfg[i].rotation);
 		}
 
 		seq_puts(s, "\n");

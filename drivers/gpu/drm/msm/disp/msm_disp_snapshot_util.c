@@ -86,7 +86,7 @@ void msm_disp_state_print(struct msm_disp_state *state, struct drm_printer *p)
 		state->time.tv_sec, state->time.tv_nsec);
 
 	list_for_each_entry_safe(block, tmp, &state->blocks, node) {
-		drm_printf(p, "====================%s================\n", block->name);
+		drm_printf(p, "====================%s (0x%0X) ================\n", block->name, block->base_addr);
 		msm_disp_state_print_regs(block->state, block->size, block->base_addr, p);
 	}
 

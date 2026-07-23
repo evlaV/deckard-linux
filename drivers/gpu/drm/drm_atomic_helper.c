@@ -48,6 +48,8 @@
 #include "drm_crtc_helper_internal.h"
 #include "drm_crtc_internal.h"
 
+#include <linux/printk.h>
+
 /**
  * DOC: overview
  *
@@ -424,6 +426,7 @@ mode_fixup(struct drm_atomic_state *state)
 	int i;
 	int ret;
 
+	printk(KERN_ERR "mode_fixup: Starting\n");		//TODO: Temp Plano testing
 	for_each_new_crtc_in_state(state, crtc, new_crtc_state, i) {
 		if (!new_crtc_state->mode_changed &&
 		    !new_crtc_state->connectors_changed)
@@ -506,6 +509,7 @@ mode_fixup(struct drm_atomic_state *state)
 		}
 	}
 
+	printk(KERN_ERR "mode_fixup: Done\n");		//TODO: Temp Plano testing
 	return 0;
 }
 
@@ -655,6 +659,7 @@ drm_atomic_helper_check_modeset(struct drm_device *dev,
 	int i, ret;
 	unsigned int connectors_mask = 0, user_connectors_mask = 0;
 
+	printk(KERN_ERR "drm_atomic_helper_check_modeset: Starting\n");		//TODO: Temp Plano testing
 	for_each_oldnew_connector_in_state(state, connector, old_connector_state, new_connector_state, i)
 		user_connectors_mask |= BIT(i);
 
@@ -843,6 +848,7 @@ drm_atomic_helper_check_modeset(struct drm_device *dev,
 	if (ret)
 		return ret;
 
+	printk(KERN_ERR "drm_atomic_helper_check_modeset: Done\n");		//TODO: Temp Plano testing
 	return mode_fixup(state);
 }
 EXPORT_SYMBOL(drm_atomic_helper_check_modeset);
@@ -1044,6 +1050,7 @@ drm_atomic_helper_check_planes(struct drm_device *dev,
 	struct drm_plane_state *new_plane_state, *old_plane_state;
 	int i, ret = 0;
 
+	printk(KERN_ERR "drm_atomic_helper_check_planes: Starting\n");		//TODO: Temp Plano testing
 	for_each_oldnew_plane_in_state(state, plane, old_plane_state, new_plane_state, i) {
 		const struct drm_plane_helper_funcs *funcs;
 
@@ -1084,6 +1091,7 @@ drm_atomic_helper_check_planes(struct drm_device *dev,
 		}
 	}
 
+	printk(KERN_ERR "drm_atomic_helper_check_planes: Done\n");		//TODO: Temp Plano testing
 	return ret;
 }
 EXPORT_SYMBOL(drm_atomic_helper_check_planes);

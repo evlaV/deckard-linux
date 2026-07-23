@@ -46,6 +46,8 @@
 #include "drm_crtc_internal.h"
 #include "drm_internal.h"
 
+#include <linux/printk.h>
+
 void __drm_crtc_commit_free(struct kref *kref)
 {
 	struct drm_crtc_commit *commit =
@@ -1464,6 +1466,7 @@ int drm_atomic_check_only(struct drm_atomic_state *state)
 	unsigned int affected_crtc = 0;
 	int i, ret = 0;
 
+	printk(KERN_ERR "drm_atomic_check_only: Starting\n");		//TODO: Temp Plano testing
 	drm_dbg_atomic(dev, "checking %p\n", state);
 
 	for_each_new_crtc_in_state(state, crtc, new_crtc_state, i) {
@@ -1541,6 +1544,7 @@ int drm_atomic_check_only(struct drm_atomic_state *state)
 		     requested_crtc, affected_crtc);
 	}
 
+	printk(KERN_ERR "drm_atomic_check_only: Done\n");		//TODO: Temp Plano testing
 	return 0;
 }
 EXPORT_SYMBOL(drm_atomic_check_only);

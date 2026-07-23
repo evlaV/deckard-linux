@@ -10,8 +10,11 @@
 #include "dpu_hw_mdss.h"
 #include "dpu_hw_util.h"
 
+#include <linux/printk.h>
+
 /* using a file static variables for debugfs access */
-static u32 dpu_hw_util_log_mask = DPU_DBG_MASK_NONE;
+//static u32 dpu_hw_util_log_mask = DPU_DBG_MASK_NONE;
+static u32 dpu_hw_util_log_mask = DPU_DBG_MASK_SSPP;
 
 /* DPU_SCALER_QSEED3 */
 #define QSEED3_HW_VERSION                  0x00
@@ -114,6 +117,28 @@ void dpu_reg_write(struct dpu_hw_blk_reg_map *c,
 		DPU_DEBUG_DRIVER("[%s:0x%X] <= 0x%X\n",
 				name, reg_off, val);
 	writel_relaxed(val, c->blk_addr + reg_off);
+
+	if(0)	//DSC_DEBUG
+	{
+		u32 blk_addr = (u32)((u64)c->blk_addr & 0xFFFFF);
+		/*
+		if(  blk_addr == 0x80000 || blk_addr == 0x81000 || blk_addr == 0x82000	//DSC[1:0], DSC[3:2], DSC[5:4]
+			|| blk_addr == 0x35000	//INTF
+			|| blk_addr == 0x15000	//CTL
+		  )
+		*/
+
+		//Disable some particularly spammy reg writes
+		//[  208.782334] DSC_DEBUG: dpu_reg_wr: intr->intr_set[reg_idx].clr_off: blk_addr: 0x00000000; offset: 0x000361C8; val: 0xA00 (2560)
+		//[  208.804899] DSC_DEBUG: dpu_reg_wr: intr->intr_set[reg_idx].clr_off: blk_addr: 0x00000000; offset: 0x00000018; val: 0x28000300 (671089408)
+		//[  208.817685] DSC_DEBUG: dpu_reg_wr: intr->intr_set[reg_idx].clr_off: blk_addr: 0x00000000; offset: 0x0000002C; val: 0x200 (512)
+		//[  208.829480] DSC_DEBUG: dpu_reg_wr: intr->intr_set[reg_idx].clr_off: blk_addr: 0x00000000; offset: 0x000351C8; val: 0xA00 (2560)
+		if( !( blk_addr == 0x00000 && (reg_off == 0x000361C8 || reg_off == 0x00000018 || reg_off == 0x0000002C) ) )
+		//if(1)
+		{
+			printk(KERN_INFO "DSC_DEBUG: dpu_reg_wr: %s: blk_addr: 0x%08X; offset: 0x%08X; val: 0x%02X (%d)\n", name, blk_addr, reg_off, val, val);
+		}
+	}
 }
 
 int dpu_reg_read(struct dpu_hw_blk_reg_map *c, u32 reg_off)

@@ -1458,6 +1458,7 @@ retry:
 		struct drm_mode_object *obj;
 
 		if (get_user(obj_id, objs_ptr + copied_objs)) {
+			drm_dbg_atomic(dev, "Failed: get_user(obj_id (%d), objs_ptr (p:%p) + copied_objs (%d) )\n", obj_id, objs_ptr, copied_objs);	//Plano rowdouble debug
 			ret = -EFAULT;
 			goto out;
 		}
@@ -1477,6 +1478,7 @@ retry:
 		}
 
 		if (get_user(count_props, count_props_ptr + copied_objs)) {
+			drm_dbg_atomic(dev, "Failed: get_user(count_props (%d), count_props_ptr (p:%p) + copied_objs (%d) )\n", count_props, count_props_ptr, copied_objs);	//Plano rowdouble debug
 			drm_mode_object_put(obj);
 			ret = -EFAULT;
 			goto out;
@@ -1490,6 +1492,7 @@ retry:
 			struct drm_property *prop;
 
 			if (get_user(prop_id, props_ptr + copied_props)) {
+				drm_dbg_atomic(dev, "Failed: get_user(prop_id (%d), props_ptr (p:%p) + copied_objs (%d) )\n", prop_id, props_ptr, copied_objs);	//Plano rowdouble debug
 				drm_mode_object_put(obj);
 				ret = -EFAULT;
 				goto out;
@@ -1508,6 +1511,9 @@ retry:
 			if (copy_from_user(&prop_value,
 					   prop_values_ptr + copied_props,
 					   sizeof(prop_value))) {
+				drm_dbg_atomic(dev, "Failed: copy_from_user(&prop_value (%lld), prop_values_ptr (p:%p) + copied_props (%d), sizeof(prop_value) (%ld))\n", prop_value, prop_values_ptr, copied_props, sizeof(prop_value));	//Plano rowdouble debug
+
+
 				drm_mode_object_put(obj);
 				ret = -EFAULT;
 				goto out;
@@ -1516,6 +1522,7 @@ retry:
 			ret = drm_atomic_set_property(state, file_priv, obj,
 						      prop, prop_value, async_flip);
 			if (ret) {
+				drm_dbg_atomic(dev, "Failed: drm_atomic_set_property(state (p:%p), file_priv (p:%p), obj (p:%p), prop (p:%p), prop_value (%lld), async_flip (%d) )\n", &state, &file_priv, &obj, &prop, prop_value, async_flip);	//Plano rowdouble debug
 				drm_mode_object_put(obj);
 				goto out;
 			}
@@ -1523,6 +1530,7 @@ retry:
 			copied_props++;
 		}
 
+		drm_dbg_atomic(dev, "Succeeded\n");	//Plano rowdouble debug
 		drm_mode_object_put(obj);
 	}
 
@@ -1546,6 +1554,7 @@ out:
 	complete_signaling(dev, state, fence_state, num_fences, !ret);
 
 	if (ret == -EDEADLK) {
+		drm_dbg_atomic(dev, "Failed: complete_signaling(...)\n");	//Plano rowdouble debug
 		drm_atomic_state_clear(state);
 		ret = drm_modeset_backoff(&ctx);
 		if (!ret)
