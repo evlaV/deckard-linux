@@ -31,6 +31,8 @@
 #define  PON_PS_HOLD_TYPE_SHUTDOWN	4
 #define  PON_PS_HOLD_TYPE_HARD_RESET	7
 
+#define PON_PBS_FAULT_REASON1		0xc7
+
 static void qcom_pon_kmsg_dump(struct work_struct *work);
 
 #define QCOM_PON_COMBO_TIMEOUT_MS 3000
@@ -38,6 +40,10 @@ static DEFINE_SPINLOCK(qcom_pon_combo_lock);
 static DECLARE_DELAYED_WORK(qcom_pon_kmsg_dump_work, qcom_pon_kmsg_dump);
 
 #define PON_AOP_PON_REASON1		0x7269
+#define PON_AOP_WARM_RESET_REASON1	0x726a
+#define PON_AOP_ON_REASON		0x726b
+#define PON_AOP_POFF_REASON1		0x726c
+#define PON_AOP_OFF_REASON1		0x726d
 
 struct qcom_pon_data {
 	long reason_shift;
@@ -60,6 +66,96 @@ struct pm_pon_reason_type
   u32 pid: 8;             /* peripheral id */
   u32 irq: 3;             /* interrupt */
   u32 reserved:8;         /* reserved  */
+};
+
+/*! \struct pm_pon_warm_reset_reason_type
+   \brief Warm Reset reason type.
+ */
+struct pm_pon_warm_reset_reason_type
+{
+  u32 soft : 1;               /* Software trigger */
+  u32 ps_hold : 1;            /* PS_HOLD trigger */
+  u32 pmic_wd : 1;            /* PMIC Watchdog trigger */
+  u32 gp1 : 1;                /* Keypad_Reset1 trigger */
+  u32 gp2 : 1;                /* Keypad_Reset2 trigger */
+  u32 kpdpwr_and_resin : 1;   /* KPDPWR_N and RESIN_N trigger */
+  u32 resin : 1;              /* RESIN_N trigger */
+  u32 kpdpwr : 1;             /* KPDPWR_N trigger */
+  u32 known_rsn : 1;          /* known reason. If false then read sid, pid and irq field */
+  u32 sid : 4;                /* slave id */
+  u32 pid: 8;                 /* peripheral id */
+  u32 irq: 3;                 /* interrupt */
+  u32 reserved:8;             /* reserved  */
+};
+
+
+/*! \struct pm_pon_on_state_reason_type
+   \brief Power on sequences type.
+ */
+struct pm_pon_on_state_reason_type
+{
+  unsigned reserved1 : 4;     /* Reserved bits */
+  unsigned warm_seq  : 1;     /* Warm sequence */
+  unsigned pon_seq   : 1;     /* PON sequence  */
+  unsigned shutdown_seq : 1;   /*shutdown sequence */
+  unsigned hard_reset_seq : 1; /*hard reset sequence */
+};
+
+
+/*! \struct pm_pon_poff_reason_type
+   \brief Power Off reason type.
+ */
+struct pm_pon_poff_reason_type
+{
+  u32 soft : 1;               /* Software trigger */
+  u32 ps_hold : 1;            /* PS_HOLD trigger */
+  u32 pmic_wd : 1;            /* PMIC Watchdog trigger */
+  u32 gp1 : 1;                /* Keypad_Reset1 trigger */
+  u32 gp2 : 1;                /* Keypad_Reset2 trigger */
+  u32 kpdpwr_and_resin : 1;   /* KPDPWR_N and RESIN_N trigger */
+  u32 resin : 1;              /* RESIN_N trigger */
+  u32 kpdpwr : 1;             /* KPDPWR_N trigger */
+  u32 known_rsn : 1;          /* known reason. If false then read sid, pid and irq field */
+  u32 sid : 4;                /* slave id */
+  u32 pid: 8;                 /* peripheral id */
+  u32 irq: 3;                  /* interrupt */
+  u32 reserved:8;              /* reserved  */
+};
+
+/*! \struct pm_pon_off_state_reason_type
+   \brief Power Off reason type.
+ */
+struct pm_pon_off_state_reason_type
+{
+  unsigned reserved1 : 2;               /* Reserved bits */
+  unsigned raw_xvdd_rb_occured : 1;     /* raw_xvdd_rb event occured */
+  unsigned raw_dvdd_rb_occured : 1;     /* raw_dvdd_rb event occured  */
+  unsigned immediate_xvdd_shutdown : 1; /* immediate_xvdd_shutdown s2 Reset */
+  unsigned s3_reset : 4;                /* Stage 3 Reset */
+  unsigned fault_seq : 1;               /* fault-handling sequence */
+  unsigned poff_seq : 1;                /* normal powering-off sequence */
+};
+
+
+/*! \struct pm_pon_fault_state_reason_type
+   \brief Pon fault reason type.
+ */
+struct pm_pon_fault_state_reason_type
+{
+  unsigned gp_fault0 : 1;         /* Triggered by general-purpose fault #0 */
+  unsigned gp_fault1 : 1;         /* Triggered by general-purpose fault #1 */
+  unsigned gp_fault2 : 1;         /* general-purpose fault #2 */
+  unsigned gp_fault3 : 1;         /* general-purpose fault #3 */
+  unsigned mbg_fault : 1;         /* MBG fault event */
+  unsigned ovlo : 1;              /* OVLO event    */
+  unsigned uvlo : 1;              /* UVLO event    */
+  unsigned avdd_rb : 1;           /* AVDD_RB event */
+  unsigned reserved1 : 3;         /* Reserved bits */
+  unsigned fault_n : 1;           /* FAULT_N bus */
+  unsigned pbs_watchdog_to : 1;   /* PBS WATCHDOG */
+  unsigned pbs_nack : 1;          /* PBS NACK event */
+  unsigned restart_pon : 1;       /* RESTART PON */
+  unsigned otst3 : 1;             /* OTST3 */
 };
 
 struct qcom_pon {
@@ -298,8 +394,8 @@ static int qcom_pon_probe(struct platform_device *pdev)
 {
 	const struct qcom_pon_data *data;
 	struct qcom_pon *pon;
+	u32 pmic_pon_regval;
 	int error;
-	u32 pmic_pon_reason_regval;
 
 	data = device_get_match_data(&pdev->dev);
 	if (!data)
@@ -373,9 +469,25 @@ static int qcom_pon_probe(struct platform_device *pdev)
 		/* Load the PON Reason from the Always On Processor in PMK8550 SDAM3 */
 		/* NOTE The PMK8550 seems to detect USB Insertion as Wireless,
 			* but otherwise the codes are unchanged from XR2 */
-		error = regmap_read(pon->regmap, PON_AOP_PON_REASON1, &pmic_pon_reason_regval);
-		dev_warn(&pdev->dev, "PON_PON_REASON1 0x%02X ret=%d\n", pmic_pon_reason_regval, error);
-		pon->pmic_pon.reason_regval = pmic_pon_reason_regval;
+		error = regmap_read(pon->regmap, PON_AOP_PON_REASON1, &pmic_pon_regval);
+		dev_warn(&pdev->dev, "PON_PON_REASON1 0x%02X\n", pmic_pon_regval);
+		pon->pmic_pon.reason_regval = pmic_pon_regval;
+
+		error = regmap_read(pon->regmap, PON_AOP_WARM_RESET_REASON1, &pmic_pon_regval);
+		dev_warn(&pdev->dev, "PON_WARM_RESET_REASON1 0x%02X\n", pmic_pon_regval);
+
+		error = regmap_read(pon->regmap, PON_AOP_ON_REASON, &pmic_pon_regval);
+		dev_warn(&pdev->dev, "PON_ON_REASON 0x%02X\n", pmic_pon_regval);
+
+		error = regmap_read(pon->regmap, PON_AOP_POFF_REASON1, &pmic_pon_regval);
+		dev_warn(&pdev->dev, "PON_POFF_REASON1 0x%02X\n", pmic_pon_regval);
+
+		error = regmap_read(pon->regmap, PON_AOP_OFF_REASON1, &pmic_pon_regval);
+		dev_warn(&pdev->dev, "PON_OFF_REASON1 0x%08X\n", pmic_pon_regval);
+
+		error = regmap_read(pon->regmap, pon->pbs_baseaddr + PON_PBS_FAULT_REASON1,
+				    &pmic_pon_regval);
+		dev_warn(&pdev->dev, "PON_PBS_FAULT_REASON1 0x%08X\n", pmic_pon_regval);
 	}
 
 	/* register input handler to get combo keys pressed to trigger warm reset */
