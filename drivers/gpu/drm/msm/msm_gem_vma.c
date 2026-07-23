@@ -15,6 +15,8 @@
 #include "msm_mmu.h"
 #include "msm_syncobj.h"
 
+#include <trace/gpuvis.h>
+
 #define vm_dbg(fmt, ...) pr_debug("%s:%d: "fmt"\n", __func__, __LINE__, ##__VA_ARGS__)
 
 static uint vm_log_shift = 0;
@@ -308,6 +310,7 @@ msm_gem_vma_map(struct drm_gpuva *vma, int prot, struct sg_table *sgt)
 	if (msm_vma->mapped)
 		return 0;
 
+	//TRACE_BEGIN_CTX(TRACE_BASIC "msm_gem_vma_map");
 	msm_vma->mapped = true;
 
 	/*

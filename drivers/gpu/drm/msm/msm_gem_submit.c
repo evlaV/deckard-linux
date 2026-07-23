@@ -19,6 +19,8 @@
 #include "msm_gpu_trace.h"
 #include "msm_syncobj.h"
 
+#include <trace/gpuvis.h>
+
 /* For userspace errors, use DRM_UT_DRIVER.. so that userspace can enable
  * error msgs for debugging, but we don't spam dmesg by default
  */
@@ -581,6 +583,8 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 			return -EINVAL;
 	}
 
+	TRACE_BEGIN_CTX(TRACE_BASIC "gem_submit");
+
 	queue = msm_submitqueue_get(ctx, args->queueid);
 	if (!queue)
 		return -ENOENT;
@@ -667,7 +671,11 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (ret)
 		goto out;
 
-	ret = submit_pin_objects(submit);
+	{
+		TRACE_BEGIN_CTX(TRACE_BASIC "gem_submit:submit_pin_objects bos=[%d] %s",
+										args->nr_bos, msm_context_is_vmbind(ctx) ? "vmbind" : "");
+		ret = submit_pin_objects(submit);
+	}
 	if (ret)
 		goto out;
 
@@ -782,6 +790,7 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	submit_attach_object_fences(submit);
 
 	if (msm_context_is_vmbind(ctx)) {
+		TRACE_BEGIN_CTX(TRACE_BASIC "gem_submit:drm_gpuvm_validate");
 		/*
 		 * If we are not using VM_BIND, submit_pin_vmas() will validate
 		 * just the BOs attached to the submit.  In that case we don't

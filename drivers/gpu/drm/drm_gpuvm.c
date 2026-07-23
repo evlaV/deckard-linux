@@ -31,6 +31,8 @@
 #include <linux/interval_tree_generic.h>
 #include <linux/mm.h>
 
+#include <trace/gpuvis.h>
+
 /**
  * DOC: Overview
  *
@@ -1436,12 +1438,17 @@ __drm_gpuvm_validate(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
 	struct drm_gpuvm_bo *vm_bo;
 	LIST_HEAD(evict);
 	int ret = 0;
+	int count = 0;
 
 	for_each_vm_bo_in_list(gpuvm, evict, &evict, vm_bo) {
+		count++;
 		ret = ops->vm_bo_validate(vm_bo, exec);
 		if (ret)
 			break;
 	}
+	
+	TRACE_BEGIN_CTX(TRACE_BASIC "__drm_gpuvm_validate %d",count);
+
 	/* Drop ref in case we break out of the loop. */
 	drm_gpuvm_bo_put(vm_bo);
 	restore_vm_bo_list(gpuvm, evict);
@@ -1455,11 +1462,13 @@ drm_gpuvm_validate_locked(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
 	const struct drm_gpuvm_ops *ops = gpuvm->ops;
 	struct drm_gpuvm_bo *vm_bo, *next;
 	int ret = 0;
-
+	int count=0;
 	drm_gpuvm_resv_assert_held(gpuvm);
 
+	
 	list_for_each_entry_safe(vm_bo, next, &gpuvm->evict.list,
 				 list.entry.evict) {
+		count++;
 		ret = ops->vm_bo_validate(vm_bo, exec);
 		if (ret)
 			break;
@@ -1468,6 +1477,8 @@ drm_gpuvm_validate_locked(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
 		if (!vm_bo->evicted)
 			drm_gpuvm_bo_list_del_init(vm_bo, evict, false);
 	}
+
+	TRACE_BEGIN_CTX(TRACE_BASIC "drm_gpuvm_validate_locked %d",count);
 
 	return ret;
 }
