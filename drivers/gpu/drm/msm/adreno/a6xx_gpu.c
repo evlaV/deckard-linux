@@ -15,6 +15,10 @@
 #include <linux/pm_domain.h>
 #include <linux/soc/qcom/llcc-qcom.h>
 
+#include <drm/drm_debugfs.h>
+#include <drm/drm_file.h>
+#include <drm/drm_print.h>
+
 #define GPU_PAS_ID 13
 
 static u64 read_gmu_ao_counter(struct a6xx_gpu *a6xx_gpu)
@@ -2822,6 +2826,56 @@ static struct msm_gpu *a6xx_gpu_init(struct drm_device *dev)
 	return gpu;
 }
 
+#if defined(CONFIG_DEBUG_FS)
+static void bcl_throttle_print(struct msm_gpu *gpu, struct drm_printer *p)
+{
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
+	u32 a, b, c;
+
+	a = gmu_read(&a6xx_gpu->gmu,
+			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_1_L);
+
+	b = gmu_read(&a6xx_gpu->gmu,
+			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_2_L);
+
+	c = gmu_read(&a6xx_gpu->gmu,
+			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_3_L);
+
+	drm_printf(p, "BCL throttle cycles: %08x %08x %08x\n", a, b, c);
+}
+
+static int show(struct seq_file *m, void *arg)
+{
+	struct drm_info_node *node = m->private;
+	struct drm_device *dev = node->minor->dev;
+	struct msm_drm_private *priv = dev->dev_private;
+	struct drm_printer p = drm_seq_file_printer(m);
+	void (*show)(struct msm_gpu *gpu, struct drm_printer *p) =
+		node->info_ent->data;
+
+	show(priv->gpu, &p);
+	return 0;
+}
+
+#define ENT(n) { .name = #n, .show = show, .data = n ##_print }
+static struct drm_info_list a6xx_debugfs_list[] = {
+	ENT(bcl_throttle),
+};
+
+void a6xx_debugfs_init(struct msm_gpu *gpu, struct drm_minor *minor)
+{
+	struct drm_device *dev;
+
+	if (!minor)
+		return;
+
+	drm_debugfs_create_files(a6xx_debugfs_list,
+				 ARRAY_SIZE(a6xx_debugfs_list),
+				 minor->debugfs_root, minor);
+}
+#endif
+
 const struct adreno_gpu_funcs a6xx_gpu_funcs = {
 	.base = {
 		.get_param = adreno_get_param,
@@ -2906,6 +2960,9 @@ const struct adreno_gpu_funcs a7xx_gpu_funcs = {
 		.destroy = a6xx_destroy,
 #if defined(CONFIG_DRM_MSM_GPU_STATE)
 		.show = a6xx_show,
+#endif
+#if defined(CONFIG_DEBUG_FS)
+		.debugfs_init = a6xx_debugfs_init,
 #endif
 		.gpu_busy = a6xx_gpu_busy,
 		.gpu_get_freq = a6xx_gmu_get_freq,
