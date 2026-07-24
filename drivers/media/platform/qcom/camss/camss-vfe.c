@@ -340,6 +340,18 @@ static const struct camss_format_info formats_pix_8x96[] = {
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 16) },
 };
 
+static bool __vfe_pix_fmt_is_raw(const struct camss_formats *fmts, u32 code)
+{
+	unsigned int i;
+
+	for (i = 0; i < fmts->nformats; i++) {
+		if (fmts->formats[i].code == code)
+			return true;
+	}
+
+	return false;
+}
+
 const struct camss_formats vfe_formats_rdi_8x16 = {
 	.nformats = ARRAY_SIZE(formats_rdi_8x16),
 	.formats = formats_rdi_8x16
