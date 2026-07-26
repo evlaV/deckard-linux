@@ -9071,6 +9071,18 @@ static void ath12k_mac_copy_eht_cap(struct ath12k *ar,
 			~IEEE80211_EHT_PHY_CAP5_TX_LESS_242_TONE_RU_SUPP;
 		break;
 	case NL80211_IFTYPE_STATION:
+		/* remove 320MHz capabilities from STA */
+		eht_cap_elem->phy_cap_info[0] &=
+			~IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ;
+		eht_cap_elem->phy_cap_info[1] &=
+			~IEEE80211_EHT_PHY_CAP1_BEAMFORMEE_SS_320MHZ_MASK;
+		eht_cap_elem->phy_cap_info[2] &=
+			~IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_320MHZ_MASK;
+		eht_cap_elem->phy_cap_info[3] &=
+			~IEEE80211_EHT_PHY_CAP3_SOUNDING_DIM_320MHZ_MASK;
+		eht_cap_elem->phy_cap_info[6] &=
+			~IEEE80211_EHT_PHY_CAP6_MCS15_SUPP_320MHZ;
+
 		eht_cap_elem->phy_cap_info[7] &=
 			~(IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_80MHZ |
 			  IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_160MHZ |
