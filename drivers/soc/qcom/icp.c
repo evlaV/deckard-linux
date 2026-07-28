@@ -827,12 +827,9 @@ static int icp_suspend(struct device *dev)
 {
 	struct icp_data *icp = dev_get_drvdata(dev);
 
-	// If the ICP was booted we need to shut it down and also reset the 
-	// IPE/BPS/CDM cores to ensure that nothing will run during suspend
-	if(atomic_read(&icp->booted)) {
-		icp_shutdown(icp);
-		reset_ipe_bps_cores(icp);
-	}
+	/* If ICP is still running keep it alive to avoid any system crash */
+	if(atomic_read(&icp->booted))
+		return 0;
 
 	return pm_runtime_force_suspend(icp->dev);
 }
@@ -840,6 +837,9 @@ static int icp_suspend(struct device *dev)
 static int icp_resume(struct device *dev)
 {
 	struct icp_data *icp = dev_get_drvdata(dev);
+
+	if(atomic_read(&icp->booted))
+		return 0;
 
 	// Resume power and clocks
 	return pm_runtime_force_resume(icp->dev);
