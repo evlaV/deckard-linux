@@ -1345,7 +1345,7 @@ int drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	struct drm_gem_object *obj;
 	int ret;
-
+#if 0
 	if (vma->vm_pgoff < DRM_FILE_PAGE_OFFSET_START) {
 		struct drm_file *priv = filp->private_data;
 		struct drm_device *dev = priv->minor->dev;
@@ -1355,7 +1355,7 @@ int drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 
 		return kgsl_mmap(priv, dev, vma);
 	}
-
+#endif
 	obj = drm_gem_object_lookup_at_offset(filp, vma->vm_pgoff,
 					      vma_pages(vma));
 	if (IS_ERR(obj))
