@@ -844,7 +844,7 @@ static int adc5_gen3_probe(struct platform_device *pdev)
 				      "Failed to add auxiliary TM device\n");
 	}
 
-	indio_dev->name = "spmi-adc5-gen3";
+	indio_dev->name = pdev->name;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &adc5_gen3_info;
 	indio_dev->channels = adc->iio_chans;
