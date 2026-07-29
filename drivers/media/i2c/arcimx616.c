@@ -1388,8 +1388,8 @@ static void arcimx616_probe_sources(struct arcimx616_dev *sensor,
 			out->custom_peripheral_ok = true;
 		} else if (sensor->strobe) {
 			bool reset_high = sensor->reset_gpio &&
-					  gpiod_get_value(sensor->reset_gpio) == 1;
-			if (reset_high && gpiod_get_value(sensor->strobe)) {
+					  gpiod_get_value_cansleep(sensor->reset_gpio) == 1;
+			if (reset_high && gpiod_get_value_cansleep(sensor->strobe)) {
 				out->strobe_active = true;
 			}
 		}
@@ -1447,7 +1447,7 @@ static long arcimx616_private_ioctl(struct v4l2_subdev *sd, unsigned int cmd, vo
 	{
 		case VIDIOC_PRIV_G_CONNECTED:
 			if (sensor->detect_gpio &&
-			    gpiod_get_value(sensor->detect_gpio) != 0)
+			    gpiod_get_value_cansleep(sensor->detect_gpio) != 0)
 				sensor->connected = false;
 			if (!connected_override)
 				sensor->connected = false;
@@ -1616,7 +1616,7 @@ static void arcimx616_connect_work_fn(struct work_struct *work)
 		return;
 	}
 
-	if (gpiod_get_value(sensor->detect_gpio) != 0) {
+	if (gpiod_get_value_cansleep(sensor->detect_gpio) != 0) {
 		dev_info(&sensor->i2c_client->dev, "Accessory canceled connect during debounce\n");
 		goto halt_connection_work;
 	}
@@ -1737,7 +1737,7 @@ halt_connection_work:
 static irqreturn_t gpio_handler(int irq, void *ident)
 {
     struct arcimx616_dev *sensor = (struct arcimx616_dev *) ident;
-    int state = gpiod_get_value(sensor->detect_gpio);
+    int state = gpiod_get_value_cansleep(sensor->detect_gpio);
 
     spin_lock(&sensor->irq_lock);
 
@@ -1984,7 +1984,7 @@ static int arcimx616_probe(struct i2c_client *client)
 	}
 
 	// Something plugged in at probe time: use the same async path as the IRQ
-	if (sensor->detect_gpio && gpiod_get_value(sensor->detect_gpio) == 0) {
+	if (sensor->detect_gpio && gpiod_get_value_cansleep(sensor->detect_gpio) == 0) {
 		dev_dbg(&client->dev, "Accessory detected during probe, scheduling async connect\n");
 		spin_lock(&sensor->irq_lock);
 		if (!sensor->connect_work_scheduled) {
@@ -2170,7 +2170,7 @@ static void arcimx616_pm_complete(struct device *dev)
 	arcimx616_reset_debounce_state(sensor);
 	spin_unlock_irqrestore(&sensor->irq_lock, flags);
 
-	plugged_in = (gpiod_get_value(sensor->detect_gpio) == 0);
+	plugged_in = (gpiod_get_value_cansleep(sensor->detect_gpio) == 0);
 
 	if (!plugged_in) {
 		if (was_connected)
