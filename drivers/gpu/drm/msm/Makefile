@@ -124,7 +124,6 @@ msm-y += \
 	msm_iommu.o \
 	msm_perfcntr.o \
 	msm_kgsl.o \
-	msm_perf.o \
 	msm_rd.o \
 	msm_ringbuffer.o \
 	msm_submitqueue.o \
