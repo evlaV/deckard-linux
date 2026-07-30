@@ -87,7 +87,6 @@
 #include <asm/kvm_host.h>
 #include <asm/mmu.h>
 #include <asm/mmu_context.h>
-#include <asm/mpam.h>
 #include <asm/mte.h>
 #include <asm/hypervisor.h>
 #include <asm/processor.h>
@@ -1156,14 +1155,6 @@ static __init void detect_system_supports_pseudo_nmi(void)
 #else /* CONFIG_ARM64_PSEUDO_NMI */
 static inline void detect_system_supports_pseudo_nmi(void) { }
 #endif
-
-static bool detect_ftr_has_mpam(void)
-{
-	u64 pfr0 = read_sanitised_ftr_reg(SYS_ID_AA64PFR0_EL1);
-	u64 pfr1 = read_sanitised_ftr_reg(SYS_ID_AA64PFR1_EL1);
-
-	return id_aa64pfr0_mpam(pfr0) || id_aa64pfr1_mpamfrac(pfr1);
-}
 
 void __init init_cpu_features(struct cpuinfo_arm64 *info)
 {
@@ -2474,45 +2465,6 @@ cpucap_panic_on_conflict(const struct arm64_cpu_capabilities *cap)
 }
 
 static bool
-<<<<<<< HEAD
-test_has_mpam(const struct arm64_cpu_capabilities *entry, int scope)
-{
-	if (!detect_ftr_has_mpam())
-		return false;
-
-	/* Check firmware actually enabled MPAM on this cpu. */
-	return (read_sysreg_s(SYS_MPAM1_EL1) & MPAM1_EL1_MPAMEN);
-}
-
-static void
-cpu_enable_mpam(const struct arm64_cpu_capabilities *entry)
-{
-	int cpu = smp_processor_id();
-	u64 regval = 0;
-
-	if (IS_ENABLED(CONFIG_ARM64_MPAM) && static_branch_likely(&mpam_enabled))
-		regval = READ_ONCE(per_cpu(arm64_mpam_current, cpu));
-
-	write_sysreg_s(regval | MPAM1_EL1_MPAMEN, SYS_MPAM1_EL1);
-	if (cpus_have_cap(ARM64_SME))
-		write_sysreg_s(regval & (MPAMSM_EL1_PARTID_D | MPAMSM_EL1_PMG_D), SYS_MPAMSM_EL1);
-	isb();
-
-	/* Synchronising the EL0 write is left until the ERET to EL0 */
-	write_sysreg_s(regval, SYS_MPAM0_EL1);
-}
-
-static bool
-test_has_mpam_hcr(const struct arm64_cpu_capabilities *entry, int scope)
-{
-	u64 idr = read_sanitised_ftr_reg(SYS_MPAMIDR_EL1);
-
-	return idr & MPAMIDR_EL1_HAS_HCR;
-}
-
-static bool
-=======
->>>>>>> e06bbc42113b (Revert "arm64: cpufeature: discover CPU support for MPAM")
 test_has_gicv5_legacy(const struct arm64_cpu_capabilities *entry, int scope)
 {
 	if (!this_cpu_has_cap(ARM64_HAS_GICV5_CPUIF))
@@ -3081,22 +3033,6 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 	},
 #endif
 	{
-<<<<<<< HEAD
-		.desc = "Memory Partitioning And Monitoring",
-		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
-		.capability = ARM64_MPAM,
-		.matches = test_has_mpam,
-		.cpu_enable = cpu_enable_mpam,
-	},
-	{
-		.desc = "Memory Partitioning And Monitoring Virtualisation",
-		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
-		.capability = ARM64_MPAM_HCR,
-		.matches = test_has_mpam_hcr,
-	},
-	{
-=======
->>>>>>> e06bbc42113b (Revert "arm64: cpufeature: discover CPU support for MPAM")
 		.desc = "NV1",
 		.capability = ARM64_HAS_HCR_NV1,
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
