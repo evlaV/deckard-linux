@@ -1571,7 +1571,7 @@ static plano_modes_t plano_init_modes(struct plano_ctx *ctx)
 			default_set = true;
 		}
 
-		strncpy(extmodes[i].mode.name, extmodes[i].name, DRM_DISPLAY_MODE_LEN);
+		strscpy(extmodes[i].mode.name, extmodes[i].name, DRM_DISPLAY_MODE_LEN);
 
 		extmodes[i].mode.hdisplay = extmodes[i].haa;
 		//extmodes[i].mode.hdisplay = extmodes[i].haa + extmodes[i].h_dummy;
@@ -1717,7 +1717,7 @@ static int plano_mode_set(struct drm_panel *panel,
 	{
 		if(extmodes[i].enabled)
 		{
-			strncpy(mod_mode_name, extmodes[i].mode.name, DRM_DISPLAY_MODE_LEN);
+			strscpy(mod_mode_name, extmodes[i].mode.name, DRM_DISPLAY_MODE_LEN);
 			if (ctx->is_dual_panel) {
 				mod_mode_name[0] = '2';
 				mod_mode_name[1] = '*';
@@ -2249,8 +2249,6 @@ static int plano_panel_add(struct plano_ctx *ctx)
 		return ret;
 	}
 
-	drm_panel_init(&ctx->panel, dev, &plano_drm_funcs,
-		       DRM_MODE_CONNECTOR_DSI);
 	drm_panel_add(&ctx->panel);
 
 	DRM_DEV_INFO(ctx->dev, "Panel added\n");
@@ -2276,11 +2274,12 @@ static int plano_probe(struct mipi_dsi_device *dsi)
 		.node = NULL,
 	};
 
-
-	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
-
-	if (!ctx)
-		return -ENOMEM;
+	
+	ctx = devm_drm_panel_alloc(dev, struct plano_ctx, panel,
+			&plano_drm_funcs,
+			DRM_MODE_CONNECTOR_DSI);
+	if (IS_ERR(ctx))
+		return PTR_ERR(ctx);
 
 	ctx->current_mode = plano_init_modes(ctx);
 
