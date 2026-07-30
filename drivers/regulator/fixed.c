@@ -308,7 +308,7 @@ static int reg_fixed_voltage_probe(struct platform_device *pdev)
 	 *
 	 * FIXME: find a better way to deal with this.
 	 */
-	gflags |= GPIOD_FLAGS_BIT_NONEXCLUSIVE;
+	//gflags |= GPIOD_FLAGS_BIT_NONEXCLUSIVE;
 
 	/*
 	 * Do not use devm* here: the regulator core takes over the
