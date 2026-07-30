@@ -210,7 +210,7 @@ static irqreturn_t vfe_isr(int irq, void *dev)
 
 		/* Loop through all WMs IRQs */
 		for (i = 0; i < MSM_VFE_IMAGE_MASTERS_NUM; i++) {
-			if (status & BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i)))
+			if (status & BUS_IRQ_MASK_0_COMP_DONE(vfe, RDI_COMP_GROUP(i))) {
 				struct camss_buf_done_info buf_done_info;
 				memset(&buf_done_info, 0 ,sizeof(struct camss_buf_done_info));
 				vfe_buf_done(vfe, i, &buf_done_info);
