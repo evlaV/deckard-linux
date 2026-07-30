@@ -1562,32 +1562,39 @@ static int og0ve10_probe(struct i2c_client *client)
 		fwnode_graph_get_next_endpoint(dev_fwnode(&client->dev), NULL);
 	if (!endpoint) {
 		dev_err(dev, "endpoint node not found\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto entity_cleanup;
 	}
 
 	ret = v4l2_fwnode_endpoint_parse(endpoint, &sensor->ep);
 	fwnode_handle_put(endpoint);
 	if (ret) {
 		dev_err(dev, "Could not parse endpoint\n");
-		return ret;
+		goto entity_cleanup;
 	}
 
 	/* get system clock (xclk) */
 	sensor->xclk = devm_clk_get(dev, "xclk");
 	if (IS_ERR(sensor->xclk)) {
 		dev_err(dev, "failed to get xclk\n");
-		return PTR_ERR(sensor->xclk);
+		ret = PTR_ERR(sensor->xclk);
+		goto entity_cleanup;
 	}
 
 	/* request optional reset pin */
 	sensor->reset_gpio =
 		devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
-	if (IS_ERR(sensor->reset_gpio))
-		return PTR_ERR(sensor->reset_gpio);
+	if (IS_ERR(sensor->reset_gpio)) {
+		dev_err(dev, "failed to reset gpio\n");
+		ret = PTR_ERR(sensor->reset_gpio);
+		goto entity_cleanup;
+	}
 
 	sensor->strobe_gpio = devm_gpiod_get_optional(dev, "strobe", GPIOD_IN);
-	if (sensor->strobe_gpio == NULL) {
-		return -1;
+	if (IS_ERR(sensor->strobe_gpio)) {
+		dev_err(dev, "failed to strobe gpio\n");
+		ret = PTR_ERR(sensor->strobe_gpio);
+		goto entity_cleanup;
 	}
 
 	for (int i = 0; i < 2; i++) {
@@ -1600,12 +1607,16 @@ static int og0ve10_probe(struct i2c_client *client)
 	sensor->pad.flags = MEDIA_PAD_FL_SOURCE;
 	sensor->sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
 	ret = media_entity_pads_init(&sensor->sd.entity, 1, &sensor->pad);
-	if (ret)
-		return ret;
+	if (ret) {
+		dev_err(dev, "failed to setup media_entity_pads_init\n");
+		goto entity_cleanup;
+	}
 
 	ret = og0ve10_get_regulators(sensor);
-	if (ret)
-		return ret;
+	if (ret) {
+		dev_err(dev, "failed to get regulators\n");
+		goto entity_cleanup;
+	}
 
 	mutex_init(&sensor->lock);
 
@@ -1648,8 +1659,10 @@ static int og0ve10_probe(struct i2c_client *client)
 	}
 
 	ret = v4l2_async_register_subdev_sensor(&sensor->sd);
-	if (ret)
+	if (ret) {
+		dev_err(&client->dev, "failed to async_register_subdev_sensor: %d", ret);
 		goto free_ctrls;
+	}
 
 	sensor->current_mode = &og0ve10_mode_data_640x480;
 
@@ -1726,6 +1739,7 @@ free_ctrls:
 entity_cleanup:
 	mutex_destroy(&sensor->lock);
 	media_entity_cleanup(&sensor->sd.entity);
+	numSensors_og0VE10--;
 	return ret;
 }
 
