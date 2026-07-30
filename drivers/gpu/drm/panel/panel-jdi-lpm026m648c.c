@@ -915,8 +915,6 @@ static int lpm026m648c_panel_add(struct lpm026m648c_ctx *ctx)
 		return ret;
 	}
 
-	drm_panel_init(&ctx->panel, dev, &lpm026m648c_drm_funcs,
-		       DRM_MODE_CONNECTOR_DSI);
 	drm_panel_add(&ctx->panel);
 
 	return 0;
@@ -939,10 +937,11 @@ static int lpm026m648c_probe(struct mipi_dsi_device *dsi)
 		.node = NULL,
 	};
 
-	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
-
-	if (!ctx)
-		return -ENOMEM;
+	ctx = devm_drm_panel_alloc(dev, struct lpm026m648c_ctx, panel,
+			&lpm026m648c_drm_funcs,
+			DRM_MODE_CONNECTOR_DSI);
+	if (IS_ERR(ctx))
+		return PTR_ERR(ctx);
 
 	ctx->panel.prepare_prev_first = true;
 
