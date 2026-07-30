@@ -5727,6 +5727,7 @@
 				    "csid2",
 				    "csid_lite0",
 				    "csid_lite1",
+				    "csid_wrapper",
 				    "csiphy0",
 				    "csiphy1",
 				    "csiphy2",
