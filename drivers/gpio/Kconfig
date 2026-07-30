@@ -2094,7 +2094,7 @@ config GPIO_SIM
 
 config GPIO_SHARED_PROXY
 	tristate "Proxy driver for non-exclusive GPIOs"
-	default m
+	default y
 	depends on GPIO_SHARED || COMPILE_TEST
 	select AUXILIARY_BUS
 	help
