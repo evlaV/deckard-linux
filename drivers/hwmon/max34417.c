@@ -1071,7 +1071,7 @@ static int max34417_detect(struct i2c_client *client,
 	if ((regval & MAX34417_DEV_ID_MASK) != MAX34417_DEV_ID)
 		return -ENODEV;
 
-	strncpy(info->type, "max34417", I2C_NAME_SIZE);
+	strscpy_pad(info->type, "max34417", I2C_NAME_SIZE);
 
 	return 0;
 }
@@ -1095,7 +1095,7 @@ static struct i2c_driver max34417_driver = {
 		.of_match_table = of_match_ptr(max34417_of_match),
 	},
 	.probe			= max34417_probe,
-	.detect			= max34417_detect,
+	//.detect			= max34417_detect,
 	.id_table		= max34417_id_table,
 	.address_list	= max34417_i2c_addrs,
 };
