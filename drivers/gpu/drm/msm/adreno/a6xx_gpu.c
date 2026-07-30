@@ -1745,9 +1745,6 @@ static void a6xx_recover(struct msm_gpu *gpu)
 	if (active_submits)
 		pm_runtime_put(&gpu->pdev->dev);
 
-	if (gpu->perfcntr_active)
-		pm_runtime_put(&gpu->pdev->dev);
-
 	/* And the final one from recover worker */
 	pm_runtime_put_sync(&gpu->pdev->dev);
 
@@ -1757,9 +1754,6 @@ static void a6xx_recover(struct msm_gpu *gpu)
 	dev_pm_genpd_remove_notifier(gmu->cxpd);
 
 	pm_runtime_use_autosuspend(&gpu->pdev->dev);
-
-	if (gpu->perfcntr_active)
-		pm_runtime_get(&gpu->pdev->dev);
 
 	if (active_submits)
 		pm_runtime_get(&gpu->pdev->dev);
