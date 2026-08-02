@@ -21,7 +21,8 @@
 
 #define MSM_VFE_PAD_SINK 0
 #define MSM_VFE_PAD_SRC 1
-#define MSM_VFE_PADS_NUM 2
+#define MSM_VFE_PAD_NUM_RDI 2
+#define MSM_VFE_MAX_PADS MSM_VFE_PAD_NUM_RDI
 #define MSM_VFE_NUM_OUTPUTS 1
 
 #define MSM_VFE_IMAGE_MASTERS_NUM 7
@@ -141,8 +142,9 @@ struct vfe_line {
 	enum vfe_line_id id;
 	bool is_pix;
 	struct v4l2_subdev subdev;
-	struct media_pad pads[MSM_VFE_PADS_NUM];
-	struct v4l2_mbus_framefmt fmt[MSM_VFE_PADS_NUM];
+	struct media_pad pads[MSM_VFE_MAX_PADS];
+	struct v4l2_mbus_framefmt fmt[MSM_VFE_MAX_PADS];
+	u32 num_pads;
 	struct v4l2_rect compose;
 	struct v4l2_rect crop;
 	struct vfe_output output[MSM_VFE_NUM_OUTPUTS];
