@@ -1993,6 +1993,8 @@ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
 		l->output[0].wm_num = 1;
 		l->output[0].wm[0].bus_client = l->id;
 
+		l->num_pads = MSM_VFE_PAD_NUM_RDI;
+
 		init_completion(&l->output[0].sof);
 		init_completion(&l->output[0].reg_update);
 
@@ -2174,7 +2176,7 @@ int msm_vfe_register_entities(struct vfe_device *vfe,
 
 		sd->entity.function = MEDIA_ENT_F_PROC_VIDEO_PIXEL_FORMATTER;
 		sd->entity.ops = &vfe_media_ops;
-		ret = media_entity_pads_init(&sd->entity, MSM_VFE_PADS_NUM,
+		ret = media_entity_pads_init(&sd->entity, vfe->line[i].num_pads,
 					     pads);
 		if (ret < 0) {
 			dev_err(dev, "Failed to init media entity: %d\n", ret);
