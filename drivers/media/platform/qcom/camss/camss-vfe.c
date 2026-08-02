@@ -1545,6 +1545,7 @@ static void vfe_try_crop(struct vfe_line *line,
 			 struct v4l2_rect *rect,
 			 enum v4l2_subdev_format_whence which)
 {
+	struct vfe_device *vfe = to_vfe(line);
 	struct v4l2_rect *compose;
 
 	compose = __vfe_get_compose(line, sd_state, which);
@@ -1561,9 +1562,13 @@ static void vfe_try_crop(struct vfe_line *line,
 	if (rect->height + rect->top > compose->height)
 		rect->top = compose->height - rect->height;
 
-	/* wm in line based mode writes multiple of 16 horizontally */
-	rect->left += (rect->width & 0xf) >> 1;
-	rect->width &= ~0xf;
+	/* wm in line based mode writes multiple of 16 horizontally
+	 * a VF4 4.x constraint.
+	 */
+	if (vfe->ops_gen1) {
+		rect->left += (rect->width & 0xf) >> 1;
+		rect->width &= ~0xf;
+	}
 
 	if (rect->width < 16) {
 		rect->left = 0;
