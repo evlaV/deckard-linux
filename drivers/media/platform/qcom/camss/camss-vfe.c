@@ -497,20 +497,7 @@ static u32 vfe_src_pad_code(struct vfe_line *line, u32 sink_code,
 			return __vfe_src_pad_default(index, sink_code);
 		}
 		break;
-	case CAMSS_660:
-	case CAMSS_2290:
-	case CAMSS_6150:
-	case CAMSS_6350:
-	case CAMSS_7280:
-	case CAMSS_8x96:
-	case CAMSS_8250:
-	case CAMSS_8280XP:
-	case CAMSS_8300:
-	case CAMSS_845:
-	case CAMSS_8550:
-	case CAMSS_8650:
-	case CAMSS_8775P:
-	case CAMSS_X1E80100:
+	default:
 		switch (sink_code) {
 		case MEDIA_BUS_FMT_YUYV8_1X16:
 		{
@@ -567,10 +554,6 @@ static u32 vfe_src_pad_code(struct vfe_line *line, u32 sink_code,
 		default:
 			return __vfe_src_pad_default(index, sink_code);
 		}
-		break;
-	default:
-		WARN(1, "Unsupported HW version: %x\n",
-		     vfe->camss->res->version);
 		break;
 	}
 	return 0;
