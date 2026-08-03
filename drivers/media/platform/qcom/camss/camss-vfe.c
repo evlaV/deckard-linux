@@ -435,6 +435,14 @@ u32 vfe_bus_v3_packer_fmt(u32 v4l2_fmt, u8 plane, u8 align_shift)
 	return VFE_BUS_WM_PACKER_FMT_V3_PLAIN_128;
 }
 
+static u32 __vfe_src_pad_default(unsigned int index, u32 sink_code)
+{
+	if (index > 0)
+		return 0;
+
+	return sink_code;
+}
+
 static u32 vfe_src_pad_code(struct vfe_line *line, u32 sink_code,
 			    unsigned int index, u32 src_req_code)
 {
@@ -486,10 +494,7 @@ static u32 vfe_src_pad_code(struct vfe_line *line, u32 sink_code,
 						      index, src_req_code);
 		}
 		default:
-			if (index > 0)
-				return 0;
-
-			return sink_code;
+			return __vfe_src_pad_default(index, sink_code);
 		}
 		break;
 	case CAMSS_660:
@@ -560,10 +565,7 @@ static u32 vfe_src_pad_code(struct vfe_line *line, u32 sink_code,
 						      index, src_req_code);
 		}
 		default:
-			if (index > 0)
-				return 0;
-
-			return sink_code;
+			return __vfe_src_pad_default(index, sink_code);
 		}
 		break;
 	default:
