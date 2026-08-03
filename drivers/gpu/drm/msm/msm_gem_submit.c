@@ -784,6 +784,8 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	submit_attach_object_fences(submit);
 
 	if (msm_context_is_vmbind(ctx)) {
+		trace_msm_gpu_submit_validate_start(pid_nr(submit->pid), ring->id, submit->ident,
+			args->nr_bos, args->nr_cmds);
 		/*
 		 * If we are not using VM_BIND, submit_pin_vmas() will validate
 		 * just the BOs attached to the submit.  In that case we don't
@@ -791,6 +793,8 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		 * what BOs are associated with the submit.
 		 */
 		ret = drm_gpuvm_validate(submit->vm, &submit->exec);
+		trace_msm_gpu_submit_validate_end(pid_nr(submit->pid), ring->id, submit->ident,
+			args->nr_bos, args->nr_cmds);
 		if (ret)
 			goto out;
 	}
