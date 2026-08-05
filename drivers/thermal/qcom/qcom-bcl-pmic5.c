@@ -21,7 +21,7 @@
 #include <linux/thermal.h>
 #include <linux/slab.h>
 #include <linux/nvmem-consumer.h>
-#include "../thermal_core.h"
+#include <../thermal_core.h>
 
 #define BCL_DRIVER_NAME       "bcl_pmic5"
 #define BCL_MONITOR_EN        0x46
@@ -167,6 +167,10 @@ static int bcl_read_multi_register(struct bcl_device *bcl_perph, int16_t reg_off
 	if (ret < 0)
 		pr_err("Error reading reg base:0x%04x len:%ld err:%d\n",
 				bcl_perph->fg_bcl_addr + reg_offset, len, ret);
+	else
+		pr_debug("RUI: Read register:0x%04x value:0x%02x len:%ld\n",
+				bcl_perph->fg_bcl_addr + reg_offset,
+				*data, len);
 
 	return ret;
 }
@@ -186,6 +190,10 @@ static int bcl_read_register(struct bcl_device *bcl_perph, int16_t reg_offset,
 	if (ret < 0)
 		pr_err("Error reading register 0x%04x err:%d\n",
 				bcl_perph->fg_bcl_addr + reg_offset, ret);
+	else
+		pr_debug("RUI: Read register:0x%04x value:0x%02x\n",
+				bcl_perph->fg_bcl_addr + reg_offset,
+				*data);
 
 	return ret;
 }
@@ -430,12 +438,12 @@ static struct thermal_trip *bcl_get_vbat_trip(struct bcl_peripheral_data *bat_da
 		if (addr[i] == BCL_VBAT_ADC_LOW) {
 			trip = val;
 			convert_adc_to_vbat_thresh_val(bat_data->dev, &trip);
-			pr_info("bcl: vbat trip: %d mV ADC:0x%02x\n", trip, val);
+			pr_debug("bcl: vbat trip: %d mV ADC:0x%02x\n", trip, val);
 		} else {
 			trip = BCL_VBAT_THRESH_BASE + val * 25;
 			if (trip > BCL_VBAT_MAX_MV)
 				trip = BCL_VBAT_MAX_MV;
-			pr_info("bcl: vbat-%s-low trip: %d mV ADC:0x%02x\n",
+			pr_debug("bcl: vbat-%s-low trip: %d mV ADC:0x%02x\n",
 					(addr[i] == BCL_VBAT_COMP_LOW) ?
 					"too" : "critical",
 					trip, val);
