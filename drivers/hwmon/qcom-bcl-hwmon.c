@@ -352,6 +352,23 @@ static const struct reg_field bcl_pm8550_reg_fields[] = {
 	[F_CURR_MON_EN]	= REG_FIELD(PARAM_1, 1, 1),
 };
 
+static const struct reg_field bcl_pm8550b_reg_fields[] = {
+	[F_V_MAJOR]	= REG_FIELD(REVISION2, 0, 7),
+	[F_V_MINOR]	= REG_FIELD(REVISION1, 0, 7),
+	[F_CTL_EN]	= REG_FIELD(EN_CTL1, 7, 7),
+	[F_LVL0_ALARM]	= REG_FIELD(STATUS, 0, 0),
+	[F_LVL1_ALARM]	= REG_FIELD(STATUS, 1, 1),
+	[F_IN_MON_EN]	= REG_FIELD(VCMP_CTL, 0, 2),
+	[F_IN_L0_THR]	= REG_FIELD(VADC_L0_THR, 0, 7),
+	[F_IN_L1_THR]	= REG_FIELD(VCMP_L1_THR, 0, 5),
+	[F_IN_INPUT_EN]	= REG_FIELD(PARAM_1, 0, 0),
+	[F_IN_INPUT]	= REG_FIELD(VADC_DATA1, 0, 7),
+	[F_CURR_MON_EN]	= REG_FIELD(PARAM_1, 1, 1),
+	[F_CURR_H0_THR]	= REG_FIELD(IADC_H0_THR, 0, 7),
+	[F_CURR_H1_THR]	= REG_FIELD(IADC_H1_THR_GEN3, 0, 7),
+	[F_CURR_INPUT]	= REG_FIELD(IADC_DATA1, 0, 7),
+};
+
 static const struct reg_field bcl_pmh0101_reg_fields[] = {
 	[F_V_MAJOR]	= REG_FIELD(REVISION2, 0, 7),
 	[F_V_MINOR]	= REG_FIELD(REVISION1, 0, 7),
@@ -473,6 +490,26 @@ static const struct bcl_desc pm8550_data = {
 		.max = 3600,
 		.step = 25,
 		.thresh_type = {THRESH_TYPE_INDEX, THRESH_TYPE_INDEX},
+	},
+};
+
+static const struct bcl_desc pm8550b_data = {
+	.reg_fields = bcl_pm8550b_reg_fields,
+	.num_reg_fields = F_MAX_FIELDS,
+	.data_field_bits_size = 8,
+	.thresh_field_bits_size = 8,
+	.battery_config_field = REG_FIELD(0, 0, 0),
+	.channel_cfg[BCL_BATT_1S][CHANNEL_IN] = {
+		.base = 2250,
+		.max = 3600,
+		.step = 25,
+		.default_scale_nu = 194637,
+		.thresh_type = {THRESH_TYPE_ADC, THRESH_TYPE_INDEX},
+	},
+	.channel_cfg[BCL_BATT_1S][CHANNEL_CURR] = {
+		.max = 20000,
+		.default_scale_nu = 366222, // (93753 * 1000) >> 8
+		.thresh_type = {THRESH_TYPE_ADC, THRESH_TYPE_ADC},
 	},
 };
 
@@ -1412,6 +1449,9 @@ static const struct of_device_id bcl_match[] = {
 	}, {
 		.compatible = "qcom,pm8550-bcl",
 		.data = &pm8550_data,
+	}, {
+		.compatible = "qcom,pm8550b-bcl",
+		.data = &pm8550b_data,
 	}, {
 		.compatible = "qcom,pmh0101-bcl",
 		.data = &pmh0101_data,
