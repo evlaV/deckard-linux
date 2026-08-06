@@ -142,6 +142,7 @@ struct bcl_device {
 	uint8_t				bcl_param_1;
 	uint8_t				bcl_type;
 	void				*ipc_log;
+	bool				enabled;
 	bool				ibat_ccm_enabled;
 	bool				ibat_use_qg_adc;
 	bool				no_bit_shift;
@@ -926,8 +927,59 @@ static int bcl_version_init(struct bcl_device *bcl_perph)
 
 static void bcl_configure_bcl_peripheral(struct bcl_device *bcl_perph)
 {
+	bcl_perph->enabled = true;
 	bcl_write_register(bcl_perph, BCL_MONITOR_EN, BIT(7));
 }
+
+static void bcl_configure_bcl_peripheral_disable(struct bcl_device *bcl_perph)
+{
+	bcl_perph->enabled = false;
+	bcl_write_register(bcl_perph, BCL_MONITOR_EN, 0);
+}
+
+static ssize_t bcl_enable_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+	struct bcl_device *bcl_perph = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", bcl_perph->enabled);
+}
+
+static ssize_t bcl_enable_store(struct device *dev,
+                                 struct device_attribute *attr,
+                                 const char *buf, size_t count)
+{
+	struct bcl_device *bcl_perph = dev_get_drvdata(dev);
+	struct thermal_zone_device *tzd;
+	bool val;
+	int ret;
+	int i;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+
+	if (val) {
+		bcl_configure_bcl_peripheral(bcl_perph);
+	} else {
+		bcl_configure_bcl_peripheral_disable(bcl_perph);
+	}
+
+	for (i = 0; i < BCL_TYPE_MAX; i++) {
+		tzd = bcl_perph->param[i].tz_dev;
+		if (tzd) {
+			if (val)
+				thermal_zone_device_enable(tzd);
+			else
+				thermal_zone_device_disable(tzd);
+		}
+	}
+	pr_info("Qualcomm BCL driver is now %s\n",
+		val ? "DISABLED" : "ENABLED");
+
+	return count;
+}
+static DEVICE_ATTR_RW(bcl_enable);
 
 static void bcl_remove(struct platform_device *pdev)
 {
@@ -939,6 +991,8 @@ static void bcl_remove(struct platform_device *pdev)
 		if (!bcl_perph->param[i].tz_dev)
 			continue;
 	}
+
+	device_remove_file(bcl_perph->dev, &dev_attr_bcl_enable);
 }
 
 static int bcl_probe(struct platform_device *pdev)
@@ -990,6 +1044,10 @@ static int bcl_probe(struct platform_device *pdev)
 					bcl_perph->fg_bcl_addr,
 					bcl_device_ct - 1);
 	pr_debug("bcl: %s: after configuer bcl: name: %s\n", __func__, bcl_name);
+
+	err = device_create_file(bcl_perph->dev, &dev_attr_bcl_enable);
+	if (err)
+		dev_warn(bcl_perph->dev, "failed to create disable attr\n");
 
 	return 0;
 }
