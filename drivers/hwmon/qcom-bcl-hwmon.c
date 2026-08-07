@@ -19,12 +19,14 @@
 #include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/workqueue.h>
+#include <linux/of.h>
 
 /* BCL common regmap offset */
 #define REVISION1			0x0
 #define REVISION2			0x1
 #define STATUS				0x8
 #define INT_RT_STS			0x10
+#define MODE_CTL			0x40
 #define EN_CTL1				0x46
 
 /* BCL GEN1 regmap offsets */
@@ -112,6 +114,9 @@ enum bcl_battery_config {
  * @F_CTL_EN: Monitor enable control field
  * @F_LVL0_ALARM: Level 0 alarm status field
  * @F_LVL1_ALARM: Level 1 alarm status field
+ * @F_LVL0_EN: LVL0 enable field
+ * @F_LVL1_EN: LVL1 enable field
+ * @F_LVL2_EN: LVL2 enable field
  * @F_IN_MON_EN: voltage monitor enable control field
  * @F_IN_L0_THR: voltage level 0 threshold field
  * @F_IN_L1_THR: voltage level 1 threshold field
@@ -135,6 +140,9 @@ enum bcl_fields {
 	F_CTL_EN,
 	F_LVL0_ALARM,
 	F_LVL1_ALARM,
+	F_LVL0_EN,
+	F_LVL1_EN,
+	F_LVL2_EN,
 
 	/* Voltage monitoring fields */
 	F_IN_MON_EN,
@@ -350,6 +358,9 @@ static const struct reg_field bcl_pm8550_reg_fields[] = {
 	[F_IN_INPUT_EN]	= REG_FIELD(PARAM_1, 0, 0),
 	[F_IN_INPUT]	= REG_FIELD(VADC_DATA1, 0, 7),
 	[F_CURR_MON_EN]	= REG_FIELD(PARAM_1, 1, 1),
+	[F_LVL0_EN]	= REG_FIELD(MODE_CTL, 0, 0),
+	[F_LVL1_EN]	= REG_FIELD(MODE_CTL, 1, 1),
+	[F_LVL2_EN]	= REG_FIELD(MODE_CTL, 2, 2),
 };
 
 static const struct reg_field bcl_pm8550b_reg_fields[] = {
@@ -367,6 +378,9 @@ static const struct reg_field bcl_pm8550b_reg_fields[] = {
 	[F_CURR_H0_THR]	= REG_FIELD(IADC_H0_THR, 0, 7),
 	[F_CURR_H1_THR]	= REG_FIELD(IADC_H1_THR_GEN3, 0, 7),
 	[F_CURR_INPUT]	= REG_FIELD(IADC_DATA1, 0, 7),
+	[F_LVL0_EN]	= REG_FIELD(MODE_CTL, 0, 0),
+	[F_LVL1_EN]	= REG_FIELD(MODE_CTL, 1, 1),
+	[F_LVL2_EN]	= REG_FIELD(MODE_CTL, 2, 2),
 };
 
 static const struct reg_field bcl_pmh0101_reg_fields[] = {
@@ -769,6 +783,27 @@ static int bcl_curr_thresh_read(struct bcl_device *bcl, enum bcl_limit_alarm lvl
 	return 0;
 }
 
+static int bcl_lvl0_enable_write(struct bcl_device *bcl, long value)
+{
+	u32 val = !!value;
+
+	return regmap_field_write(bcl->fields[F_LVL0_EN], val);
+}
+
+static int bcl_lvl0_enable_read(struct bcl_device *bcl, long *out)
+{
+	int ret;
+	u32 val = 0;
+
+	ret = regmap_field_read(bcl->fields[F_LVL0_EN], &val);
+	if (ret)
+		return ret;
+
+	*out = val;
+
+	return 0;
+}
+
 static int bcl_curr_input_read(struct bcl_device *bcl, long *out)
 {
 	int ret;
@@ -975,6 +1010,7 @@ static umode_t bcl_hwmon_is_visible(const void *data,
 		case hwmon_in_min_alarm:
 		case hwmon_in_lcrit_alarm:
 			return 0444;
+		case hwmon_in_enable:
 		case hwmon_in_min:
 		case hwmon_in_lcrit:
 			return 0644;
@@ -988,6 +1024,7 @@ static umode_t bcl_hwmon_is_visible(const void *data,
 		case hwmon_curr_max_alarm:
 		case hwmon_curr_crit_alarm:
 			return 0444;
+		case hwmon_curr_enable:
 		case hwmon_curr_max:
 		case hwmon_curr_crit:
 			return 0644;
@@ -1009,6 +1046,8 @@ static int bcl_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 	switch (type) {
 	case hwmon_in:
 		switch (attr) {
+		case hwmon_in_enable:
+			return bcl_lvl0_enable_write(bcl, val);
 		case hwmon_in_min:
 		case hwmon_in_lcrit:
 			return bcl_in_thresh_write(bcl, val, in_attr_to_lvl_map[attr]);
@@ -1017,6 +1056,8 @@ static int bcl_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 		}
 	case hwmon_curr:
 		switch (attr) {
+		case hwmon_curr_enable:
+			return bcl_lvl0_enable_write(bcl, val);
 		case hwmon_curr_max:
 		case hwmon_curr_crit:
 			return bcl_curr_thresh_write(bcl, val, curr_attr_to_lvl_map[attr]);
@@ -1033,6 +1074,8 @@ static int bcl_in_read(struct bcl_device *bcl, u32 attr, long *value)
 	guard(mutex)(&bcl->lock);
 
 	switch (attr) {
+	case hwmon_in_enable:
+		return bcl_lvl0_enable_read(bcl, value);
 	case hwmon_in_input:
 		return bcl_in_input_read(bcl, value);
 	case hwmon_in_min:
@@ -1051,6 +1094,8 @@ static int bcl_curr_read(struct bcl_device *bcl, u32 attr, long *value)
 	guard(mutex)(&bcl->lock);
 
 	switch (attr) {
+	case hwmon_curr_enable:
+		return bcl_lvl0_enable_read(bcl, value);
 	case hwmon_curr_input:
 		return bcl_curr_input_read(bcl, value);
 	case hwmon_curr_max:
@@ -1216,6 +1261,9 @@ static int bcl_build_hwmon_info(struct bcl_device *bcl)
 		if (in_input_enabled)
 			bcl->in_attrs |= HWMON_I_INPUT;
 
+		if (!curr_mon_enabled && desc->reg_fields[F_LVL0_EN].reg)
+			bcl->in_attrs |= HWMON_I_ENABLE;
+
 		in_info = devm_kzalloc(bcl->dev, sizeof(*in_info), GFP_KERNEL);
 		if (!in_info)
 			return -ENOMEM;
@@ -1235,6 +1283,9 @@ static int bcl_build_hwmon_info(struct bcl_device *bcl)
 
 		bcl->curr_attrs = HWMON_C_INPUT | HWMON_C_LABEL | HWMON_C_MAX |
 				  HWMON_C_CRIT | HWMON_C_MAX_ALARM | HWMON_C_CRIT_ALARM;
+
+		if (desc->reg_fields[F_LVL0_EN].reg)
+			bcl->curr_attrs |= HWMON_C_ENABLE;
 
 		curr_info = devm_kzalloc(bcl->dev, sizeof(*curr_info), GFP_KERNEL);
 		if (!curr_info)
@@ -1365,6 +1416,280 @@ static int bcl_regmap_field_init(struct device *dev, struct bcl_device *bcl,
 	return 0;
 }
 
+static ssize_t lvl2_enable_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	int ret;
+	u32 reg;
+
+	ret = regmap_field_read(bcl->fields[F_LVL2_EN], &reg);
+	if (ret)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", reg);
+}
+
+static ssize_t lvl2_enable_store(struct device *dev,
+                                 struct device_attribute *attr,
+                                 const char *buf, size_t count)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	bool val;
+	int ret;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+
+	ret = regmap_field_write(bcl->fields[F_LVL2_EN], val);
+	if (ret)
+		return ret;
+
+	dev_info(dev, "lvl2 %s\n", val ? "enabled" : "disabled");
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(lvl2_enable);
+
+static ssize_t lvl1_enable_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	int ret;
+	u32 reg;
+
+	ret = regmap_field_read(bcl->fields[F_LVL1_EN], &reg);
+	if (ret)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", reg);
+}
+
+static ssize_t lvl1_enable_store(struct device *dev,
+                                 struct device_attribute *attr,
+                                 const char *buf, size_t count)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	bool val;
+	int ret;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+
+	ret = regmap_field_write(bcl->fields[F_LVL1_EN], val);
+	if (ret)
+		return ret;
+
+	dev_info(dev, "lvl1 %s\n", val ? "enabled" : "disabled");
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(lvl1_enable);
+
+static ssize_t lvl0_enable_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	int ret;
+	u32 reg;
+
+	ret = regmap_field_read(bcl->fields[F_LVL0_EN], &reg);
+	if (ret)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", reg);
+}
+
+static ssize_t lvl0_enable_store(struct device *dev,
+                                 struct device_attribute *attr,
+                                 const char *buf, size_t count)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	bool val;
+	int ret;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+
+	ret = regmap_field_write(bcl->fields[F_LVL0_EN], val);
+	if (ret)
+		return ret;
+
+	dev_info(dev, "lvl0 %s\n", val ? "enabled" : "disabled");
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(lvl0_enable);
+
+static ssize_t vcmp_l2_enable_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	int ret;
+	u32 reg;
+
+	ret = regmap_field_read(bcl->fields[F_IN_MON_EN], &reg);
+	if (ret)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", !!(reg & BIT(2)));
+}
+
+static ssize_t vcmp_l2_enable_store(struct device *dev,
+                                 struct device_attribute *attr,
+                                 const char *buf, size_t count)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	bool val;
+	int ret;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+
+	ret = regmap_field_update_bits(bcl->fields[F_IN_MON_EN], BIT(2), val);
+	if (ret)
+		return ret;
+
+	dev_info(dev, "vcml_l2 %s\n", val ? "enabled" : "disabled");
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(vcmp_l2_enable);
+
+static ssize_t vcmp_l1_enable_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	int ret;
+	u32 reg;
+
+	ret = regmap_field_read(bcl->fields[F_IN_MON_EN], &reg);
+	if (ret)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", !!(reg & BIT(1)));
+}
+
+static ssize_t vcmp_l1_enable_store(struct device *dev,
+                                 struct device_attribute *attr,
+                                 const char *buf, size_t count)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	bool val;
+	int ret;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+
+	ret = regmap_field_update_bits(bcl->fields[F_IN_MON_EN], BIT(1), val);
+	if (ret)
+		return ret;
+
+	dev_info(dev, "vcml_l1 %s\n", val ? "enabled" : "disabled");
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(vcmp_l1_enable);
+
+static ssize_t vcmp_l0_enable_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	int ret;
+	u32 reg;
+
+	ret = regmap_field_read(bcl->fields[F_IN_MON_EN], &reg);
+	if (ret)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", !!(reg & BIT(0)));
+}
+
+static ssize_t vcmp_l0_enable_store(struct device *dev,
+                                 struct device_attribute *attr,
+                                 const char *buf, size_t count)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	bool val;
+	int ret;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+
+	ret = regmap_field_update_bits(bcl->fields[F_IN_MON_EN], BIT(0), val);
+	if (ret)
+		return ret;
+
+	dev_info(dev, "vcml_l0 %s\n", val ? "enabled" : "disabled");
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(vcmp_l0_enable);
+
+static ssize_t bcl_enable_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	int ret;
+	u32 reg;
+
+	ret = regmap_field_read(bcl->fields[F_CTL_EN], &reg);
+	if (ret)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", reg);
+}
+
+static ssize_t bcl_enable_store(struct device *dev,
+                                 struct device_attribute *attr,
+                                 const char *buf, size_t count)
+{
+	struct bcl_device *bcl = dev_get_drvdata(dev);
+	bool val;
+	int ret;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+
+	ret = regmap_field_write(bcl->fields[F_CTL_EN], val);
+	if (ret)
+		return ret;
+
+	dev_info(dev, "bcl %s\n", val ? "enabled" : "disabled");
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(bcl_enable);
+
+static struct attribute *bcl_attrs[] = {
+	&dev_attr_bcl_enable.attr,
+	&dev_attr_vcmp_l0_enable.attr,
+	&dev_attr_vcmp_l1_enable.attr,
+	&dev_attr_vcmp_l2_enable.attr,
+	&dev_attr_lvl0_enable.attr,
+	&dev_attr_lvl1_enable.attr,
+	&dev_attr_lvl2_enable.attr,
+	NULL,
+};
+
+static struct attribute_group bcl_attr_group = {
+	.attrs = bcl_attrs,
+};
+
 static int bcl_probe(struct platform_device *pdev)
 {
 	struct bcl_device *bcl;
@@ -1433,8 +1758,18 @@ static int bcl_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return dev_err_probe(&pdev->dev, ret, "Failed to initialize alarm IRQs\n");
 
+	ret = devm_device_add_group(&pdev->dev, &bcl_attr_group);
+	if (ret)
+		dev_warn(&pdev->dev, "failed to create disable attr\n");
+
 	dev_dbg(&pdev->dev, "BCL hwmon device with version: %u.%u registered\n",
 		bcl_get_version_major(bcl), bcl_get_version_minor(bcl));
+
+	if (of_property_present(pdev->dev.of_node, "qcom,bcl-disable-on-probe")) {
+		ret = regmap_field_write(bcl->fields[F_CTL_EN], reg);
+		if (ret)
+			dev_err(&pdev->dev, "failed to disable BCL\n");
+	}
 
 	return 0;
 }
