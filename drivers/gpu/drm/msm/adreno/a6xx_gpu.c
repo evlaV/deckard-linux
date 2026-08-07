@@ -2484,6 +2484,12 @@ static void a6xx_destroy(struct msm_gpu *gpu)
 	kfree(a6xx_gpu);
 }
 
+#if defined(CONFIG_DEBUG_FS)
+static u32 a6xx_bcl_lvl0_cnt;
+static u32 a6xx_bcl_lvl1_cnt;
+static u32 a6xx_bcl_lvl2_cnt;
+#endif
+
 static u64 a6xx_gpu_busy(struct msm_gpu *gpu, unsigned long *out_sample_rate)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
@@ -2496,6 +2502,25 @@ static u64 a6xx_gpu_busy(struct msm_gpu *gpu, unsigned long *out_sample_rate)
 	busy_cycles = gmu_read64(&a6xx_gpu->gmu,
 			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_0_L,
 			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_0_H);
+
+#if defined(CONFIG_DEBUG_FS)
+	u32 a, b, c;
+
+	a = gmu_read(&a6xx_gpu->gmu,
+			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_1_L);
+	if (a)
+		a6xx_bcl_lvl0_cnt++;
+
+	b = gmu_read(&a6xx_gpu->gmu,
+			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_2_L);
+	if (b)
+		a6xx_bcl_lvl1_cnt++;
+
+	c = gmu_read(&a6xx_gpu->gmu,
+			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_3_L);
+	if (c)
+		a6xx_bcl_lvl2_cnt++;
+#endif
 
 	return busy_cycles;
 }
@@ -2671,6 +2696,13 @@ static void bcl_throttle_print(struct msm_gpu *gpu, struct drm_printer *p)
 	drm_printf(p, "BCL throttle cycles: %08x %08x %08x\n", a, b, c);
 }
 
+static void bcl_throttle_cnt_print(struct msm_gpu *gpu, struct drm_printer *p)
+{
+	drm_printf(p, "BCL throttle counters: %d %d %d\n",
+			a6xx_bcl_lvl0_cnt, a6xx_bcl_lvl1_cnt,
+			a6xx_bcl_lvl2_cnt);
+}
+
 static int show(struct seq_file *m, void *arg)
 {
 	struct drm_info_node *node = m->private;
@@ -2687,6 +2719,7 @@ static int show(struct seq_file *m, void *arg)
 #define ENT(n) { .name = #n, .show = show, .data = n ##_print }
 static struct drm_info_list a6xx_debugfs_list[] = {
 	ENT(bcl_throttle),
+	ENT(bcl_throttle_cnt),
 };
 
 void a6xx_debugfs_init(struct msm_gpu *gpu, struct drm_minor *minor)
