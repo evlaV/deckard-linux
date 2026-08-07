@@ -619,6 +619,9 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (args->flags & MSM_SUBMIT_SUDO)
 		submit->in_rb = true;
 
+	trace_msm_gpu_submit_after_queue_lock(pid_nr(submit->pid), ring->id, submit->ident,
+		args->nr_bos, args->nr_cmds);
+
 	if (args->flags & MSM_SUBMIT_FENCE_FD_IN) {
 		struct dma_fence *in_fence;
 
@@ -664,10 +667,14 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (ret)
 		goto out;
 
+	trace_msm_gpu_submit_before_lock_objects(pid_nr(submit->pid), ring->id, submit->ident,
+		args->nr_bos, args->nr_cmds);
 	/* copy_*_user while holding a ww ticket upsets lockdep */
 	ret = submit_lock_objects(submit);
 	if (ret)
 		goto out;
+	trace_msm_gpu_submit_after_lock_objects(pid_nr(submit->pid), ring->id, submit->ident,
+		args->nr_bos, args->nr_cmds);
 
 	ret = submit_pin_objects(submit);
 	if (ret)
@@ -681,6 +688,10 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 
 	if (ret)
 		goto out;
+
+
+	trace_msm_gpu_submit_after_pin_objects(pid_nr(submit->pid), ring->id, submit->ident,
+		args->nr_bos, args->nr_cmds);
 
 	cmds_to_parse = msm_context_is_vmbind(ctx) ? 0 : args->nr_cmds;
 
@@ -805,6 +816,9 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	msm_rd_dump_submit(priv->rd, submit, NULL);
 
 	drm_sched_entity_push_job(&submit->base);
+
+	trace_msm_gpu_submit_push_job(pid_nr(submit->pid), ring->id, submit->ident,
+		args->nr_bos, args->nr_cmds);
 
 	args->fence = submit->fence_id;
 	queue->last_fence = submit->fence_id;

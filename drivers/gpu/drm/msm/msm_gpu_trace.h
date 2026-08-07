@@ -30,6 +30,94 @@ TRACE_EVENT(msm_gpu_submit,
 		    __entry->nr_bos, __entry->nr_cmds)
 );
 
+TRACE_EVENT(msm_gpu_submit_before_lock_objects,
+	    TP_PROTO(pid_t pid, u32 ringid, u32 id, u32 nr_bos, u32 nr_cmds),
+	    TP_ARGS(pid, ringid, id, nr_bos, nr_cmds),
+	    TP_STRUCT__entry(
+		    __field(pid_t, pid)
+		    __field(u32, id)
+		    __field(u32, ringid)
+		    __field(u32, nr_cmds)
+		    __field(u32, nr_bos)
+		    ),
+	    TP_fast_assign(
+		    __entry->pid = pid;
+		    __entry->id = id;
+		    __entry->ringid = ringid;
+		    __entry->nr_bos = nr_bos;
+		    __entry->nr_cmds = nr_cmds
+		    ),
+	    TP_printk("id=%d pid=%d ring=%d bos=%d cmds=%d",
+		    __entry->id, __entry->pid, __entry->ringid,
+		    __entry->nr_bos, __entry->nr_cmds)
+);
+
+TRACE_EVENT(msm_gpu_submit_after_lock_objects,
+	    TP_PROTO(pid_t pid, u32 ringid, u32 id, u32 nr_bos, u32 nr_cmds),
+	    TP_ARGS(pid, ringid, id, nr_bos, nr_cmds),
+	    TP_STRUCT__entry(
+		    __field(pid_t, pid)
+		    __field(u32, id)
+		    __field(u32, ringid)
+		    __field(u32, nr_cmds)
+		    __field(u32, nr_bos)
+		    ),
+	    TP_fast_assign(
+		    __entry->pid = pid;
+		    __entry->id = id;
+		    __entry->ringid = ringid;
+		    __entry->nr_bos = nr_bos;
+		    __entry->nr_cmds = nr_cmds
+		    ),
+	    TP_printk("id=%d pid=%d ring=%d bos=%d cmds=%d",
+		    __entry->id, __entry->pid, __entry->ringid,
+		    __entry->nr_bos, __entry->nr_cmds)
+);
+
+TRACE_EVENT(msm_gpu_submit_after_queue_lock,
+	    TP_PROTO(pid_t pid, u32 ringid, u32 id, u32 nr_bos, u32 nr_cmds),
+	    TP_ARGS(pid, ringid, id, nr_bos, nr_cmds),
+	    TP_STRUCT__entry(
+		    __field(pid_t, pid)
+		    __field(u32, id)
+		    __field(u32, ringid)
+		    __field(u32, nr_cmds)
+		    __field(u32, nr_bos)
+		    ),
+	    TP_fast_assign(
+		    __entry->pid = pid;
+		    __entry->id = id;
+		    __entry->ringid = ringid;
+		    __entry->nr_bos = nr_bos;
+		    __entry->nr_cmds = nr_cmds
+		    ),
+	    TP_printk("id=%d pid=%d ring=%d bos=%d cmds=%d",
+		    __entry->id, __entry->pid, __entry->ringid,
+		    __entry->nr_bos, __entry->nr_cmds)
+);
+
+TRACE_EVENT(msm_gpu_submit_after_pin_objects,
+	    TP_PROTO(pid_t pid, u32 ringid, u32 id, u32 nr_bos, u32 nr_cmds),
+	    TP_ARGS(pid, ringid, id, nr_bos, nr_cmds),
+	    TP_STRUCT__entry(
+		    __field(pid_t, pid)
+		    __field(u32, id)
+		    __field(u32, ringid)
+		    __field(u32, nr_cmds)
+		    __field(u32, nr_bos)
+		    ),
+	    TP_fast_assign(
+		    __entry->pid = pid;
+		    __entry->id = id;
+		    __entry->ringid = ringid;
+		    __entry->nr_bos = nr_bos;
+		    __entry->nr_cmds = nr_cmds
+		    ),
+	    TP_printk("id=%d pid=%d ring=%d bos=%d cmds=%d",
+		    __entry->id, __entry->pid, __entry->ringid,
+		    __entry->nr_bos, __entry->nr_cmds)
+);
+
 TRACE_EVENT(msm_gpu_submit_validate_start,
 	    TP_PROTO(pid_t pid, u32 ringid, u32 id, u32 nr_bos, u32 nr_cmds),
 	    TP_ARGS(pid, ringid, id, nr_bos, nr_cmds),
@@ -53,6 +141,28 @@ TRACE_EVENT(msm_gpu_submit_validate_start,
 );
 
 TRACE_EVENT(msm_gpu_submit_validate_end,
+	    TP_PROTO(pid_t pid, u32 ringid, u32 id, u32 nr_bos, u32 nr_cmds),
+	    TP_ARGS(pid, ringid, id, nr_bos, nr_cmds),
+	    TP_STRUCT__entry(
+		    __field(pid_t, pid)
+		    __field(u32, id)
+		    __field(u32, ringid)
+		    __field(u32, nr_cmds)
+		    __field(u32, nr_bos)
+		    ),
+	    TP_fast_assign(
+		    __entry->pid = pid;
+		    __entry->id = id;
+		    __entry->ringid = ringid;
+		    __entry->nr_bos = nr_bos;
+		    __entry->nr_cmds = nr_cmds
+		    ),
+	    TP_printk("id=%d pid=%d ring=%d bos=%d cmds=%d",
+		    __entry->id, __entry->pid, __entry->ringid,
+		    __entry->nr_bos, __entry->nr_cmds)
+);
+
+TRACE_EVENT(msm_gpu_submit_push_job,
 	    TP_PROTO(pid_t pid, u32 ringid, u32 id, u32 nr_bos, u32 nr_cmds),
 	    TP_ARGS(pid, ringid, id, nr_bos, nr_cmds),
 	    TP_STRUCT__entry(
