@@ -1766,7 +1766,7 @@ static int bcl_probe(struct platform_device *pdev)
 		bcl_get_version_major(bcl), bcl_get_version_minor(bcl));
 
 	if (of_property_present(pdev->dev.of_node, "qcom,bcl-disable-on-probe")) {
-		ret = regmap_field_write(bcl->fields[F_CTL_EN], reg);
+		ret = regmap_field_write(bcl->fields[F_CTL_EN], 0);
 		if (ret)
 			dev_err(&pdev->dev, "failed to disable BCL\n");
 	}
