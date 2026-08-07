@@ -294,7 +294,94 @@ shrink_pid_set(void *data, u64 val)
 
 DEFINE_DEBUGFS_ATTRIBUTE(shrink_pid_fops,
 			 shrink_pid_get, shrink_pid_set,
-			 "0x%08llx\n");
+			 "%llu\n");
+
+static u64 unevictable_pid = 0;
+
+static int
+unevictable_pid_get(void *data, u64 *val)
+{
+	struct drm_device *dev = data;
+	struct drm_file *priv;
+	*val = unevictable_pid;
+	return 0;
+}
+
+static int
+unevictable_pid_set(void *data, u64 val)
+{
+	struct drm_device *dev = data;
+	struct drm_file *priv;
+	int ret = -EINVAL;
+
+	mutex_lock(&dev->filelist_mutex);
+	list_for_each_entry_reverse(priv, &dev->filelist, lhead) {
+		struct msm_context *ctx = priv->driver_priv;
+		struct pid *pid = rcu_dereference(priv->pid);
+
+		pid_t pid_nr = pid_vnr(pid);
+		if (pid_nr == val) {
+			if (ctx->vm)
+				to_msm_vm(ctx->vm)->unevictable = val;
+			ret = 0;
+		}
+	}
+	mutex_unlock(&dev->filelist_mutex);
+
+	if( ret == 0 )
+		unevictable_pid = val;
+	else
+		unevictable_pid = 0;
+
+	return ret;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(unevictable_pid_fops,
+			 unevictable_pid_get, unevictable_pid_set,
+			 "%llu\n");
+
+static int unevictable_pids_show(struct seq_file *m, void *v)
+{
+	struct drm_device *dev = m->private;
+	struct drm_file *priv;
+
+	mutex_lock(&dev->filelist_mutex);
+
+	list_for_each_entry_reverse(priv, &dev->filelist, lhead) {
+		struct msm_context *ctx = priv->driver_priv;
+		struct pid *pid;
+		struct task_struct *task;
+		pid_t pid_nr;
+		pid = rcu_dereference_protected(priv->pid, 
+			lockdep_is_held(&dev->filelist_mutex));
+		if (!pid) continue;
+		pid_nr = pid_vnr(pid);
+		if (ctx->vm && to_msm_vm(ctx->vm)->unevictable) {
+			task = get_pid_task(pid, PIDTYPE_PID);
+			if (task) {
+				seq_printf(m, "%d %s\n", pid_nr, task->comm);
+				put_task_struct(task);
+			}
+		}
+	}
+
+	mutex_unlock(&dev->filelist_mutex);
+
+	return 0;
+}
+
+static int unevictable_pids_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, unevictable_pids_show, inode->i_private);
+}
+
+static const struct file_operations unevictable_pids_fops = {
+	.owner   = THIS_MODULE,
+	.open    = unevictable_pids_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release,
+};
 
 /*
  * Return the number of microseconds to wait until stall-on-fault is
@@ -537,6 +624,12 @@ void msm_debugfs_init(struct drm_minor *minor)
 	debugfs_create_file("shrink_pid", S_IRWXU, minor->debugfs_root,
 		dev, &shrink_pid_fops);
 
+	debugfs_create_file("unevictable_pid", S_IRWXU, minor->debugfs_root,
+		dev, &unevictable_pid_fops);
+
+	debugfs_create_file("unevictable_pids", S_IRWXU, minor->debugfs_root,
+		dev, &unevictable_pids_fops);
+		
 	fault_create_debugfs_attr("fail_gem_alloc", minor->debugfs_root,
 				  &fail_gem_alloc);
 	fault_create_debugfs_attr("fail_gem_iova", minor->debugfs_root,
