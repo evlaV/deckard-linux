@@ -296,6 +296,42 @@ DEFINE_DEBUGFS_ATTRIBUTE(shrink_pid_fops,
 			 shrink_pid_get, shrink_pid_set,
 			 "0x%08llx\n");
 
+static int
+unevictable_pid_get(void *data, u64 *val)
+{
+	*val = 0;
+
+	return -EINVAL;
+}
+
+static int
+unevictable_pid_set(void *data, u64 val)
+{
+	struct drm_device *dev = data;
+	struct drm_file *priv;
+	int ret = -EINVAL;
+
+	mutex_lock(&dev->filelist_mutex);
+	list_for_each_entry_reverse(priv, &dev->filelist, lhead) {
+		struct msm_context *ctx = priv->driver_priv;
+		struct pid *pid = rcu_dereference(priv->pid);
+
+		pid_t pid_nr = pid_vnr(pid);
+		if (pid_nr == val) {
+			if (ctx->vm)
+				to_msm_vm(ctx->vm)->unevictable = val;
+			ret = 0;
+		}
+	}
+	mutex_unlock(&dev->filelist_mutex);
+
+	return ret;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(unevictable_pid_fops,
+			 unevictable_pid_get, unevictable_pid_set,
+			 "0x%08llx\n");
+
 /*
  * Return the number of microseconds to wait until stall-on-fault is
  * re-enabled. If 0 then it is already enabled or will be re-enabled on the
@@ -536,6 +572,9 @@ void msm_debugfs_init(struct drm_minor *minor)
 
 	debugfs_create_file("shrink_pid", S_IRWXU, minor->debugfs_root,
 		dev, &shrink_pid_fops);
+
+	debugfs_create_file("unevictable_pid", S_IRWXU, minor->debugfs_root,
+		dev, &unevictable_pid_fops);
 
 	fault_create_debugfs_attr("fail_gem_alloc", minor->debugfs_root,
 				  &fail_gem_alloc);

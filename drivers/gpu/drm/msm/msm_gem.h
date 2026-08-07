@@ -151,6 +151,8 @@ struct msm_gem_vm {
 	 * situation, where the logical device needs to be re-created.
 	 */
 	bool unusable;
+
+	bool unevictable;
 };
 #define to_msm_vm(x) container_of(x, struct msm_gem_vm, base)
 

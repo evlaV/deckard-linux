@@ -104,9 +104,28 @@ out_unlock:
 }
 
 static bool
+is_flagged_unevictable(struct drm_gem_object *obj)
+{
+	/*
+	 * Track last locked entry for for unwinding locks in error and
+	 * success paths
+	 */
+	struct drm_gpuvm_bo *vm_bo;
+
+	drm_gem_for_each_gpuvm_bo (vm_bo, obj) {
+		struct msm_gem_vm *msm_vm = to_msm_vm(vm_bo->vm);
+
+		if (msm_vm->unevictable)
+			return true;
+	}
+
+	return false;
+}
+
+static bool
 purge(struct drm_gem_object *obj, struct ww_acquire_ctx *)
 {
-	if (!is_purgeable(to_msm_bo(obj)))
+	if (!is_purgeable(to_msm_bo(obj)) || is_flagged_unevictable(obj))
 		return false;
 
 	if (msm_gem_active(obj))
@@ -118,7 +137,7 @@ purge(struct drm_gem_object *obj, struct ww_acquire_ctx *)
 static bool
 evict(struct drm_gem_object *obj, struct ww_acquire_ctx *)
 {
-	if (is_unevictable(to_msm_bo(obj)))
+	if (is_unevictable(to_msm_bo(obj)) || is_flagged_unevictable(obj))
 		return false;
 
 	if (msm_gem_active(obj))
