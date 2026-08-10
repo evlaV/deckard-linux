@@ -122,6 +122,9 @@ struct msm_vm_bind_job {
 	bool bos_pinned;
 	/** @nr_ops: the number of userspace requested ops */
 	unsigned int nr_ops;
+
+	u32 ident;
+	struct pid *pid;    /* submitting process */
 	/**
 	 * @ops: the userspace requested ops
 	 *
@@ -708,6 +711,17 @@ msm_vma_job_run(struct drm_sched_job *_job)
 
 	vm_dbg("");
 
+	{
+		struct msm_gem_submit submit;
+		submit.pid = job->pid;
+		submit.ident = job->ident;
+		struct msm_ringbuffer ring;
+		ring.id = 10;
+		submit.ring = &ring;
+
+		trace_msm_gpu_submit_flush(&submit, 0, 0);
+	}
+
 	mutex_lock(&vm->mmu_lock);
 	vm->mmu->prealloc = &job->prealloc;
 
@@ -784,6 +798,20 @@ msm_vma_job_free(struct drm_sched_job *_job)
 	}
 
 	wake_up(&vm->prealloc_throttle.wait);
+
+	{
+		struct msm_gem_submit submit;
+		submit.pid = job->pid;
+		submit.ident = job->ident;
+		struct msm_ringbuffer ring;
+		ring.id = 10;
+		submit.ring = &ring;
+
+		trace_msm_gpu_submit_flush(&submit, 0, 0);
+
+		trace_msm_gpu_submit_retired(&submit, 0, 0,
+			0, 0);
+	}
 
 	kfree(job);
 }
@@ -954,6 +982,7 @@ static struct msm_vm_bind_job *
 vm_bind_job_create(struct drm_device *dev, struct drm_file *file,
 		   struct msm_gpu_submitqueue *queue, uint32_t nr_ops)
 {
+	static atomic_t ident = ATOMIC_INIT(0);
 	struct msm_vm_bind_job *job;
 	uint64_t sz;
 	int ret;
@@ -977,6 +1006,8 @@ vm_bind_job_create(struct drm_device *dev, struct drm_file *file,
 	job->vm = msm_context_vm(dev, queue->ctx);
 	job->queue = queue;
 	INIT_LIST_HEAD(&job->vm_ops);
+	job->ident = atomic_inc_return(&ident) - 1;
+	job->pid = get_pid(task_pid(current));
 
 	return job;
 }
@@ -1487,6 +1518,9 @@ msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 		ret = PTR_ERR(job);
 		goto out_post_unlock;
 	}
+
+	trace_msm_gpu_submit(pid_nr(job->pid), 10, job->ident,
+		nr_bos, args->nr_ops);
 
 	ret = mutex_lock_interruptible(&queue->lock);
 	if (ret)
