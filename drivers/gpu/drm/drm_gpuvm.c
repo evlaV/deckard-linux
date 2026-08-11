@@ -1497,6 +1497,51 @@ drm_gpuvm_validate(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
 }
 EXPORT_SYMBOL_GPL(drm_gpuvm_validate);
 
+int
+drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
+{
+	const struct drm_gpuvm_ops *ops = gpuvm->ops;
+
+	if (unlikely(!ops || !ops->vm_bo_validate))
+		return -EOPNOTSUPP;
+
+	struct drm_gpuvm_bo *vm_bo;
+	struct drm_gpuvm_bo *temp_vm_bos[4096];
+	struct drm_exec vm_exec;
+	LIST_HEAD(evict);
+	int ret = 0, count = 0;
+
+	drm_exec_init(&vm_exec, 0, 1);
+	drm_exec_until_all_locked(&vm_exec) {
+		drm_exec_lock_obj(&vm_exec, drm_gpuvm_resv_obj(gpuvm));
+		drm_exec_retry_on_contention(&vm_exec);
+		break;
+	}
+
+	for_each_vm_bo_in_list(gpuvm, evict, &evict, vm_bo) {
+		temp_vm_bos[count++] = vm_bo;
+		drm_gpuvm_bo_get(vm_bo);
+	}
+
+	restore_vm_bo_list(gpuvm, evict);
+
+	drm_exec_fini(&vm_exec);
+
+	for(int i = 0; i < count; i++) {
+		vm_bo = temp_vm_bos[i];
+		ret = ops->vm_bo_validate(vm_bo, NULL);
+		drm_gpuvm_bo_put(vm_bo);
+		if (ret) {
+			/* Drop ref in case we break out of the loop. */
+			drm_gpuvm_bo_put(vm_bo);
+			break;
+		}
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(drm_gpuvm_validate_besteffort);
+
 /**
  * drm_gpuvm_resv_add_fence - add fence to private and all extobj
  * dma-resv

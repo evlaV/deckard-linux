@@ -115,7 +115,7 @@ is_flagged_unevictable(struct drm_gem_object *obj)
 	drm_gem_for_each_gpuvm_bo (vm_bo, obj) {
 		struct msm_gem_vm *msm_vm = to_msm_vm(vm_bo->vm);
 
-		if (msm_vm->unevictable)
+		if (atomic_read(&msm_vm->unevictable))
 			return true;
 	}
 
@@ -125,7 +125,10 @@ is_flagged_unevictable(struct drm_gem_object *obj)
 static bool
 purge(struct drm_gem_object *obj, struct ww_acquire_ctx *)
 {
-	if (!is_purgeable(to_msm_bo(obj)) || is_flagged_unevictable(obj))
+	bool fu = is_flagged_unevictable(obj);
+	if (fu)
+		printk("skippiung purge because flagged unevictable\n");
+	if (!is_purgeable(to_msm_bo(obj)) || fu)
 		return false;
 
 	if (msm_gem_active(obj))
@@ -137,7 +140,10 @@ purge(struct drm_gem_object *obj, struct ww_acquire_ctx *)
 static bool
 evict(struct drm_gem_object *obj, struct ww_acquire_ctx *)
 {
-	if (is_unevictable(to_msm_bo(obj)) || is_flagged_unevictable(obj))
+	bool fu = is_flagged_unevictable(obj);
+	if (fu)
+		printk("skippiung purge because flagged unevictable\n");
+	if (is_unevictable(to_msm_bo(obj)) || fu)
 		return false;
 
 	if (msm_gem_active(obj))

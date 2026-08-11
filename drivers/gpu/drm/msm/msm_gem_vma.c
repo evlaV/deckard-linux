@@ -453,6 +453,9 @@ msm_gem_vm_bo_validate(struct drm_gpuvm_bo *vm_bo, struct drm_exec *exec)
 
 	vm_dbg("validate: %p", obj);
 
+	if (!exec)
+		msm_gem_lock(obj);
+
 	msm_gem_assert_locked(obj);
 
 	drm_gpuvm_bo_for_each_va (vma, vm_bo) {
@@ -462,6 +465,9 @@ msm_gem_vm_bo_validate(struct drm_gpuvm_bo *vm_bo, struct drm_exec *exec)
 	}
 
 	drm_gpuvm_bo_evict(vm_bo, false);
+
+	if (!exec)
+		msm_gem_unlock(obj);
 
 	return 0;
 }
@@ -1459,6 +1465,9 @@ vm_bind_job_attach_fences(struct msm_vm_bind_job *job)
 }
 
 int
+drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm, struct drm_exec *exec);
+
+int
 msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 {
 	struct msm_drm_private *priv = dev->dev_private;
@@ -1571,6 +1580,9 @@ msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 	if (ret)
 		goto out_unlock;
 
+	atomic_inc_return(&to_msm_vm(job->vm)->unevictable);
+	drm_gpuvm_validate_besteffort(job->vm, NULL);
+
 	struct drm_exec exec;
 	unsigned flags = DRM_EXEC_IGNORE_DUPLICATES | DRM_EXEC_INTERRUPTIBLE_WAIT;
 	drm_exec_init(&exec, flags, nr_bos + 1);
@@ -1578,6 +1590,8 @@ msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 	ret = vm_bind_job_lock_objects(job, &exec);
 	if (ret)
 		goto out;
+
+	atomic_dec_return(&to_msm_vm(job->vm)->unevictable);
 
 	ret = vm_bind_job_pin_objects(job);
 	if (ret)

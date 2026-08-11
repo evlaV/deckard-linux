@@ -319,7 +319,7 @@ unevictable_pid_set(void *data, u64 val)
 		pid_t pid_nr = pid_vnr(pid);
 		if (pid_nr == val) {
 			if (ctx->vm)
-				to_msm_vm(ctx->vm)->unevictable = val;
+				atomic_inc_return(&to_msm_vm(ctx->vm)->unevictable);
 			ret = 0;
 		}
 	}

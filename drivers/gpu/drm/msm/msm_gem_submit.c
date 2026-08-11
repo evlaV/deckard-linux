@@ -541,6 +541,9 @@ void msm_submit_retire(struct msm_gem_submit *submit)
 	}
 }
 
+int
+drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm, struct drm_exec *exec);
+
 int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		struct drm_file *file)
 {
@@ -667,6 +670,9 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (ret)
 		goto out;
 
+	atomic_inc_return(&to_msm_vm(submit->vm)->unevictable);
+	drm_gpuvm_validate_besteffort(submit->vm, NULL);
+
 	trace_msm_gpu_submit_before_lock_objects(pid_nr(submit->pid), ring->id, submit->ident,
 		args->nr_bos, args->nr_cmds);
 	/* copy_*_user while holding a ww ticket upsets lockdep */
@@ -675,6 +681,8 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		goto out;
 	trace_msm_gpu_submit_after_lock_objects(pid_nr(submit->pid), ring->id, submit->ident,
 		args->nr_bos, args->nr_cmds);
+
+	atomic_dec_return(&to_msm_vm(submit->vm)->unevictable);
 
 	ret = submit_pin_objects(submit);
 	if (ret)
