@@ -513,10 +513,11 @@ static const struct bcl_desc pm8550b_data = {
 	.data_field_bits_size = 8,
 	.thresh_field_bits_size = 8,
 	.battery_config_field = REG_FIELD(0, 0, 0),
+	/* TODO Should be 2S but 1S/2S detect is missing */
 	.channel_cfg[BCL_BATT_1S][CHANNEL_IN] = {
-		.base = 2250,
-		.max = 3600,
-		.step = 25,
+		.base = 4500,
+		.max = 8400,
+		.step = 50,
 		.default_scale_nu = 194637,
 		.thresh_type = {THRESH_TYPE_ADC, THRESH_TYPE_INDEX},
 	},
@@ -867,6 +868,9 @@ static int bcl_in_input_read(struct bcl_device *bcl, long *out)
 		if (ret)
 			return ret;
 		raw_val |= FIELD_PREP(GENMASK(15, 8), msb);
+	} else if (raw_val == 127) {
+		*out = bcl->last_in_input;
+		return 0;
 	}
 
 	bcl->last_in_input =
