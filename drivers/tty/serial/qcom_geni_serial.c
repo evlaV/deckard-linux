@@ -1821,7 +1821,8 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 						port->wakeup_irq);
 		if (ret) {
 			device_init_wakeup(&pdev->dev, false);
-			ida_free(&port_ida, uport->line);
+			if (!uart_console(uport))
+				ida_free(&port_ida, uport->line);
 			uart_remove_one_port(drv, uport);
 			return ret;
 		}
@@ -1838,7 +1839,8 @@ static void qcom_geni_serial_remove(struct platform_device *pdev)
 
 	dev_pm_clear_wake_irq(&pdev->dev);
 	device_init_wakeup(&pdev->dev, false);
-	ida_free(&port_ida, uport->line);
+	if (!uart_console(uport))
+		ida_free(&port_ida, uport->line);
 	uart_remove_one_port(drv, &port->uport);
 }
 
