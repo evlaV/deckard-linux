@@ -1498,6 +1498,29 @@ drm_gpuvm_validate(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
 EXPORT_SYMBOL_GPL(drm_gpuvm_validate);
 
 int
+drm_gpuvm_validate_besteffort_take_lock(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
+{
+	const struct drm_gpuvm_ops *ops = gpuvm->ops;
+
+	if (unlikely(!ops || !ops->vm_bo_validate))
+		return -EOPNOTSUPP;
+
+	struct drm_gpuvm_bo *vm_bo;
+	struct drm_gpuvm_bo **temp_vm_bos = kmalloc(4096 * sizeof(void*), GFP_KERNEL);
+	LIST_HEAD(evict);
+	int ret = 0, count = 0;
+
+	drm_exec_init(exec, 0, 1);
+	drm_exec_until_all_locked(exec) {
+		drm_exec_lock_obj(exec, drm_gpuvm_resv_obj(gpuvm));
+		drm_exec_retry_on_contention(exec);
+		break;
+	}
+
+	return ret;
+}
+
+int
 drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
 {
 	const struct drm_gpuvm_ops *ops = gpuvm->ops;
@@ -1506,17 +1529,9 @@ drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
 		return -EOPNOTSUPP;
 
 	struct drm_gpuvm_bo *vm_bo;
-	struct drm_gpuvm_bo *temp_vm_bos[4096];
-	struct drm_exec vm_exec;
+	struct drm_gpuvm_bo **temp_vm_bos = kmalloc(4096 * sizeof(void*), GFP_KERNEL);
 	LIST_HEAD(evict);
 	int ret = 0, count = 0;
-
-	drm_exec_init(&vm_exec, 0, 1);
-	drm_exec_until_all_locked(&vm_exec) {
-		drm_exec_lock_obj(&vm_exec, drm_gpuvm_resv_obj(gpuvm));
-		drm_exec_retry_on_contention(&vm_exec);
-		break;
-	}
 
 	for_each_vm_bo_in_list(gpuvm, evict, &evict, vm_bo) {
 		temp_vm_bos[count++] = vm_bo;
@@ -1525,7 +1540,7 @@ drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
 
 	restore_vm_bo_list(gpuvm, evict);
 
-	drm_exec_fini(&vm_exec);
+	drm_exec_fini(exec);
 
 	for(int i = 0; i < count; i++) {
 		vm_bo = temp_vm_bos[i];
@@ -1537,6 +1552,8 @@ drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm, struct drm_exec *exec)
 			break;
 		}
 	}
+
+	kfree(temp_vm_bos);
 
 	return ret;
 }

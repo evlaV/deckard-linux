@@ -542,6 +542,8 @@ void msm_submit_retire(struct msm_gem_submit *submit)
 }
 
 int
+drm_gpuvm_validate_besteffort_take_lock(struct drm_gpuvm *gpuvm, struct drm_exec *exec);
+int
 drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm, struct drm_exec *exec);
 
 int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
@@ -671,7 +673,13 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		goto out;
 
 	atomic_inc_return(&to_msm_vm(submit->vm)->unevictable);
-	drm_gpuvm_validate_besteffort(submit->vm, NULL);
+
+	struct drm_exec vm_exec;
+	trace_msm_gpu_submit_before_lock_objects(pid_nr(submit->pid), 0, 0,
+		0, 0);
+	drm_gpuvm_validate_besteffort_take_lock(submit->vm, &vm_exec);
+	trace_msm_gpu_submit_after_lock_objects(pid_nr(submit->pid), 0, 0, 0, 0);
+	drm_gpuvm_validate_besteffort(submit->vm, &vm_exec);
 
 	trace_msm_gpu_submit_before_lock_objects(pid_nr(submit->pid), ring->id, submit->ident,
 		args->nr_bos, args->nr_cmds);

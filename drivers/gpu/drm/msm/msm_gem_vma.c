@@ -813,8 +813,6 @@ msm_vma_job_free(struct drm_sched_job *_job)
 		ring.id = 10;
 		submit.ring = &ring;
 
-		trace_msm_gpu_submit_flush(&submit, 0, 0);
-
 		trace_msm_gpu_submit_retired(&submit, 0, 0,
 			0, 0);
 	}
@@ -1465,6 +1463,8 @@ vm_bind_job_attach_fences(struct msm_vm_bind_job *job)
 }
 
 int
+drm_gpuvm_validate_besteffort_take_lock(struct drm_gpuvm *gpuvm, struct drm_exec *exec);
+int
 drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm, struct drm_exec *exec);
 
 int
@@ -1580,8 +1580,13 @@ msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 	if (ret)
 		goto out_unlock;
 
+	struct drm_exec vm_exec;
 	atomic_inc_return(&to_msm_vm(job->vm)->unevictable);
-	drm_gpuvm_validate_besteffort(job->vm, NULL);
+	trace_msm_gpu_submit_before_lock_objects(pid_nr(job->pid), 1, 0,
+		0, 0);
+	drm_gpuvm_validate_besteffort_take_lock(job->vm, &vm_exec);
+	trace_msm_gpu_submit_after_lock_objects(pid_nr(job->pid), 1, 0, 0, 0);
+	drm_gpuvm_validate_besteffort(job->vm, &vm_exec);
 
 	struct drm_exec exec;
 	unsigned flags = DRM_EXEC_IGNORE_DUPLICATES | DRM_EXEC_INTERRUPTIBLE_WAIT;
