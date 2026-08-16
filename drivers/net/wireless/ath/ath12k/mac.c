@@ -3435,7 +3435,7 @@ static int ath12k_mac_set_he_txbf_conf(struct ath12k_link_vif *arvif)
 	if (!link_conf->he_support)
 		return 0;
 
-	if (link_conf->he_su_beamformer) {
+	if (link_conf->he_su_beamformer && !ath12k_disable_txbf) {
 		value |= u32_encode_bits(HE_SU_BFER_ENABLE, HE_MODE_SU_TX_BFER);
 		if (link_conf->he_mu_beamformer &&
 		    ahvif->vdev_type == WMI_VDEV_TYPE_AP)
@@ -3554,7 +3554,7 @@ static int ath12k_mac_set_eht_txbf_conf(struct ath12k_link_vif *arvif)
 	if (!link_conf->eht_support)
 		return 0;
 
-	if (link_conf->eht_su_beamformer) {
+	if (link_conf->eht_su_beamformer && !ath12k_disable_txbf) {
 		value |= u32_encode_bits(EHT_SU_BFER_ENABLE, EHT_MODE_SU_TX_BFER);
 		if (link_conf->eht_mu_beamformer &&
 		    ahvif->vdev_type == WMI_VDEV_TYPE_AP)
@@ -7661,6 +7661,10 @@ static int ath12k_mac_set_txbf_conf(struct ath12k_link_vif *arvif)
 	u32 vht_cap = ar->pdev->cap.vht_cap;
 	u32 vdev_param = WMI_VDEV_PARAM_TXBF;
 
+	if (ath12k_disable_txbf)
+		vht_cap &= ~(IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE |
+			     IEEE80211_VHT_CAP_MU_BEAMFORMER_CAPABLE);
+
 	if (vht_cap & (IEEE80211_VHT_CAP_SU_BEAMFORMEE_CAPABLE)) {
 		nsts = vht_cap & IEEE80211_VHT_CAP_BEAMFORMEE_STS_MASK;
 		nsts >>= IEEE80211_VHT_CAP_BEAMFORMEE_STS_SHIFT;
@@ -7706,6 +7710,11 @@ static void ath12k_set_vht_txbf_cap(struct ath12k *ar, u32 *vht_cap)
 
 	subfer = !!(*vht_cap & (IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE));
 	subfee = !!(*vht_cap & (IEEE80211_VHT_CAP_SU_BEAMFORMEE_CAPABLE));
+
+	if (ath12k_disable_txbf) {
+		*vht_cap &= ~(IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE);
+		subfer = false;
+	}
 
 	if (ar->num_tx_chains < 2) {
 		*vht_cap &= ~(IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE);
@@ -8031,7 +8040,17 @@ static void ath12k_mac_copy_he_cap(struct ath12k *ar,
 		~IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_80PLUS80_MHZ_IN_5G;
 	he_cap_elem->phy_cap_info[5] &=
 		~IEEE80211_HE_PHY_CAP5_BEAMFORMEE_NUM_SND_DIM_UNDER_80MHZ_MASK;
-	he_cap_elem->phy_cap_info[5] |= num_tx_chains - 1;
+
+	if (ath12k_disable_txbf) {
+		he_cap_elem->phy_cap_info[3] &=
+			~IEEE80211_HE_PHY_CAP3_SU_BEAMFORMER;
+		he_cap_elem->phy_cap_info[4] &=
+			~IEEE80211_HE_PHY_CAP4_MU_BEAMFORMER;
+		he_cap_elem->phy_cap_info[5] &=
+			~IEEE80211_HE_PHY_CAP5_BEAMFORMEE_NUM_SND_DIM_ABOVE_80MHZ_MASK;
+	} else {
+		he_cap_elem->phy_cap_info[5] |= num_tx_chains - 1;
+	}
 
 	switch (iftype) {
 	case NL80211_IFTYPE_AP:
@@ -8185,6 +8204,21 @@ static void ath12k_mac_copy_eht_cap(struct ath12k *ar,
 	       sizeof(eht_cap_elem->mac_cap_info));
 	memcpy(eht_cap_elem->phy_cap_info, band_cap->eht_cap_phy_info,
 	       sizeof(eht_cap_elem->phy_cap_info));
+
+	if (ath12k_disable_txbf) {
+		eht_cap_elem->phy_cap_info[0] &=
+			~IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMER;
+		eht_cap_elem->phy_cap_info[2] &=
+			(u8)~(IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_80MHZ_MASK |
+			      IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_160MHZ_MASK |
+			      IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_320MHZ_MASK);
+		eht_cap_elem->phy_cap_info[3] &=
+			~IEEE80211_EHT_PHY_CAP3_SOUNDING_DIM_320MHZ_MASK;
+		eht_cap_elem->phy_cap_info[7] &=
+			~(IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_80MHZ |
+			  IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_160MHZ |
+			  IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_320MHZ);
+	}
 
 	switch (iftype) {
 	case NL80211_IFTYPE_AP:
