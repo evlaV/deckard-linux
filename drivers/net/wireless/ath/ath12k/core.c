@@ -32,6 +32,13 @@ module_param_named(gtx, ath12k_gtx, int, 0644);
 MODULE_PARM_DESC(gtx,
 		 "Green TX, applied as each vdev comes up: -1=BDF default (default), 0=disable, 1=enable");
 
+bool ath12k_disable_txbf = true;
+#if 0
+module_param_named(disable_txbf, ath12k_disable_txbf, bool, 0444);
+MODULE_PARM_DESC(disable_txbf,
+		 "Drop the TX beamformer role: 1=dropped (default), 0=enable beamforming");
+#endif
+
 bool ath12k_ftm_mode;
 module_param_named(ftm_mode, ath12k_ftm_mode, bool, 0444);
 MODULE_PARM_DESC(ftm_mode, "Boots up in factory test mode");
