@@ -1325,6 +1325,34 @@ vm_bind_job_lock_objects(struct msm_vm_bind_job *job, struct drm_exec *exec)
  * other objects for evicting.
  */
 static int
+vm_bind_job_pre_pin_objects(struct msm_vm_bind_job *job)
+{
+	struct drm_gem_object *obj;
+
+	/*
+	 * First loop, before holding the LRU lock, avoids holding the
+	 * LRU lock while calling msm_gem_pin_vma_locked (which could
+	 * trigger get_pages())
+	 */
+	job_foreach_bo (obj, job) {
+		struct page **pages;
+
+		msm_gem_lock(obj);
+		pages = msm_gem_get_pages_locked(obj, MSM_MADV_WILLNEED);
+		msm_gem_unlock(obj);
+		if (IS_ERR(pages))
+			return PTR_ERR(pages);
+	}
+
+	return 0;
+}
+
+/*
+ * Pin GEM objects, ensuring that we have backing pages.  Pinning will move
+ * the object to the pinned LRU so that the shrinker knows to first consider
+ * other objects for evicting.
+ */
+static int
 vm_bind_job_pin_objects(struct msm_vm_bind_job *job)
 {
 	struct drm_gem_object *obj;
@@ -1580,21 +1608,23 @@ msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 	if (ret)
 		goto out_unlock;
 
-	struct drm_exec vm_exec;
 	atomic_inc_return(&to_msm_vm(job->vm)->unevictable);
 	trace_msm_gpu_submit_before_lock_objects(pid_nr(job->pid), 1, 0,
 		0, 0);
-	drm_gpuvm_validate_besteffort_take_lock(job->vm, &vm_exec);
+	ret = vm_bind_job_pre_pin_objects(job);
+	if (ret)
+		goto out;
 	trace_msm_gpu_submit_after_lock_objects(pid_nr(job->pid), 1, 0, 0, 0);
-	drm_gpuvm_validate_besteffort(job->vm, &vm_exec);
 
 	struct drm_exec exec;
 	unsigned flags = DRM_EXEC_IGNORE_DUPLICATES | DRM_EXEC_INTERRUPTIBLE_WAIT;
 	drm_exec_init(&exec, flags, nr_bos + 1);
 
+	trace_msm_gpu_submit_before_lock_objects(pid_nr(job->pid), 1, 0, 0, 0);
 	ret = vm_bind_job_lock_objects(job, &exec);
 	if (ret)
 		goto out;
+	trace_msm_gpu_submit_after_lock_objects(pid_nr(job->pid), 1, 0, 0, 0);
 
 	atomic_dec_return(&to_msm_vm(job->vm)->unevictable);
 
@@ -1602,9 +1632,13 @@ msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 	if (ret)
 		goto out;
 
+	trace_msm_gpu_submit_after_pin_objects(pid_nr(job->pid), 1, 0, 0, 0);
+
 	ret = vm_bind_job_prepare(job);
 	if (ret)
 		goto out;
+
+	trace_msm_gpu_submit_after_pin_objects(pid_nr(job->pid), 1, 1, 0, 0);
 
 	drm_sched_job_arm(&job->base);
 
