@@ -467,6 +467,51 @@ static int max98390_dai_set_sysclk(struct snd_soc_dai *dai,
 }
 
 /*
+ * Interrupt decode, indexed by bit position within the latched flag banks.
+ * *_STATE is set by a rising edge on the corresponding *_RAW bit and cleared
+ * only by writing 1 to *_CLR, so a condition that is still present does not
+ * re-latch and the level-triggered line needs no storm protection.
+ *
+ * The thermal stages are worth reporting because the device acts on them
+ * itself: it disables the Class-D amplifier above the shutdown threshold, and
+ * after such a shutdown clears EN once the die drops back below the warning
+ * threshold. The driver has no other way to learn that the part has put itself
+ * into software shutdown.
+ */
+static const char * const max98390_int1_msg[8] = {
+	"brownout: BDE back to normal",
+	"brownout: BDE active",
+	"brownout: level change",
+	"brownout: entered level 4",
+	"thermal warning cleared: die below warn threshold",
+	"thermal warning: die above warn threshold",
+	"thermal shutdown cleared: die below shutdown threshold",
+	"thermal shutdown: die above shutdown threshold",
+};
+
+static const char * const max98390_int2_msg[8] = {
+	"watchdog timer at 75%",
+	"watchdog timer expired",
+	"boost input current limit reached",
+	"power-down done",
+	"power-up done",
+	"power-up failed",
+	"speaker overcurrent: amp current limit exceeded",
+	"boost UVLO: output below minimum voltage",
+};
+
+static const char * const max98390_int3_msg[8] = {
+	"BCLK rate error",
+	"BCLK rate error recovered",
+	"LRCLK rate error",
+	"LRCLK rate error recovered",
+	"frame error: BCLK/LRCLK ratio does not match BSEL",
+	"frame error recovered",
+	"data monitor: DC detected in input",
+	NULL,	/* reserved */
+};
+
+/*
  * The two thermal sources the driver acts on by itself. The shutdown is worth
  * reporting because the device disables the Class-D amplifier on its own, and
  * the end of the warning excursion is what tells us it has also cleared EN;
@@ -485,6 +530,65 @@ static int max98390_dai_set_sysclk(struct snd_soc_dai *dai,
  */
 #define MAX98390_IRQ_STORM_INTERVAL	HZ
 #define MAX98390_IRQ_STORM_BURST	100
+
+/*
+ * Events that are the ordinary outcome of an operation rather than the
+ * consequence of a fault, logged at debug level.
+ *
+ * The return-to-normal reports are deliberately excluded. Each one is the
+ * trailing edge of a corresponding error - a clock recovery is only generated
+ * after a clock error, and the brownout engine can only re-enter level 0 having
+ * left it - so keeping both ends at warning level is what makes the duration of
+ * a fault readable from the log.
+ */
+#define MAX98390_INT1_ROUTINE	0
+#define MAX98390_INT2_ROUTINE	(BIT(4) | BIT(3))
+#define MAX98390_INT3_ROUTINE	0
+
+/*
+ * The masks default to the two sources the driver acts on, so this reports
+ * nothing new unless one is widened. They are read-only at runtime and can only
+ * be set at module load or on the kernel command line.
+ */
+static unsigned int max98390_int_en1 = MAX98390_INT1_ESSENTIAL;
+static unsigned int max98390_int_en2;
+static unsigned int max98390_int_en3;
+
+module_param_named(int_en1, max98390_int_en1, uint, 0444);
+MODULE_PARM_DESC(int_en1,
+	"INT_EN1 mask: thermal and brownout (default 0x90, 0xff for all)");
+module_param_named(int_en2, max98390_int_en2, uint, 0444);
+MODULE_PARM_DESC(int_en2,
+	"INT_EN2 mask: supply, overcurrent, watchdog (default 0, 0xff for all)");
+module_param_named(int_en3, max98390_int_en3, uint, 0444);
+MODULE_PARM_DESC(int_en3,
+	"INT_EN3 mask: clocking, bit 7 reserved (default 0, 0x7f for all)");
+/* Live status, to accompany a fault report. */
+static void max98390_log_state(struct max98390_priv *max98390)
+{
+	unsigned int gate = 0, bde = 0, vbat = 0, die = 0, gain = 0;
+	unsigned int rdc_hi = 0, rdc_lo = 0, coil_hi = 0, coil_lo = 0;
+
+	regmap_read(max98390->regmap, MAX98390_PWR_GATE_STATUS, &gate);
+	regmap_read(max98390->regmap, MAX98390_BROWNOUT_STATUS, &bde);
+	regmap_read(max98390->regmap, MAX98390_MEAS_ADC_CH0_READ, &vbat);
+	regmap_read(max98390->regmap, MAX98390_MEAS_ADC_CH2_READ, &die);
+	regmap_read(max98390->regmap, DSM_THERMAL_GAIN, &gain);
+	regmap_read(max98390->regmap, THERMAL_RDC_RD_BACK_BYTE1, &rdc_hi);
+	regmap_read(max98390->regmap, THERMAL_RDC_RD_BACK_BYTE0, &rdc_lo);
+	regmap_read(max98390->regmap, THERMAL_COILTEMP_RD_BACK_BYTE1, &coil_hi);
+	regmap_read(max98390->regmap, THERMAL_COILTEMP_RD_BACK_BYTE0, &coil_lo);
+
+	dev_warn_ratelimited(max98390->dev,
+		"state: pwrgate=0x%02x bde=0x%02x thermgain=0x%02x vbat_adc=0x%02x die=%dC rdc=%u coil=%dC\n",
+		gate, bde, gain, vbat,
+		/* die temperature: T = code * 1.28 - 29 */
+		((int)die * 128 - 2900) / 100,
+		/* Rdc readback is 14 bit, 1 LSB = 11/768 ohm */
+		((rdc_hi & 0x3f) << 8) | rdc_lo,
+		/* coil temperature is <4,12> fixed point, 100/4096 C per LSB */
+		((int)(s16)((coil_hi << 8) | coil_lo) * 100) / 4096);
+}
 
 /*
  * The device clears EN itself at the end of a thermal shutdown, once the die has
@@ -532,8 +636,24 @@ static void max98390_thermal_rearm(struct max98390_priv *max98390)
 
 static irqreturn_t max98390_irq(int irq, void *data)
 {
+	static const struct {
+		unsigned int flag;
+		unsigned int clr;
+		const char * const *msg;
+		unsigned int routine;
+	} bank[] = {
+		{ MAX98390_INT_FLAG1, MAX98390_INT_FLAG_CLR1,
+		  max98390_int1_msg, MAX98390_INT1_ROUTINE },
+		{ MAX98390_INT_FLAG2, MAX98390_INT_FLAG_CLR2,
+		  max98390_int2_msg, MAX98390_INT2_ROUTINE },
+		{ MAX98390_INT_FLAG3, MAX98390_INT_FLAG_CLR3,
+		  max98390_int3_msg, MAX98390_INT3_ROUTINE },
+	};
 	struct max98390_priv *max98390 = data;
-	unsigned int flag;
+	irqreturn_t ret = IRQ_NONE;
+	unsigned int flag, int1 = 0;
+	bool fault = false;
+	int i, bit;
 
 	if (!__ratelimit(&max98390->storm)) {
 		dev_err(max98390->dev, "interrupt storm, disabling irq %d\n",
@@ -542,23 +662,44 @@ static irqreturn_t max98390_irq(int irq, void *data)
 		return IRQ_HANDLED;
 	}
 
-	if (regmap_read(max98390->regmap, MAX98390_INT_FLAG1, &flag) || !flag)
-		return IRQ_NONE;
+	for (i = 0; i < ARRAY_SIZE(bank); i++) {
+		if (regmap_read(max98390->regmap, bank[i].flag, &flag))
+			continue;
+		if (!flag)
+			continue;
 
-	if (flag & MAX98390_INT1_THERMSHDN_START)
-		dev_warn_ratelimited(max98390->dev,
-			"thermal shutdown: die above shutdown threshold\n");
+		if (bank[i].flag == MAX98390_INT_FLAG1)
+			int1 = flag;
 
-	/*
-	 * Clear only what was read, so anything latching in between re-asserts
-	 * IRQ instead of being lost.
-	 */
-	regmap_write(max98390->regmap, MAX98390_INT_FLAG_CLR1, flag);
+		for (bit = 0; bit < 8; bit++) {
+			if (!(flag & BIT(bit)) || !bank[i].msg[bit])
+				continue;
 
-	if (flag & MAX98390_INT1_THERMWARN_END)
+			if (bank[i].routine & BIT(bit)) {
+				dev_dbg_ratelimited(max98390->dev, "%s\n",
+						    bank[i].msg[bit]);
+			} else {
+				dev_warn_ratelimited(max98390->dev, "%s\n",
+						     bank[i].msg[bit]);
+				fault = true;
+			}
+		}
+
+		/*
+		 * Clear only what was read, so anything latching in between
+		 * re-asserts IRQ instead of being lost.
+		 */
+		regmap_write(max98390->regmap, bank[i].clr, flag);
+		ret = IRQ_HANDLED;
+	}
+
+	if (fault)
+		max98390_log_state(max98390);
+
+	if (int1 & MAX98390_INT1_THERMWARN_END)
 		max98390_thermal_rearm(max98390);
 
-	return IRQ_HANDLED;
+	return ret;
 }
 
 /*
@@ -590,13 +731,13 @@ static void max98390_irq_setup(struct snd_soc_component *component)
 	regmap_write(max98390->regmap, MAX98390_INT_FLAG_CLR2, 0xff);
 	regmap_write(max98390->regmap, MAX98390_INT_FLAG_CLR3, 0xff);
 
-	regmap_write(max98390->regmap, MAX98390_INT_EN1,
-		     MAX98390_INT1_ESSENTIAL);
-	regmap_write(max98390->regmap, MAX98390_INT_EN2, 0);
-	regmap_write(max98390->regmap, MAX98390_INT_EN3, 0);
+	regmap_write(max98390->regmap, MAX98390_INT_EN1, max98390_int_en1);
+	regmap_write(max98390->regmap, MAX98390_INT_EN2, max98390_int_en2);
+	regmap_write(max98390->regmap, MAX98390_INT_EN3, max98390_int_en3);
 
-	dev_info(component->dev, "irq %d armed, en=0x%02lx\n",
-		 max98390->irq, MAX98390_INT1_ESSENTIAL);
+	dev_info(component->dev, "irq %d armed, en=0x%02x/0x%02x/0x%02x\n",
+		 max98390->irq, max98390_int_en1, max98390_int_en2,
+		 max98390_int_en3);
 
 	/*
 	 * Only ever touched from the threaded handler, which cannot run
