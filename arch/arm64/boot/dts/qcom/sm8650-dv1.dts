@@ -1952,7 +1952,9 @@
         maxim,temperature_calib = <1024>; // TODO
         maxim,r0_calib = <100232>; // TODO
         reset-gpios = <&tlmm 73 GPIO_ACTIVE_LOW>;
-        // irq-gpios = <&tlmm 186 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
+        interrupts-extended = <&tlmm 186 IRQ_TYPE_LEVEL_LOW>;
+        pinctrl-0 = <&r_spkr_irq_default_state>;
+        pinctrl-names = "default";
         #sound-dai-cells = <0>;
         sound-name-prefix = "Speaker Right";
     };
@@ -1964,10 +1966,28 @@
         maxim,temperature_calib = <1024>; // TODO
         maxim,r0_calib = <100232>; // TODO
         reset-gpios = <&tlmm 161 GPIO_ACTIVE_LOW>;
-        // irq-gpios = <&tlmm 77 GPIO_ACTIVE_LOW>;  XXX TODO add IRQ support to driver, set as open drain
+        interrupts-extended = <&tlmm 77 IRQ_TYPE_LEVEL_LOW>;
+        pinctrl-0 = <&l_spkr_irq_default_state>;
+        pinctrl-names = "default";
         #sound-dai-cells = <0>;
         sound-name-prefix = "Speaker Left";
     };
+};
+
+&tlmm {
+	// MAX98390 interrupt lines. The amplifier drives IRQ open drain, so the
+	// high level comes from these pull-ups.
+	l_spkr_irq_default_state: l-spkr-irq-default {
+		pins = "gpio77";
+		function = "gpio";
+		bias-pull-up;
+	};
+
+	r_spkr_irq_default_state: r-spkr-irq-default {
+		pins = "gpio186";
+		function = "gpio";
+		bias-pull-up;
+	};
 };
 
 // Disable Soundwire
