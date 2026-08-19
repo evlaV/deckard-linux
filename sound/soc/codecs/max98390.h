@@ -657,6 +657,7 @@ struct max98390_priv {
 	struct regmap *regmap;
 	struct device *dev;
 	int irq;
+	struct ratelimit_state storm;
 	unsigned int sysclk;
 	unsigned int provider;
 	unsigned int tdm_mode;
