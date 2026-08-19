@@ -14,6 +14,7 @@
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include <linux/ratelimit.h>
 #include <linux/regmap.h>
 #include <linux/slab.h>
 #include <linux/time.h>
@@ -477,6 +478,15 @@ static int max98390_dai_set_sysclk(struct snd_soc_dai *dai,
 					 MAX98390_INT1_THERMWARN_END)
 
 /*
+ * A source the driver cannot keep up with would otherwise loop indefinitely: a
+ * level-triggered line that is not cleared re-asserts as soon as the threaded
+ * handler unmasks it, and because each pass returns IRQ_HANDLED the core's own
+ * spurious detector never engages. Give up rather than tie up the i2c bus.
+ */
+#define MAX98390_IRQ_STORM_INTERVAL	HZ
+#define MAX98390_IRQ_STORM_BURST	100
+
+/*
  * The device clears EN itself at the end of a thermal shutdown, once the die has
  * cooled back below the thermal warning threshold, and does not restart on its
  * own.
@@ -524,6 +534,13 @@ static irqreturn_t max98390_irq(int irq, void *data)
 {
 	struct max98390_priv *max98390 = data;
 	unsigned int flag;
+
+	if (!__ratelimit(&max98390->storm)) {
+		dev_err(max98390->dev, "interrupt storm, disabling irq %d\n",
+			max98390->irq);
+		disable_irq_nosync(max98390->irq);
+		return IRQ_HANDLED;
+	}
 
 	if (regmap_read(max98390->regmap, MAX98390_INT_FLAG1, &flag) || !flag)
 		return IRQ_NONE;
@@ -580,6 +597,13 @@ static void max98390_irq_setup(struct snd_soc_component *component)
 
 	dev_info(component->dev, "irq %d armed, en=0x%02lx\n",
 		 max98390->irq, MAX98390_INT1_ESSENTIAL);
+
+	/*
+	 * Only ever touched from the threaded handler, which cannot run
+	 * concurrently with itself, so the state needs no locking of its own.
+	 */
+	ratelimit_state_init(&max98390->storm, MAX98390_IRQ_STORM_INTERVAL,
+			     MAX98390_IRQ_STORM_BURST);
 
 	/* Requested with IRQF_NO_AUTOEN; safe to enable now. */
 	enable_irq(max98390->irq);
