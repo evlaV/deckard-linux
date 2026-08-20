@@ -15097,7 +15097,12 @@ static int ath12k_mac_hw_register(struct ath12k_hw *ah)
 		u32 ht_cap_info = 0;
 
 		pdev = ar->pdev;
-		if (ar->ab->pdevs_macaddr_valid) {
+		if (ath12k_core_get_mac_addr_override(ar->ab, ar->ab->mac_addr)) {
+			ether_addr_copy(ar->mac_addr, ar->ab->mac_addr);
+			ar->mac_addr[4] += ar->pdev_idx;
+			ath12k_info(ar->ab, "using mac address %pM\n",
+				    ar->mac_addr);
+		} else if (ar->ab->pdevs_macaddr_valid) {
 			ether_addr_copy(ar->mac_addr, pdev->mac_addr);
 		} else {
 			ether_addr_copy(ar->mac_addr, ar->ab->mac_addr);
