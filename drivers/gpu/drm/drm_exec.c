@@ -260,6 +260,11 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 
 	if (exec->flags & DRM_EXEC_INTERRUPTIBLE_WAIT)
 	{
+		if(owner_pid > 0 && !strcmp(current->group_leader->comm, "vrcompositor"))
+		{
+			//HACK : skip over locking if it is owned already
+			return 0;
+		}
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 		ret = dma_resv_lock_interruptible(obj->resv, &exec->ticket);
 		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(1000), gabe, "[lock] dma_resv_lock_interruptible [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
