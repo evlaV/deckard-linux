@@ -11,6 +11,8 @@
 #include <linux/firmware.h>
 #include <linux/of.h>
 #include <linux/of_graph.h>
+#include <linux/etherdevice.h>
+#include <linux/hex.h>
 #include "ahb.h"
 #include "core.h"
 #include "dp_tx.h"
@@ -46,6 +48,11 @@ MODULE_PARM_DESC(ftm_mode, "Boots up in factory test mode");
 static char param_default_bdf[50] = "";
 module_param_string(default_bdf, param_default_bdf, sizeof(param_default_bdf), 0644);
 MODULE_PARM_DESC(default_bdf, "Name of BDF file to load if board_id is not set");
+
+static char param_mac_addr[18] = "";
+module_param_string(mac_addr, param_mac_addr, sizeof(param_mac_addr), 0444);
+MODULE_PARM_DESC(mac_addr,
+		 "Override the internal MAC address (format aa:bb:cc:dd:ee:ff)");
 
 static unsigned int ath12k_rx_reorder_timeout[WME_NUM_AC];
 static unsigned int ath12k_rx_reorder_timeout_num;
@@ -86,6 +93,27 @@ void ath12k_get_rx_reorder_timeout(u32 timeout[WME_NUM_AC])
 		     timeout[3]);
 }
 EXPORT_SYMBOL(ath12k_get_rx_reorder_timeout);
+
+bool ath12k_core_get_mac_addr_override(struct ath12k_base *ab, u8 *addr)
+{
+	u8 mac[ETH_ALEN];
+
+	if (param_mac_addr[0]) {
+		if (mac_pton(param_mac_addr, mac) && is_valid_ether_addr(mac)) {
+			ether_addr_copy(addr, mac);
+			return true;
+		}
+		pr_warn_once("ath12k: ignoring invalid mac_addr parameter '%s'\n",
+			     param_mac_addr);
+	}
+
+	if (!device_get_mac_address(ab->dev, mac)) {
+		ether_addr_copy(addr, mac);
+		return true;
+	}
+
+	return false;
+}
 
 /* protected with ath12k_hw_group_mutex */
 static struct list_head ath12k_hw_group_list = LIST_HEAD_INIT(ath12k_hw_group_list);

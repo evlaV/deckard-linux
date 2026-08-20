@@ -1363,6 +1363,7 @@ int ath12k_core_suspend_late(struct ath12k_base *ab);
 void ath12k_core_hw_group_unassign(struct ath12k_base *ab);
 u8 ath12k_get_num_partner_link(struct ath12k *ar);
 void ath12k_get_rx_reorder_timeout(u32 timeout[WME_NUM_AC]);
+bool ath12k_core_get_mac_addr_override(struct ath12k_base *ab, u8 *addr);
 
 const struct firmware *ath12k_core_firmware_request(struct ath12k_base *ab,
 						    const char *filename);
