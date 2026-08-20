@@ -541,6 +541,11 @@ void msm_submit_retire(struct msm_gem_submit *submit)
 	}
 }
 
+int
+drm_gpuvm_validate_besteffort_take_lock(struct drm_gpuvm *gpuvm, struct drm_exec *exec);
+int
+drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm, struct drm_exec *exec);
+
 int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		struct drm_file *file)
 {
@@ -664,10 +669,18 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (ret)
 		goto out;
 
+	atomic_inc_return(&to_msm_vm(submit->vm)->unevictable);
+
+	struct drm_exec vm_exec;
+	drm_gpuvm_validate_besteffort_take_lock(submit->vm, &vm_exec);
+	drm_gpuvm_validate_besteffort(submit->vm, &vm_exec);
+
 	/* copy_*_user while holding a ww ticket upsets lockdep */
 	ret = submit_lock_objects(submit);
 	if (ret)
 		goto out;
+
+	atomic_dec_return(&to_msm_vm(submit->vm)->unevictable);
 
 	ret = submit_pin_objects(submit);
 	if (ret)
@@ -798,7 +811,7 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if(submit && submit->ring->id == 0 && ctx->vm)
 	{
 		//if the ring id is 0, this is the high priority ring, so mark the work as unevictable
-		to_msm_vm(ctx->vm)->unevictable = 1;
+		atomic_cmpxchg(&to_msm_vm(ctx->vm)->unevictable, 0, 1);
 	}
 	
 	/* The scheduler owns a ref now: */
