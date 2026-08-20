@@ -1006,10 +1006,10 @@ void msm_gem_describe(struct drm_gem_object *obj, struct seq_file *m,
 		break;
 	}
 
-	seq_printf(m, "%08x: %c %2d (%2d) %08llx %p",
-			msm_obj->flags, msm_gem_active(obj) ? 'A' : 'I',
-			obj->name, kref_read(&obj->refcount),
-			off, msm_obj->vaddr);
+	seq_printf(m, "%08x: %c %2d (%2d) %08llx %p obj=%p",
+           msm_obj->flags, msm_gem_active(obj) ? 'A' : 'I',
+           obj->name, kref_read(&obj->refcount),
+           off, msm_obj->vaddr, obj);
 
 	seq_printf(m, " %08zu %9s %-32s\n", obj->size, madv, msm_obj->name);
 
