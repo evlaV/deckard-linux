@@ -156,6 +156,8 @@ struct msm_gem_vm {
 	bool unusable;
 
 	bool unevictable;
+
+	bool no_lock_hack;
 };
 #define to_msm_vm(x) container_of(x, struct msm_gem_vm, base)
 
