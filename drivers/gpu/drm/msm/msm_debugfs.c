@@ -322,7 +322,15 @@ unevictable_pid_set(void *data, u64 val)
 		pid_t pid_nr = pid_vnr(pid);
 		if (pid_nr == val) {
 			if (ctx->vm)
-				to_msm_vm(ctx->vm)->unevictable = val;
+				to_msm_vm(ctx->vm)->unevictable = 1;
+			ret = 0;
+		}
+
+		//trying to set 0 means set the bool back to false
+		if ( val == 0 && pid_nr == unevictable_pid )
+		{
+			if (ctx->vm)
+				to_msm_vm(ctx->vm)->unevictable = 0;
 			ret = 0;
 		}
 	}
@@ -338,6 +346,60 @@ unevictable_pid_set(void *data, u64 val)
 
 DEFINE_DEBUGFS_ATTRIBUTE(unevictable_pid_fops,
 			 unevictable_pid_get, unevictable_pid_set,
+			 "%llu\n");
+
+static u64 nolockhack = 0;
+
+static int
+nolockhack_get(void *data, u64 *val)
+{
+	struct drm_device *dev = data;
+	struct drm_file *priv;
+	*val = nolockhack;
+	return 0;
+}
+
+static int
+nolockhack_set(void *data, u64 val)
+{
+	struct drm_device *dev = data;
+	struct drm_file *priv;
+	int ret = -EINVAL;
+
+	mutex_lock(&dev->filelist_mutex);
+	list_for_each_entry_reverse(priv, &dev->filelist, lhead) {
+		struct msm_context *ctx = priv->driver_priv;
+		struct pid *pid;
+		struct task_struct *task;
+		pid_t pid_nr;
+		pid = rcu_dereference_protected(priv->pid, 
+			lockdep_is_held(&dev->filelist_mutex));
+		if (!pid) continue;
+		pid_nr = pid_vnr(pid);
+		if (ctx->vm && to_msm_vm(ctx->vm)->unevictable) {
+			task = get_pid_task(pid, PIDTYPE_PID);
+			if (task) {
+				if( !strcmp(task->comm,"vrcompositor") )
+				{
+					to_msm_vm(ctx->vm)->no_lock_hack = val;
+					ret = 0;
+				}
+				put_task_struct(task);
+			}
+		}
+	}
+	mutex_unlock(&dev->filelist_mutex);
+
+	if( ret == 0 )
+		nolockhack = val;
+	else
+		nolockhack = 0;
+
+	return ret;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(nolockhack_fops,
+			 nolockhack_get, nolockhack_set,
 			 "%llu\n");
 
 static int unevictable_pids_show(struct seq_file *m, void *v)
@@ -623,6 +685,9 @@ void msm_debugfs_init(struct drm_minor *minor)
 
 	debugfs_create_file("shrink_pid", S_IRWXU, minor->debugfs_root,
 		dev, &shrink_pid_fops);
+
+	debugfs_create_file("nolockhack", S_IRWXU, minor->debugfs_root,
+		dev, &nolockhack_fops);
 
 	debugfs_create_file("unevictable_pid", S_IRWXU, minor->debugfs_root,
 		dev, &unevictable_pid_fops);
