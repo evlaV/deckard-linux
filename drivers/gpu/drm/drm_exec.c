@@ -221,7 +221,14 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 	}
 
 	if (exec->flags & DRM_EXEC_INTERRUPTIBLE_WAIT)
+	{
+		if( (exec->flags & DRM_EXEC_UNEVICTABLE) && (exec->flags & DRM_EXEC_LOCK_HACK) )
+		{
+			//hack: skip locking
+			return 0;
+		}
 		ret = dma_resv_lock_interruptible(obj->resv, &exec->ticket);
+	}
 	else
 		ret = dma_resv_lock(obj->resv, &exec->ticket);
 

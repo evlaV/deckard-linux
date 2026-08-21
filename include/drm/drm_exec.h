@@ -8,6 +8,8 @@
 
 #define DRM_EXEC_INTERRUPTIBLE_WAIT	BIT(0)
 #define DRM_EXEC_IGNORE_DUPLICATES	BIT(1)
+#define DRM_EXEC_UNEVICTABLE		BIT(2)
+#define DRM_EXEC_LOCK_HACK			BIT(3)
 
 struct drm_gem_object;
 

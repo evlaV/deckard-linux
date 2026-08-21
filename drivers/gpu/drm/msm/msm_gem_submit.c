@@ -276,6 +276,16 @@ static int submit_lock_objects_vmbind(struct msm_gem_submit *submit)
 	unsigned flags = DRM_EXEC_INTERRUPTIBLE_WAIT | DRM_EXEC_IGNORE_DUPLICATES;
 	struct drm_exec *exec = &submit->exec;
 	int ret = 0;
+	struct msm_gem_vm *vm = to_msm_vm(submit->vm);
+	
+	if(vm->unevictable)
+	{
+		flags |= DRM_EXEC_UNEVICTABLE;
+		if( ! vm->no_lock_hack )
+		{
+			flags |= DRM_EXEC_LOCK_HACK;
+		}
+	}
 
 	drm_exec_init(&submit->exec, flags, submit->nr_bos);
 
