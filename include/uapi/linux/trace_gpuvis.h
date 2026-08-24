@@ -394,7 +394,7 @@ void gpuvis_trace_cleanup(struct gpuvis_trace_context_t *begin_ctx) {
     TRACE_END_CTX_IMPL(true, , __VA_ARGS__) \
 
 #define TRACE_END_CTX_CONDITIONAL(condition, name, ...) \
-    _you_must_use_TRACE_BEGIN_CTX_CONDITIONAL_##name = 0; \
+    (void)_you_must_use_TRACE_BEGIN_CTX_CONDITIONAL_##name; \
     TRACE_END_CTX_IMPL(condition, name, __VA_ARGS__) \
 
 
