@@ -136,7 +136,7 @@ is_flagged_unevictable(struct drm_gem_object *obj)
 static bool
 purge(struct drm_gem_object *obj, struct ww_acquire_ctx *)
 {
-	if (!is_purgeable(to_msm_bo(obj)) || is_flagged_unevictable(obj))
+	if (!is_purgeable(to_msm_bo(obj)))
 		return false;
 
 	if (msm_gem_active(obj))
