@@ -13,6 +13,7 @@
 #include "msm_gem.h"
 #include "msm_gpu.h"
 #include "msm_gpu_trace.h"
+#include <trace/gpuvis.h>
 
 /* Default disabled for now until it has some more testing on the different
  * iommu combinations that can be paired with the driver:
@@ -65,7 +66,7 @@ with_vm_locks(void (*fn)(struct drm_gem_object *obj),
 		 * dma_resv_lock can't be used due to acquiring 'ticket' before the
 		 * fs_reclaim lock, which is held in shrinker context
 		 */
-		if (!dma_resv_trylock(resv)) {
+		if (!dma_resv_trylock2(obj)) {
 			locked = false;
 			goto out_unlock;
 		}
@@ -90,7 +91,7 @@ out_unlock:
 			if (resv == obj->resv)
 				continue;
 
-			dma_resv_unlock(resv);
+			dma_resv_unlock2(obj);
 
 			/* Drop the ref taken while locking: */
 			drm_gpuvm_bo_put(vm_bo);
@@ -179,6 +180,7 @@ msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 	if (!priv->msm_shrinker_enable) 
 		return 0;
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 	struct {
 		struct drm_gem_lru *lru;
 		bool (*shrink)(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket);
@@ -217,7 +219,9 @@ msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 				     stages[1].freed, stages[2].freed,
 				     stages[3].freed);
 	}
-
+	
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_shrinker_scan]");
+	
 	return (freed > 0 && remaining > 0) ? freed : SHRINK_STOP;
 }
 

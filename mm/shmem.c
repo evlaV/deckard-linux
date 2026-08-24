@@ -42,6 +42,7 @@
 #include <linux/iversion.h>
 #include <linux/unicode.h>
 #include "swap.h"
+#include <trace/gpuvis.h>
 
 static struct vfsmount *shm_mnt __ro_after_init;
 

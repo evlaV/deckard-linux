@@ -131,20 +131,20 @@ TRACE_EVENT(gpuvis_print_begin_dtime,
 	TP_PROTO(struct gpuvis_trace_context_t *begin_ctx, struct gpuvis_trace_context_t *end_ctx),
 	TP_ARGS(begin_ctx, end_ctx),
 	TP_STRUCT__entry(
+        __string(payload, begin_ctx->payload)
         __field(pid_t, tgid)
         __field(const char *, func)
         __field(const char *, sub_func)
         __field(const char *, file_line)
-        __string(payload, begin_ctx->payload)
         __field(uint64_t, id)
         __field(int64_t, dtime)
 	),
 	TP_fast_assign(
+        __assign_str_workaround(payload, begin_ctx->payload);
         __entry->tgid = begin_ctx->tgid;
         __entry->func = begin_ctx->func;
         __entry->sub_func = (begin_ctx->sub_func && begin_ctx->sub_func[0] != '\0') ? begin_ctx->sub_func : NULL;
         __entry->file_line = begin_ctx->file_line;
-        __assign_str_workaround(payload, begin_ctx->payload);
         __entry->id = begin_ctx->id;
         __entry->dtime = begin_ctx->time - end_ctx->time;
 	),
@@ -165,21 +165,21 @@ TRACE_EVENT(gpuvis_print,
 	TP_PROTO(struct gpuvis_trace_context_t *ctx, const char * ctx_op),
 	TP_ARGS(ctx, ctx_op),
 	TP_STRUCT__entry(
+        __string(payload, ctx->payload)
         __field(pid_t, tgid)
         __field(const char *, func)
         __field(const char *, sub_func)
         __field(const char *, file_line)
         __field(const char *, ctx_op)
-        __string(payload, ctx->payload)
         __field(uint64_t, id)
 	),
 	TP_fast_assign(
+        __assign_str_workaround(payload, ctx->payload);
         __entry->tgid = ctx->tgid;
         __entry->func = ctx->func;
         __entry->sub_func = (ctx->sub_func && ctx->sub_func[0] != '\0') ? ctx->sub_func : NULL;
         __entry->ctx_op = ctx_op,
         __entry->file_line = ctx->file_line;
-        __assign_str_workaround(payload, ctx->payload);
         __entry->id = ctx->id;
 	),
 
@@ -394,7 +394,7 @@ void gpuvis_trace_cleanup(struct gpuvis_trace_context_t *begin_ctx) {
     TRACE_END_CTX_IMPL(true, , __VA_ARGS__) \
 
 #define TRACE_END_CTX_CONDITIONAL(condition, name, ...) \
-    _you_must_use_TRACE_BEGIN_CTX_CONDITIONAL_##name = 0; \
+    (void)_you_must_use_TRACE_BEGIN_CTX_CONDITIONAL_##name; \
     TRACE_END_CTX_IMPL(condition, name, __VA_ARGS__) \
 
 
