@@ -322,7 +322,7 @@ unevictable_pid_set(void *data, u64 val)
 		pid_t pid_nr = pid_vnr(pid);
 		if (pid_nr == val) {
 			if (ctx->vm)
-				to_msm_vm(ctx->vm)->unevictable = val;
+				atomic_inc_return(&to_msm_vm(ctx->vm)->unevictable);
 			ret = 0;
 		}
 	}
@@ -356,7 +356,7 @@ static int unevictable_pids_show(struct seq_file *m, void *v)
 			lockdep_is_held(&dev->filelist_mutex));
 		if (!pid) continue;
 		pid_nr = pid_vnr(pid);
-		if (ctx->vm && to_msm_vm(ctx->vm)->unevictable) {
+		if (ctx->vm && atomic_read(&to_msm_vm(ctx->vm)->unevictable)) {
 			task = get_pid_task(pid, PIDTYPE_PID);
 			if (task) {
 				seq_printf(m, "%d %s\n", pid_nr, task->comm);

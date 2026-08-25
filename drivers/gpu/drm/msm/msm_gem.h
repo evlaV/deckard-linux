@@ -152,7 +152,7 @@ struct msm_gem_vm {
 	 */
 	bool unusable;
 
-	bool unevictable;
+	atomic_t unevictable;
 };
 #define to_msm_vm(x) container_of(x, struct msm_gem_vm, base)
 
