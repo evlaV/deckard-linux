@@ -187,6 +187,7 @@ static struct page **get_pages(struct drm_gem_object *obj)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 	msm_gem_assert_locked(obj);
 
 	if (!msm_obj->pages) {
@@ -223,6 +224,9 @@ static struct page **get_pages(struct drm_gem_object *obj)
 
 		update_lru(obj);
 	}
+	
+	size_t npages_out = obj->size >> PAGE_SHIFT;
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[get_pages] [%d] %s %d",npages_out, obj->name, obj->size);
 
 	return msm_obj->pages;
 }
