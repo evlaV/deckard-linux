@@ -261,7 +261,7 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 
 	if (exec->flags & DRM_EXEC_INTERRUPTIBLE_WAIT)
 	{
-//#define LOCKHACKERY	
+#define LOCKHACKERY	
 #ifdef LOCKHACKERY
 		if( (owner_pid > 0) && (exec->flags & DRM_EXEC_UNEVICTABLE) && (exec->flags & DRM_EXEC_LOCK_HACK) )
 		{
