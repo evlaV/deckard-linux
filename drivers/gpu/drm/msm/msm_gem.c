@@ -19,6 +19,7 @@
 #include "msm_gem.h"
 #include "msm_gpu.h"
 #include "msm_kms.h"
+#include <trace/gpuvis.h>
 
 static void update_device_mem(struct msm_drm_private *priv, ssize_t size)
 {
@@ -186,6 +187,7 @@ static struct page **get_pages(struct drm_gem_object *obj)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 	msm_gem_assert_locked(obj);
 
 	if (!msm_obj->pages) {
@@ -222,6 +224,9 @@ static struct page **get_pages(struct drm_gem_object *obj)
 
 		update_lru(obj);
 	}
+	
+	size_t npages_out = obj->size >> PAGE_SHIFT;
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[get_pages] [%d] %s %d",npages_out, obj->name, obj->size);
 
 	return msm_obj->pages;
 }
@@ -335,19 +340,39 @@ static vm_fault_t msm_gem_fault(struct vm_fault *vmf)
 	int err;
 	vm_fault_t ret;
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe0);
+
+	struct task_struct *owner = NULL;
+	char * owner_comm = NULL;
+	int owner_pid = -1;
+
+	if(obj && obj->resv)
+	{
+		owner = (struct task_struct *) mutex_get_owner(&obj->resv->lock.base);
+		if(owner)
+		{
+			owner_comm = owner->comm;
+			owner_pid = owner->pid;
+		}
+	}
+
 	/*
 	 * vm_ops.open/drm_gem_mmap_obj and close get and put
 	 * a reference on obj. So, we dont need to hold one here.
 	 */
-	err = msm_gem_lock_interruptible(obj);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+		err = msm_gem_lock_interruptible(obj);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[lock] msm_gem_pgprot msm_gem_lock_interruptible %s %d",owner_comm, owner_pid);
+	}
 	if (err) {
 		ret = VM_FAULT_NOPAGE;
 		goto out;
 	}
 
 	if (GEM_WARN_ON(msm_obj->madv != MSM_MADV_WILLNEED)) {
-		msm_gem_unlock(obj);
-		return VM_FAULT_SIGBUS;
+		ret = VM_FAULT_SIGBUS;
+		goto out_unlock;
 	}
 
 	/* make sure we have pages attached now */
@@ -370,6 +395,7 @@ static vm_fault_t msm_gem_fault(struct vm_fault *vmf)
 out_unlock:
 	msm_gem_unlock(obj);
 out:
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe0, "[msm_gem_fault]");
 	return ret;
 }
 
@@ -865,6 +891,8 @@ void msm_gem_purge(struct drm_gem_object *obj)
 	msm_gem_assert_locked(obj);
 	GEM_WARN_ON(!is_purgeable(msm_obj));
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+
 	/* Get rid of any iommu mapping(s): */
 	put_iova_spaces(obj, NULL, false, "purge");
 
@@ -890,6 +918,8 @@ void msm_gem_purge(struct drm_gem_object *obj)
 
 	invalidate_mapping_pages(file_inode(obj->filp)->i_mapping,
 			0, (loff_t)-1);
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_purge]");
 }
 
 /*
@@ -903,12 +933,16 @@ void msm_gem_evict(struct drm_gem_object *obj)
 	msm_gem_assert_locked(obj);
 	GEM_WARN_ON(is_unevictable(msm_obj));
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+
 	/* Get rid of any iommu mapping(s): */
 	put_iova_spaces(obj, NULL, false, "evict");
 
 	drm_vma_node_unmap(&obj->vma_node, dev->anon_inode->i_mapping);
 
 	put_pages(obj);
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_purge]");
 }
 
 void msm_gem_vunmap(struct drm_gem_object *obj)
@@ -1006,10 +1040,10 @@ void msm_gem_describe(struct drm_gem_object *obj, struct seq_file *m,
 		break;
 	}
 
-	seq_printf(m, "%08x: %c %2d (%2d) %08llx %p",
+	seq_printf(m, "%08x: %c %2d (%2d) %08llx %p obj=%p",
 			msm_obj->flags, msm_gem_active(obj) ? 'A' : 'I',
 			obj->name, kref_read(&obj->refcount),
-			off, msm_obj->vaddr);
+			off, msm_obj->vaddr, obj);
 
 	seq_printf(m, " %08zu %9s %-32s\n", obj->size, madv, msm_obj->name);
 

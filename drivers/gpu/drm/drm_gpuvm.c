@@ -1344,7 +1344,7 @@ drm_gpuvm_exec_lock(struct drm_gpuvm_exec *vm_exec)
 	return 0;
 
 err:
-	drm_exec_fini(exec);
+	drm_exec_fini(exec);     /* drop locks */
 	return ret;
 }
 EXPORT_SYMBOL_GPL(drm_gpuvm_exec_lock);
@@ -1424,7 +1424,7 @@ drm_gpuvm_exec_lock_range(struct drm_gpuvm_exec *vm_exec,
 	return ret;
 
 err:
-	drm_exec_fini(exec);
+	drm_exec_fini(exec);     /* drop locks */
 	return ret;
 }
 EXPORT_SYMBOL_GPL(drm_gpuvm_exec_lock_range);
