@@ -246,7 +246,7 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 	{
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 		ret = drm_exec_lock_contended(exec);
-		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(1000), gabe, "[lock] drm_exec_lock_contended [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, exec_owner_comm, exec_owner_pid, exec_contended);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[lock] drm_exec_lock_contended [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, exec_owner_comm, exec_owner_pid, exec_contended);
 	}
 	if (unlikely(ret))
 		return ret;
@@ -254,14 +254,14 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 	if (exec->prelocked == obj) {
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 		drm_gem_object_put(exec->prelocked);
-		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(1000), gabe, "[lock] drm_gem_object_put [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[lock] drm_gem_object_put [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
 		exec->prelocked = NULL;
 		return 0;
 	}
 
 	if (exec->flags & DRM_EXEC_INTERRUPTIBLE_WAIT)
 	{
-#define LOCKHACKERY		
+//#define LOCKHACKERY	
 #ifdef LOCKHACKERY
 		if( (owner_pid > 0) && (exec->flags & DRM_EXEC_UNEVICTABLE) && (exec->flags & DRM_EXEC_LOCK_HACK) )
 		{
@@ -271,19 +271,19 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 #endif		
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 		ret = dma_resv_lock_interruptible(obj->resv, &exec->ticket);
-		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(1000), gabe, "[lock] dma_resv_lock_interruptible [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[lock] dma_resv_lock_interruptible [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
 	}
 	else
 	{
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 		ret = dma_resv_lock(obj->resv, &exec->ticket);
-		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(1000), gabe, "[lock] dma_resv_lock [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[lock] dma_resv_lock [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
 	}
 
 	if (unlikely(ret == -EDEADLK)) {
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 		drm_gem_object_get(obj);
-		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(1000), gabe, "[lock] drm_gem_object_get [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[lock] drm_gem_object_get [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
 		exec->contended = obj;
 		return -EDEADLK;
 	}
@@ -298,7 +298,7 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 	{
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 		ret = drm_exec_obj_locked(exec, obj);
-		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(1000), gabe, "[lock] drm_exec_obj_locked [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[lock] drm_exec_obj_locked [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
 	}
 	if (ret)
 		goto error_unlock;

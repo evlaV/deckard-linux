@@ -18,6 +18,7 @@
 #include "msm_gem.h"
 #include "msm_gpu_trace.h"
 #include "msm_syncobj.h"
+#include <trace/gpuvis.h>
 
 /* For userspace errors, use DRM_UT_DRIVER.. so that userspace can enable
  * error msgs for debugging, but we don't spam dmesg by default
@@ -277,7 +278,9 @@ static int submit_lock_objects_vmbind(struct msm_gem_submit *submit)
 	struct drm_exec *exec = &submit->exec;
 	int ret = 0;
 	struct msm_gem_vm *vm = to_msm_vm(submit->vm);
-	
+
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+
 	if(vm->unevictable)
 	{
 		flags |= DRM_EXEC_UNEVICTABLE;
@@ -301,6 +304,8 @@ static int submit_lock_objects_vmbind(struct msm_gem_submit *submit)
 		if (ret)
 			break;
 	}
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[submit_lock_objects_vmbind]");
 
 	return ret;
 }
@@ -529,7 +534,7 @@ static void submit_cleanup(struct msm_gem_submit *submit, bool error)
 		submit_unpin_objects(submit);
 
 	if (submit->has_exec)
-		drm_exec_fini(&submit->exec);
+		drm_exec_fini(&submit->exec);     /* drop locks */
 
 	/* if job wasn't enqueued to scheduler, early retirement: */
 	if (error)
@@ -800,7 +805,9 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		 * need to validate the _entire_ vm, because userspace tracked
 		 * what BOs are associated with the submit.
 		 */
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 		ret = drm_gpuvm_validate(submit->vm, &submit->exec);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[submit_lock_objects_vmbind]");
 		if (ret)
 			goto out;
 	}

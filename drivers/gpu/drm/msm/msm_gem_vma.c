@@ -14,6 +14,7 @@
 #include "msm_gpu.h"
 #include "msm_mmu.h"
 #include "msm_syncobj.h"
+#include <trace/gpuvis.h>
 
 #define vm_dbg(fmt, ...) pr_debug("%s:%d: "fmt"\n", __func__, __LINE__, ##__VA_ARGS__)
 
@@ -452,6 +453,8 @@ msm_gem_vm_bo_validate(struct drm_gpuvm_bo *vm_bo, struct drm_exec *exec)
 
 	msm_gem_assert_locked(obj);
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+
 	drm_gpuvm_bo_for_each_va (vma, vm_bo) {
 		ret = msm_gem_pin_vma_locked(obj, vma);
 		if (ret)
@@ -459,7 +462,9 @@ msm_gem_vm_bo_validate(struct drm_gpuvm_bo *vm_bo, struct drm_exec *exec)
 	}
 
 	drm_gpuvm_bo_evict(vm_bo, false);
-
+	
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_vm_bo_validate]");
+	
 	return 0;
 }
 
@@ -708,6 +713,8 @@ msm_vma_job_run(struct drm_sched_job *_job)
 
 	vm_dbg("");
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+
 	mutex_lock(&vm->mmu_lock);
 	vm->mmu->prealloc = &job->prealloc;
 
@@ -751,6 +758,8 @@ msm_vma_job_run(struct drm_sched_job *_job)
 	}
 
 	mutex_unlock(&dev->gem_lru_mutex);
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_vma_job_run]");
 
 	/* VM_BIND ops are synchronous, so no fence to wait on: */
 	return NULL;
@@ -946,7 +955,7 @@ msm_gem_vm_close(struct drm_gpuvm *gpuvm)
 			}
 		}
 	}
-	drm_exec_fini(&exec);
+	drm_exec_fini(&exec);     /* drop locks */
 }
 
 
@@ -1294,6 +1303,8 @@ vm_bind_job_pin_objects(struct msm_vm_bind_job *job)
 {
 	struct drm_gem_object *obj;
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+
 	/*
 	 * First loop, before holding the LRU lock, avoids holding the
 	 * LRU lock while calling msm_gem_pin_vma_locked (which could
@@ -1322,6 +1333,8 @@ vm_bind_job_pin_objects(struct msm_vm_bind_job *job)
 	mutex_unlock(&dev->gem_lru_mutex);
 
 	job->bos_pinned = true;
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[vm_bind_job_pin_objects]");
 
 	return 0;
 }
@@ -1465,6 +1478,8 @@ msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 	if (args->flags & ~MSM_VM_BIND_FLAGS)
 		return UERR(EINVAL, dev, "invalid flags");
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+
 	queue = msm_submitqueue_get(ctx, args->queue_id);
 	if (!queue)
 		return -ENOENT;
@@ -1541,53 +1556,64 @@ msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 	unsigned flags = DRM_EXEC_IGNORE_DUPLICATES | DRM_EXEC_INTERRUPTIBLE_WAIT;
 	drm_exec_init(&exec, flags, nr_bos + 1);
 
-	ret = vm_bind_job_lock_objects(job, &exec);
-	if (ret)
-		goto out;
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe1);
+		ret = vm_bind_job_lock_objects(job, &exec);
+		if (ret)
+			goto out;
 
-	ret = vm_bind_job_pin_objects(job);
-	if (ret)
-		goto out;
+		ret = vm_bind_job_pin_objects(job);
+		if (ret)
+			goto out;
 
-	ret = vm_bind_job_prepare(job);
-	if (ret)
-		goto out;
+		ret = vm_bind_job_prepare(job);
+		if (ret)
+			goto out;
 
-	drm_sched_job_arm(&job->base);
+		drm_sched_job_arm(&job->base);
 
-	job->fence = dma_fence_get(&job->base.s_fence->finished);
+		job->fence = dma_fence_get(&job->base.s_fence->finished);
 
-	if (args->flags & MSM_VM_BIND_FENCE_FD_OUT) {
-		sync_file = sync_file_create(job->fence);
-		if (!sync_file)
-			ret = -ENOMEM;
+		if (args->flags & MSM_VM_BIND_FENCE_FD_OUT) {
+			sync_file = sync_file_create(job->fence);
+			if (!sync_file)
+				ret = -ENOMEM;
+		}
+
+		if (ret)
+			goto out;
+
+		vm_bind_job_attach_fences(job);
+
+		/*
+		* The job can be free'd (and fence unref'd) at any point after
+		* drm_sched_entity_push_job(), so we need to hold our own ref
+		*/
+		fence = dma_fence_get(job->fence);
+
+		drm_sched_entity_push_job(&job->base);
+
+		msm_syncobj_reset(syncobjs_to_reset, args->nr_in_syncobjs);
+		msm_syncobj_process_post_deps(post_deps, args->nr_out_syncobjs, fence);
+
+		dma_fence_put(fence);
+
+	out:
+		if (ret)
+			vm_bind_job_unpin_objects(job);
+
+		int exec_num_objects = exec.num_objects;
+		int job_nr_ops = job->nr_ops;
+
+		drm_exec_fini(&exec);     /* drop locks */
+
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe1, "[msm_ioctl_vm_bind] BO's locked!! [%d][%d][%d]",exec_num_objects,job_nr_ops,nr_bos);
 	}
-
-	if (ret)
-		goto out;
-
-	vm_bind_job_attach_fences(job);
-
-	/*
-	 * The job can be free'd (and fence unref'd) at any point after
-	 * drm_sched_entity_push_job(), so we need to hold our own ref
-	 */
-	fence = dma_fence_get(job->fence);
-
-	drm_sched_entity_push_job(&job->base);
-
-	msm_syncobj_reset(syncobjs_to_reset, args->nr_in_syncobjs);
-	msm_syncobj_process_post_deps(post_deps, args->nr_out_syncobjs, fence);
-
-	dma_fence_put(fence);
-
-out:
-	if (ret)
-		vm_bind_job_unpin_objects(job);
-
-	drm_exec_fini(&exec);
 out_unlock:
 	mutex_unlock(&queue->lock);
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_ioctl_vm_bind]");
+
 out_post_unlock:
 	if (ret) {
 		if (out_fence_fd >= 0)
