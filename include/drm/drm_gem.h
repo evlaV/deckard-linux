@@ -41,6 +41,7 @@
 #include <linux/mutex.h>
 
 #include <drm/drm_vma_manager.h>
+#include <trace/gpuvis.h>
 
 struct iosys_map;
 struct drm_gem_object;
@@ -449,6 +450,10 @@ struct drm_gem_object {
 	 * held.
 	 */
 	struct drm_gem_lru *lru;
+
+	struct gpuvis_trace_context_t ctx;
+	
+	char payload_storage[128];
 };
 
 /**
@@ -656,5 +661,59 @@ static inline void drm_gem_gpuva_init(struct drm_gem_object *obj)
  */
 #define drm_gem_for_each_gpuvm_bo_safe(entry__, next__, obj__) \
 	list_for_each_entry_safe(entry__, next__, &(obj__)->gpuva.list, list.entry.gem)
+
+#define TRACE_BEGIN_WITH_CTX(name,ctx,payload_storage, ...) { \
+    /*struct gpuvis_trace_context_t ctx;*/ \
+    gpuvis_trace_init(&ctx, trace_ctx_id(), tracepoint_string(__func__), tracepoint_string(#name), tracepoint_string(FILE_LINE), NULL); \
+    gpuvis_trace_add_payload(&ctx, NULL, payload_storage, sizeof(payload_storage), "" __VA_ARGS__); \
+    gpuvis_trace_report(&ctx, tracepoint_string("begin_ctx")); \
+}
+
+#define TRACE_END_WITH_CTX(name,ctx, ...) { \
+    gpuvis_trace_report(&ctx, tracepoint_string("end_ctx")); \
+}
+
+static inline int dma_resv_lock2(struct drm_gem_object *obj,
+				struct ww_acquire_ctx *ctx)
+{
+	//TRACE_BEGIN_CTX("dma_resv_lock2[%p][%lu]",obj,obj->size);
+	TRACE_BEGIN_WITH_CTX(gabe,obj->ctx,obj->payload_storage);
+	return ww_mutex_lock(&obj->resv->lock, ctx);
+}
+
+static inline void dma_resv_unlock2(struct drm_gem_object *obj)
+{
+	//TRACE_BEGIN_CTX("dma_resv_unlock2[%p][%lu]",obj,obj->size);
+	dma_resv_reset_max_fences(obj->resv);
+	ww_mutex_unlock(&obj->resv->lock);
+	TRACE_END_WITH_CTX(gabe,obj->ctx);
+}
+
+static inline bool __must_check dma_resv_trylock2(struct drm_gem_object *obj)
+{
+	TRACE_BEGIN_CTX("dma_resv_trylock2[%p][%lu]",obj,obj->size);
+	return ww_mutex_trylock(&obj->resv->lock, NULL);
+}
+
+static inline int dma_resv_lock_slow_interruptible2(struct drm_gem_object *obj,
+						   struct ww_acquire_ctx *ctx)
+{
+	TRACE_BEGIN_CTX("dma_resv_lock_slow_interruptible2[%p][%lu]",obj,obj->size);
+	return ww_mutex_lock_slow_interruptible(&obj->resv->lock, ctx);
+}
+
+static inline void dma_resv_lock_slow2(struct drm_gem_object *obj,
+				      struct ww_acquire_ctx *ctx)
+{
+	TRACE_BEGIN_CTX("dma_resv_lock_slow2[%p][%lu]",obj,obj->size);
+	ww_mutex_lock_slow(&obj->resv->lock, ctx);
+}
+
+static inline int dma_resv_lock_interruptible2(struct drm_gem_object *obj,
+					      struct ww_acquire_ctx *ctx)
+{
+	TRACE_BEGIN_CTX("dma_resv_lock_interruptible2[%p][%lu]",obj,obj->size);
+	return ww_mutex_lock_interruptible(&obj->resv->lock, ctx);
+}
 
 #endif /* __DRM_GEM_H__ */

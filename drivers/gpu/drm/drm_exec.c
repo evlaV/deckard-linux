@@ -60,7 +60,7 @@ static void drm_exec_unlock_all(struct drm_exec *exec)
 	unsigned long index;
 
 	drm_exec_for_each_locked_object_reverse(exec, index, obj) {
-		dma_resv_unlock(obj->resv);
+		dma_resv_unlock2(obj);
 		drm_gem_object_put(obj);
 	}
 
@@ -173,12 +173,12 @@ static int drm_exec_lock_contended(struct drm_exec *exec)
 	/* Always cleanup the contention so that error handling can kick in */
 	exec->contended = NULL;
 	if (exec->flags & DRM_EXEC_INTERRUPTIBLE_WAIT) {
-		ret = dma_resv_lock_slow_interruptible(obj->resv,
+		ret = dma_resv_lock_slow_interruptible2(obj,
 						       &exec->ticket);
 		if (unlikely(ret))
 			goto error_dropref;
 	} else {
-		dma_resv_lock_slow(obj->resv, &exec->ticket);
+		dma_resv_lock_slow2(obj, &exec->ticket);
 	}
 
 	ret = drm_exec_obj_locked(exec, obj);
@@ -189,7 +189,7 @@ static int drm_exec_lock_contended(struct drm_exec *exec)
 	return 0;
 
 error_unlock:
-	dma_resv_unlock(obj->resv);
+	dma_resv_unlock2(obj);
 
 error_dropref:
 	drm_gem_object_put(obj);
@@ -261,7 +261,7 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 
 	if (exec->flags & DRM_EXEC_INTERRUPTIBLE_WAIT)
 	{
-#define LOCKHACKERY	
+//#define LOCKHACKERY	
 #ifdef LOCKHACKERY
 		if( (owner_pid > 0) && (exec->flags & DRM_EXEC_UNEVICTABLE) && (exec->flags & DRM_EXEC_LOCK_HACK) )
 		{
@@ -270,13 +270,13 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 		}
 #endif		
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
-		ret = dma_resv_lock_interruptible(obj->resv, &exec->ticket);
+		ret = dma_resv_lock_interruptible2(obj, &exec->ticket);
 		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[lock] dma_resv_lock_interruptible [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
 	}
 	else
 	{
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
-		ret = dma_resv_lock(obj->resv, &exec->ticket);
+		ret = dma_resv_lock2(obj, &exec->ticket);
 		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[lock] dma_resv_lock [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
 	}
 
@@ -306,7 +306,7 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 	return 0;
 
 error_unlock:
-	dma_resv_unlock(obj->resv);
+	dma_resv_unlock2(obj);
 	return ret;
 }
 EXPORT_SYMBOL(drm_exec_lock_obj);
@@ -326,7 +326,7 @@ void drm_exec_unlock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 
 	for (i = exec->num_objects; i--;) {
 		if (exec->objects[i] == obj) {
-			dma_resv_unlock(obj->resv);
+			dma_resv_unlock2(obj);
 			for (++i; i < exec->num_objects; ++i)
 				exec->objects[i - 1] = exec->objects[i];
 			--exec->num_objects;

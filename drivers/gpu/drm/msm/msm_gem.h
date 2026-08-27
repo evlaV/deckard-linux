@@ -334,25 +334,25 @@ void msm_gem_objects_total(struct list_head *list, struct seq_file *m);
 static inline void
 msm_gem_lock(struct drm_gem_object *obj)
 {
-	dma_resv_lock(obj->resv, NULL);
+	dma_resv_lock2(obj, NULL);
 }
 
 static inline bool __must_check
 msm_gem_trylock(struct drm_gem_object *obj)
 {
-	return dma_resv_trylock(obj->resv);
+	return dma_resv_trylock2(obj);
 }
 
 static inline int
 msm_gem_lock_interruptible(struct drm_gem_object *obj)
 {
-	return dma_resv_lock_interruptible(obj->resv, NULL);
+	return dma_resv_lock_interruptible2(obj, NULL);
 }
 
 static inline void
 msm_gem_unlock(struct drm_gem_object *obj)
 {
-	dma_resv_unlock(obj->resv);
+	dma_resv_unlock2(obj);
 }
 
 /**
