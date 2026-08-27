@@ -53,6 +53,7 @@
 				     <0x1 0x47 0x1 IRQ_TYPE_EDGE_RISING>;
 			interrupt-names = "max-min",
 					  "critical";
+			qcom,bcl-disable-on-probe;
 		};
 
 		pm8550_gpios: gpio@8800 {
