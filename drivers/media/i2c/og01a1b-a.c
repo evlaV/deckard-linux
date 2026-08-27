@@ -50,7 +50,6 @@
 DEFINE_SPINLOCK(group_spinlock);
 
 DEFINE_SPINLOCK(metadata_spinlock);
-DEFINE_SPINLOCK(ir_spinlock);
 
 #define VIDIOC_OG01A1B_PRV_G_METADATA_VERSION _IOR('V', BASE_VIDIOC_PRIVATE + 1, u32)
 
@@ -1550,31 +1549,10 @@ static int og01a1b_s_power(struct v4l2_subdev *sd, int on)
 	mutex_lock(&sensor->lock);
 	reset_groups(sensor);
 	if(sensor->is_sync_sensor) {
-		struct i2c_client *client = sensor->i2c_client;
 		sensor->ir_emitter_mode = IR_EMITTER_MODE_OFF;
-		unsigned long flags;
-		spin_lock_irqsave(&ir_spinlock, flags);
-		if(!!on) {
-			sensor->emittersPresent = true;
 
-			sensor->ir_control_gpio = devm_gpiod_get_optional(&client->dev, "ircontrol",
-									GPIOD_OUT_LOW);
-			if(sensor->ir_control_gpio == NULL) {
-				sensor->ir_control_gpio_present = false;
-			}
-			else
-			{
-				sensor->ir_control_gpio_present = true;
-			}				
-		}
-		else 
-		{
-			if(sensor->ir_control_gpio_present) 
-			{
-				devm_gpiod_put(&client->dev,sensor->ir_control_gpio);
-			}
-		}
-		spin_unlock_irqrestore(&ir_spinlock, flags);	
+		if(!!on)
+			sensor->emittersPresent = true;
 	}
 
 	/*
@@ -1610,7 +1588,7 @@ static int og01a1b_s_stream(struct v4l2_subdev *sd, int enable)
 	for(int i = 0; i < NUM_REGISTER_GROUPS; i++) {
 		sensor->updateGroupRegisters[i] = true;
 	}
-	
+
 	sensor->is_streaming = !!enable;
 	og01a1b_write_reg(sensor, 0x100, !!enable);
 	// Only disable ir_control_gpio when stopping streaming since it can be configured before streamon
@@ -2258,6 +2236,16 @@ static int og01a1b_probe(struct i2c_client *client)
 	if (IS_ERR(sensor->reset_gpio))
 		return PTR_ERR(sensor->reset_gpio);
 
+	sensor->ir_control_gpio = devm_gpiod_get_optional(&client->dev, "ircontrol",
+							GPIOD_OUT_LOW);
+	if (IS_ERR(sensor->ir_control_gpio))
+		return PTR_ERR(sensor->ir_control_gpio);
+
+	if(sensor->ir_control_gpio)
+		sensor->ir_control_gpio_present = true;
+	else
+		sensor->ir_control_gpio_present = false;
+
 	sensor->strobe_gpio = devm_gpiod_get_optional(dev, "strobe",
 						     GPIOD_IN);
 	if(sensor->strobe_gpio  == NULL) {
@@ -2282,6 +2270,7 @@ static int og01a1b_probe(struct i2c_client *client)
 		return ret;
 
 	mutex_init(&sensor->lock);
+
 
 	skip_check_chip_id  = of_property_read_bool( dev->of_node, "skip-check-id" );
 	if(!skip_check_chip_id) {
