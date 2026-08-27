@@ -3694,10 +3694,6 @@ static int its_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 	if (err)
 		return err;
 
-	err = iommu_dma_prepare_msi(info->desc, its->get_msi_base(its_dev));
-	if (err)
-		return err;
-
 	for (i = 0; i < nr_irqs; i++) {
 		err = its_irq_gic_domain_alloc(domain, virq + i, hwirq + i);
 		if (err)
@@ -3713,6 +3709,12 @@ static int its_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 			 (int)(hwirq + i - its_dev->event_map.lpi_base),
 			 (int)(hwirq + i), virq + i);
 	}
+
+	mutex_unlock(&domain->root->mutex);
+	err = iommu_dma_prepare_msi(info->desc, its->get_msi_base(its_dev));
+	if (err)
+		return err;
+	mutex_lock(&domain->root->mutex);
 
 	return 0;
 }
