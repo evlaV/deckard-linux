@@ -1311,13 +1311,13 @@ EXPORT_SYMBOL(drm_gem_vunmap_locked);
 
 void drm_gem_lock(struct drm_gem_object *obj)
 {
-	dma_resv_lock(obj->resv, NULL);
+	dma_resv_lock2(obj, NULL);
 }
 EXPORT_SYMBOL(drm_gem_lock);
 
 void drm_gem_unlock(struct drm_gem_object *obj)
 {
-	dma_resv_unlock(obj->resv);
+	dma_resv_unlock2(obj);
 }
 EXPORT_SYMBOL(drm_gem_unlock);
 
@@ -1325,9 +1325,9 @@ int drm_gem_vmap(struct drm_gem_object *obj, struct iosys_map *map)
 {
 	int ret;
 
-	dma_resv_lock(obj->resv, NULL);
+	dma_resv_lock2(obj, NULL);
 	ret = drm_gem_vmap_locked(obj, map);
-	dma_resv_unlock(obj->resv);
+	dma_resv_unlock2(obj);
 
 	return ret;
 }
@@ -1335,9 +1335,9 @@ EXPORT_SYMBOL(drm_gem_vmap);
 
 void drm_gem_vunmap(struct drm_gem_object *obj, struct iosys_map *map)
 {
-	dma_resv_lock(obj->resv, NULL);
+	dma_resv_lock2(obj, NULL);
 	drm_gem_vunmap_locked(obj, map);
-	dma_resv_unlock(obj->resv);
+	dma_resv_unlock2(obj);
 }
 EXPORT_SYMBOL(drm_gem_vunmap);
 
@@ -1367,7 +1367,7 @@ retry:
 	if (contended != -1) {
 		struct drm_gem_object *obj = objs[contended];
 
-		ret = dma_resv_lock_slow_interruptible(obj->resv,
+		ret = dma_resv_lock_slow_interruptible2(obj,
 								 acquire_ctx);
 		if (ret) {
 			ww_acquire_fini(acquire_ctx);
@@ -1379,16 +1379,16 @@ retry:
 		if (i == contended)
 			continue;
 
-		ret = dma_resv_lock_interruptible(objs[i]->resv,
+		ret = dma_resv_lock_interruptible2(objs[i],
 							    acquire_ctx);
 		if (ret) {
 			int j;
 
 			for (j = 0; j < i; j++)
-				dma_resv_unlock(objs[j]->resv);
+				dma_resv_unlock2(objs[j]);
 
 			if (contended != -1 && contended >= i)
-				dma_resv_unlock(objs[contended]->resv);
+				dma_resv_unlock2(objs[contended]);
 
 			if (ret == -EDEADLK) {
 				contended = i;
@@ -1413,7 +1413,7 @@ drm_gem_unlock_reservations(struct drm_gem_object **objs, int count,
 	int i;
 
 	for (i = 0; i < count; i++)
-		dma_resv_unlock(objs[i]->resv);
+		dma_resv_unlock2(objs[i]);
 
 	ww_acquire_fini(acquire_ctx);
 }
@@ -1589,7 +1589,7 @@ drm_gem_lru_scan(struct drm_device *dev,
 			WARN_ON(obj->lru == lru);
 		}
 
-		dma_resv_unlock(obj->resv);
+		dma_resv_unlock2(obj);
 
 		if (ticket)
 			ww_acquire_fini(ticket);

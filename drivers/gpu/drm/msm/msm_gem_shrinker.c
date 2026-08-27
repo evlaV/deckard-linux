@@ -66,7 +66,7 @@ with_vm_locks(void (*fn)(struct drm_gem_object *obj),
 		 * dma_resv_lock can't be used due to acquiring 'ticket' before the
 		 * fs_reclaim lock, which is held in shrinker context
 		 */
-		if (!dma_resv_trylock(resv)) {
+		if (!dma_resv_trylock2(obj)) {
 			locked = false;
 			goto out_unlock;
 		}
@@ -91,7 +91,7 @@ out_unlock:
 			if (resv == obj->resv)
 				continue;
 
-			dma_resv_unlock(resv);
+			dma_resv_unlock2(obj);
 
 			/* Drop the ref taken while locking: */
 			drm_gpuvm_bo_put(vm_bo);
