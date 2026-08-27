@@ -424,11 +424,10 @@ static void unix_remove_bsd_socket(struct sock *sk)
 
 #if 1
 static struct sock *__unix_find_socket_byname(struct net *net,
-					      struct sockaddr_un *sunname,
-					      int len, unsigned int hash)
+					       struct sockaddr_un *sunname,
+					       int len, unsigned int hash)
 {
 	struct sock *s;
-	struct net *global_net;
 
 	sk_for_each(s, &net->unx.table.buckets[hash]) {
 		struct unix_sock *u = unix_sk(s);
@@ -438,28 +437,38 @@ static struct sock *__unix_find_socket_byname(struct net *net,
 			return s;
 	}
 
-	// If we weren't able to find the socket in the local
-	// network namespace, try all global namespaces
+	return NULL;
+}
+
+static struct sock *__unix_find_socket_byname_global(struct net *net,
+						     struct sockaddr_un *sunname,
+						     int len, unsigned int hash)
+{
+	struct net *global_net;
+	struct sock *s = NULL;
+
+	/*
+	 * If we weren't able to find the socket in the local
+	 * network namespace, try all global namespaces except the local and
+	 * lock the tables for the iterated namespace
+	 */
 	down_read(&net_rwsem);
-	for_each_net(global_net)
-	{
-		if ( global_net == net )
+	for_each_net(global_net) {
+		if (global_net == net)
 			continue;
 
-		sk_for_each(s, &global_net->unx.table.buckets[hash]) 
-		{
-			struct unix_sock *u = unix_sk(s);
+		/* here we need to lock the table of specific namespace */
+		spin_lock(&global_net->unx.table.locks[hash]);
+		s = __unix_find_socket_byname(global_net, sunname, len,
+						hash);
+		spin_unlock(&global_net->unx.table.locks[hash]);
 
-			if (u->addr->len == len && !memcmp(u->addr->name, sunname, len))
-			{
-				up_read(&net_rwsem);
-				return s;
-			}
-		}
+		if (s)
+			break;
 	}
 	up_read(&net_rwsem);
 
-	return NULL;
+	return s;
 }
 #else
 static struct sock *__unix_find_socket_byname(struct net *net,
@@ -487,9 +496,14 @@ static inline struct sock *unix_find_socket_byname(struct net *net,
 
 	spin_lock(&net->unx.table.locks[hash]);
 	s = __unix_find_socket_byname(net, sunname, len, hash);
+	spin_unlock(&net->unx.table.locks[hash]);
+
+	if (!s)
+		s = __unix_find_socket_byname_global(net, sunname, len, hash);
+
 	if (s)
 		sock_hold(s);
-	spin_unlock(&net->unx.table.locks[hash]);
+
 	return s;
 }
 
