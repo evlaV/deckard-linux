@@ -144,7 +144,7 @@ struct msm_dsi_host {
 	struct completion video_comp;
 	struct mutex dev_mutex;
 	struct mutex cmd_mutex;
-	spinlock_t intr_lock; /* Protect interrupt ctrl register */
+	raw_spinlock_t intr_lock; /* Protect interrupt ctrl register */
 
 	u32 err_work_state;
 	struct work_struct err_work;
@@ -730,7 +730,7 @@ static void dsi_intr_ctrl(struct msm_dsi_host *msm_host, u32 mask, int enable)
 	u32 intr;
 	unsigned long flags;
 
-	spin_lock_irqsave(&msm_host->intr_lock, flags);
+	raw_spin_lock_irqsave(&msm_host->intr_lock, flags);
 	intr = dsi_read(msm_host, REG_DSI_INTR_CTRL);
 
 	if (enable)
@@ -741,7 +741,7 @@ static void dsi_intr_ctrl(struct msm_dsi_host *msm_host, u32 mask, int enable)
 	DBG("intr=%x enable=%d", intr, enable);
 
 	dsi_write(msm_host, REG_DSI_INTR_CTRL, intr);
-	spin_unlock_irqrestore(&msm_host->intr_lock, flags);
+	raw_spin_unlock_irqrestore(&msm_host->intr_lock, flags);
 }
 
 static inline enum dsi_traffic_mode dsi_get_traffic_mode(const u32 mode_flags)
@@ -1792,10 +1792,10 @@ static irqreturn_t dsi_host_irq(int irq, void *ptr)
 	if (!msm_host->ctrl_base)
 		return IRQ_HANDLED;
 
-	spin_lock_irqsave(&msm_host->intr_lock, flags);
+	raw_spin_lock_irqsave(&msm_host->intr_lock, flags);
 	isr = dsi_read(msm_host, REG_DSI_INTR_CTRL);
 	dsi_write(msm_host, REG_DSI_INTR_CTRL, isr);
-	spin_unlock_irqrestore(&msm_host->intr_lock, flags);
+	raw_spin_unlock_irqrestore(&msm_host->intr_lock, flags);
 
 	DBG("isr=0x%x, id=%d", isr, msm_host->id);
 
@@ -2163,7 +2163,7 @@ int msm_dsi_host_init(struct msm_dsi *msm_dsi)
 	init_completion(&msm_host->video_comp);
 	mutex_init(&msm_host->dev_mutex);
 	mutex_init(&msm_host->cmd_mutex);
-	spin_lock_init(&msm_host->intr_lock);
+	raw_spin_lock_init(&msm_host->intr_lock);
 
 	/* setup workqueue */
 	msm_host->workqueue = alloc_ordered_workqueue("dsi_drm_work_%d", WQ_SYSFS | __WQ_FORCE_ALLOW_SYSFS, msm_host->id);
