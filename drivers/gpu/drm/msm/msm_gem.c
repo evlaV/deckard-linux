@@ -297,9 +297,12 @@ static void pin_obj_locked(struct drm_gem_object *obj)
 {
 	struct drm_device *dev = obj->dev;
 
-	mutex_lock(&dev->gem_lru_mutex);
-	msm_gem_pin_obj_locked(obj);
-	mutex_unlock(&dev->gem_lru_mutex);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe,"[lock]pin_obj_locked");
+		mutex_lock(&dev->gem_lru_mutex);
+		msm_gem_pin_obj_locked(obj);
+		mutex_unlock(&dev->gem_lru_mutex);
+	}
 }
 
 struct page **msm_gem_pin_pages_locked(struct drm_gem_object *obj)
@@ -1182,9 +1185,12 @@ static void msm_gem_free_object(struct drm_gem_object *obj)
 	struct msm_drm_private *priv = dev->dev_private;
 	struct drm_exec exec;
 
-	mutex_lock(&priv->obj_lock);
-	list_del(&msm_obj->node);
-	mutex_unlock(&priv->obj_lock);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe,"[lock]msm_gem_free_object");
+		mutex_lock(&priv->obj_lock);
+		list_del(&msm_obj->node);
+		mutex_unlock(&priv->obj_lock);
+	}
 
 	/*
 	 * We need to lock any VMs the object is still attached to, but not
@@ -1402,9 +1408,12 @@ struct drm_gem_object *msm_gem_new(struct drm_device *dev, size_t size, uint32_t
 
 	drm_gem_lru_move_tail(&priv->lru.unbacked, obj);
 
-	mutex_lock(&priv->obj_lock);
-	list_add_tail(&msm_obj->node, &priv->objects);
-	mutex_unlock(&priv->obj_lock);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe,"[lock]msm_gem_new");
+		mutex_lock(&priv->obj_lock);
+		list_add_tail(&msm_obj->node, &priv->objects);
+		mutex_unlock(&priv->obj_lock);
+	}
 
 	ret = drm_gem_create_mmap_offset(obj);
 	if (ret)
@@ -1456,9 +1465,12 @@ struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 
 	drm_gem_lru_move_tail(&priv->lru.pinned, obj);
 
-	mutex_lock(&priv->obj_lock);
-	list_add_tail(&msm_obj->node, &priv->objects);
-	mutex_unlock(&priv->obj_lock);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe,"[lock]msm_gem_import");
+		mutex_lock(&priv->obj_lock);
+		list_add_tail(&msm_obj->node, &priv->objects);
+		mutex_unlock(&priv->obj_lock);
+	}
 
 	ret = drm_gem_create_mmap_offset(obj);
 	if (ret)

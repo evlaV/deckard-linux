@@ -163,7 +163,7 @@ void drm_gem_shmem_free(struct drm_gem_shmem_object *shmem)
 	if (drm_gem_is_imported(obj)) {
 		drm_prime_gem_destroy(obj, shmem->sgt);
 	} else {
-		dma_resv_lock(shmem->base.resv, NULL);
+		dma_resv_lock2(shmem->base.resv, NULL);
 
 		drm_WARN_ON(obj->dev, refcount_read(&shmem->vmap_use_count));
 
@@ -179,7 +179,7 @@ void drm_gem_shmem_free(struct drm_gem_shmem_object *shmem)
 		drm_WARN_ON(obj->dev, refcount_read(&shmem->pages_use_count));
 		drm_WARN_ON(obj->dev, refcount_read(&shmem->pages_pin_count));
 
-		dma_resv_unlock(shmem->base.resv);
+		dma_resv_unlock2(shmem->base.resv);
 	}
 
 	drm_gem_object_release(obj);
@@ -295,11 +295,11 @@ int drm_gem_shmem_pin(struct drm_gem_shmem_object *shmem)
 	if (refcount_inc_not_zero(&shmem->pages_pin_count))
 		return 0;
 
-	ret = dma_resv_lock_interruptible(shmem->base.resv, NULL);
+	ret = dma_resv_lock_interruptible2(shmem->base.resv, NULL);
 	if (ret)
 		return ret;
 	ret = drm_gem_shmem_pin_locked(shmem);
-	dma_resv_unlock(shmem->base.resv);
+	dma_resv_unlock2(shmem->base.resv);
 
 	return ret;
 }
@@ -321,9 +321,9 @@ void drm_gem_shmem_unpin(struct drm_gem_shmem_object *shmem)
 	if (refcount_dec_not_one(&shmem->pages_pin_count))
 		return;
 
-	dma_resv_lock(shmem->base.resv, NULL);
+	dma_resv_lock2(shmem->base.resv, NULL);
 	drm_gem_shmem_unpin_locked(shmem);
-	dma_resv_unlock(shmem->base.resv);
+	dma_resv_unlock2(shmem->base.resv);
 }
 EXPORT_SYMBOL_GPL(drm_gem_shmem_unpin);
 
@@ -548,7 +548,7 @@ static vm_fault_t drm_gem_shmem_fault(struct vm_fault *vmf)
 	/* We don't use vmf->pgoff since that has the fake offset */
 	page_offset = (vmf->address - vma->vm_start) >> PAGE_SHIFT;
 
-	dma_resv_lock(shmem->base.resv, NULL);
+	dma_resv_lock2(shmem->base.resv, NULL);
 
 	if (page_offset >= num_pages ||
 	    drm_WARN_ON_ONCE(obj->dev, !shmem->pages) ||
@@ -560,7 +560,7 @@ static vm_fault_t drm_gem_shmem_fault(struct vm_fault *vmf)
 		ret = vmf_insert_pfn(vma, vmf->address, page_to_pfn(page));
 	}
 
-	dma_resv_unlock(shmem->base.resv);
+	dma_resv_unlock2(shmem->base.resv);
 
 	return ret;
 }
@@ -572,7 +572,7 @@ static void drm_gem_shmem_vm_open(struct vm_area_struct *vma)
 
 	drm_WARN_ON(obj->dev, drm_gem_is_imported(obj));
 
-	dma_resv_lock(shmem->base.resv, NULL);
+	dma_resv_lock2(shmem->base.resv, NULL);
 
 	/*
 	 * We should have already pinned the pages when the buffer was first
@@ -582,7 +582,7 @@ static void drm_gem_shmem_vm_open(struct vm_area_struct *vma)
 	drm_WARN_ON_ONCE(obj->dev,
 			 !refcount_inc_not_zero(&shmem->pages_use_count));
 
-	dma_resv_unlock(shmem->base.resv);
+	dma_resv_unlock2(shmem->base.resv);
 
 	drm_gem_vm_open(vma);
 }
@@ -592,9 +592,9 @@ static void drm_gem_shmem_vm_close(struct vm_area_struct *vma)
 	struct drm_gem_object *obj = vma->vm_private_data;
 	struct drm_gem_shmem_object *shmem = to_drm_gem_shmem_obj(obj);
 
-	dma_resv_lock(shmem->base.resv, NULL);
+	dma_resv_lock2(shmem->base.resv, NULL);
 	drm_gem_shmem_put_pages_locked(shmem);
-	dma_resv_unlock(shmem->base.resv);
+	dma_resv_unlock2(shmem->base.resv);
 
 	drm_gem_vm_close(vma);
 }
@@ -642,9 +642,9 @@ int drm_gem_shmem_mmap(struct drm_gem_shmem_object *shmem, struct vm_area_struct
 	if (is_cow_mapping(vma->vm_flags))
 		return -EINVAL;
 
-	dma_resv_lock(shmem->base.resv, NULL);
+	dma_resv_lock2(shmem->base.resv, NULL);
 	ret = drm_gem_shmem_get_pages_locked(shmem);
-	dma_resv_unlock(shmem->base.resv);
+	dma_resv_unlock2(shmem->base.resv);
 
 	if (ret)
 		return ret;
@@ -759,11 +759,11 @@ struct sg_table *drm_gem_shmem_get_pages_sgt(struct drm_gem_shmem_object *shmem)
 	int ret;
 	struct sg_table *sgt;
 
-	ret = dma_resv_lock_interruptible(shmem->base.resv, NULL);
+	ret = dma_resv_lock_interruptible2(shmem->base.resv, NULL);
 	if (ret)
 		return ERR_PTR(ret);
 	sgt = drm_gem_shmem_get_pages_sgt_locked(shmem);
-	dma_resv_unlock(shmem->base.resv);
+	dma_resv_unlock2(shmem->base.resv);
 
 	return sgt;
 }

@@ -343,6 +343,12 @@ msm_gem_trylock(struct drm_gem_object *obj)
 	return dma_resv_trylock2(obj);
 }
 
+static inline bool __must_check
+msm_gem_trylock_with_ticket(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket)
+{
+	return dma_resv_trylock2_with_ticket(obj,ticket);
+}
+
 static inline int
 msm_gem_lock_interruptible(struct drm_gem_object *obj)
 {
