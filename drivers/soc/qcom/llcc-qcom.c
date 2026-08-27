@@ -2598,10 +2598,11 @@ static const struct llcc_slice_config sm8650_data[] = {
 		.usecase_id = LLCC_CVP,
 		.slice_id = 8,
 		.max_cap = 256,
-		.priority = 3,
+		.priority = 1,
 		.fixed_size = true,
 		.bonus_ways = 0xffffff,
 		.cache_mode = 0,
+		.activate_on_init = true,
 	}, {
 		.usecase_id = LLCC_MODPE,
 		.slice_id = 29,
