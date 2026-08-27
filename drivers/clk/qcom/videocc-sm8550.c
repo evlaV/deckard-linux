@@ -185,6 +185,7 @@ static const struct freq_tbl ftbl_video_cc_mvs1_clk_src_sm8650[] = {
 	F(1350000000, P_VIDEO_CC_PLL1_OUT_MAIN, 1, 0, 0),
 	F(1500000000, P_VIDEO_CC_PLL1_OUT_MAIN, 1, 0, 0),
 	F(1650000000, P_VIDEO_CC_PLL1_OUT_MAIN, 1, 0, 0),
+	F(1900000000, P_VIDEO_CC_PLL1_OUT_MAIN, 1, 0, 0),
 	{ }
 };
 

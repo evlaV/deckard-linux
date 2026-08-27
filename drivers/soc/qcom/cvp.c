@@ -1160,7 +1160,8 @@ static int cvp_probe(struct platform_device *pdev)
 	// 675000000 -> 1350000000
 	// 750000000 -> 1500000000
 	// 825000000 -> 1650000000
-	u32 rate_to_set = 825000000;
+	// 950000000 -> 1900000000
+	u32 rate_to_set = 950000000;
 	clk_set_rate(cvp->clks[CLK_CORE], rate_to_set);
 	u32 applied_rate = clk_get_rate(cvp->clks[CLK_CORE]);
 	printk("cvp clock rate: %d (called with set_rate: %d)", applied_rate, rate_to_set);
