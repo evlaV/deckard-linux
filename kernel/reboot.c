@@ -1191,11 +1191,11 @@ __setup("reboot=", reboot_setup);
 #define BOOT_EFI_STR		"efi"
 #define BOOT_PCI_STR		"pci"
 
-static ssize_t mode_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+static ssize_t mode_type_show(enum reboot_mode mode_type, char *buf)
 {
 	const char *val;
 
-	switch (reboot_mode) {
+	switch (mode_type) {
 	case REBOOT_COLD:
 		val = REBOOT_COLD_STR;
 		break;
@@ -1217,30 +1217,71 @@ static ssize_t mode_show(struct kobject *kobj, struct kobj_attribute *attr, char
 
 	return sysfs_emit(buf, "%s\n", val);
 }
+
+static ssize_t mode_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return mode_type_show(reboot_mode, buf);
+}
+
+static ssize_t mode_type_store(enum reboot_mode *mode_type, const char *buf)
+{
+	if (!strncmp(buf, REBOOT_COLD_STR, strlen(REBOOT_COLD_STR)))
+		*mode_type = REBOOT_COLD;
+	else if (!strncmp(buf, REBOOT_WARM_STR, strlen(REBOOT_WARM_STR)))
+		*mode_type = REBOOT_WARM;
+	else if (!strncmp(buf, REBOOT_HARD_STR, strlen(REBOOT_HARD_STR)))
+		*mode_type = REBOOT_HARD;
+	else if (!strncmp(buf, REBOOT_SOFT_STR, strlen(REBOOT_SOFT_STR)))
+		*mode_type = REBOOT_SOFT;
+	else if (!strncmp(buf, REBOOT_GPIO_STR, strlen(REBOOT_GPIO_STR)))
+		*mode_type = REBOOT_GPIO;
+	else if (!strncmp(buf, REBOOT_UNDEFINED_STR, strlen(REBOOT_UNDEFINED_STR)))
+		*mode_type = REBOOT_UNDEFINED;
+	else
+		return -EINVAL;
+
+	return 0;
+}
+
 static ssize_t mode_store(struct kobject *kobj, struct kobj_attribute *attr,
 			  const char *buf, size_t count)
 {
+	int ret;
+
 	if (!capable(CAP_SYS_BOOT))
 		return -EPERM;
 
-	if (!strncmp(buf, REBOOT_COLD_STR, strlen(REBOOT_COLD_STR)))
-		reboot_mode = REBOOT_COLD;
-	else if (!strncmp(buf, REBOOT_WARM_STR, strlen(REBOOT_WARM_STR)))
-		reboot_mode = REBOOT_WARM;
-	else if (!strncmp(buf, REBOOT_HARD_STR, strlen(REBOOT_HARD_STR)))
-		reboot_mode = REBOOT_HARD;
-	else if (!strncmp(buf, REBOOT_SOFT_STR, strlen(REBOOT_SOFT_STR)))
-		reboot_mode = REBOOT_SOFT;
-	else if (!strncmp(buf, REBOOT_GPIO_STR, strlen(REBOOT_GPIO_STR)))
-		reboot_mode = REBOOT_GPIO;
-	else
-		return -EINVAL;
+	ret = mode_type_store(&reboot_mode, buf);
+	if (ret < 0)
+		return ret;
 
 	reboot_default = 0;
 
 	return count;
 }
 static struct kobj_attribute reboot_mode_attr = __ATTR_RW(mode);
+
+static ssize_t panic_mode_show(struct kobject *kobj, struct kobj_attribute *attr,
+			       char *buf)
+{
+	return mode_type_show(panic_reboot_mode, buf);
+}
+
+static ssize_t panic_mode_store(struct kobject *kobj, struct kobj_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+
+	if (!capable(CAP_SYS_BOOT))
+		return -EPERM;
+
+	ret = mode_type_store(&panic_reboot_mode, buf);
+	if (ret < 0)
+		return ret;
+
+	return count;
+}
+static struct kobj_attribute reboot_panic_mode_attr = __ATTR_RW(panic_mode);
 
 #ifdef CONFIG_X86
 static ssize_t force_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
@@ -1355,6 +1396,7 @@ static struct kobj_attribute reboot_cpu_attr = __ATTR_RW(cpu);
 static struct attribute *reboot_attrs[] = {
 	&hw_protection_attr.attr,
 	&reboot_mode_attr.attr,
+	&reboot_panic_mode_attr.attr,
 #ifdef CONFIG_X86
 	&reboot_force_attr.attr,
 	&reboot_type_attr.attr,
