@@ -41,6 +41,14 @@
 #define MAX34417_VOLTAGE_CORRECTION_SCALE	24
 #define MAX34417_VOLTAGE_FULL_SCALE_BITS	14
 
+/*
+ * The Perr/Verr correction trims a few LSB of voltage error off the power
+ * average. A power-collapsed rail latches ~0 V while the accumulator still
+ * holds power from when it was up. Below this voltage the trim would
+ * dominate the reading and the unsigned math underflows, so skip it.
+ */
+#define MAX34417_PERR_VERR_MIN_MV		100
+
 #define MAX34417_OVERFLOW_BITMASK		BIT(0)
 #define MAX34417_SLOW_BITMASK			BIT(1)
 #define MAX34417_PARK_0_MASK			BIT(2)
@@ -762,7 +770,8 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 						MAX34417_VOLTAGE_CORRECTION_SCALE * 1000;
 				voltage >>= MAX34417_VOLTAGE_FULL_SCALE_BITS;
 
-				if (voltage <= 2000) {
+				if (voltage >= MAX34417_PERR_VERR_MIN_MV &&
+				    voltage <= 2000) {
 					power  = div_u64(power, acc_count);
 					current_fs = div_u64(power, (voltage_raw / 4));
 
