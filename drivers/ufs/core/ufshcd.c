@@ -22,6 +22,7 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/pm_opp.h>
+#include <linux/reboot.h>
 #include <linux/regulator/consumer.h>
 #include <linux/sched/clock.h>
 #include <linux/sizes.h>
@@ -8171,6 +8172,12 @@ static int ufshcd_reset_and_restore(struct ufs_hba *hba)
 		    hba->ufshcd_state != UFSHCD_STATE_EH_SCHEDULED_NON_FATAL)
 			err = -EAGAIN;
 	} while (err && --retries);
+
+	if (err == -EIO) {
+		panic_reboot_mode = REBOOT_WARM;
+		panic("Irrecoveral ufshcd error: GOING TO WARM REBOOT: %d\n",
+			err);
+	}
 
 	/*
 	 * Inform scsi mid-layer that we did reset and allow to handle
