@@ -417,5 +417,18 @@ void gpuvis_trace_cleanup(struct gpuvis_trace_context_t *begin_ctx) {
 #define TRACE_INSTANTANEOUS_NAMED(name, ...) \
     TRACE_INSTANTANEOUS_IMPL(name, __VA_ARGS__) \
 
+#define TRACE_BEGIN_WITH_CTX(name,begin_ctx,end_ctx,payload_storage, ...) { \
+    /*struct gpuvis_trace_context_t ctx;*/ \
+    gpuvis_trace_init(begin_ctx, trace_ctx_id(), tracepoint_string(__func__), tracepoint_string(#name), tracepoint_string(FILE_LINE), end_ctx); \
+	gpuvis_trace_uninit(end_ctx); \
+    gpuvis_trace_add_payload(begin_ctx, NULL, payload_storage, sizeof(payload_storage), "" __VA_ARGS__); \
+    gpuvis_trace_report(begin_ctx, tracepoint_string("begin_ctx")); \
+}
+
+#define TRACE_END_WITH_CTX(name,begin_ctx,end_ctx, ...) { \
+	gpuvis_trace_init(end_ctx, (begin_ctx)->id, (begin_ctx)->func, (begin_ctx)->sub_func, tracepoint_string(""), NULL);  \
+	gpuvis_trace_add_payload(end_ctx, begin_ctx, NULL, 0, ""); \
+	gpuvis_trace_end(begin_ctx, end_ctx); \
+}
 
 #endif // _UAPI_TRACE_GPUVIS_H
