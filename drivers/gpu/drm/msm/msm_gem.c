@@ -538,13 +538,17 @@ int msm_gem_pin_vma_locked(struct drm_gem_object *obj, struct drm_gpuva *vma)
 	struct page **pages;
 	int prot = msm_gem_prot(obj);
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+	
 	msm_gem_assert_locked(obj);
 
 	pages = msm_gem_get_pages_locked(obj, MSM_MADV_WILLNEED);
 	if (IS_ERR(pages))
 		return PTR_ERR(pages);
 
-	return msm_gem_vma_map(vma, prot, msm_obj->sgt);
+	int ret = msm_gem_vma_map(vma, prot, msm_obj->sgt);
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_pin_vma_locked][%p][%lu]",obj,obj->size);
+	return ret;
 }
 
 void msm_gem_unpin_locked(struct drm_gem_object *obj)
