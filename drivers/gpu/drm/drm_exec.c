@@ -223,6 +223,8 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 
 	struct drm_gem_object * exec_contended = exec->contended;
 
+	TRACE_BEGIN_CTX("[lock][drm_exec_lock_obj][%p][%lu]",obj,obj ? obj->size : -1);
+
 	if(obj && obj->resv)
 	{
 		owner = (struct task_struct *) mutex_get_owner(&obj->resv->lock.base);
@@ -252,9 +254,8 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 		return ret;
 
 	if (exec->prelocked == obj) {
-		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+		TRACE_BEGIN_CTX("[lock] drm_gem_object_put [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
 		drm_gem_object_put(exec->prelocked);
-		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[lock] drm_gem_object_put [%p] [%08lx] [%zu] %s[%d] [%p]", obj, vma_node_offset, obj_size, owner_comm, owner_pid, exec_contended);
 		exec->prelocked = NULL;
 		return 0;
 	}

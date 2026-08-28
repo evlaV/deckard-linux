@@ -315,9 +315,14 @@ static int submit_lock_objects(struct msm_gem_submit *submit)
 {
 	unsigned flags = DRM_EXEC_INTERRUPTIBLE_WAIT;
 	int ret = 0;
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 
 	if (msm_context_is_vmbind(submit->queue->ctx))
-		return submit_lock_objects_vmbind(submit);
+	{
+		ret = submit_lock_objects_vmbind(submit);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[submit_lock_objects]");
+		return ret;
+	}
 
 	drm_exec_init(&submit->exec, flags, submit->nr_bos);
 	submit->has_exec = true;
@@ -337,6 +342,7 @@ static int submit_lock_objects(struct msm_gem_submit *submit)
 		}
 	}
 
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[submit_lock_objects]");
 	return ret;
 }
 
@@ -370,6 +376,8 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 	struct drm_device *dev = submit->dev;
 	int i, ret = 0;
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe,"submit_pin_objects");
+
 	for (i = 0; i < submit->nr_bos; i++) {
 		struct drm_gem_object *obj = submit->bos[i].obj;
 		struct drm_gpuva *vma;
@@ -394,8 +402,12 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 		msm_gem_pin_obj_locked(submit->bos[i].obj);
 		mutex_unlock(&dev->gem_lru_mutex);
 	}
+	
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe);
 
 	submit->bos_pinned = true;
+	
+
 
 	return ret;
 }
@@ -530,6 +542,7 @@ out:
  */
 static void submit_cleanup(struct msm_gem_submit *submit, bool error)
 {
+	TRACE_BEGIN_CTX("submit_cleanup (unlocks BOs)");
 	if (error)
 		submit_unpin_objects(submit);
 
@@ -600,7 +613,8 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		    !capable(CAP_SYS_RAWIO))
 			return -EINVAL;
 	}
-
+	TRACE_BEGIN_CTX("msm_ioctl_gem_submit");
+	
 	queue = msm_submitqueue_get(ctx, args->queueid);
 	if (!queue)
 		return -ENOENT;
