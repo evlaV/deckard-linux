@@ -51,6 +51,7 @@
 #include <drm/drm_managed.h>
 #include <drm/drm_print.h>
 #include <drm/drm_vma_manager.h>
+#include "msm/msm_gem.h"
 
 #include "drm_internal.h"
 
@@ -1569,7 +1570,7 @@ drm_gem_lru_scan(struct drm_device *dev,
 		 */
 		{
 			TRACE_BEGIN_CTX_CONDITIONAL(gabe1);
-			if (!ww_mutex_trylock(&obj->resv->lock, ticket)) {
+			if (!msm_gem_trylock_with_ticket(obj,ticket)) {
 				*remaining += obj->size >> PAGE_SHIFT;
 				TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe1, "[drm_gem_lru_scan ww_mutex_trylock]");
 				goto tail;
