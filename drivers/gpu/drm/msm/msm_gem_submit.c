@@ -542,6 +542,7 @@ out:
  */
 static void submit_cleanup(struct msm_gem_submit *submit, bool error)
 {
+	TRACE_BEGIN_CTX("submit_cleanup (unlocks BOs)");
 	if (error)
 		submit_unpin_objects(submit);
 
@@ -609,7 +610,7 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		    !capable(CAP_SYS_RAWIO))
 			return -EINVAL;
 	}
-	TRACE_BEGIN_CTX_CONDITIONAL(gabe2);
+	TRACE_BEGIN_CTX("msm_ioctl_gem_submit");
 	
 	queue = msm_submitqueue_get(ctx, args->queueid);
 	if (!queue)
@@ -844,7 +845,6 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	msm_syncobj_reset(syncobjs_to_reset, args->nr_in_syncobjs);
 	msm_syncobj_process_post_deps(post_deps, args->nr_out_syncobjs, submit->user_fence);
 
-	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe2, "[msm_ioctl_gem_submit]");
 out:
 	submit_cleanup(submit, !!ret);
 out_unlock:
