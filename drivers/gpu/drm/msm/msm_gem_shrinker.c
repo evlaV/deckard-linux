@@ -201,8 +201,6 @@ msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 		/* Stages of progressively more aggressive/expensive reclaim: */
 		{ &priv->lru.dontneed, purge,        true },
 		{ &priv->lru.willneed, evict,        can_swap() },
-		{ &priv->lru.dontneed, active_purge, can_block(sc) },
-		{ &priv->lru.willneed, active_evict, can_swap() && can_block(sc) },
 	};
 	long nr = sc->nr_to_scan;
 	unsigned long freed = 0;
