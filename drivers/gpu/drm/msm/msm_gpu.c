@@ -338,7 +338,7 @@ static void crashstate_get_bos(struct msm_gpu_state *state, struct msm_gem_submi
 						  dump, vma->gem.offset, vma->va.range);
 		}
 
-		drm_exec_fini(&exec);
+		drm_exec_fini(&exec);      /* drop locks */
 	} else {
 		state->bos = kcalloc(submit->nr_bos,
 			sizeof(struct msm_gpu_state_bo), GFP_KERNEL);

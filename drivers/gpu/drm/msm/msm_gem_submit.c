@@ -830,7 +830,7 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		 */
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 		ret = drm_gpuvm_validate(submit->vm, &submit->exec);
-		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[submit_lock_objects_vmbind]");
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_gpuvm_validate]");
 		if (ret)
 			goto out;
 	}

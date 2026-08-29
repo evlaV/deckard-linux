@@ -451,6 +451,8 @@ struct drm_gem_object {
 	 */
 	struct drm_gem_lru *lru;
 
+	bool unevictable_bo;
+
 	struct gpuvis_trace_context_t ctx_begin;
 	struct gpuvis_trace_context_t ctx_end;
 	char payload_storage[128];
@@ -667,6 +669,7 @@ static inline void drm_gem_gpuva_init(struct drm_gem_object *obj)
 static inline int dma_resv_lock2(struct drm_gem_object *obj,
 				struct ww_acquire_ctx *ctx)
 {
+	TRACE_BEGIN_CTX("[LOCK][%p][%lu]",obj,obj->size);
 	//TRACE_BEGIN_WITH_CTX(x, &obj->ctx_begin, &obj->ctx_end, obj->payload_storage,"[lock][%p][%lu]",obj,obj->size);
 	int ret = ww_mutex_lock(&obj->resv->lock, ctx);
 	obj->mutex_tid = current->tgid;
@@ -683,7 +686,7 @@ static inline void dma_resv_unlock2(struct drm_gem_object *obj)
 	ww_mutex_unlock(&obj->resv->lock);
 	obj->mutex_prev_tid = obj->mutex_tid;
 	obj->mutex_tid = 0;
-	TRACE_END_WITH_CTX(x, &obj->ctx_begin, &obj->ctx_end );
+	//TRACE_END_WITH_CTX(x, &obj->ctx_begin, &obj->ctx_end );
 	{
 		TRACE_BEGIN_CTX("[UNLOCK][%p][%lu]",obj,obj->size);
 	}
@@ -695,6 +698,7 @@ static inline bool __must_check dma_resv_trylock2(struct drm_gem_object *obj)
 	int ret = ww_mutex_trylock(&obj->resv->lock, NULL);
 	if(ret == 1)
 	{
+		TRACE_BEGIN_CTX("[LOCK][%p][%lu]",obj,obj->size);
 		//we have the lock
 		obj->mutex_tid = current->tgid;
 		if(obj->mutex_prev_tid > 0)
@@ -715,6 +719,7 @@ static inline bool __must_check dma_resv_trylock2_with_ticket(struct drm_gem_obj
 	int ret = ww_mutex_trylock(&obj->resv->lock, ticket);
 	if(ret == 1)
 	{
+		TRACE_BEGIN_CTX("[LOCK][%p][%lu]",obj,obj->size);
 		//we have the lock
 		obj->mutex_tid = current->tgid;
 		if(obj->mutex_prev_tid > 0)
@@ -732,6 +737,7 @@ static inline bool __must_check dma_resv_trylock2_with_ticket(struct drm_gem_obj
 static inline int dma_resv_lock_slow_interruptible2(struct drm_gem_object *obj,
 						   struct ww_acquire_ctx *ctx)
 {
+	TRACE_BEGIN_CTX("[LOCK][si][%p][%lu]",obj,obj->size);
 	//TRACE_BEGIN_WITH_CTX(x, &obj->ctx_begin, &obj->ctx_end, obj->payload_storage,"[lock][%p][%lu]",obj,obj->size);
 	int ret = ww_mutex_lock_slow_interruptible(&obj->resv->lock, ctx);
 	obj->mutex_tid = current->tgid;
@@ -746,6 +752,7 @@ static inline void dma_resv_lock_slow2(struct drm_gem_object *obj,
 				      struct ww_acquire_ctx *ctx)
 {
 	//TRACE_BEGIN_WITH_CTX(x, &obj->ctx_begin, &obj->ctx_end, obj->payload_storage,"[lock][%p][%lu]",obj,obj->size);
+	TRACE_BEGIN_CTX("[LOCK][s][%p][%lu]",obj,obj->size);
 	ww_mutex_lock_slow(&obj->resv->lock, ctx);
 	if(obj->mutex_prev_tid > 0)
 	{
@@ -758,6 +765,7 @@ static inline int dma_resv_lock_interruptible2(struct drm_gem_object *obj,
 					      struct ww_acquire_ctx *ctx)
 {
 	//TRACE_BEGIN_WITH_CTX(x, &obj->ctx_begin, &obj->ctx_end, obj->payload_storage,"[lock][%p][%lu]",obj,obj->size);
+	TRACE_BEGIN_CTX("[LOCK][i][%p][%lu]",obj,obj->size);
 	int ret = ww_mutex_lock_interruptible(&obj->resv->lock, ctx);
 	obj->mutex_tid = current->tgid;
 	if(obj->mutex_prev_tid > 0)
