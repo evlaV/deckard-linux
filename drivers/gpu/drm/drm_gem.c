@@ -1529,6 +1529,7 @@ drm_gem_lru_scan(struct drm_device *dev,
 	struct drm_gem_object *obj;
 	unsigned freed = 0;
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe2,"drm_gem_lru_scan [nr_to_scan=%d]",nr_to_scan);
 	drm_gem_lru_init(&still_in_lru);
 
 	{
@@ -1614,6 +1615,8 @@ tail:
 	lru->count += still_in_lru.count;
 
 	mutex_unlock(&dev->gem_lru_mutex);
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe2, "[drm_gem_lru_scan] [%d of %d]",freed,nr_to_scan);
 
 	return freed;
 }

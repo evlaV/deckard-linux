@@ -699,157 +699,161 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	atomic_inc_return(&to_msm_vm(submit->vm)->unevictable);
 
 	drm_gpuvm_validate_besteffort(submit->vm);
-
-	/* copy_*_user while holding a ww ticket upsets lockdep */
-	ret = submit_lock_objects(submit);
-	if (ret)
-		goto out;
-
-	atomic_dec_return(&to_msm_vm(submit->vm)->unevictable);
-
-	ret = submit_pin_objects(submit);
-	if (ret)
-		goto out;
-
-	if (!(args->flags & MSM_SUBMIT_NO_IMPLICIT)) {
-		ret = submit_fence_sync(submit);
-		if (ret)
-			goto out;
-	}
-
-	if (ret)
-		goto out;
-
-	cmds_to_parse = msm_context_is_vmbind(ctx) ? 0 : args->nr_cmds;
-
-	for (i = 0; i < cmds_to_parse; i++) {
-		struct drm_gem_object *obj;
-		uint64_t iova;
-
-		ret = submit_bo(submit, submit->cmd[i].idx, &obj, &iova);
+	
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe3);
+		/* copy_*_user while holding a ww ticket upsets lockdep */
+		ret = submit_lock_objects(submit);
 		if (ret)
 			goto out;
 
-		if (!submit->cmd[i].size ||
-		    (size_add(submit->cmd[i].size, submit->cmd[i].offset) > obj->size / 4)) {
-			ret = UERR(EINVAL, dev, "invalid cmdstream size: %u\n",
-				   submit->cmd[i].size * 4);
+		atomic_dec_return(&to_msm_vm(submit->vm)->unevictable);
+
+		ret = submit_pin_objects(submit);
+		if (ret)
+			goto out;
+
+		if (!(args->flags & MSM_SUBMIT_NO_IMPLICIT)) {
+			ret = submit_fence_sync(submit);
+			if (ret)
+				goto out;
+		}
+
+		if (ret)
+			goto out;
+
+		cmds_to_parse = msm_context_is_vmbind(ctx) ? 0 : args->nr_cmds;
+
+		for (i = 0; i < cmds_to_parse; i++) {
+			struct drm_gem_object *obj;
+			uint64_t iova;
+
+			ret = submit_bo(submit, submit->cmd[i].idx, &obj, &iova);
+			if (ret)
+				goto out;
+
+			if (!submit->cmd[i].size ||
+				(size_add(submit->cmd[i].size, submit->cmd[i].offset) > obj->size / 4)) {
+				ret = UERR(EINVAL, dev, "invalid cmdstream size: %u\n",
+					submit->cmd[i].size * 4);
+				goto out;
+			}
+
+			submit->cmd[i].iova = iova + (submit->cmd[i].offset * 4);
+
+			if (likely(!submit->cmd[i].nr_relocs))
+				continue;
+
+			if (!gpu->allow_relocs) {
+				ret = UERR(EINVAL, dev, "relocs not allowed\n");
+				goto out;
+			}
+
+			ret = submit_reloc(submit, obj, submit->cmd[i].offset * 4,
+					submit->cmd[i].nr_relocs, submit->cmd[i].relocs);
+			if (ret)
+				goto out;
+		}
+
+		submit->nr_cmds = args->nr_cmds;
+
+		idr_preload(GFP_KERNEL);
+
+		spin_lock(&queue->idr_lock);
+
+		/*
+		* If using userspace provided seqno fence, validate that the id
+		* is available before arming sched job.  Since access to fence_idr
+		* is serialized on the queue lock, the slot should be still avail
+		* after the job is armed
+		*/
+		if ((args->flags & MSM_SUBMIT_FENCE_SN_IN) &&
+				(!args->fence || idr_find(&queue->fence_idr, args->fence))) {
+			spin_unlock(&queue->idr_lock);
+			idr_preload_end();
+			ret = UERR(EINVAL, dev, "invalid in-fence-sn");
 			goto out;
 		}
 
-		submit->cmd[i].iova = iova + (submit->cmd[i].offset * 4);
+		drm_sched_job_arm(&submit->base);
 
-		if (likely(!submit->cmd[i].nr_relocs))
-			continue;
+		submit->user_fence = dma_fence_get(&submit->base.s_fence->finished);
 
-		if (!gpu->allow_relocs) {
-			ret = UERR(EINVAL, dev, "relocs not allowed\n");
-			goto out;
+		if (args->flags & MSM_SUBMIT_FENCE_SN_IN) {
+			/*
+			* Userspace has assigned the seqno fence that it wants
+			* us to use.  It is an error to pick a fence sequence
+			* number that is not available.
+			*/
+			submit->fence_id = args->fence;
+			ret = idr_alloc_u32(&queue->fence_idr, submit->user_fence,
+						&submit->fence_id, submit->fence_id,
+						GFP_NOWAIT);
+			/*
+			* We've already validated that the fence_id slot is valid,
+			* so if idr_alloc_u32 failed, it is a kernel bug
+			*/
+			WARN_ON(ret);
+		} else {
+			/*
+			* Allocate an id which can be used by WAIT_FENCE ioctl to map
+			* back to the underlying fence.
+			*/
+			submit->fence_id = idr_alloc_cyclic(&queue->fence_idr,
+								submit->user_fence, 1,
+								INT_MAX, GFP_NOWAIT);
 		}
 
-		ret = submit_reloc(submit, obj, submit->cmd[i].offset * 4,
-				submit->cmd[i].nr_relocs, submit->cmd[i].relocs);
-		if (ret)
-			goto out;
-	}
-
-	submit->nr_cmds = args->nr_cmds;
-
-	idr_preload(GFP_KERNEL);
-
-	spin_lock(&queue->idr_lock);
-
-	/*
-	 * If using userspace provided seqno fence, validate that the id
-	 * is available before arming sched job.  Since access to fence_idr
-	 * is serialized on the queue lock, the slot should be still avail
-	 * after the job is armed
-	 */
-	if ((args->flags & MSM_SUBMIT_FENCE_SN_IN) &&
-			(!args->fence || idr_find(&queue->fence_idr, args->fence))) {
 		spin_unlock(&queue->idr_lock);
 		idr_preload_end();
-		ret = UERR(EINVAL, dev, "invalid in-fence-sn");
-		goto out;
-	}
 
-	drm_sched_job_arm(&submit->base);
+		if (submit->fence_id < 0) {
+			ret = submit->fence_id;
+			submit->fence_id = 0;
+		}
 
-	submit->user_fence = dma_fence_get(&submit->base.s_fence->finished);
+		if (ret == 0 && args->flags & MSM_SUBMIT_FENCE_FD_OUT) {
+			sync_file = sync_file_create(submit->user_fence);
+			if (!sync_file)
+				ret = -ENOMEM;
+		}
 
-	if (args->flags & MSM_SUBMIT_FENCE_SN_IN) {
-		/*
-		 * Userspace has assigned the seqno fence that it wants
-		 * us to use.  It is an error to pick a fence sequence
-		 * number that is not available.
-		 */
-		submit->fence_id = args->fence;
-		ret = idr_alloc_u32(&queue->fence_idr, submit->user_fence,
-				    &submit->fence_id, submit->fence_id,
-				    GFP_NOWAIT);
-		/*
-		 * We've already validated that the fence_id slot is valid,
-		 * so if idr_alloc_u32 failed, it is a kernel bug
-		 */
-		WARN_ON(ret);
-	} else {
-		/*
-		 * Allocate an id which can be used by WAIT_FENCE ioctl to map
-		 * back to the underlying fence.
-		 */
-		submit->fence_id = idr_alloc_cyclic(&queue->fence_idr,
-						    submit->user_fence, 1,
-						    INT_MAX, GFP_NOWAIT);
-	}
-
-	spin_unlock(&queue->idr_lock);
-	idr_preload_end();
-
-	if (submit->fence_id < 0) {
-		ret = submit->fence_id;
-		submit->fence_id = 0;
-	}
-
-	if (ret == 0 && args->flags & MSM_SUBMIT_FENCE_FD_OUT) {
-		sync_file = sync_file_create(submit->user_fence);
-		if (!sync_file)
-			ret = -ENOMEM;
-	}
-
-	if (ret)
-		goto out;
-
-	submit_attach_object_fences(submit);
-
-	if (msm_context_is_vmbind(ctx)) {
-		/*
-		 * If we are not using VM_BIND, submit_pin_vmas() will validate
-		 * just the BOs attached to the submit.  In that case we don't
-		 * need to validate the _entire_ vm, because userspace tracked
-		 * what BOs are associated with the submit.
-		 */
-		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
-		ret = drm_gpuvm_validate(submit->vm, &submit->exec);
-		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_gpuvm_validate]");
 		if (ret)
 			goto out;
+
+		submit_attach_object_fences(submit);
+
+		if (msm_context_is_vmbind(ctx)) {
+			/*
+			* If we are not using VM_BIND, submit_pin_vmas() will validate
+			* just the BOs attached to the submit.  In that case we don't
+			* need to validate the _entire_ vm, because userspace tracked
+			* what BOs are associated with the submit.
+			*/
+			TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+			ret = drm_gpuvm_validate(submit->vm, &submit->exec);
+			TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_gpuvm_validate]");
+			if (ret)
+				goto out;
+		}
+
+		/* The scheduler owns a ref now: */
+		msm_gem_submit_get(submit);
+
+		msm_rd_dump_submit(priv->rd, submit, NULL);
+
+		drm_sched_entity_push_job(&submit->base);
+
+		args->fence = submit->fence_id;
+		queue->last_fence = submit->fence_id;
+
+		msm_syncobj_reset(syncobjs_to_reset, args->nr_in_syncobjs);
+		msm_syncobj_process_post_deps(post_deps, args->nr_out_syncobjs, submit->user_fence);
+
+	out:
+		submit_cleanup(submit, !!ret);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe3, "[submit locked context]");
 	}
-	
-	/* The scheduler owns a ref now: */
-	msm_gem_submit_get(submit);
-
-	msm_rd_dump_submit(priv->rd, submit, NULL);
-
-	drm_sched_entity_push_job(&submit->base);
-
-	args->fence = submit->fence_id;
-	queue->last_fence = submit->fence_id;
-
-	msm_syncobj_reset(syncobjs_to_reset, args->nr_in_syncobjs);
-	msm_syncobj_process_post_deps(post_deps, args->nr_out_syncobjs, submit->user_fence);
-
-out:
-	submit_cleanup(submit, !!ret);
 out_unlock:
 	mutex_unlock(&queue->lock);
 out_post_unlock:

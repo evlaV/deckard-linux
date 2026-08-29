@@ -273,6 +273,8 @@ msm_gem_shrinker_vmap(struct notifier_block *nb, unsigned long event, void *ptr)
 	unsigned idx, unmapped = 0;
 	unsigned long remaining = 0;
 
+	TRACE_BEGIN_CTX("msm_gem_shrinker_vmap");
+
 	for (idx = 0; lrus[idx] && unmapped < vmap_shrink_limit; idx++) {
 		unmapped += drm_gem_lru_scan(priv->dev, lrus[idx],
 					     vmap_shrink_limit - unmapped,
