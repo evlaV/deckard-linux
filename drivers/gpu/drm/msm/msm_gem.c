@@ -949,7 +949,7 @@ void msm_gem_evict(struct drm_gem_object *obj)
 
 	put_pages(obj);
 
-	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_purge]");
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_evict]");
 }
 
 void msm_gem_vunmap(struct drm_gem_object *obj)
@@ -960,7 +960,7 @@ void msm_gem_vunmap(struct drm_gem_object *obj)
 
 	if (!msm_obj->vaddr || GEM_WARN_ON(!is_vunmapable(msm_obj)))
 		return;
-		
+
 	{
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 		vunmap(msm_obj->vaddr);

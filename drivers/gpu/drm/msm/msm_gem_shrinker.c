@@ -151,25 +151,43 @@ static bool
 wait_for_idle(struct drm_gem_object *obj)
 {
 	enum dma_resv_usage usage = DMA_RESV_USAGE_BOOKKEEP;
-	return dma_resv_wait_timeout(obj->resv, usage, false, 10) > 0;
+	bool ret; 
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+		ret = dma_resv_wait_timeout(obj->resv, usage, false, 10) > 0;
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[wait_for_idle] dma_resv_wait_timeout [%p][%lu]",obj,obj->size);
+	}
+	return ret;
 }
 
 static bool
 active_purge(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket)
 {
-	if (!wait_for_idle(obj))
-		return false;
+	bool ret = false;
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+	ret = wait_for_idle(obj);
 
-	return purge(obj, ticket);
+	if (ret) 
+		ret = purge(obj, ticket);
+	
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[active_purge] [%p][%lu]",obj,obj->size);
+
+	return ret;
 }
 
 static bool
 active_evict(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket)
 {
-	if (!wait_for_idle(obj))
-		return false;
+	bool ret = false;
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+	ret = wait_for_idle(obj);
 
-	return evict(obj, ticket);
+	if (ret) 
+		return evict(obj, ticket);
+	
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[active_evict] [%p][%lu]",obj,obj->size);
+
+	return ret;
 }
 
 static unsigned long
