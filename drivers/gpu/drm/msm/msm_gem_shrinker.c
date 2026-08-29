@@ -154,7 +154,7 @@ wait_for_idle(struct drm_gem_object *obj)
 	bool ret; 
 	{
 		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
-		ret = dma_resv_wait_timeout(obj->resv, usage, false, 10) > 0;
+		ret = dma_resv_wait_timeout(obj->resv, usage, false, 50) > 0;
 		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[wait_for_idle] dma_resv_wait_timeout [%p][%lu]",obj,obj->size);
 	}
 	return ret;
