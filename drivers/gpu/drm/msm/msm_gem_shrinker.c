@@ -150,7 +150,7 @@ static bool
 wait_for_idle(struct drm_gem_object *obj)
 {
 	enum dma_resv_usage usage = DMA_RESV_USAGE_BOOKKEEP;
-	return dma_resv_wait_timeout(obj->resv, usage, false, 10) > 0;
+	return dma_resv_wait_timeout(obj->resv, usage, false, 1) > 0;
 }
 
 static bool
