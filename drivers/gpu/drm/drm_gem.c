@@ -1500,6 +1500,25 @@ drm_gem_lru_move_tail(struct drm_gem_lru *lru, struct drm_gem_object *obj)
 }
 EXPORT_SYMBOL(drm_gem_lru_move_tail);
 
+static bool
+is_flagged_unevictable(struct drm_gem_object *obj)
+{
+	/*
+	 * Track last locked entry for for unwinding locks in error and
+	 * success paths
+	 */
+	struct drm_gpuvm_bo *vm_bo;
+
+	drm_gem_for_each_gpuvm_bo (vm_bo, obj) {
+		struct msm_gem_vm *msm_vm = to_msm_vm(vm_bo->vm);
+
+		if (atomic_read(&msm_vm->unevictable))
+			return true;
+	}
+
+	return false;
+}
+
 /**
  * drm_gem_lru_scan - helper to implement shrinker.scan_objects
  *
@@ -1587,12 +1606,14 @@ drm_gem_lru_scan(struct drm_device *dev,
 
 		bool shrink_ret = false;
 		{
-			TRACE_BEGIN_CTX_CONDITIONAL(gabe4,"[drm_gem_lru_scan] [SHRINK] [%p][%lu][ue=%d]",obj,obj->size,obj->unevictable_bo);
-			if(obj->size < 19000000)
+			TRACE_BEGIN_CTX_CONDITIONAL(gabe4);
+			//if( !is_flagged_unevictable(obj) )
+			if(1)
 			{
 				shrink_ret = shrink(obj, ticket);
 			}
-			TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe4, "[drm_gem_lru_scan] [SHRINK] [%p][%lu][ue=%d]",obj,obj->size,obj->unevictable_bo);
+			TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe4, "[drm_gem_lru_scan] [SHRINK] [%p][%lu][ue=%d][%d]",
+			                                             obj,obj->size,obj->unevictable_bo,is_flagged_unevictable(obj));
 		}
 
 		if (shrink_ret) {
