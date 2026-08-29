@@ -1529,20 +1529,19 @@ drm_gem_lru_scan(struct drm_device *dev,
 	struct drm_gem_object *obj;
 	unsigned freed = 0;
 
-	TRACE_BEGIN_CTX_CONDITIONAL(gabe2,"drm_gem_lru_scan [nr_to_scan=%d]",nr_to_scan);
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe2);
 	drm_gem_lru_init(&still_in_lru);
 
-	{
-		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
-		mutex_lock(&dev->gem_lru_mutex);
-		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_gem_lru_scan mutex_lock1]");
-	}
-
 	while (freed < nr_to_scan) {
+		mutex_lock(&dev->gem_lru_mutex);
+
 		obj = list_first_entry_or_null(&lru->list, typeof(*obj), lru_node);
 
 		if (!obj)
+		{
+			mutex_unlock(&dev->gem_lru_mutex);
 			break;
+		}
 
 		drm_gem_lru_move_tail_locked(&still_in_lru, obj);
 
@@ -1552,13 +1551,17 @@ drm_gem_lru_scan(struct drm_device *dev,
 		 * skip it.
 		 */
 		if (!kref_get_unless_zero(&obj->refcount))
+		{
+			mutex_unlock(&dev->gem_lru_mutex);
 			continue;
+		}
 
 		/*
 		 * Now that we own a reference, we can drop the lock for the
 		 * rest of the loop body, to reduce contention with other
 		 * code paths that need the LRU lock
 		 */
+
 		mutex_unlock(&dev->gem_lru_mutex);
 
 		if (ticket)
@@ -1579,7 +1582,14 @@ drm_gem_lru_scan(struct drm_device *dev,
 			TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe1, "[drm_gem_lru_scan ww_mutex_trylock]");
 		}
 
-		if (shrink(obj, ticket)) {
+		bool shrink_ret = false;
+		{
+			TRACE_BEGIN_CTX_CONDITIONAL(gabe4,"[drm_gem_lru_scan] [SHRINK] [%p][%lu][ue=%d]",obj,obj->size,obj->unevictable_bo);
+			shrink_ret = shrink(obj, ticket);
+			TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe4, "[drm_gem_lru_scan] [SHRINK] [%p][%lu][ue=%d]",obj,obj->size,obj->unevictable_bo);
+		}
+
+		if (shrink_ret) {
 			freed += obj->size >> PAGE_SHIFT;
 
 			/*
@@ -1593,18 +1603,14 @@ drm_gem_lru_scan(struct drm_device *dev,
 
 		dma_resv_unlock2(obj);
 
+tail:
 		if (ticket)
 			ww_acquire_fini(ticket);
 
-tail:
 		drm_gem_object_put(obj);
-		{
-			TRACE_BEGIN_CTX_CONDITIONAL(gabe2);
-			mutex_lock(&dev->gem_lru_mutex);
-			TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe2, "[drm_gem_lru_scan mutex_lock2]");
-		}
 	}
 
+	mutex_lock(&dev->gem_lru_mutex);
 	/*
 	 * Move objects we've skipped over out of the temporary still_in_lru
 	 * back into this LRU
