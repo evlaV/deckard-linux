@@ -1532,6 +1532,9 @@ drm_gem_lru_scan(struct drm_device *dev,
 	TRACE_BEGIN_CTX_CONDITIONAL(gabe2);
 	drm_gem_lru_init(&still_in_lru);
 
+	int obj_unevictable_bo_count=0;
+	int obj_evictable_bo_count=0;
+
 	while (freed < nr_to_scan) {
 		mutex_lock(&dev->gem_lru_mutex);
 
@@ -1585,7 +1588,10 @@ drm_gem_lru_scan(struct drm_device *dev,
 		bool shrink_ret = false;
 		{
 			TRACE_BEGIN_CTX_CONDITIONAL(gabe4,"[drm_gem_lru_scan] [SHRINK] [%p][%lu][ue=%d]",obj,obj->size,obj->unevictable_bo);
-			shrink_ret = shrink(obj, ticket);
+			if(obj->size < 19000000)
+			{
+				shrink_ret = shrink(obj, ticket);
+			}
 			TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe4, "[drm_gem_lru_scan] [SHRINK] [%p][%lu][ue=%d]",obj,obj->size,obj->unevictable_bo);
 		}
 
@@ -1600,6 +1606,11 @@ drm_gem_lru_scan(struct drm_device *dev,
 			WARN_ON(obj->lru == &still_in_lru);
 			WARN_ON(obj->lru == lru);
 		}
+
+		if(obj->unevictable_bo)
+			obj_unevictable_bo_count++;
+		else
+			obj_evictable_bo_count++;
 
 		dma_resv_unlock2(obj);
 
@@ -1622,7 +1633,8 @@ tail:
 
 	mutex_unlock(&dev->gem_lru_mutex);
 
-	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe2, "[drm_gem_lru_scan] [%d of %d]",freed,nr_to_scan);
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe2, "[drm_gem_lru_scan] [%d of %d] [uev=%d,ev=%d]",freed,nr_to_scan,
+																					obj_unevictable_bo_count, obj_evictable_bo_count=0);
 
 	return freed;
 }
