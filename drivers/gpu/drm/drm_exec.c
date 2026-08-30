@@ -234,12 +234,14 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 				owner_pid = owner->pid;
 			}
 		}
-
+#if 0
+		//this hack should not be needed due disabling the active_purge() and active_evict() calls for the shrinker
 		if( (owner_pid > 0) && (exec->flags & DRM_EXEC_UNEVICTABLE) && (exec->flags & DRM_EXEC_LOCK_HACK) )
 		{
 			//hack: skip locking
 			return 0;
 		}
+#endif			
 		ret = dma_resv_lock_interruptible(obj->resv, &exec->ticket);
 	}
 	else
