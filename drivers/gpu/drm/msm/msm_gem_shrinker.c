@@ -134,7 +134,7 @@ is_flagged_unevictable(struct drm_gem_object *obj)
 }
 
 static bool
-purge(struct drm_gem_object *obj, struct ww_acquire_ctx *)
+purge(struct drm_gem_object *obj)
 {
 	if (!is_purgeable(to_msm_bo(obj)))
 		return false;
@@ -146,7 +146,11 @@ purge(struct drm_gem_object *obj, struct ww_acquire_ctx *)
 }
 
 static bool
+<<<<<<< HEAD
 evict(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket)
+=======
+evict(struct drm_gem_object *obj)
+>>>>>>> 59b08e8ef9c0 (drm_gem: remove ww_acquire_ctx ticket that is unused)
 {
 	if (is_unevictable(to_msm_bo(obj)) || is_flagged_unevictable(obj))
 		return false;
@@ -169,21 +173,21 @@ wait_for_idle(struct drm_gem_object *obj)
 }
 
 static bool
-active_purge(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket)
+active_purge(struct drm_gem_object *obj)
 {
 	if (!wait_for_idle(obj))
 		return false;
 
-	return purge(obj, ticket);
+	return purge(obj);
 }
 
 static bool
-active_evict(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket)
+active_evict(struct drm_gem_object *obj)
 {
 	if (!wait_for_idle(obj))
 		return false;
 
-	return evict(obj, ticket);
+	return evict(obj);
 }
 
 static unsigned long
@@ -197,7 +201,7 @@ msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 
 	struct {
 		struct drm_gem_lru *lru;
-		bool (*shrink)(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket);
+		bool (*shrink)(struct drm_gem_object *obj);
 		bool cond;
 		unsigned long freed;
 		unsigned long remaining;
@@ -213,11 +217,19 @@ msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 	for (unsigned i = 0; (nr > 0) && (i < ARRAY_SIZE(stages)); i++) {
 		if (!stages[i].cond)
 			continue;
+<<<<<<< HEAD
+=======
+
+>>>>>>> 59b08e8ef9c0 (drm_gem: remove ww_acquire_ctx ticket that is unused)
 		stages[i].freed =
 			drm_gem_lru_scan(stages[i].lru, nr,
 					 &stages[i].remaining,
+<<<<<<< HEAD
 					 stages[i].shrink,
 					 &ticket);
+=======
+					 stages[i].shrink);
+>>>>>>> 59b08e8ef9c0 (drm_gem: remove ww_acquire_ctx ticket that is unused)
 		nr -= stages[i].freed;
 		freed += stages[i].freed;
 		remaining += stages[i].remaining;
@@ -258,7 +270,7 @@ msm_gem_shrinker_shrink(struct drm_device *dev, unsigned long nr_to_scan)
 static const int vmap_shrink_limit = 15;
 
 static bool
-vmap_shrink(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket)
+vmap_shrink(struct drm_gem_object *obj)
 {
 	if (!is_vunmapable(to_msm_bo(obj)))
 		return false;
@@ -286,8 +298,7 @@ msm_gem_shrinker_vmap(struct notifier_block *nb, unsigned long event, void *ptr)
 		unmapped += drm_gem_lru_scan(lrus[idx],
 					     vmap_shrink_limit - unmapped,
 					     &remaining,
-					     vmap_shrink,
-					     NULL);
+					     vmap_shrink);
 	}
 
 	*(unsigned long *)ptr += unmapped;
@@ -301,7 +312,6 @@ msm_gem_shrinker_vmap(struct notifier_block *nb, unsigned long event, void *ptr)
 struct drm_gem_object *tmp_objs[4096];
 
 unsigned long msm_gem_shrinker_evict_all_ctx(struct drm_device *dev, struct drm_file *file) {
-	struct ww_acquire_ctx ticket;
 	struct drm_gem_object *obj;
 	unsigned long obj_size, freed = 0;
 	int id, count = 0;
@@ -335,7 +345,7 @@ unsigned long msm_gem_shrinker_evict_all_ctx(struct drm_device *dev, struct drm_
 			continue;
 
 		msm_gem_lock(obj);
-		if (active_evict(obj, &ticket))
+		if (active_evict(obj))
 			freed += obj_size;
 		msm_gem_unlock(obj);
 	}
