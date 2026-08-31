@@ -149,8 +149,12 @@ evict(struct drm_gem_object *obj, struct ww_acquire_ctx *unused)
 static bool
 wait_for_idle(struct drm_gem_object *obj)
 {
+    /*Warning this is holding a lock to the obj while waiting for idle, 
+	  the timeout for waiting can be multiple milliseconds for one obj
+	  so this can cause major hitches!*/
+	int wait_for_idle_timeout_ms = 10;
 	enum dma_resv_usage usage = DMA_RESV_USAGE_BOOKKEEP;
-	return dma_resv_wait_timeout(obj->resv, usage, false, 10) > 0;
+	return dma_resv_wait_timeout(obj->resv, usage, false, msecs_to_jiffies(wait_for_idle_timeout_ms)) > 0;
 }
 
 static bool
