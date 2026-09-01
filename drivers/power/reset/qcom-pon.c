@@ -254,6 +254,26 @@ static int qcom_pon_reboot_mode_write(struct reboot_mode_driver *reboot,
 	return ret;
 }
 
+static ssize_t pon_type_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct qcom_pon *pon = dev_get_drvdata(dev);
+	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon_type.type_regval);
+}
+static DEVICE_ATTR_RO(pon_type);
+
+#define PON_TYPE_FIELD(field) \
+static ssize_t pon_type_##field##_show(struct device *dev, struct device_attribute *attr, \
+			        char *buf)					\
+{										\
+	struct qcom_pon *pon = dev_get_drvdata(dev);				\
+										\
+	return sysfs_emit(buf, "%d\n", pon->pmic_pon_type.type_fields.field);		\
+}										\
+static DEVICE_ATTR_RO(pon_type_##field);
+
+PON_TYPE_FIELD(warm_seq);
+PON_TYPE_FIELD(pon_seq);
+
 static ssize_t pon_reason_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct qcom_pon *pon = dev_get_drvdata(dev);
@@ -280,6 +300,9 @@ static struct attribute *attrs[] = {
 	&dev_attr_pon_reason_smpl.attr,
 	&dev_attr_pon_reason_hard_reset.attr,
 	&dev_attr_pon_reason_usb_chg.attr,
+	&dev_attr_pon_type.attr,
+	&dev_attr_pon_type_warm_seq.attr,
+	&dev_attr_pon_type_pon_seq.attr,
 	NULL,
 };
 
