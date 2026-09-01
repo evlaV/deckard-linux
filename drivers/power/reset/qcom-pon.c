@@ -94,11 +94,9 @@ struct pm_pon_warm_reset_reason_type
  */
 struct pm_pon_on_state_reason_type
 {
-  unsigned reserved1 : 4;     /* Reserved bits */
+  unsigned reserved1 : 6;     /* Reserved bits */
   unsigned warm_seq  : 1;     /* Warm sequence */
   unsigned pon_seq   : 1;     /* PON sequence  */
-  unsigned shutdown_seq : 1;   /*shutdown sequence */
-  unsigned hard_reset_seq : 1; /*hard reset sequence */
 };
 
 
@@ -171,9 +169,13 @@ struct qcom_pon {
 	struct input_handler input_handler;
 	bool needs_pbs_ps_hold_sw_ctl;
 	union {
-		u32 reason_regval;
-		struct pm_pon_reason_type reason_fields;
+		u32 trigger_regval;
+		struct pm_pon_reason_type trigger_fields;
 	} pmic_pon;
+	union {
+		u32 type_regval;
+		struct pm_pon_on_state_reason_type type_fields;
+	} pmic_pon_type;
 };
 
 static int qcom_pon_reboot(struct notifier_block *nb,
@@ -255,7 +257,7 @@ static int qcom_pon_reboot_mode_write(struct reboot_mode_driver *reboot,
 static ssize_t pon_reason_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct qcom_pon *pon = dev_get_drvdata(dev);
-	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon.reason_regval);
+	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon.trigger_regval);
 }
 static DEVICE_ATTR_RO(pon_reason);
 
@@ -265,7 +267,7 @@ static ssize_t pon_reason_##field##_show(struct device *dev, struct device_attri
 {										\
 	struct qcom_pon *pon = dev_get_drvdata(dev);				\
 										\
-	return sysfs_emit(buf, "%d\n", pon->pmic_pon.reason_fields.field);		\
+	return sysfs_emit(buf, "%d\n", pon->pmic_pon.trigger_fields.field);		\
 }										\
 static DEVICE_ATTR_RO(pon_reason_##field);
 
@@ -390,6 +392,37 @@ static struct input_handler qcom_pon_combo_handler = {
 	.id_table   = qcom_pon_combo_ids,
 };
 
+static void qcom_pon_reason_dump(struct qcom_pon *pon)
+{
+	/* first dump the pon reason type */
+	if (pon->pmic_pon_type.type_fields.warm_seq)
+		dev_warn(pon->dev, "PON: type: Warm reset\n");
+	else if (pon->pmic_pon_type.type_fields.pon_seq)
+		dev_warn(pon->dev, "PON: type: PON reset seq\n");
+
+	/* after dump the pon reason trigger */
+	if (pon->pmic_pon.trigger_fields.hard_reset)
+		dev_warn(pon->dev, "PON: trigger: Hard reset\n");
+	if (pon->pmic_pon.trigger_fields.smpl)
+		dev_warn(pon->dev, "PON: trigger: SPML\n");
+	if (pon->pmic_pon.trigger_fields.rtc)
+		dev_warn(pon->dev, "PON: trigger: RTC\n");
+	if (pon->pmic_pon.trigger_fields.dc_chg)
+		dev_warn(pon->dev, "PON: trigger: DC_CHG\n");
+	if (pon->pmic_pon.trigger_fields.usb_chg)
+		dev_warn(pon->dev, "PON: trigger: USB_CHG\n");
+	if (pon->pmic_pon.trigger_fields.pon1)
+		dev_warn(pon->dev, "PON: trigger: PON1\n");
+	if (pon->pmic_pon.trigger_fields.cblpwr)
+		dev_warn(pon->dev, "PON: trigger: CBL_PWR1_N\n");
+	if (pon->pmic_pon.trigger_fields.kpdpwr)
+		dev_warn(pon->dev, "PON: trigger: KPDPWR_N\n");
+	if (pon->pmic_pon.trigger_fields.known_rsn)
+		dev_warn(pon->dev, "PON: trigger: known_rsn\n");
+	if (!pon->pmic_pon.trigger_regval)
+		dev_warn(pon->dev, "PON: trigger: none\n");
+}
+
 static int qcom_pon_probe(struct platform_device *pdev)
 {
 	const struct qcom_pon_data *data;
@@ -471,13 +504,14 @@ static int qcom_pon_probe(struct platform_device *pdev)
 			* but otherwise the codes are unchanged from XR2 */
 		error = regmap_read(pon->regmap, PON_AOP_PON_REASON1, &pmic_pon_regval);
 		dev_warn(&pdev->dev, "PON_PON_REASON1 0x%02X\n", pmic_pon_regval);
-		pon->pmic_pon.reason_regval = pmic_pon_regval;
+		pon->pmic_pon.trigger_regval = pmic_pon_regval;
 
 		error = regmap_read(pon->regmap, PON_AOP_WARM_RESET_REASON1, &pmic_pon_regval);
 		dev_warn(&pdev->dev, "PON_WARM_RESET_REASON1 0x%02X\n", pmic_pon_regval);
 
 		error = regmap_read(pon->regmap, PON_AOP_ON_REASON, &pmic_pon_regval);
 		dev_warn(&pdev->dev, "PON_ON_REASON 0x%02X\n", pmic_pon_regval);
+		pon->pmic_pon_type.type_regval = pmic_pon_regval;
 
 		error = regmap_read(pon->regmap, PON_AOP_POFF_REASON1, &pmic_pon_regval);
 		dev_warn(&pdev->dev, "PON_POFF_REASON1 0x%02X\n", pmic_pon_regval);
@@ -488,6 +522,9 @@ static int qcom_pon_probe(struct platform_device *pdev)
 		error = regmap_read(pon->regmap, pon->pbs_baseaddr + PON_PBS_FAULT_REASON1,
 				    &pmic_pon_regval);
 		dev_warn(&pdev->dev, "PON_PBS_FAULT_REASON1 0x%08X\n", pmic_pon_regval);
+
+		/* now dump a more human information */
+		qcom_pon_reason_dump(pon);
 	}
 
 	/* register input handler to get combo keys pressed to trigger warm reset */
