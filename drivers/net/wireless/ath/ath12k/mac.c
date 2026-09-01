@@ -4104,12 +4104,15 @@ static int ath12k_mac_fils_discovery(struct ath12k_link_vif *arvif,
 	return ret;
 }
 
+static void ath12k_mac_vif_setup_ps(struct ath12k_link_vif *arvif);
+
 static void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
 					  struct ieee80211_vif *vif,
 					  u64 changed)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	unsigned long links = ahvif->links_map;
+	struct ieee80211_vif_cfg *vif_cfg;
 	struct ieee80211_bss_conf *info;
 	struct ath12k_link_vif *arvif;
 	struct ieee80211_sta *sta;
@@ -4190,6 +4193,24 @@ static void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
 						    arvif->vdev_id, ret);
 			} else {
 				ath12k_bss_disassoc(ar, arvif);
+			}
+		}
+	}
+
+	if (changed & BSS_CHANGED_PS) {
+		links = ahvif->links_map;
+		vif_cfg = &vif->cfg;
+
+		for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
+			arvif = wiphy_dereference(hw->wiphy, ahvif->link[link_id]);
+			if (!arvif || !arvif->ar)
+				continue;
+
+			ar = arvif->ar;
+
+			if (ar->ab->hw_params->supports_sta_ps) {
+				ahvif->ps = vif_cfg->ps;
+				ath12k_mac_vif_setup_ps(arvif);
 			}
 		}
 	}
