@@ -205,6 +205,8 @@ static int ath12k_mhi_op_bw_scale(struct mhi_controller *mhi_cntrl,
 	if (!pdev)
 		return -ENODEV;
 
+	pr_info("%s: speed %d\n", __func__, speed);
+
 	return pcie_set_target_speed(pdev, speed, true);
 }
 
