@@ -1547,23 +1547,29 @@ drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm)
 	LIST_HEAD(evict);
 	int ret = 0, count = 0;
 
-	drm_exec_init(&exec, 0, 1);
-	drm_exec_until_all_locked(&exec) {
-		drm_exec_lock_obj(&exec, drm_gpuvm_resv_obj(gpuvm));
-		drm_exec_retry_on_contention(&exec);
-		break;
+	{
+		__label__ drm_exec_retry;
+
+		drm_exec_init(&exec, 0, 1);
+		drm_exec_until_all_locked(&exec) {
+			drm_exec_lock_obj(&exec, drm_gpuvm_resv_obj(gpuvm));
+			drm_exec_retry_on_contention(&exec);
+			break;
+		}
+
+		for_each_vm_bo_in_list(gpuvm, evict, &evict, vm_bo) {
+			temp_vm_bos[count++] = vm_bo;
+			drm_gpuvm_bo_get(vm_bo);
+		}
+
+		restore_vm_bo_list(gpuvm, evict);
+
+		drm_exec_fini(&exec);
 	}
-
-	for_each_vm_bo_in_list(gpuvm, evict, &evict, vm_bo) {
-		temp_vm_bos[count++] = vm_bo;
-		drm_gpuvm_bo_get(vm_bo);
-	}
-
-	restore_vm_bo_list(gpuvm, evict);
-
-	drm_exec_fini(&exec);
 
 	for(int i = 0; i < count; i++) {
+		__label__ drm_exec_retry;
+
 		vm_bo = temp_vm_bos[i];
 
 		drm_exec_init(&exec, 0, 1);
