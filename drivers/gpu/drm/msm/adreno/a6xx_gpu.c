@@ -2486,8 +2486,14 @@ static void a6xx_destroy(struct msm_gpu *gpu)
 
 #if defined(CONFIG_DEBUG_FS)
 static u32 a6xx_bcl_lvl0_cnt;
+static u64 a6xx_bcl_lvl0_prev;
+static u64 a6xx_bcl_lvl0_accum;
 static u32 a6xx_bcl_lvl1_cnt;
+static u64 a6xx_bcl_lvl1_prev;
+static u64 a6xx_bcl_lvl1_accum;
 static u32 a6xx_bcl_lvl2_cnt;
+static u64 a6xx_bcl_lvl2_prev;
+static u64 a6xx_bcl_lvl2_accum;
 #endif
 
 static u64 a6xx_gpu_busy(struct msm_gpu *gpu, unsigned long *out_sample_rate)
@@ -2508,18 +2514,30 @@ static u64 a6xx_gpu_busy(struct msm_gpu *gpu, unsigned long *out_sample_rate)
 
 	a = gmu_read(&a6xx_gpu->gmu,
 			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_1_L);
-	if (a)
+	if (a) {
 		a6xx_bcl_lvl0_cnt++;
+		if (a > a6xx_bcl_lvl0_prev)
+			a6xx_bcl_lvl0_accum += (a - a6xx_bcl_lvl0_prev);
+	}
+	a6xx_bcl_lvl0_prev = a;
 
 	b = gmu_read(&a6xx_gpu->gmu,
 			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_2_L);
-	if (b)
+	if (b) {
 		a6xx_bcl_lvl1_cnt++;
+		if (b > a6xx_bcl_lvl1_prev)
+			a6xx_bcl_lvl1_accum += (b - a6xx_bcl_lvl1_prev);
+	}
+	a6xx_bcl_lvl1_prev = b;
 
 	c = gmu_read(&a6xx_gpu->gmu,
 			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_3_L);
-	if (c)
+	if (c) {
 		a6xx_bcl_lvl2_cnt++;
+		if (c > a6xx_bcl_lvl2_prev)
+			a6xx_bcl_lvl1_accum += (c - a6xx_bcl_lvl2_prev);
+	}
+	a6xx_bcl_lvl2_prev = c;
 #endif
 
 	return busy_cycles;
@@ -2696,6 +2714,17 @@ static void bcl_throttle_print(struct msm_gpu *gpu, struct drm_printer *p)
 	drm_printf(p, "BCL throttle cycles: %08x %08x %08x\n", a, b, c);
 }
 
+static void bcl_throttle_accum_print(struct msm_gpu *gpu, struct drm_printer *p)
+{
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
+
+	drm_printf(p, "BCL throttle accumulated cycles: %08llx %08llx %08llx\n",
+		   a6xx_bcl_lvl0_accum,
+		   a6xx_bcl_lvl1_accum,
+		   a6xx_bcl_lvl2_accum);
+}
+
 static void bcl_throttle_cnt_print(struct msm_gpu *gpu, struct drm_printer *p)
 {
 	drm_printf(p, "BCL throttle counters: %d %d %d\n",
@@ -2720,6 +2749,7 @@ static int show(struct seq_file *m, void *arg)
 static struct drm_info_list a6xx_debugfs_list[] = {
 	ENT(bcl_throttle),
 	ENT(bcl_throttle_cnt),
+	ENT(bcl_throttle_accum),
 };
 
 void a6xx_debugfs_init(struct msm_gpu *gpu, struct drm_minor *minor)
