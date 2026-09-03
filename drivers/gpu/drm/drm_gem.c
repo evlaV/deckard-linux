@@ -1207,9 +1207,11 @@ drm_gem_object_lookup_at_offset(struct file *filp, unsigned long start,
 
 	if (drm_dev_is_unplugged(dev))
 		return ERR_PTR(-ENODEV);
-
+#if 0
+//disable kgsl until we rework
 	if (vma->vm_pgoff < DRM_FILE_PAGE_OFFSET_START)
 		return kgsl_mmap(priv, dev, vma);
+#endif
 
 	drm_vma_offset_lock_lookup(dev->vma_offset_manager);
 	node = drm_vma_offset_exact_lookup_locked(dev->vma_offset_manager,
