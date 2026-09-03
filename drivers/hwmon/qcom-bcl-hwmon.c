@@ -455,7 +455,7 @@ static const struct reg_field bcl_smb2370_reg_fields[] = {
 
 static const struct bcl_desc pm7250b_data = {
 	.reg_fields = bcl_pm7250b_reg_fields,
-	.num_reg_fields = F_CURR_INPUT + 1,
+	.num_reg_fields = ARRAY_SIZE(bcl_pm7250b_reg_fields),
 	.data_field_bits_size = 8,
 	.thresh_field_bits_size = 7,
 	.battery_config_field = REG_FIELD(0, 0, 0),
@@ -475,7 +475,7 @@ static const struct bcl_desc pm7250b_data = {
 
 static const struct bcl_desc pm8350c_data = {
 	.reg_fields = bcl_pm8350c_reg_fields,
-	.num_reg_fields = F_CURR_INPUT + 1,
+	.num_reg_fields = ARRAY_SIZE(bcl_pm8350c_reg_fields),
 	.data_field_bits_size = 8,
 	.thresh_field_bits_size = 8,
 	.battery_config_field = REG_FIELD(0, 0, 0),
@@ -495,7 +495,7 @@ static const struct bcl_desc pm8350c_data = {
 
 static const struct bcl_desc pm8550_data = {
 	.reg_fields = bcl_pm8550_reg_fields,
-	.num_reg_fields = F_CURR_MON_EN + 1,
+	.num_reg_fields = ARRAY_SIZE(bcl_pm8550_reg_fields),
 	.data_field_bits_size = 0,
 	.thresh_field_bits_size = 8,
 	.battery_config_field = REG_FIELD(0, 0, 0),
@@ -509,7 +509,7 @@ static const struct bcl_desc pm8550_data = {
 
 static const struct bcl_desc pm8550b_data = {
 	.reg_fields = bcl_pm8550b_reg_fields,
-	.num_reg_fields = F_MAX_FIELDS,
+	.num_reg_fields = ARRAY_SIZE(bcl_pm8550b_reg_fields),
 	.data_field_bits_size = 8,
 	.thresh_field_bits_size = 8,
 	.battery_config_field = REG_FIELD(0, 0, 0),
@@ -530,7 +530,7 @@ static const struct bcl_desc pm8550b_data = {
 
 static const struct bcl_desc pmih0108_data = {
 	.reg_fields = bcl_pmih0108_reg_fields,
-	.num_reg_fields = F_MAX_FIELDS,
+	.num_reg_fields = ARRAY_SIZE(bcl_pmih0108_reg_fields),
 	.data_field_bits_size = 16,
 	.thresh_field_bits_size = 8,
 	.battery_config_field = REG_FIELD(0, 0, 0),
@@ -550,7 +550,7 @@ static const struct bcl_desc pmih0108_data = {
 
 static const struct bcl_desc pmh0101_data = {
 	.reg_fields = bcl_pmh0101_reg_fields,
-	.num_reg_fields = F_CURR_MON_EN + 1,
+	.num_reg_fields = ARRAY_SIZE(bcl_pmh0101_reg_fields),
 	.thresh_field_bits_size = 8,
 	.battery_config_field = REG_FIELD(0, 0, 0),
 	.channel_cfg[BCL_BATT_1S][CHANNEL_IN] = {
@@ -564,7 +564,7 @@ static const struct bcl_desc pmh0101_data = {
 /* Register 0x2a50 mapping: 0 -> 2S, 1 -> 3S */
 static const struct bcl_desc smb2360_data = {
 	.reg_fields = bcl_smb2360_reg_fields,
-	.num_reg_fields = F_CURR_INPUT + 1,
+	.num_reg_fields = ARRAY_SIZE(bcl_smb2360_reg_fields),
 	.data_field_bits_size = 8,
 	.thresh_field_bits_size = 8,
 	.battery_config_field = REG_FIELD(0x2a50, 0, 1),
@@ -596,7 +596,7 @@ static const struct bcl_desc smb2360_data = {
 
 static const struct bcl_desc smb2370_data = {
 	.reg_fields = bcl_smb2370_reg_fields,
-	.num_reg_fields = F_MAX_FIELDS,
+	.num_reg_fields = ARRAY_SIZE(bcl_smb2370_reg_fields),
 	.data_field_bits_size = 16,
 	.thresh_field_bits_size = 8,
 	.battery_config_field = REG_FIELD(0x2a50, 0, 1),
@@ -1403,6 +1403,7 @@ static int bcl_regmap_field_init(struct device *dev, struct bcl_device *bcl,
 	 * Note: We use a mutable local copy of struct reg_field (not const)
 	 * because we need to modify the .reg field to add the BCL base offset.
 	 */
+
 	for (i = 0; i < data->num_reg_fields; i++) {
 		struct reg_field field = data->reg_fields[i];
 
