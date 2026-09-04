@@ -1061,8 +1061,6 @@ static int rad_probe(struct mipi_dsi_device *dsi)
 	rad_init_dsc_config(ctx);
 	ctx->dsi[0]->dsc = &ctx->dsc_cfg;
 	ctx->dsi[1]->dsc = &ctx->dsc_cfg;
-	ctx->dsi[0]->dsc_slice_per_pkt = 4;
-	ctx->dsi[1]->dsc_slice_per_pkt = 4;
 
 	ret = rad_panel_add(ctx);
 	if (ret) {
@@ -1075,7 +1073,7 @@ static int rad_probe(struct mipi_dsi_device *dsi)
 		dsi_dev->lanes = 3;
 		dsi_dev->format = MIPI_DSI_FMT_RGB888;
 		dsi_dev->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_LPM |
-			MIPI_DSI_CLOCK_NON_CONTINUOUS;
+			MIPI_DSI_CLOCK_NON_CONTINUOUS | MIPI_DSI_MODE_DSC_ALL_SLICES_IN_PKT;
 		ret = mipi_dsi_attach(dsi_dev);
 		if (ret < 0) {
 			DRM_DEV_ERROR(dev,

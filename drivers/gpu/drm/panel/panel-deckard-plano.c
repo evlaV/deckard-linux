@@ -989,20 +989,14 @@ static int plano_set_dsi_dsc(struct plano_ctx *ctx, plano_modes_t mode_sel)
 			return -EINVAL;
 		}
 		ctx->dsi[0]->dsc = &ctx->dsc_cfg;
-		ctx->dsi[0]->dsc_slice_per_pkt = extmodes[mode_sel].dsc_hslice_count;
-		if (ctx->is_dual_panel) {
+		if (ctx->is_dual_panel)
 			ctx->dsi[1]->dsc = &ctx->dsc_cfg;
-			ctx->dsi[1]->dsc_slice_per_pkt = extmodes[mode_sel].dsc_hslice_count;
-		}
 	}
 	else
 	{
 		ctx->dsi[0]->dsc = NULL;
-		ctx->dsi[0]->dsc_slice_per_pkt = 0;
-		if (ctx->is_dual_panel) {
+		if (ctx->is_dual_panel)
 			ctx->dsi[1]->dsc = NULL;
-			ctx->dsi[1]->dsc_slice_per_pkt = 0;
-		}
 	}
 
 	return 0;
@@ -2391,7 +2385,7 @@ skip_panel2:
 		}
 		dsi_dev->format = MIPI_DSI_FMT_RGB888;
 		dsi_dev->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_LPM |
-			MIPI_DSI_CLOCK_NON_CONTINUOUS;
+			MIPI_DSI_CLOCK_NON_CONTINUOUS | MIPI_DSI_MODE_DSC_ALL_SLICES_IN_PKT;
 		ret = mipi_dsi_attach(dsi_dev);
 		if (ret < 0) {
 			DRM_DEV_ERROR(dev, "dsi attach failed i = %d\n", i);

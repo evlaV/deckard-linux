@@ -7455,7 +7455,7 @@ static ssize_t wq_prio_show(struct device *dev, struct device_attribute *attr,
 	int written;
 
 	mutex_lock(&wq->mutex);
-	written = scnprintf(buf, PAGE_SIZE, "%d\n", wq->unbound_attrs->prio);
+	written = scnprintf(buf, PAGE_SIZE, "%d\n", wq->attrs->prio);
 	mutex_unlock(&wq->mutex);
 
 	return written;

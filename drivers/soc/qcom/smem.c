@@ -14,8 +14,8 @@
 #include <linux/platform_device.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
-#include <linux/soc/qcom/smem.h>
 #include <linux/soc/qcom/socinfo.h>
+#include <linux/soc/qcom/smem.h>
 
 #include "smem.h"
 

@@ -273,7 +273,7 @@ static int kgsl_alloc(struct drm_file *file_priv, struct kgsl_gpuobj_alloc *allo
 	struct drm_device *dev = file_priv->minor->dev;
 	struct msm_context *ctx = file_priv->driver_priv;
 	struct drm_gpuvm *vm = msm_context_vm(dev, ctx);
-	struct drm_gem_object *obj;
+	struct drm_gem_object *obj, *r_obj = NULL;
 	u32 msm_flags = MSM_BO_WC;
 	unsigned size;
 
@@ -333,7 +333,7 @@ static int kgsl_alloc(struct drm_file *file_priv, struct kgsl_gpuobj_alloc *allo
 	if (flags.vbo)
 		obj = msm_gem_vbo_new(dev, size, msm_flags, vm);
 	else
-		obj = msm_gem_new(dev, size, msm_flags);
+		obj = msm_gem_new(dev, size, msm_flags, r_obj);
 	if (IS_ERR(obj))
 		return PTR_ERR(obj);
 

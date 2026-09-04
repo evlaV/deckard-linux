@@ -143,7 +143,7 @@
 				reg = <ADC5_GEN3_TEMP_ALARM_LITE(7)>;
 				label = "pm8550b_lite_die_temp";
 				qcom,pre-scaling = <1 1>;
-			}
+			};
 
 			channel@78e {
 				reg = <ADC5_GEN3_VPH_PWR(7)>;
@@ -165,8 +165,8 @@
 
 			// NOTE That this seems correct, but is not... TGoyen
 			// qcom,scale-fn-type = <ADC_SCALE_HW_CALIB_PM5_GEN3_BATT_THERM_100K>;
-			battery_temp {
-				reg = <PM8550B_ADC5_GEN3_AMUX_THM1_BATT_THERM_100K_PU>;
+			channel@744 {
+				reg = <ADC5_GEN3_AMUX1_THM_100K_PU(7)>;
 				label = "battery_temp";
                 qcom,ratiometric;
                 qcom,hw-settle-time = <200>;
@@ -252,7 +252,7 @@
 
 			/* PM8550VE Channel nodes */
 			channel@503 {
-				reg = <ADC5_GEN3_DIE_TEMP(PMK8550VE_SID)>;
+				reg = <ADC5_GEN3_DIE_TEMP(8)>;
 				label = "pm8550ve_die_temp";
 				qcom,pre-scaling = <1 1>;
 			};

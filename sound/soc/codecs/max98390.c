@@ -1124,7 +1124,7 @@ static int max98390_dsm_init(struct snd_soc_component *component)
 				component->dev);
 			if (ret) {
 				dev_err(component->dev, "Firmware Not Found!\n");
-				goto err;
+				return ret;
 			}
 		}
 	}

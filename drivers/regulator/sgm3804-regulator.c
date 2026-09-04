@@ -150,7 +150,7 @@ static const struct i2c_device_id sgm3804_id[] = {
 	{ .name = "sgm3804" },
 	{ }
 };
-MODULE_DEVICE_TABLE(i2c, sgm3804_i2c_id);
+MODULE_DEVICE_TABLE(i2c, sgm3804_id);
 
 static const struct of_device_id sgm3804_i2c_of_match[] = {
     { .compatible = "sgmicro,sgm3804" },
@@ -165,7 +165,7 @@ static struct i2c_driver sgm3804_regulator_driver = {
         .of_match_table = sgm3804_i2c_of_match,
     },
     .probe = sgm3804_i2c_probe,
-    .id_table = sgm3804_i2c_id,
+    .id_table = sgm3804_id,
 };
 
 module_i2c_driver(sgm3804_regulator_driver);

@@ -20,6 +20,7 @@
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
+#include <drm/drm_of.h>
 
 struct wt0600_panel {
 	struct drm_panel panel;
@@ -263,7 +264,7 @@ static int wt0600_probe(struct mipi_dsi_device *dsi)
 				     "Failed to register second DSI device\n");
 
 	/* Get panel orientation */
-	ret = of_drm_get_panel_orientation(dev->of_node, &ctx->orientation);
+	ret = drm_of_get_panel_orientation(dev->of_node, &ctx->orientation);
 	if (ret < 0 && ret != -ENODEV)
 		return dev_err_probe(dev, ret,
 				     "Failed to get panel orientation\n");

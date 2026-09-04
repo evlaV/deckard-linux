@@ -41,6 +41,14 @@ enum ddr_info_version {
 	INFO_V7_WITH_6_REGIONS,
 };
 
+/* Structs used across multiple versions */
+struct ddr_part_details {
+	__le16 revision_id1;
+	__le16 revision_id2;
+	__le16 width;
+	__le16 density;
+};
+
 struct smem_dram {
 	u8 manufacturer_id;
 	u8 device_type;
@@ -64,14 +72,6 @@ enum ddr_type {
 };
 
 /* The data structures below are NOT __packed on purpose! */
-
-/* Structs used across multiple versions */
-struct ddr_part_details {
-	__le16 revision_id1;
-	__le16 revision_id2;
-	__le16 width;
-	__le16 density;
-};
 
 struct ddr_freq_table {
 	__le32 freq_khz;

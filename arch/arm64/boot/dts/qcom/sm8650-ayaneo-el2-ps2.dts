@@ -688,7 +688,7 @@
 
 	// NOTE Setting qcom,adc-tm-type errors out driver and blocks all channels with obscure error. Need Thermal Zone setup to match.
 	pmk8550_xo_therm {
-		reg = <PMK8550_ADC5_GEN3_AMUX_THM1_XO_THERM_100K_PU(0)>;
+		reg = <ADC5_GEN3_AMUX1_THM_100K_PU(0)>;
 		label = "pmk8550_xo_therm";
 		qcom,ratiometric;
 		qcom,hw-settle-time = <200>;
