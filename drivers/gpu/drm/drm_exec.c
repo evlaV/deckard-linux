@@ -5,6 +5,7 @@
 
 #include <linux/dma-resv.h>
 #include <linux/export.h>
+#include <trace/gpuvis.h>
 
 /**
  * DOC: Overview
@@ -210,13 +211,18 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 {
 	int ret;
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 	ret = drm_exec_lock_contended(exec);
 	if (unlikely(ret))
+	{
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_exec_lock_obj] drm_exec_lock_contended");
 		return ret;
+	}
 
 	if (exec->prelocked == obj) {
 		drm_gem_object_put(exec->prelocked);
 		exec->prelocked = NULL;
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_exec_lock_obj] prelocked");
 		return 0;
 	}
 
@@ -250,24 +256,33 @@ int drm_exec_lock_obj(struct drm_exec *exec, struct drm_gem_object *obj)
 	if (unlikely(ret == -EDEADLK)) {
 		drm_gem_object_get(obj);
 		exec->contended = obj;
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_exec_lock_obj] EDEADLK");
 		return -EDEADLK;
 	}
 
 	if (unlikely(ret == -EALREADY) &&
 	    exec->flags & DRM_EXEC_IGNORE_DUPLICATES)
+	{
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_exec_lock_obj] EALREADY");
 		return 0;
+	}
 
 	if (unlikely(ret))
+	{
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_exec_lock_obj] unlikely");
 		return ret;
+	}
 
 	ret = drm_exec_obj_locked(exec, obj);
 	if (ret)
 		goto error_unlock;
 
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_exec_lock_obj] ret=0");
 	return 0;
 
 error_unlock:
 	dma_resv_unlock(obj->resv);
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_exec_lock_obj] error ret=%d",ret);
 	return ret;
 }
 EXPORT_SYMBOL(drm_exec_lock_obj);

@@ -30,6 +30,7 @@
 #include <linux/export.h>
 #include <linux/interval_tree_generic.h>
 #include <linux/mm.h>
+#include <trace/gpuvis.h>
 
 /**
  * DOC: Overview
@@ -1344,7 +1345,7 @@ drm_gpuvm_exec_lock(struct drm_gpuvm_exec *vm_exec)
 	return 0;
 
 err:
-	drm_exec_fini(exec);
+	drm_exec_fini(exec);     /* drop locks */
 	return ret;
 }
 EXPORT_SYMBOL_GPL(drm_gpuvm_exec_lock);
@@ -1424,7 +1425,7 @@ drm_gpuvm_exec_lock_range(struct drm_gpuvm_exec *vm_exec,
 	return ret;
 
 err:
-	drm_exec_fini(exec);
+	drm_exec_fini(exec);     /* drop locks */
 	return ret;
 }
 EXPORT_SYMBOL_GPL(drm_gpuvm_exec_lock_range);
@@ -1512,7 +1513,9 @@ drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm)
 	struct drm_gpuvm_bo **temp_vm_bos;
 	LIST_HEAD(evict);
 	int ret = 0, count = 0;
-
+	
+	TRACE_BEGIN_CTX("drm_gpuvm_validate_besteffort");
+	
 	temp_vm_bos = kvcalloc(MAX_TEMP_VM_BOS,sizeof(*temp_vm_bos),GFP_KERNEL);
 	if (!temp_vm_bos)
 		return -ENOMEM;

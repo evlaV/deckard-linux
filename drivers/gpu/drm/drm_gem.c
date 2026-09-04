@@ -45,6 +45,7 @@
 #include <linux/string_helpers.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
+#include <trace/gpuvis.h>
 
 #include <drm/drm.h>
 #include <drm/drm_device.h>
@@ -689,6 +690,7 @@ struct page **drm_gem_get_pages(struct drm_gem_object *obj)
 	if (pages == NULL)
 		return ERR_PTR(-ENOMEM);
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 	mapping_set_unevictable(mapping);
 
 	i = 0;
@@ -711,6 +713,7 @@ struct page **drm_gem_get_pages(struct drm_gem_object *obj)
 				(folio_pfn(folio) >= 0x00100000UL));
 	}
 
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[drm_gem_get_pages %lu]",npages);
 	return pages;
 
 fail:
@@ -1629,6 +1632,7 @@ drm_gem_lru_scan(struct drm_device *dev,
 	struct drm_gem_object *obj;
 	unsigned freed = 0;
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe2);
 	drm_gem_lru_init(&still_in_lru);
 
 	mutex_lock(&dev->gem_lru_mutex);
@@ -1696,6 +1700,8 @@ tail:
 	lru->count += still_in_lru.count;
 
 	mutex_unlock(&dev->gem_lru_mutex);
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe2, "[drm_gem_lru_scan]");
 
 	return freed;
 }

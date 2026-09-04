@@ -19,6 +19,7 @@
 #include "msm_gem.h"
 #include "msm_gpu.h"
 #include "msm_kms.h"
+#include <trace/gpuvis.h>
 
 static void update_device_mem(struct msm_drm_private *priv, ssize_t size)
 {
@@ -186,6 +187,7 @@ static struct page **get_pages(struct drm_gem_object *obj)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 	msm_gem_assert_locked(obj);
 
 	if (!msm_obj->pages) {
@@ -222,6 +224,9 @@ static struct page **get_pages(struct drm_gem_object *obj)
 
 		update_lru(obj);
 	}
+	
+	size_t npages_out = obj->size >> PAGE_SHIFT;
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[get_pages] [%d] %s %d",npages_out, obj->name, obj->size);
 
 	return msm_obj->pages;
 }
@@ -292,9 +297,12 @@ static void pin_obj_locked(struct drm_gem_object *obj)
 {
 	struct drm_device *dev = obj->dev;
 
-	mutex_lock(&dev->gem_lru_mutex);
-	msm_gem_pin_obj_locked(obj);
-	mutex_unlock(&dev->gem_lru_mutex);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe,"[lock]pin_obj_locked");
+		mutex_lock(&dev->gem_lru_mutex);
+		msm_gem_pin_obj_locked(obj);
+		mutex_unlock(&dev->gem_lru_mutex);
+	}
 }
 
 struct page **msm_gem_pin_pages_locked(struct drm_gem_object *obj)
@@ -335,6 +343,7 @@ static vm_fault_t msm_gem_fault(struct vm_fault *vmf)
 	int err;
 	vm_fault_t ret;
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe0);
 	/*
 	 * vm_ops.open/drm_gem_mmap_obj and close get and put
 	 * a reference on obj. So, we dont need to hold one here.
@@ -370,6 +379,7 @@ static vm_fault_t msm_gem_fault(struct vm_fault *vmf)
 out_unlock:
 	msm_gem_unlock(obj);
 out:
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe0, "[msm_gem_fault]");
 	return ret;
 }
 
@@ -509,13 +519,17 @@ int msm_gem_pin_vma_locked(struct drm_gem_object *obj, struct drm_gpuva *vma)
 	struct page **pages;
 	int prot = msm_gem_prot(obj);
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+	
 	msm_gem_assert_locked(obj);
 
 	pages = msm_gem_get_pages_locked(obj, MSM_MADV_WILLNEED);
 	if (IS_ERR(pages))
 		return PTR_ERR(pages);
 
-	return msm_gem_vma_map(vma, prot, msm_obj->sgt);
+	int ret = msm_gem_vma_map(vma, prot, msm_obj->sgt);
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_pin_vma_locked][%p][%lu]",obj,obj->size);
+	return ret;
 }
 
 void msm_gem_unpin_locked(struct drm_gem_object *obj)
@@ -865,6 +879,8 @@ void msm_gem_purge(struct drm_gem_object *obj)
 	msm_gem_assert_locked(obj);
 	GEM_WARN_ON(!is_purgeable(msm_obj));
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+
 	/* Get rid of any iommu mapping(s): */
 	put_iova_spaces(obj, NULL, false, "purge");
 
@@ -890,6 +906,8 @@ void msm_gem_purge(struct drm_gem_object *obj)
 
 	invalidate_mapping_pages(file_inode(obj->filp)->i_mapping,
 			0, (loff_t)-1);
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_purge]");
 }
 
 /*
@@ -903,12 +921,16 @@ void msm_gem_evict(struct drm_gem_object *obj)
 	msm_gem_assert_locked(obj);
 	GEM_WARN_ON(is_unevictable(msm_obj));
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+
 	/* Get rid of any iommu mapping(s): */
 	put_iova_spaces(obj, NULL, false, "evict");
 
 	drm_vma_node_unmap(&obj->vma_node, dev->anon_inode->i_mapping);
 
 	put_pages(obj);
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_evict]");
 }
 
 void msm_gem_vunmap(struct drm_gem_object *obj)
@@ -920,7 +942,11 @@ void msm_gem_vunmap(struct drm_gem_object *obj)
 	if (!msm_obj->vaddr || GEM_WARN_ON(!is_vunmapable(msm_obj)))
 		return;
 
-	vunmap(msm_obj->vaddr);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+		vunmap(msm_obj->vaddr);
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_vunmap]");
+	}
 	msm_obj->vaddr = NULL;
 }
 
@@ -1006,10 +1032,10 @@ void msm_gem_describe(struct drm_gem_object *obj, struct seq_file *m,
 		break;
 	}
 
-	seq_printf(m, "%08x: %c %2d (%2d) %08llx %p",
+	seq_printf(m, "%08x: %c %2d (%2d) %08llx %p obj=%p",
 			msm_obj->flags, msm_gem_active(obj) ? 'A' : 'I',
 			obj->name, kref_read(&obj->refcount),
-			off, msm_obj->vaddr);
+			off, msm_obj->vaddr, obj);
 
 	seq_printf(m, " %08zu %9s %-32s\n", obj->size, madv, msm_obj->name);
 
@@ -1148,9 +1174,12 @@ static void msm_gem_free_object(struct drm_gem_object *obj)
 	struct msm_drm_private *priv = dev->dev_private;
 	struct drm_exec exec;
 
-	mutex_lock(&priv->obj_lock);
-	list_del(&msm_obj->node);
-	mutex_unlock(&priv->obj_lock);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe,"[lock]msm_gem_free_object");
+		mutex_lock(&priv->obj_lock);
+		list_del(&msm_obj->node);
+		mutex_unlock(&priv->obj_lock);
+	}
 
 	/*
 	 * We need to lock any VMs the object is still attached to, but not
@@ -1368,9 +1397,12 @@ struct drm_gem_object *msm_gem_new(struct drm_device *dev, size_t size, uint32_t
 
 	drm_gem_lru_move_tail(&priv->lru.unbacked, obj);
 
-	mutex_lock(&priv->obj_lock);
-	list_add_tail(&msm_obj->node, &priv->objects);
-	mutex_unlock(&priv->obj_lock);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe,"[lock]msm_gem_new");
+		mutex_lock(&priv->obj_lock);
+		list_add_tail(&msm_obj->node, &priv->objects);
+		mutex_unlock(&priv->obj_lock);
+	}
 
 	ret = drm_gem_create_mmap_offset(obj);
 	if (ret)
@@ -1422,9 +1454,12 @@ struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 
 	drm_gem_lru_move_tail(&priv->lru.pinned, obj);
 
-	mutex_lock(&priv->obj_lock);
-	list_add_tail(&msm_obj->node, &priv->objects);
-	mutex_unlock(&priv->obj_lock);
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe,"[lock]msm_gem_import");
+		mutex_lock(&priv->obj_lock);
+		list_add_tail(&msm_obj->node, &priv->objects);
+		mutex_unlock(&priv->obj_lock);
+	}
 
 	ret = drm_gem_create_mmap_offset(obj);
 	if (ret)

@@ -13,6 +13,7 @@
 #include "msm_gem.h"
 #include "msm_gpu.h"
 #include "msm_gpu_trace.h"
+#include <trace/gpuvis.h>
 
 /* Default disabled for now until it has some more testing on the different
  * iommu combinations that can be paired with the driver:
@@ -156,16 +157,28 @@ wait_for_idle(struct drm_gem_object *obj)
 	  so this can cause major hitches!*/
 	int wait_for_idle_timeout_ms = 10;
 	enum dma_resv_usage usage = DMA_RESV_USAGE_BOOKKEEP;
-	return dma_resv_wait_timeout(obj->resv, usage, false, msecs_to_jiffies(wait_for_idle_timeout_ms)) > 0;
+	bool ret; 
+	{
+		TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+		ret = dma_resv_wait_timeout(obj->resv, usage, false, 50) > 0;
+		TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[wait_for_idle] dma_resv_wait_timeout [%p][%lu]",obj,obj->size);
+	}
+	return ret;
 }
 
 static bool
 active_purge(struct drm_gem_object *obj)
 {
-	if (!wait_for_idle(obj))
-		return false;
+	bool ret = false;
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
+	ret = wait_for_idle(obj);
 
-	return purge(obj);
+	if (ret) 
+		ret = purge(obj);
+
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[active_purge] [%p][%lu]",obj,obj->size);
+
+	return ret;
 }
 
 static bool
@@ -185,6 +198,7 @@ msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 	if (!priv->msm_shrinker_enable) 
 		return 0;
 
+	TRACE_BEGIN_CTX_CONDITIONAL(gabe);
 	struct {
 		struct drm_gem_lru *lru;
 		bool (*shrink)(struct drm_gem_object *obj);
@@ -219,6 +233,8 @@ msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 				     stages[3].freed);
 	}
 
+	TRACE_END_CTX_CONDITIONAL(TRACE_LONGER_THAN(500), gabe, "[msm_gem_shrinker_scan]");
+	
 	return (freed > 0 && remaining > 0) ? freed : SHRINK_STOP;
 }
 
@@ -271,6 +287,8 @@ msm_gem_shrinker_vmap(struct notifier_block *nb, unsigned long event, void *ptr)
 	};
 	unsigned idx, unmapped = 0;
 	unsigned long remaining = 0;
+
+	TRACE_BEGIN_CTX("msm_gem_shrinker_vmap");
 
 	for (idx = 0; lrus[idx] && unmapped < vmap_shrink_limit; idx++) {
 		unmapped += drm_gem_lru_scan(priv->dev, lrus[idx],
