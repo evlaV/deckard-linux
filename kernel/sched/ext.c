@@ -2579,8 +2579,16 @@ static void set_cpus_allowed_scx(struct task_struct *p,
 				 struct affinity_context *ac)
 {
 	struct scx_sched *sch = scx_root;
+	struct rq *rq = NULL;
 
 	set_cpus_allowed_common(p, ac);
+
+	/*
+	 * __kthread_bind() may call this in new thread without holding
+	 * rq->lock, we may need to check if it is already queued
+	 */
+	if (task_on_rq_queued(p))
+		rq = task_rq(p);
 
 	/*
 	 * The effective cpumask is stored in @p->cpus_ptr which may temporarily
@@ -2591,7 +2599,7 @@ static void set_cpus_allowed_scx(struct task_struct *p,
 	 * designation pointless. Cast it away when calling the operation.
 	 */
 	if (SCX_HAS_OP(sch, set_cpumask))
-		SCX_CALL_OP_TASK(sch, SCX_KF_REST, set_cpumask, task_rq(p),
+		SCX_CALL_OP_TASK(sch, SCX_KF_REST, set_cpumask, rq,
 				 p, (struct cpumask *)p->cpus_ptr);
 }
 
