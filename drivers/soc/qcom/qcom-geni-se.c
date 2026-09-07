@@ -159,6 +159,8 @@ struct se_fw_hdr {
 /*Magic numbers*/
 #define SE_MAGIC_NUM			0x57464553
 
+#define MAX_GENI_CFG_RAMn_CNT		455
+
 #define MI_PBT_NON_PAGED_SEGMENT	0x0
 #define MI_PBT_HASH_SEGMENT		0x2
 #define MI_PBT_NOTUSED_SEGMENT		0x3
@@ -1308,6 +1310,8 @@ static struct se_fw_hdr *geni_find_protocol_fw(struct geni_se *se, const struct 
 
 		prog_ram_depth = FIELD_GET(PROG_RAM_DEPTH_MSK,
 					   readl_relaxed(se->base + SE_HW_PARAM_2));
+		if (!prog_ram_depth)
+			prog_ram_depth = MAX_GENI_CFG_RAMn_CNT;
 		if (fw_size >= prog_ram_depth) {
 			dev_err(dev, "Firmware size (%u) exceeds RAM size (%u)\n",
 				fw_size, prog_ram_depth);
