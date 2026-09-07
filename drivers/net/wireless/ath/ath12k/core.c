@@ -45,6 +45,37 @@ bool ath12k_ftm_mode;
 module_param_named(ftm_mode, ath12k_ftm_mode, bool, 0444);
 MODULE_PARM_DESC(ftm_mode, "Boots up in factory test mode");
 
+static void ath12k_egap_reconfig_all(void);
+
+static int ath12k_egap_param_set(const char *val, const struct kernel_param *kp)
+{
+	int ret;
+
+	/* a bare "egap" means enable with the default timing and flags */
+	ret = ath12k_egap_parse_param(val ? val : "1");
+	if (ret)
+		return ret;
+
+	ath12k_egap_reconfig_all();
+	return 0;
+}
+
+static int ath12k_egap_param_get(char *buf, const struct kernel_param *kp)
+{
+	return ath12k_egap_format_param(buf, PAGE_SIZE);
+}
+
+static const struct kernel_param_ops ath12k_egap_param_ops = {
+	.flags = KERNEL_PARAM_OPS_FL_NOARG,
+	.set = ath12k_egap_param_set,
+	.get = ath12k_egap_param_get,
+};
+
+module_param_cb(egap, &ath12k_egap_param_ops, NULL, 0644);
+__MODULE_PARM_TYPE(egap, "string");
+MODULE_PARM_DESC(egap,
+		 " <enable>[,<flags>[,<inactivity_ms>[,<wait_ms>]]]: empty fields default (0,0x4,1000,1000). flags: 0x1=PHY error detection, 0x2=by station PS state, 0x4=by inactivity; ms times 1 to 300000");
+
 static char param_default_bdf[50] = "";
 module_param_string(default_bdf, param_default_bdf, sizeof(param_default_bdf), 0644);
 MODULE_PARM_DESC(default_bdf, "Name of BDF file to load if board_id is not set");
@@ -118,6 +149,40 @@ bool ath12k_core_get_mac_addr_override(struct ath12k_base *ab, u8 *addr)
 static struct list_head ath12k_hw_group_list = LIST_HEAD_INIT(ath12k_hw_group_list);
 
 static DEFINE_MUTEX(ath12k_hw_group_mutex);
+
+static void ath12k_egap_reconfig_all(void)
+{
+	struct ath12k_hw_group *ag;
+	struct ath12k_hw *ah;
+	struct ath12k *ar;
+	int i, j;
+
+	mutex_lock(&ath12k_hw_group_mutex);
+	list_for_each_entry(ag, &ath12k_hw_group_list, list) {
+		mutex_lock(&ag->mutex);
+
+		if (!test_bit(ATH12K_GROUP_FLAG_REGISTERED, &ag->flags)) {
+			mutex_unlock(&ag->mutex);
+			continue;
+		}
+
+		for (i = 0; i < ag->num_hw; i++) {
+			ah = ath12k_ag_to_ah(ag, i);
+			if (!ah)
+				continue;
+
+			wiphy_lock(ah->hw->wiphy);
+			if (ah->state == ATH12K_HW_STATE_ON) {
+				for_each_ar(ah, ar, j)
+					ath12k_egap_apply(ar);
+			}
+			wiphy_unlock(ah->hw->wiphy);
+		}
+
+		mutex_unlock(&ag->mutex);
+	}
+	mutex_unlock(&ath12k_hw_group_mutex);
+}
 
 static const struct
 ath12k_mem_profile_based_param ath12k_mem_profile_based_param[] = {
