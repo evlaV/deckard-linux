@@ -67,7 +67,7 @@
 			};
 		};
 
-		pmk8550_vadc: adc@9000 {
+		pmk8550_vadc: vadc@9000 {
 			compatible = "qcom,spmi-adc5-gen3";
 			reg = <0x9000>;
 			interrupts-extended = <&spmi_bus 0x0 0x90 0x1 IRQ_TYPE_EDGE_RISING>;
