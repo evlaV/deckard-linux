@@ -28,9 +28,9 @@ static u64 a6xx_gmu_get_timestamp(struct msm_gpu *gpu)
 	u64 count_hi, count_lo, temp;
 
 	do {
-		count_hi = gmu_read(&a6xx_gpu->gmu, REG_A6XX_GMU_ALWAYS_ON_COUNTER_H);
-		count_lo = gmu_read(&a6xx_gpu->gmu, REG_A6XX_GMU_ALWAYS_ON_COUNTER_L);
-		temp = gmu_read(&a6xx_gpu->gmu, REG_A6XX_GMU_ALWAYS_ON_COUNTER_H);
+		count_hi = gmu_read(&a6xx_gpu->gmu, 0x1f881);
+		count_lo = gmu_read(&a6xx_gpu->gmu, 0x1f880);
+		temp = gmu_read(&a6xx_gpu->gmu, 0x1f881);
 	} while (unlikely(count_hi != temp));
 
 	return (count_hi << 32) | count_lo;
