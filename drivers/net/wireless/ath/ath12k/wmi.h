@@ -4121,6 +4121,29 @@ struct wmi_pdev_green_ap_ps_enable_cmd_param {
 	__le32 enable;
 } __packed;
 
+enum wmi_ap_ps_egap_flag_type {
+	WMI_AP_PS_EGAP_F_ENABLE_PHYERR_DETECTION = BIT(0),
+	WMI_AP_PS_EGAP_F_ENABLE_PWRSAVE_BY_PS_STATE = BIT(1),
+	WMI_AP_PS_EGAP_F_ENABLE_PWRSAVE_BY_INACTIVITY = BIT(2),
+};
+
+struct ath12k_wmi_egap_params {
+	bool enable;
+	u32 inactivity_time;
+	u32 wait_time;
+	u32 flags;
+	u32 reduced_txrx_chainmask;
+};
+
+struct wmi_ap_ps_egap_param_cmd {
+	__le32 tlv_header;
+	__le32 enable;
+	__le32 inactivity_time;
+	__le32 wait_time;
+	__le32 flags;
+	__le32 reduced_txrx_chainmask;
+} __packed;
+
 struct ath12k_wmi_ap_ps_arg {
 	u32 vdev_id;
 	u32 param;
@@ -6409,6 +6432,8 @@ int ath12k_wmi_send_peer_flush_tids_cmd(struct ath12k *ar,
 					u8 vdev_id);
 int ath12k_wmi_send_set_ap_ps_param_cmd(struct ath12k *ar, u8 *peer_addr,
 					struct ath12k_wmi_ap_ps_arg *arg);
+int ath12k_wmi_send_egap_conf_params_cmd(struct ath12k *ar,
+					 const struct ath12k_wmi_egap_params *arg);
 int ath12k_wmi_send_scan_chan_list_cmd(struct ath12k *ar,
 				       struct ath12k_wmi_scan_chan_list_arg *arg);
 int ath12k_wmi_send_dfs_phyerr_offload_enable_cmd(struct ath12k *ar,

@@ -2641,6 +2641,41 @@ int ath12k_wmi_send_set_ap_ps_param_cmd(struct ath12k *ar, u8 *peer_addr,
 	return ret;
 }
 
+int ath12k_wmi_send_egap_conf_params_cmd(struct ath12k *ar,
+					 const struct ath12k_wmi_egap_params *arg)
+{
+	struct ath12k_wmi_pdev *wmi = ar->wmi;
+	struct wmi_ap_ps_egap_param_cmd *cmd;
+	struct sk_buff *skb;
+	int ret;
+
+	skb = ath12k_wmi_alloc_skb(wmi->wmi_ab, sizeof(*cmd));
+	if (!skb)
+		return -ENOMEM;
+
+	cmd = (struct wmi_ap_ps_egap_param_cmd *)skb->data;
+	cmd->tlv_header = ath12k_wmi_tlv_cmd_hdr(WMI_TAG_AP_PS_EGAP_PARAM_CMD,
+						 sizeof(*cmd));
+	cmd->enable = cpu_to_le32(arg->enable);
+	cmd->inactivity_time = cpu_to_le32(arg->inactivity_time);
+	cmd->wait_time = cpu_to_le32(arg->wait_time);
+	cmd->flags = cpu_to_le32(arg->flags);
+	cmd->reduced_txrx_chainmask = cpu_to_le32(arg->reduced_txrx_chainmask);
+
+	ath12k_dbg(ar->ab, ATH12K_DBG_WMI,
+		   "WMI egap enable %d inactivity %u wait %u flags 0x%x reduced chainmask 0x%x\n",
+		   arg->enable, arg->inactivity_time, arg->wait_time,
+		   arg->flags, arg->reduced_txrx_chainmask);
+
+	ret = ath12k_wmi_cmd_send(wmi, skb, WMI_AP_PS_EGAP_PARAM_CMDID);
+	if (ret) {
+		ath12k_warn(ar->ab, "failed to send WMI_AP_PS_EGAP_PARAM cmd\n");
+		dev_kfree_skb(skb);
+	}
+
+	return ret;
+}
+
 int ath12k_wmi_set_sta_ps_param(struct ath12k *ar, u32 vdev_id,
 				u32 param, u32 param_value)
 {

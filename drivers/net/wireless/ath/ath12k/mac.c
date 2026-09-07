@@ -1832,6 +1832,7 @@ static void ath12k_control_beaconing(struct ath12k_link_vif *arvif,
 	}
 
 	arvif->is_up = true;
+	ath12k_egap_apply(ar);
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "mac vdev %d up\n", arvif->vdev_id);
 }
