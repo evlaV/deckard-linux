@@ -20,7 +20,8 @@ ath12k-y += core.o \
 	    pci.o \
 	    dp_mon.o \
 	    fw.o \
-	    p2p.o
+	    p2p.o \
+	    egap.o
 
 ath12k-$(CONFIG_ATH12K_AHB) += ahb.o
 

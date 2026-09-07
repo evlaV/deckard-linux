@@ -22,6 +22,7 @@
 #include "qmi.h"
 #include "htc.h"
 #include "wmi.h"
+#include "egap.h"
 #include "hal.h"
 #include "dp.h"
 #include "ce.h"
