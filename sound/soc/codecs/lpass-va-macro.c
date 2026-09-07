@@ -1609,9 +1609,7 @@ static int va_macro_probe(struct platform_device *pdev)
 	va->has_npl_clk = data->has_npl_clk;
 
 	/* mclk rate */
-	ret = clk_set_rate(va->mclk, 2 * VA_MACRO_MCLK_FREQ);
-	if (ret)
-		goto err;
+	clk_set_rate(va->mclk, 2 * VA_MACRO_MCLK_FREQ);
 
 	if (va->has_npl_clk) {
 		va->npl = devm_clk_get(dev, "npl");
@@ -1620,9 +1618,7 @@ static int va_macro_probe(struct platform_device *pdev)
 			goto err;
 		}
 
-		ret = clk_set_rate(va->npl, 2 * VA_MACRO_MCLK_FREQ);
-		if (ret)
-			goto err;
+		clk_set_rate(va->npl, 2 * VA_MACRO_MCLK_FREQ);
 	}
 
 	ret = devm_pm_clk_create(dev);
