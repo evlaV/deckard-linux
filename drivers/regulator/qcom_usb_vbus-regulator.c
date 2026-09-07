@@ -165,7 +165,7 @@ static int qcom_usb_vbus_regulator_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id qcom_usb_vbus_regulator_match[] = {
-	{ .compatible = "qcom,pm8550b-vbus-reg" },
+	{ .compatible = "qcom,pm8550b-vbus-reg", .data = &pm8150b_data },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, qcom_usb_vbus_regulator_match);
