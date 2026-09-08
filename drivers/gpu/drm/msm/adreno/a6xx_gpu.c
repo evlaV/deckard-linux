@@ -2894,8 +2894,10 @@ static void bcl_throttle_accum_print(struct msm_gpu *gpu, struct drm_printer *p)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
-
-	drm_printf(p, "BCL throttle accumulated cycles: %08llx %08llx %08llx\n",
+	
+	//BCL throttle accumulated cycles
+	//bare formatting to allow easier parsing with daemons
+	drm_printf(p, "%08llx %08llx %08llx\n",
 		   a6xx_bcl_lvl0_accum,
 		   a6xx_bcl_lvl1_accum,
 		   a6xx_bcl_lvl2_accum);
