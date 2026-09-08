@@ -453,6 +453,11 @@ struct msm_gem_submit {
 	 */
 	struct dma_fence *hw_fence;
 
+	/* Pin fence, signaled when all the buffers to run this submission
+	 * have been pinnned
+	 */
+	struct dma_fence *pin_fence;
+
 	/* Userspace visible fence, which is signaled by the scheduler after
 	 * the hw_fence is signaled.
 	 */
@@ -466,6 +471,7 @@ struct msm_gem_submit {
 	bool fault_dumped:1;/* Limit devcoredump dumping to one per submit */
 	bool in_rb : 1;     /* "sudo" mode, copy cmds into RB */
 	bool has_exec : 1;  /* @exec is initialized. */
+	bool skip_ibs : 1;  /* Skip executing the IBs, used for error handling */
 	struct msm_ringbuffer *ring;
 	unsigned int nr_cmds;
 	unsigned int nr_bos;

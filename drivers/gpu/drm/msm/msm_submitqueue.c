@@ -327,6 +327,8 @@ int msm_submitqueue_create(struct drm_device *drm, struct msm_context *ctx,
 
 	write_unlock(&ctx->queuelock);
 
+	queue->pin_fctx = msm_fence_context_alloc(gpu->dev, &queue->pin_fence, "pin");
+
 	return 0;
 }
 

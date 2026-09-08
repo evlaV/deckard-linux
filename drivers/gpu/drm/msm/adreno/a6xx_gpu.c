@@ -486,32 +486,34 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	}
 
 	/* Submit the commands */
-	for (i = 0; i < submit->nr_cmds; i++) {
-		switch (submit->cmd[i].type) {
-		case MSM_SUBMIT_CMD_IB_TARGET_BUF:
-			break;
-		case MSM_SUBMIT_CMD_CTX_RESTORE_BUF:
-			if (ring->cur_ctx_seqno == submit->queue->ctx->seqno)
+	if (!submit->skip_ibs) {
+		for (i = 0; i < submit->nr_cmds; i++) {
+			switch (submit->cmd[i].type) {
+			case MSM_SUBMIT_CMD_IB_TARGET_BUF:
 				break;
-			fallthrough;
-		case MSM_SUBMIT_CMD_BUF:
-			OUT_PKT7(ring, CP_INDIRECT_BUFFER, 3);
-			OUT_RING(ring, lower_32_bits(submit->cmd[i].iova));
-			OUT_RING(ring, upper_32_bits(submit->cmd[i].iova));
-			OUT_RING(ring, A5XX_CP_INDIRECT_BUFFER_2_IB_SIZE(submit->cmd[i].size));
-			ibs++;
-			break;
-		}
+			case MSM_SUBMIT_CMD_CTX_RESTORE_BUF:
+				if (ring->cur_ctx_seqno == submit->queue->ctx->seqno)
+					break;
+				fallthrough;
+			case MSM_SUBMIT_CMD_BUF:
+				OUT_PKT7(ring, CP_INDIRECT_BUFFER, 3);
+				OUT_RING(ring, lower_32_bits(submit->cmd[i].iova));
+				OUT_RING(ring, upper_32_bits(submit->cmd[i].iova));
+				OUT_RING(ring, A5XX_CP_INDIRECT_BUFFER_2_IB_SIZE(submit->cmd[i].size));
+				ibs++;
+				break;
+			}
 
-		/*
-		 * Periodically update shadow-wptr if needed, so that we
-		 * can see partial progress of submits with large # of
-		 * cmds.. otherwise we could needlessly stall waiting for
-		 * ringbuffer state, simply due to looking at a shadow
-		 * rptr value that has not been updated
-		 */
-		if ((ibs % 32) == 0)
-			update_shadow_rptr(gpu, ring);
+			/*
+			 * Periodically update shadow-wptr if needed, so that we
+			 * can see partial progress of submits with large # of
+			 * cmds.. otherwise we could needlessly stall waiting for
+			 * ringbuffer state, simply due to looking at a shadow
+			 * rptr value that has not been updated
+			 */
+			if ((ibs % 32) == 0)
+				update_shadow_rptr(gpu, ring);
+		}
 	}
 
 	if (submit->queue->flags & MSM_SUBMITQUEUE_ALLOW_PREEMPT) {

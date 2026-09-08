@@ -56,9 +56,18 @@ struct msm_gem_submit *submit_create(struct drm_device *dev,
 		return ERR_PTR(ret);
 	}
 
+	submit->pin_fence = msm_fence_alloc();
+	if (IS_ERR(submit->pin_fence)) {
+		ret = PTR_ERR(submit->pin_fence);
+		kfree(submit->hw_fence);
+		kfree(submit);
+		return ERR_PTR(ret);
+	}
+
 	ret = drm_sched_job_init(&submit->base, queue->entity, 1, queue,
 				 drm_client_id);
 	if (ret) {
+		kfree(submit->pin_fence);
 		kfree(submit->hw_fence);
 		kfree(submit);
 		return ERR_PTR(ret);
@@ -78,6 +87,8 @@ struct msm_gem_submit *submit_create(struct drm_device *dev,
 	submit->ident = atomic_inc_return(&ident) - 1;
 
 	INIT_LIST_HEAD(&submit->node);
+
+	msm_fence_init(submit->pin_fence, queue->pin_fctx);
 
 	return submit;
 }
@@ -117,6 +128,8 @@ void __msm_gem_submit_destroy(struct kref *kref)
 	} else {
 		dma_fence_put(submit->hw_fence);
 	}
+
+	dma_fence_put(submit->pin_fence);
 
 	put_pid(submit->pid);
 	msm_submitqueue_put(submit->queue);
@@ -551,9 +564,6 @@ void msm_submit_retire(struct msm_gem_submit *submit)
 	}
 }
 
-int
-drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm);
-
 int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 		struct drm_file *file)
 {
@@ -632,6 +642,12 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (args->flags & MSM_SUBMIT_SUDO)
 		submit->in_rb = true;
 
+	if (msm_context_is_vmbind(ctx)) {
+		ret = drm_sched_job_add_dependency(&submit->base, submit->pin_fence);
+		if (ret)
+			goto out_unlock;
+	}
+
 	if (args->flags & MSM_SUBMIT_FENCE_FD_IN) {
 		struct dma_fence *in_fence;
 
@@ -677,16 +693,10 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (ret)
 		goto out;
 
-	atomic_inc_return(&to_msm_vm(submit->vm)->unevictable);
-
-	drm_gpuvm_validate_besteffort(submit->vm);
-
 	/* copy_*_user while holding a ww ticket upsets lockdep */
 	ret = submit_lock_objects(submit);
 	if (ret)
 		goto out;
-
-	atomic_dec_return(&to_msm_vm(submit->vm)->unevictable);
 
 	ret = submit_pin_objects(submit);
 	if (ret)
@@ -802,18 +812,6 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 
 	submit_attach_object_fences(submit);
 
-	if (msm_context_is_vmbind(ctx)) {
-		/*
-		 * If we are not using VM_BIND, submit_pin_vmas() will validate
-		 * just the BOs attached to the submit.  In that case we don't
-		 * need to validate the _entire_ vm, because userspace tracked
-		 * what BOs are associated with the submit.
-		 */
-		ret = drm_gpuvm_validate(submit->vm, &submit->exec);
-		if (ret)
-			goto out;
-	}
-	
 	/* The scheduler owns a ref now: */
 	msm_gem_submit_get(submit);
 
@@ -829,9 +827,25 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 
 out:
 	submit_cleanup(submit, !!ret);
+
+	if (msm_context_is_vmbind(ctx)) {
+		/*
+		 * If we are not using VM_BIND, submit_pin_vmas() will validate
+		 * just the BOs attached to the submit.  In that case we don't
+		 * need to validate the _entire_ vm, because userspace tracked
+		 * what BOs are associated with the submit.
+		 */
+		ret = drm_gpuvm_validate_deferred(submit->vm);
+		if (ret)
+			submit->skip_ibs = true;
+
+		msm_update_pin_fence(queue, submit->pin_fence);
+		dma_fence_signal(submit->pin_fence);
+	}
 out_unlock:
 	mutex_unlock(&queue->lock);
 out_post_unlock:
+
 	if (ret) {
 		if (out_fence_fd >= 0)
 			put_unused_fd(out_fence_fd);

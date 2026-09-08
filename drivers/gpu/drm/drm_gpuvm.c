@@ -1569,6 +1569,87 @@ drm_gpuvm_validate_besteffort(struct drm_gpuvm *gpuvm)
 }
 EXPORT_SYMBOL_GPL(drm_gpuvm_validate_besteffort);
 
+int
+drm_gpuvm_validate_deferred(struct drm_gpuvm *gpuvm)
+{
+	const struct drm_gpuvm_ops *ops = gpuvm->ops;
+	struct drm_exec exec;
+
+	if (unlikely(!ops || !ops->vm_bo_validate))
+		return -EOPNOTSUPP;
+
+	struct drm_gpuvm_bo *vm_bo;
+	struct drm_gpuvm_bo **temp_vm_bos;
+	LIST_HEAD(evict);
+	int ret = 0, count = 0, tmp_array_size = 512;
+
+	temp_vm_bos = kvmalloc_array(tmp_array_size, sizeof(*temp_vm_bos), GFP_KERNEL);
+	if (!temp_vm_bos)
+		return -ENOMEM;
+
+	drm_exec_init(&exec, 0, 1);
+	drm_exec_until_all_locked(&exec) {
+		ret = drm_exec_lock_obj(&exec, drm_gpuvm_resv_obj(gpuvm));
+		drm_exec_retry_on_contention(&exec);
+		break;
+	}
+	if (ret) {
+		drm_exec_fini(&exec);
+		return ret;
+	}
+
+	for_each_vm_bo_in_list(gpuvm, evict, &evict, vm_bo) {
+		if (unlikely(count >= tmp_array_size)) {
+			struct drm_gpuvm_bo **tmp = kvrealloc(temp_vm_bos, tmp_array_size + PAGE_SIZE, GFP_KERNEL);
+			if (!tmp) {
+				ret = -ENOMEM;
+				break;
+			}
+
+			temp_vm_bos = tmp;
+			tmp_array_size += PAGE_SIZE;
+		}
+
+		temp_vm_bos[count++] = vm_bo;
+		drm_gpuvm_bo_get(vm_bo);
+	}
+
+	/* Drop ref in case we break out of the loop. */
+	drm_gpuvm_bo_put(vm_bo);
+	restore_vm_bo_list(gpuvm, evict);
+
+	drm_exec_fini(&exec);
+
+	if (ret)
+		goto out_free;
+
+	for(int i = 0; i < count; i++) {
+		vm_bo = temp_vm_bos[i];
+
+		drm_exec_init(&exec, 0, 1);
+		drm_exec_until_all_locked(&exec) {
+			ret = drm_exec_lock_obj(&exec, drm_gpuvm_resv_obj(gpuvm));
+			if (!ret)
+				ret = drm_exec_lock_obj(&exec, vm_bo->obj);
+			drm_exec_retry_on_contention(&exec);
+			break;
+		}
+
+		if (!ret)
+			ret = ops->vm_bo_validate(vm_bo, NULL);
+
+		drm_exec_fini(&exec);
+
+		drm_gpuvm_bo_put(vm_bo);
+	}
+
+out_free:
+	kvfree(temp_vm_bos);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(drm_gpuvm_validate_deferred);
+
 /**
  * drm_gpuvm_resv_add_fence - add fence to private and all extobj
  * dma-resv

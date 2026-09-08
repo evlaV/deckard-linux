@@ -610,6 +610,9 @@ struct msm_gpu_submitqueue {
 
 	/** @_vm_bind_entity: used for @entity pointer for VM_BIND queues */
 	struct drm_sched_entity _vm_bind_entity[0];
+
+	struct msm_fence_context *pin_fctx;
+	uint32_t pin_fence;
 };
 
 struct msm_gpu_state_bo {
@@ -789,6 +792,13 @@ static inline void msm_trigger_recovery(struct msm_gpu *gpu) {
 }
 
 void msm_gpu_fault_crashstate_capture(struct msm_gpu *gpu, struct msm_gpu_fault_info *fault_info);
+
+static inline void msm_update_pin_fence(struct msm_gpu_submitqueue *queue, struct dma_fence *fence) {
+	if (fence_after(fence->seqno, queue->pin_fctx->completed_fence))
+		queue->pin_fctx->completed_fence = fence->seqno;
+	if (fence_after(fence->seqno, queue->pin_fence))
+		queue->pin_fence = fence->seqno;
+}
 
 /*
  * Simple macro to semi-cleanly add the MAP_PRIV flag for targets that can
