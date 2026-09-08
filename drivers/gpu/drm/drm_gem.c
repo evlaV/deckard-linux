@@ -1247,11 +1247,6 @@ drm_gem_object_lookup_at_offset(struct file *filp, unsigned long start,
 
 	if (drm_dev_is_unplugged(dev))
 		return ERR_PTR(-ENODEV);
-#if 0
-//disable kgsl until we rework
-	if (vma->vm_pgoff < DRM_FILE_PAGE_OFFSET_START)
-		return kgsl_mmap(priv, dev, vma);
-#endif
 
 	drm_vma_offset_lock_lookup(dev->vma_offset_manager);
 	node = drm_vma_offset_exact_lookup_locked(dev->vma_offset_manager,
@@ -1344,8 +1339,13 @@ EXPORT_SYMBOL_GPL(drm_gem_get_unmapped_area);
  */
 int drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 {
+	struct drm_file *priv = filp->private_data;
+	struct drm_device *dev = priv->minor->dev;
 	struct drm_gem_object *obj;
 	int ret;
+
+	if (vma->vm_pgoff < DRM_FILE_PAGE_OFFSET_START)
+		return kgsl_mmap(priv, dev, vma);
 
 	obj = drm_gem_object_lookup_at_offset(filp, vma->vm_pgoff,
 					      vma_pages(vma));
