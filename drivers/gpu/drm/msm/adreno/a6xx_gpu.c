@@ -2463,7 +2463,7 @@ static u64 a6xx_gpu_busy(struct msm_gpu *gpu, unsigned long *out_sample_rate)
 	if (c) {
 		a6xx_bcl_lvl2_cnt++;
 		if (c > a6xx_bcl_lvl2_prev)
-			a6xx_bcl_lvl1_accum += (c - a6xx_bcl_lvl2_prev);
+			a6xx_bcl_lvl2_accum += (c - a6xx_bcl_lvl2_prev);
 	}
 	a6xx_bcl_lvl2_prev = c;
 #endif
