@@ -2714,6 +2714,22 @@ static void bcl_throttle_print(struct msm_gpu *gpu, struct drm_printer *p)
 	drm_printf(p, "BCL throttle cycles: %08x %08x %08x\n", a, b, c);
 }
 
+static void bcl_throttle_time_print(struct msm_gpu *gpu, struct drm_printer *p)
+{
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
+	u32 counter;
+
+	counter = gmu_read(&a6xx_gpu->gmu,
+			   REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_5_L);
+
+	/*
+	 * This counts number of cycles throttled in XO cycles. Convert it to
+	 * micro seconds by dividing by XO freq which is 19.2MHz.
+	 */
+	drm_printf(p, "BCL throttle time: %d us\n", (counter * 10) / 192);
+}
+
 static void bcl_throttle_accum_print(struct msm_gpu *gpu, struct drm_printer *p)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
@@ -2750,6 +2766,7 @@ static int show(struct seq_file *m, void *arg)
 #define ENT(n) { .name = #n, .show = show, .data = n ##_print }
 static struct drm_info_list a6xx_debugfs_list[] = {
 	ENT(bcl_throttle),
+	ENT(bcl_throttle_time),
 	ENT(bcl_throttle_cnt),
 	ENT(bcl_throttle_accum),
 };
