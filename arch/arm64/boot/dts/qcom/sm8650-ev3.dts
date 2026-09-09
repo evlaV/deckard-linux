@@ -2179,9 +2179,9 @@
 	broadcaster-parent = <&broadcaster>;
 	
         // CH 1 : VPH
-        // CH 2 : S6C ~1.9V Subregulation
-        // CH 3 : S3C ~1.3V Subregulation
-        // CH 4 : S1C ~1V Subregulation
+        // CH 2 : S1C ~1.25V Subregulation
+        // CH 3 : S3C ~0.97V Subregulation
+        // CH 4 : S6C ~1.86V Subregulation
         // Note: both 1.8 and 3.0V rails are always on for other sensors
 		input@0 {
 			reg = <0>;
