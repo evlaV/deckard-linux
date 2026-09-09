@@ -2145,12 +2145,12 @@
 
 		input@1 {
 			reg = <1>;
-			label = "apc1";
+			label = "apc2";
 		};
 
 		input@2 {
 			reg = <2>;
-			label = "apc2";
+			label = "apc1";
 		};
 
 		input@3 {
