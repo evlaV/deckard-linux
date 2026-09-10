@@ -52,8 +52,7 @@ msm_gem_shrinker_count(struct shrinker *shrinker, struct shrink_control *sc)
 }
 
 static bool
-with_vm_locks(struct ww_acquire_ctx *ticket,
-	      void (*fn)(struct drm_gem_object *obj),
+with_vm_locks(void (*fn)(struct drm_gem_object *obj),
 	      struct drm_gem_object *obj)
 {
 	/*
@@ -61,6 +60,7 @@ with_vm_locks(struct ww_acquire_ctx *ticket,
 	 * success paths
 	 */
 	struct drm_gpuvm_bo *vm_bo, *last_locked = NULL;
+	bool locked = true;
 	int ret = 0;
 
 	drm_gem_for_each_gpuvm_bo (vm_bo, obj) {
@@ -69,23 +69,10 @@ with_vm_locks(struct ww_acquire_ctx *ticket,
 		if (resv == obj->resv)
 			continue;
 
-		ret = dma_resv_lock(resv, ticket);
-
-		/*
-		 * Since we already skip the case when the VM and obj
-		 * share a resv (ie. _NO_SHARE objs), we don't expect
-		 * to hit a double-locking scenario... which the lock
-		 * unwinding cannot really cope with.
-		 */
-		WARN_ON(ret == -EALREADY);
-
-		/*
-		 * Don't bother with slow-lock / backoff / retry sequence,
-		 * if we can't get the lock just give up and move on to
-		 * the next object.
-		 */
-		if (ret)
+		if (!dma_resv_trylock(resv)) {
+			locked = false;
 			goto out_unlock;
+		}
 
 		/*
 		 * Hold a ref to prevent the vm_bo from being freed
@@ -148,15 +135,11 @@ purge(struct drm_gem_object *obj)
 	if (msm_gem_active(obj))
 		return false;
 
-	return with_vm_locks(ticket, msm_gem_purge, obj);
+	return with_vm_locks(msm_gem_purge, obj);
 }
 
 static bool
-<<<<<<< HEAD
-evict(struct drm_gem_object *obj, struct ww_acquire_ctx *ticket)
-=======
 evict(struct drm_gem_object *obj)
->>>>>>> 59b08e8ef9c0 (drm_gem: remove ww_acquire_ctx ticket that is unused)
 {
 	if (is_unevictable(to_msm_bo(obj)) || is_flagged_unevictable(obj))
 		return false;
@@ -164,7 +147,7 @@ evict(struct drm_gem_object *obj)
 	if (msm_gem_active(obj))
 		return false;
 
-	return with_vm_locks(ticket, msm_gem_evict, obj);
+	return with_vm_locks(msm_gem_evict, obj);
 }
 
 static bool
@@ -200,8 +183,7 @@ static unsigned long
 msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 {
 	struct msm_drm_private *priv = shrinker->private_data;
-	struct ww_acquire_ctx ticket;
-    
+
 	if (!priv->msm_shrinker_enable) 
 		return 0;
 
@@ -223,19 +205,11 @@ msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 	for (unsigned i = 0; (nr > 0) && (i < ARRAY_SIZE(stages)); i++) {
 		if (!stages[i].cond)
 			continue;
-<<<<<<< HEAD
-=======
 
->>>>>>> 59b08e8ef9c0 (drm_gem: remove ww_acquire_ctx ticket that is unused)
 		stages[i].freed =
 			drm_gem_lru_scan(stages[i].lru, nr,
 					 &stages[i].remaining,
-<<<<<<< HEAD
-					 stages[i].shrink,
-					 &ticket);
-=======
 					 stages[i].shrink);
->>>>>>> 59b08e8ef9c0 (drm_gem: remove ww_acquire_ctx ticket that is unused)
 		nr -= stages[i].freed;
 		freed += stages[i].freed;
 		remaining += stages[i].remaining;
