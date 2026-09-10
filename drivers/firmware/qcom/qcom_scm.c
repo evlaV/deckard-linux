@@ -2334,7 +2334,7 @@ static int qcom_scm_qseecom_init(struct qcom_scm *scm)
 
 	if(scm && scm->dev)
 	{
-		dev_set_offline(scm->dev); //use this to indicate that we managed to talk to scm device
+		scm->dev->offline = true; //use this to indicate that we managed to talk to scm device
 	}
 
 	/*
@@ -2356,7 +2356,7 @@ static int qcom_scm_qseecom_init(struct qcom_scm *scm)
 
 	if(scm && scm->dev)
 	{
-		dev_clear_offline(scm->dev); //use this to indicate that we managed to talk to scm device
+		scm->dev->offline = false; //use this to indicate that we managed to talk to scm device
 	}
 
 	if (!of_machine_device_match(qcom_scm_qseecom_allowlist)) {
@@ -2519,7 +2519,7 @@ bool qcom_scm_is_available(void)
 	#else
 		if(__scm && __scm->dev)
 		{
-			return ! dev_offline(__scm->dev);
+			return ! __scm->dev->offline;
 		}
 		else
 		{
