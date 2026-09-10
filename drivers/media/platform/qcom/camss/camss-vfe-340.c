@@ -242,7 +242,6 @@ static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *bu
 			  struct vfe_line *line)
 {
 	u32 addr = buffer->addr[0];
-	u8 client = tfe_wm_client_map[wm];
 
 	writel_relaxed(addr, vfe->base + TFE_BUS_IMAGE_ADDR(wm));
 }
