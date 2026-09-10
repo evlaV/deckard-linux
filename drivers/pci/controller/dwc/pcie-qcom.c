@@ -327,8 +327,8 @@ static ssize_t link_reset_store(struct device *dev,
 	if (!val)
 		return -EINVAL;
 
-	qcom_pcie_perst_assert(pcie);
-	qcom_pcie_perst_deassert(pcie);
+	qcom_ep_reset_assert(pcie);
+	qcom_ep_reset_deassert(pcie);
 	return count;
 }
 static DEVICE_ATTR_WO(link_reset);

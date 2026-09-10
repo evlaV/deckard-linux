@@ -5201,25 +5201,6 @@ static int ath12k_mac_op_get_txpower(struct ieee80211_hw *hw,
 	*dbm = ar->chan_tx_pwr;
 	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "txpower fetched from firmware %d dBm\n",
 		   *dbm);
-
-	link_conf = ath12k_mac_get_link_bss_conf(arvif);
-
-	if (!link_conf)
-		return 0;
-
-	if (link_conf->txpower != ar->chan_tx_pwr) {
-		ath12k_warn(ar->ab, "txpower %d different from the link conf: %d\n",
-			    ar->chan_tx_pwr, link_conf->txpower);
-		ath12k_mac_txpower_recalc(ar);
-	}
-
-	/*
-	 * upper layer assumed the configured link txpower is set in the end
-	 * but that could not be the true if firmware ended calculating a different
-	 * value, so update the stored value with the real one got form the firmware
-	 */
-	link_conf->txpower = ar->chan_tx_pwr;
-
 	return 0;
 
 err_fallback:
