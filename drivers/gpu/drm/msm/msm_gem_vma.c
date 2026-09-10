@@ -1573,7 +1573,7 @@ msm_ioctl_vm_bind(struct drm_device *dev, void *data, struct drm_file *file)
 	atomic_inc_return(&to_msm_vm(job->vm)->unevictable);
 	ret = vm_bind_job_pre_pin_objects(job);
 	if (ret)
-		goto out;
+		goto out_unlock;
 
 	struct drm_exec exec;
 	unsigned flags = DRM_EXEC_IGNORE_DUPLICATES | DRM_EXEC_INTERRUPTIBLE_WAIT;
