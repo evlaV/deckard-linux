@@ -7,14 +7,12 @@
 
 #include <linux/cleanup.h>
 #include <linux/delay.h>
-#include <linux/iopoll.h>
 #include <linux/jiffies.h>
 #include <linux/ktime.h>
 #include <linux/wait_bit.h>
 
 #include <drm/drm_managed.h>
 #include <drm/drm_print.h>
-#include <generated/xe_device_wa_oob.h>
 #include <generated/xe_wa_oob.h>
 
 #include "abi/guc_actions_slpc_abi.h"
@@ -132,16 +130,26 @@ static struct iosys_map *pc_to_maps(struct xe_guc_pc *pc)
 	 FIELD_PREP(HOST2GUC_PC_SLPC_REQUEST_MSG_1_EVENT_ARGC, count))
 
 static int wait_for_pc_state(struct xe_guc_pc *pc,
-			     enum slpc_global_state target_state,
+			     enum slpc_global_state state,
 			     int timeout_ms)
 {
-	enum slpc_global_state state;
+	int timeout_us = 1000 * timeout_ms;
+	int slept, wait = 10;
 
 	xe_device_assert_mem_access(pc_to_xe(pc));
 
-	return poll_timeout_us(state = slpc_shared_data_read(pc, header.global_state),
-			       state == target_state,
-			       20, timeout_ms * USEC_PER_MSEC, false);
+	for (slept = 0; slept < timeout_us;) {
+		if (slpc_shared_data_read(pc, header.global_state) == state)
+			return 0;
+
+		usleep_range(wait, wait << 1);
+		slept += wait;
+		wait <<= 1;
+		if (slept + wait > timeout_us)
+			wait = timeout_us - slept;
+	}
+
+	return -ETIMEDOUT;
 }
 
 static int wait_for_flush_complete(struct xe_guc_pc *pc)
@@ -156,15 +164,24 @@ static int wait_for_flush_complete(struct xe_guc_pc *pc)
 	return 0;
 }
 
-static int wait_for_act_freq_max_limit(struct xe_guc_pc *pc, u32 max_limit)
+static int wait_for_act_freq_limit(struct xe_guc_pc *pc, u32 freq)
 {
-	u32 freq;
+	int timeout_us = SLPC_ACT_FREQ_TIMEOUT_MS * USEC_PER_MSEC;
+	int slept, wait = 10;
 
-	return poll_timeout_us(freq = xe_guc_pc_get_act_freq(pc),
-			       freq <= max_limit,
-			       20, SLPC_ACT_FREQ_TIMEOUT_MS * USEC_PER_MSEC, false);
+	for (slept = 0; slept < timeout_us;) {
+		if (xe_guc_pc_get_act_freq(pc) <= freq)
+			return 0;
+
+		usleep_range(wait, wait << 1);
+		slept += wait;
+		wait <<= 1;
+		if (slept + wait > timeout_us)
+			wait = timeout_us - slept;
+	}
+
+	return -ETIMEDOUT;
 }
-
 static int pc_action_reset(struct xe_guc_pc *pc)
 {
 	struct xe_guc_ct *ct = pc_to_ct(pc);
@@ -331,7 +348,7 @@ static int pc_set_min_freq(struct xe_guc_pc *pc, u32 freq)
 	 * Our goal is to have the admin choices respected.
 	 */
 	pc_action_set_param(pc, SLPC_PARAM_IGNORE_EFFICIENT_FREQUENCY,
-			    freq < xe_guc_pc_get_rpe_freq(pc));
+			    freq < pc->rpe_freq);
 
 	return pc_action_set_param(pc,
 				   SLPC_PARAM_GLOBAL_MIN_GT_UNSLICE_FREQ_MHZ,
@@ -363,7 +380,7 @@ static int pc_set_max_freq(struct xe_guc_pc *pc, u32 freq)
 				   freq);
 }
 
-static u32 mtl_get_rpa_freq(struct xe_guc_pc *pc)
+static void mtl_update_rpa_value(struct xe_guc_pc *pc)
 {
 	struct xe_gt *gt = pc_to_gt(pc);
 	u32 reg;
@@ -373,10 +390,10 @@ static u32 mtl_get_rpa_freq(struct xe_guc_pc *pc)
 	else
 		reg = xe_mmio_read32(&gt->mmio, MTL_GT_RPA_FREQUENCY);
 
-	return decode_freq(REG_FIELD_GET(MTL_RPA_MASK, reg));
+	pc->rpa_freq = decode_freq(REG_FIELD_GET(MTL_RPA_MASK, reg));
 }
 
-static u32 mtl_get_rpe_freq(struct xe_guc_pc *pc)
+static void mtl_update_rpe_value(struct xe_guc_pc *pc)
 {
 	struct xe_gt *gt = pc_to_gt(pc);
 	u32 reg;
@@ -386,56 +403,68 @@ static u32 mtl_get_rpe_freq(struct xe_guc_pc *pc)
 	else
 		reg = xe_mmio_read32(&gt->mmio, MTL_GT_RPE_FREQUENCY);
 
-	return decode_freq(REG_FIELD_GET(MTL_RPE_MASK, reg));
+	pc->rpe_freq = decode_freq(REG_FIELD_GET(MTL_RPE_MASK, reg));
 }
 
-static u32 pvc_get_rpa_freq(struct xe_guc_pc *pc)
+static void tgl_update_rpa_value(struct xe_guc_pc *pc)
 {
+	struct xe_gt *gt = pc_to_gt(pc);
+	struct xe_device *xe = gt_to_xe(gt);
+	u32 reg;
+
 	/*
 	 * For PVC we still need to use fused RP0 as the approximation for RPa
 	 * For other platforms than PVC we get the resolved RPa directly from
 	 * PCODE at a different register
 	 */
-
-	struct xe_gt *gt = pc_to_gt(pc);
-	u32 reg;
-
-	reg = xe_mmio_read32(&gt->mmio, PVC_RP_STATE_CAP);
-	return REG_FIELD_GET(RP0_MASK, reg) * GT_FREQUENCY_MULTIPLIER;
+	if (xe->info.platform == XE_PVC) {
+		reg = xe_mmio_read32(&gt->mmio, PVC_RP_STATE_CAP);
+		pc->rpa_freq = REG_FIELD_GET(RP0_MASK, reg) * GT_FREQUENCY_MULTIPLIER;
+	} else {
+		reg = xe_mmio_read32(&gt->mmio, FREQ_INFO_REC);
+		pc->rpa_freq = REG_FIELD_GET(RPA_MASK, reg) * GT_FREQUENCY_MULTIPLIER;
+	}
 }
 
-static u32 tgl_get_rpa_freq(struct xe_guc_pc *pc)
+static void tgl_update_rpe_value(struct xe_guc_pc *pc)
 {
 	struct xe_gt *gt = pc_to_gt(pc);
-	u32 reg;
-
-	reg = xe_mmio_read32(&gt->mmio, FREQ_INFO_REC);
-	return REG_FIELD_GET(RPA_MASK, reg) * GT_FREQUENCY_MULTIPLIER;
-}
-
-static u32 pvc_get_rpe_freq(struct xe_guc_pc *pc)
-{
-	struct xe_gt *gt = pc_to_gt(pc);
+	struct xe_device *xe = gt_to_xe(gt);
 	u32 reg;
 
 	/*
 	 * For PVC we still need to use fused RP1 as the approximation for RPe
-	 */
-	reg = xe_mmio_read32(&gt->mmio, PVC_RP_STATE_CAP);
-	return REG_FIELD_GET(RP1_MASK, reg) * GT_FREQUENCY_MULTIPLIER;
-}
-
-static u32 tgl_get_rpe_freq(struct xe_guc_pc *pc)
-{
-	struct xe_gt *gt = pc_to_gt(pc);
-	u32 reg;
-
-	/*
-	 * For other platforms than PVC, we get the resolved RPe directly from
+	 * For other platforms than PVC we get the resolved RPe directly from
 	 * PCODE at a different register
 	 */
-	reg = xe_mmio_read32(&gt->mmio, FREQ_INFO_REC);
-	return REG_FIELD_GET(RPE_MASK, reg) * GT_FREQUENCY_MULTIPLIER;
+	if (xe->info.platform == XE_PVC) {
+		reg = xe_mmio_read32(&gt->mmio, PVC_RP_STATE_CAP);
+		pc->rpe_freq = REG_FIELD_GET(RP1_MASK, reg) * GT_FREQUENCY_MULTIPLIER;
+	} else {
+		reg = xe_mmio_read32(&gt->mmio, FREQ_INFO_REC);
+		pc->rpe_freq = REG_FIELD_GET(RPE_MASK, reg) * GT_FREQUENCY_MULTIPLIER;
+	}
+}
+
+static void pc_update_rp_values(struct xe_guc_pc *pc)
+{
+	struct xe_gt *gt = pc_to_gt(pc);
+	struct xe_device *xe = gt_to_xe(gt);
+
+	if (GRAPHICS_VERx100(xe) >= 1270) {
+		mtl_update_rpa_value(pc);
+		mtl_update_rpe_value(pc);
+	} else {
+		tgl_update_rpa_value(pc);
+		tgl_update_rpe_value(pc);
+	}
+
+	/*
+	 * RPe is decided at runtime by PCODE. In the rare case where that's
+	 * smaller than the fused min, we will trust the PCODE and use that
+	 * as our minimum one.
+	 */
+	pc->rpn_freq = min(pc->rpn_freq, pc->rpe_freq);
 }
 
 /**
@@ -536,15 +565,9 @@ u32 xe_guc_pc_get_rp0_freq(struct xe_guc_pc *pc)
  */
 u32 xe_guc_pc_get_rpa_freq(struct xe_guc_pc *pc)
 {
-	struct xe_gt *gt = pc_to_gt(pc);
-	struct xe_device *xe = gt_to_xe(gt);
+	pc_update_rp_values(pc);
 
-	if (GRAPHICS_VERx100(xe) == 1260)
-		return pvc_get_rpa_freq(pc);
-	else if (GRAPHICS_VERx100(xe) >= 1270)
-		return mtl_get_rpa_freq(pc);
-	else
-		return tgl_get_rpa_freq(pc);
+	return pc->rpa_freq;
 }
 
 /**
@@ -555,17 +578,9 @@ u32 xe_guc_pc_get_rpa_freq(struct xe_guc_pc *pc)
  */
 u32 xe_guc_pc_get_rpe_freq(struct xe_guc_pc *pc)
 {
-	struct xe_device *xe = pc_to_xe(pc);
-	u32 freq;
+	pc_update_rp_values(pc);
 
-	if (GRAPHICS_VERx100(xe) == 1260)
-		freq = pvc_get_rpe_freq(pc);
-	else if (GRAPHICS_VERx100(xe) >= 1270)
-		freq = mtl_get_rpe_freq(pc);
-	else
-		freq = tgl_get_rpe_freq(pc);
-
-	return freq;
+	return pc->rpe_freq;
 }
 
 /**
@@ -889,7 +904,7 @@ static int pc_adjust_freq_bounds(struct xe_guc_pc *pc)
 	if (pc_get_min_freq(pc) > pc->rp0_freq)
 		ret = pc_set_min_freq(pc, pc->rp0_freq);
 
-	if (XE_DEVICE_WA(tile_to_xe(tile), 14022085890))
+	if (XE_GT_WA(tile->primary_gt, 14022085890))
 		ret = pc_set_min_freq(pc, max(BMG_MIN_FREQ, pc_get_min_freq(pc)));
 
 out:
@@ -968,7 +983,7 @@ void xe_guc_pc_apply_flush_freq_limit(struct xe_guc_pc *pc)
 	 * Wait for actual freq to go below the flush cap: even if the previous
 	 * max was below cap, the current one might still be above it
 	 */
-	ret = wait_for_act_freq_max_limit(pc, BMG_MERT_FLUSH_FREQ_CAP);
+	ret = wait_for_act_freq_limit(pc, BMG_MERT_FLUSH_FREQ_CAP);
 	if (ret)
 		xe_gt_err_once(gt, "Actual freq did not reduce to %u, %pe\n",
 			       BMG_MERT_FLUSH_FREQ_CAP, ERR_PTR(ret));
@@ -1024,7 +1039,7 @@ static int pc_set_mert_freq_cap(struct xe_guc_pc *pc)
 	/*
 	 * Ensure min and max are bound by MERT_FREQ_CAP until driver loads.
 	 */
-	ret = pc_set_min_freq(pc, min(xe_guc_pc_get_rpe_freq(pc), pc_max_freq_cap(pc)));
+	ret = pc_set_min_freq(pc, min(pc->rpe_freq, pc_max_freq_cap(pc)));
 	if (!ret)
 		ret = pc_set_max_freq(pc, min(pc->rp0_freq, pc_max_freq_cap(pc)));
 
@@ -1134,6 +1149,8 @@ static int pc_init_freqs(struct xe_guc_pc *pc)
 	ret = pc_adjust_requested_freq(pc);
 	if (ret)
 		goto out;
+
+	pc_update_rp_values(pc);
 
 	pc_init_pcode_freq(pc);
 
@@ -1340,7 +1357,7 @@ static void xe_guc_pc_fini_hw(void *arg)
 	XE_WARN_ON(xe_guc_pc_stop(pc));
 
 	/* Bind requested freq to mert_freq_cap before unload */
-	pc_set_cur_freq(pc, min(pc_max_freq_cap(pc), xe_guc_pc_get_rpe_freq(pc)));
+	pc_set_cur_freq(pc, min(pc_max_freq_cap(pc), pc->rpe_freq));
 
 	xe_force_wake_put(gt_to_fw(pc_to_gt(pc)), fw_ref);
 }

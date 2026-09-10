@@ -201,9 +201,6 @@ static enum amd_ip_block_type
 		type = (amdgpu_device_ip_get_ip_block(adev, AMD_IP_BLOCK_TYPE_JPEG)) ?
 				   AMD_IP_BLOCK_TYPE_JPEG : AMD_IP_BLOCK_TYPE_VCN;
 		break;
-	case AMDGPU_HW_IP_VPE:
-		type = AMD_IP_BLOCK_TYPE_VPE;
-		break;
 	default:
 		type = AMD_IP_BLOCK_TYPE_NUM;
 		break;
@@ -723,9 +720,6 @@ int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 			break;
 		case AMD_IP_BLOCK_TYPE_UVD:
 			count = adev->uvd.num_uvd_inst;
-			break;
-		case AMD_IP_BLOCK_TYPE_VPE:
-			count = adev->vpe.num_instances;
 			break;
 		/* For all other IP block types not listed in the switch statement
 		 * the ip status is valid here and the instance count is one.
@@ -1477,6 +1471,7 @@ error_pasid:
 	kfree(fpriv);
 
 out_suspend:
+	pm_runtime_mark_last_busy(dev->dev);
 pm_put:
 	pm_runtime_put_autosuspend(dev->dev);
 
@@ -1544,6 +1539,7 @@ void amdgpu_driver_postclose_kms(struct drm_device *dev,
 	kfree(fpriv);
 	file_priv->driver_priv = NULL;
 
+	pm_runtime_mark_last_busy(dev->dev);
 	pm_runtime_put_autosuspend(dev->dev);
 }
 

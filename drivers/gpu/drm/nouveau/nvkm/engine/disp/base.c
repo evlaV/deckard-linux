@@ -99,13 +99,13 @@ nvkm_disp_intr(struct nvkm_engine *engine)
 }
 
 static int
-nvkm_disp_fini(struct nvkm_engine *engine, enum nvkm_suspend_state suspend)
+nvkm_disp_fini(struct nvkm_engine *engine, bool suspend)
 {
 	struct nvkm_disp *disp = nvkm_disp(engine);
 	struct nvkm_outp *outp;
 
 	if (disp->func->fini)
-		disp->func->fini(disp, suspend != NVKM_POWEROFF);
+		disp->func->fini(disp, suspend);
 
 	list_for_each_entry(outp, &disp->outps, head) {
 		if (outp->func->fini)

@@ -10,4 +10,6 @@ struct xe_device;
 
 int xe_nvm_init(struct xe_device *xe);
 
+void xe_nvm_fini(struct xe_device *xe);
+
 #endif

@@ -5,7 +5,6 @@
  */
 
 #include <drm/drm_vblank.h>
-#include <drm/drm_print.h>
 
 #include "omap_drv.h"
 

@@ -5,8 +5,6 @@
 
 #include <linux/vga_switcheroo.h>
 
-#include <drm/drm_print.h>
-
 #include "display/intel_display_device.h"
 
 #include "i915_driver.h"

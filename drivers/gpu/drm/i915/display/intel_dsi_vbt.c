@@ -38,10 +38,10 @@
 #include <drm/drm_print.h>
 #include <video/mipi_display.h>
 
+#include "i915_utils.h"
 #include "intel_de.h"
 #include "intel_display_regs.h"
 #include "intel_display_types.h"
-#include "intel_display_utils.h"
 #include "intel_dsi.h"
 #include "intel_dsi_vbt.h"
 #include "intel_gmbus_regs.h"
@@ -106,8 +106,8 @@ static const u8 *mipi_exec_send_packet(struct intel_dsi *intel_dsi,
 	u8 type, flags, seq_port;
 	u16 len;
 	enum port port;
-	ssize_t ret;
-	bool hs_mode;
+
+	drm_dbg_kms(display->drm, "\n");
 
 	flags = *data++;
 	type = *data++;
@@ -129,55 +129,44 @@ static const u8 *mipi_exec_send_packet(struct intel_dsi *intel_dsi,
 		goto out;
 	}
 
-	hs_mode = (flags >> MIPI_TRANSFER_MODE_SHIFT) & 1;
-	if (hs_mode)
+	if ((flags >> MIPI_TRANSFER_MODE_SHIFT) & 1)
 		dsi_device->mode_flags &= ~MIPI_DSI_MODE_LPM;
 	else
 		dsi_device->mode_flags |= MIPI_DSI_MODE_LPM;
 
 	dsi_device->channel = (flags >> MIPI_VIRTUAL_CHANNEL_SHIFT) & 3;
 
-	drm_dbg_kms(display->drm, "DSI packet: Port %c (seq %u), Flags 0x%02x, VC %u, %s, Type 0x%02x, Length %u, Data %*ph\n",
-		    port_name(port), seq_port, flags, dsi_device->channel,
-		    hs_mode ? "HS" : "LP", type, len, (int)len, data);
-
 	switch (type) {
 	case MIPI_DSI_GENERIC_SHORT_WRITE_0_PARAM:
-		ret = mipi_dsi_generic_write(dsi_device, NULL, 0);
+		mipi_dsi_generic_write(dsi_device, NULL, 0);
 		break;
 	case MIPI_DSI_GENERIC_SHORT_WRITE_1_PARAM:
-		ret = mipi_dsi_generic_write(dsi_device, data, 1);
+		mipi_dsi_generic_write(dsi_device, data, 1);
 		break;
 	case MIPI_DSI_GENERIC_SHORT_WRITE_2_PARAM:
-		ret = mipi_dsi_generic_write(dsi_device, data, 2);
+		mipi_dsi_generic_write(dsi_device, data, 2);
 		break;
 	case MIPI_DSI_GENERIC_READ_REQUEST_0_PARAM:
 	case MIPI_DSI_GENERIC_READ_REQUEST_1_PARAM:
 	case MIPI_DSI_GENERIC_READ_REQUEST_2_PARAM:
-		ret = -EOPNOTSUPP;
+		drm_dbg_kms(display->drm, "Generic Read not yet implemented or used\n");
 		break;
 	case MIPI_DSI_GENERIC_LONG_WRITE:
-		ret = mipi_dsi_generic_write(dsi_device, data, len);
+		mipi_dsi_generic_write(dsi_device, data, len);
 		break;
 	case MIPI_DSI_DCS_SHORT_WRITE:
-		ret = mipi_dsi_dcs_write_buffer(dsi_device, data, 1);
+		mipi_dsi_dcs_write_buffer(dsi_device, data, 1);
 		break;
 	case MIPI_DSI_DCS_SHORT_WRITE_PARAM:
-		ret = mipi_dsi_dcs_write_buffer(dsi_device, data, 2);
+		mipi_dsi_dcs_write_buffer(dsi_device, data, 2);
 		break;
 	case MIPI_DSI_DCS_READ:
-		ret = -EOPNOTSUPP;
+		drm_dbg_kms(display->drm, "DCS Read not yet implemented or used\n");
 		break;
 	case MIPI_DSI_DCS_LONG_WRITE:
-		ret = mipi_dsi_dcs_write_buffer(dsi_device, data, len);
-		break;
-	default:
-		ret = -EINVAL;
+		mipi_dsi_dcs_write_buffer(dsi_device, data, len);
 		break;
 	}
-
-	if (ret < 0)
-		drm_err(display->drm, "DSI send packet failed with %pe\n", ERR_PTR(ret));
 
 	if (DISPLAY_VER(display) < 11)
 		vlv_dsi_wait_for_fifo_empty(intel_dsi, port);

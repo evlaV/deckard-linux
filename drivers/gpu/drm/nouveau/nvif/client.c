@@ -30,9 +30,9 @@
 #include <nvif/if0000.h>
 
 int
-nvif_client_suspend(struct nvif_client *client, bool runtime)
+nvif_client_suspend(struct nvif_client *client)
 {
-	return client->driver->suspend(client->object.priv, runtime);
+	return client->driver->suspend(client->object.priv);
 }
 
 int

@@ -26,8 +26,6 @@
 #include <linux/pci.h>
 #include <linux/uaccess.h>
 
-#include <drm/drm_print.h>
-
 #include "qxl_drv.h"
 #include "qxl_object.h"
 

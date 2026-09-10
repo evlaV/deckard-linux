@@ -30,11 +30,7 @@ dml_rcflags := $(CC_FLAGS_NO_FPU)
 
 ifneq ($(CONFIG_FRAME_WARN),0)
     ifeq ($(filter y,$(CONFIG_KASAN)$(CONFIG_KCSAN)),y)
-        ifeq ($(CONFIG_CC_IS_CLANG)$(CONFIG_COMPILE_TEST),yy)
-            frame_warn_limit := 4096
-        else
-            frame_warn_limit := 3072
-        endif
+        frame_warn_limit := 3072
     else
         frame_warn_limit := 2048
     endif

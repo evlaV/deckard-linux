@@ -63,8 +63,7 @@
 	uint32_t OPPBUF_CONTROL1; \
 	uint32_t OPPBUF_3D_PARAMETERS_0; \
 	uint32_t OPPBUF_3D_PARAMETERS_1; \
-	uint32_t OPP_PIPE_CONTROL; \
-	uint32_t OPP_PIPE_CRC_CONTROL
+	uint32_t OPP_PIPE_CONTROL
 
 #define OPP_MASK_SH_LIST_DCN(mask_sh) \
 	OPP_SF(FMT0_FMT_BIT_DEPTH_CONTROL, FMT_TRUNCATE_EN, mask_sh), \
@@ -154,6 +153,7 @@ struct dcn10_opp {
 	const struct dcn10_opp_registers *regs;
 	const struct dcn10_opp_shift *opp_shift;
 	const struct dcn10_opp_mask *opp_mask;
+
 	bool is_write_to_ram_a_safe;
 };
 
@@ -187,7 +187,5 @@ void opp1_program_stereo(
 void opp1_pipe_clock_control(struct output_pixel_processor *opp, bool enable);
 
 void opp1_destroy(struct output_pixel_processor **opp);
-
-void opp1_read_reg_state(struct output_pixel_processor *opp, struct dcn_opp_reg_state *opp_reg_state);
 
 #endif

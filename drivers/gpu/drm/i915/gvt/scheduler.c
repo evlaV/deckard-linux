@@ -35,8 +35,6 @@
 
 #include <linux/kthread.h>
 
-#include <drm/drm_print.h>
-
 #include "gem/i915_gem_pm.h"
 #include "gt/intel_context.h"
 #include "gt/intel_execlists_submission.h"

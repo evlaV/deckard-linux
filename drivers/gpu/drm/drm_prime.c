@@ -37,7 +37,6 @@
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_gem.h>
 #include <drm/drm_prime.h>
-#include <drm/drm_print.h>
 
 #include "drm_internal.h"
 

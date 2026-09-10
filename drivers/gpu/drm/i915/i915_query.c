@@ -6,8 +6,6 @@
 
 #include <linux/nospec.h>
 
-#include <drm/drm_print.h>
-
 #include "i915_drv.h"
 #include "i915_perf.h"
 #include "i915_query.h"

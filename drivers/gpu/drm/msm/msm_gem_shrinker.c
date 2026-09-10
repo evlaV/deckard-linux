@@ -34,9 +34,8 @@ static bool can_block(struct shrink_control *sc)
 {
 	if (!eviction_can_block)
 		return false;
-	if (!(sc->gfp_mask & __GFP_DIRECT_RECLAIM))
-		return false;
-	return current_is_kswapd() || (sc->gfp_mask & __GFP_RECLAIM);
+	return (sc->gfp_mask & __GFP_DIRECT_RECLAIM) ||
+	       (current_is_kswapd() && (sc->gfp_mask & __GFP_KSWAPD_RECLAIM));
 }
 
 static unsigned long
@@ -61,7 +60,6 @@ with_vm_locks(void (*fn)(struct drm_gem_object *obj),
 	 */
 	struct drm_gpuvm_bo *vm_bo, *last_locked = NULL;
 	bool locked = true;
-	int ret = 0;
 
 	drm_gem_for_each_gpuvm_bo (vm_bo, obj) {
 		struct dma_resv *resv = drm_gpuvm_resv(vm_bo->vm);
@@ -104,7 +102,7 @@ out_unlock:
 		}
 	}
 
-	return ret == 0;
+	return locked;
 }
 
 static bool
@@ -207,7 +205,7 @@ msm_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 			continue;
 
 		stages[i].freed =
-			drm_gem_lru_scan(stages[i].lru, nr,
+			drm_gem_lru_scan(priv->dev, stages[i].lru, nr,
 					 &stages[i].remaining,
 					 stages[i].shrink);
 		nr -= stages[i].freed;
@@ -275,7 +273,7 @@ msm_gem_shrinker_vmap(struct notifier_block *nb, unsigned long event, void *ptr)
 	unsigned long remaining = 0;
 
 	for (idx = 0; lrus[idx] && unmapped < vmap_shrink_limit; idx++) {
-		unmapped += drm_gem_lru_scan(lrus[idx],
+		unmapped += drm_gem_lru_scan(priv->dev, lrus[idx],
 					     vmap_shrink_limit - unmapped,
 					     &remaining,
 					     vmap_shrink);

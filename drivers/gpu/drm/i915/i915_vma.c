@@ -24,9 +24,7 @@
 
 #include <linux/sched/mm.h>
 #include <linux/dma-fence-array.h>
-
 #include <drm/drm_gem.h>
-#include <drm/drm_print.h>
 
 #include "display/intel_fb.h"
 #include "display/intel_frontbuffer.h"
@@ -2004,13 +2002,13 @@ int _i915_vma_move_to_active(struct i915_vma *vma,
 	}
 
 	if (flags & EXEC_OBJECT_WRITE) {
-		struct i915_frontbuffer *front;
+		struct intel_frontbuffer *front;
 
-		front = i915_gem_object_frontbuffer_lookup(obj);
+		front = i915_gem_object_get_frontbuffer(obj);
 		if (unlikely(front)) {
-			if (intel_frontbuffer_invalidate(&front->base, ORIGIN_CS))
+			if (intel_frontbuffer_invalidate(front, ORIGIN_CS))
 				i915_active_add_request(&front->write, rq);
-			i915_gem_object_frontbuffer_put(front);
+			intel_frontbuffer_put(front);
 		}
 	}
 

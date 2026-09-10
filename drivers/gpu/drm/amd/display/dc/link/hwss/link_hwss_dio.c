@@ -58,9 +58,8 @@ void setup_dio_stream_encoder(struct pipe_ctx *pipe_ctx)
 		return;
 	}
 
-	if (!dc_is_rgb_signal(pipe_ctx->stream->signal))
-		link_enc->funcs->connect_dig_be_to_fe(link_enc,
-				pipe_ctx->stream_res.stream_enc->id, true);
+	link_enc->funcs->connect_dig_be_to_fe(link_enc,
+			pipe_ctx->stream_res.stream_enc->id, true);
 	if (dc_is_dp_signal(pipe_ctx->stream->signal))
 		pipe_ctx->stream->ctx->dc->link_srv->dp_trace_source_sequence(pipe_ctx->stream->link,
 				DPCD_SOURCE_SEQ_AFTER_CONNECT_DIG_FE_BE);
@@ -99,13 +98,10 @@ void reset_dio_stream_encoder(struct pipe_ctx *pipe_ctx)
 	if (stream_enc->funcs->enable_stream)
 		stream_enc->funcs->enable_stream(stream_enc,
 				pipe_ctx->stream->signal, false);
-
-	if (!dc_is_rgb_signal(pipe_ctx->stream->signal))
-		link_enc->funcs->connect_dig_be_to_fe(
-				link_enc,
-				pipe_ctx->stream_res.stream_enc->id,
-				false);
-
+	link_enc->funcs->connect_dig_be_to_fe(
+			link_enc,
+			pipe_ctx->stream_res.stream_enc->id,
+			false);
 	if (dc_is_dp_signal(pipe_ctx->stream->signal))
 		pipe_ctx->stream->ctx->dc->link_srv->dp_trace_source_sequence(
 				pipe_ctx->stream->link,
@@ -119,8 +115,7 @@ void setup_dio_stream_attribute(struct pipe_ctx *pipe_ctx)
 	struct dc_stream_state *stream = pipe_ctx->stream;
 	struct dc_link *link = stream->link;
 
-	if (!dc_is_virtual_signal(stream->signal) &&
-		!dc_is_rgb_signal(stream->signal))
+	if (!dc_is_virtual_signal(stream->signal))
 		stream_encoder->funcs->setup_stereo_sync(
 				stream_encoder,
 				pipe_ctx->stream_res.tg->inst,

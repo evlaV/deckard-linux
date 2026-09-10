@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_drv.h>
-#include <drm/drm_print.h>
 
 #include <linux/seq_file.h>
 #include <linux/circ_buf.h>

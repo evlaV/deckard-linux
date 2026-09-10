@@ -95,43 +95,9 @@
 #define DC_LOGGER \
 	dc->ctx->logger
 #define DC_LOGGER_INIT(logger)
-#include "dml2_0/dml2_wrapper.h"
+#include "dml2/dml2_wrapper.h"
 
 #define UNABLE_TO_SPLIT -1
-
-static void capture_pipe_topology_data(struct dc *dc, int plane_idx, int slice_idx, int stream_idx,
-									   int dpp_inst, int opp_inst, int tg_inst, bool is_phantom_pipe)
-{
-	struct pipe_topology_snapshot *current_snapshot = &dc->debug_data.topology_history.snapshots[dc->debug_data.topology_history.current_snapshot_index];
-
-	if (current_snapshot->line_count >= MAX_PIPES)
-		return;
-
-	current_snapshot->pipe_log_lines[current_snapshot->line_count].is_phantom_pipe = is_phantom_pipe;
-	current_snapshot->pipe_log_lines[current_snapshot->line_count].plane_idx = plane_idx;
-	current_snapshot->pipe_log_lines[current_snapshot->line_count].slice_idx = slice_idx;
-	current_snapshot->pipe_log_lines[current_snapshot->line_count].stream_idx = stream_idx;
-	current_snapshot->pipe_log_lines[current_snapshot->line_count].dpp_inst = dpp_inst;
-	current_snapshot->pipe_log_lines[current_snapshot->line_count].opp_inst = opp_inst;
-	current_snapshot->pipe_log_lines[current_snapshot->line_count].tg_inst = tg_inst;
-
-	current_snapshot->line_count++;
-}
-
-static void start_new_topology_snapshot(struct dc *dc, struct dc_state *state)
-{
-	// Move to next snapshot slot (circular buffer)
-	dc->debug_data.topology_history.current_snapshot_index = (dc->debug_data.topology_history.current_snapshot_index + 1) % MAX_TOPOLOGY_SNAPSHOTS;
-
-	// Clear the new snapshot
-	struct pipe_topology_snapshot *current_snapshot = &dc->debug_data.topology_history.snapshots[dc->debug_data.topology_history.current_snapshot_index];
-	memset(current_snapshot, 0, sizeof(*current_snapshot));
-
-	// Set metadata
-	current_snapshot->timestamp_us = dm_get_timestamp(dc->ctx);
-	current_snapshot->stream_count = state->stream_count;
-	current_snapshot->phantom_stream_count = state->phantom_stream_count;
-}
 
 enum dce_version resource_parse_asic_id(struct hw_asic_id asic_id)
 {
@@ -478,14 +444,6 @@ bool resource_construct(
 			pool->stream_enc[i] = create_funcs->create_stream_encoder(i, ctx);
 			if (pool->stream_enc[i] == NULL)
 				DC_ERR("DC: failed to create stream_encoder!\n");
-			pool->stream_enc_count++;
-		}
-
-		for (i = 0; i < caps->num_analog_stream_encoder; i++) {
-			pool->stream_enc[caps->num_stream_encoder + i] =
-				create_funcs->create_stream_encoder(ENGINE_ID_DACA + i, ctx);
-			if (pool->stream_enc[caps->num_stream_encoder + i] == NULL)
-				DC_ERR("DC: failed to create analog stream_encoder %d!\n", i);
 			pool->stream_enc_count++;
 		}
 	}
@@ -2345,11 +2303,10 @@ bool resource_is_odm_topology_changed(const struct pipe_ctx *otg_master_a,
 
 static void resource_log_pipe(struct dc *dc, struct pipe_ctx *pipe,
 		int stream_idx, int slice_idx, int plane_idx, int slice_count,
-		bool is_primary, bool is_phantom_pipe)
+		bool is_primary)
 {
 	DC_LOGGER_INIT(dc->ctx->logger);
 
-	// new format for logging: bit storing code
 	if (slice_idx == 0 && plane_idx == 0 && is_primary) {
 		/* case 0 (OTG master pipe with plane) */
 		DC_LOG_DC(" | plane%d  slice%d  stream%d|",
@@ -2358,10 +2315,6 @@ static void resource_log_pipe(struct dc *dc, struct pipe_ctx *pipe,
 				pipe->plane_res.dpp->inst,
 				pipe->stream_res.opp->inst,
 				pipe->stream_res.tg->inst);
-		capture_pipe_topology_data(dc, plane_idx, slice_idx, stream_idx,
-				pipe->plane_res.dpp->inst,
-				pipe->stream_res.opp->inst,
-				pipe->stream_res.tg->inst, is_phantom_pipe);
 	} else if (slice_idx == 0 && plane_idx == -1) {
 		/* case 1 (OTG master pipe without plane) */
 		DC_LOG_DC(" |         slice%d  stream%d|",
@@ -2370,10 +2323,6 @@ static void resource_log_pipe(struct dc *dc, struct pipe_ctx *pipe,
 				pipe->stream_res.opp->inst,
 				pipe->stream_res.opp->inst,
 				pipe->stream_res.tg->inst);
-		capture_pipe_topology_data(dc, 0xF, slice_idx, stream_idx,
-				pipe->plane_res.dpp->inst,
-				pipe->stream_res.opp->inst,
-				pipe->stream_res.tg->inst, is_phantom_pipe);
 	} else if (slice_idx != 0 && plane_idx == 0 && is_primary) {
 		/* case 2 (OPP head pipe with plane) */
 		DC_LOG_DC(" | plane%d  slice%d |       |",
@@ -2381,43 +2330,27 @@ static void resource_log_pipe(struct dc *dc, struct pipe_ctx *pipe,
 		DC_LOG_DC(" |DPP%d----OPP%d----|       |",
 				pipe->plane_res.dpp->inst,
 				pipe->stream_res.opp->inst);
-		capture_pipe_topology_data(dc, plane_idx, slice_idx, stream_idx,
-				pipe->plane_res.dpp->inst,
-				pipe->stream_res.opp->inst,
-				pipe->stream_res.tg->inst, is_phantom_pipe);
 	} else if (slice_idx != 0 && plane_idx == -1) {
 		/* case 3 (OPP head pipe without plane) */
 		DC_LOG_DC(" |         slice%d |       |", slice_idx);
 		DC_LOG_DC(" |DPG%d----OPP%d----|       |",
 				pipe->plane_res.dpp->inst,
 				pipe->stream_res.opp->inst);
-		capture_pipe_topology_data(dc, 0xF, slice_idx, stream_idx,
-				pipe->plane_res.dpp->inst,
-				pipe->stream_res.opp->inst,
-				pipe->stream_res.tg->inst, is_phantom_pipe);
 	} else if (slice_idx == slice_count - 1) {
 		/* case 4 (DPP pipe in last slice) */
 		DC_LOG_DC(" | plane%d |               |", plane_idx);
 		DC_LOG_DC(" |DPP%d----|               |",
 				pipe->plane_res.dpp->inst);
-		capture_pipe_topology_data(dc, plane_idx, slice_idx, stream_idx,
-				pipe->plane_res.dpp->inst,
-				pipe->stream_res.opp->inst,
-				pipe->stream_res.tg->inst, is_phantom_pipe);
 	} else {
 		/* case 5 (DPP pipe not in last slice) */
 		DC_LOG_DC(" | plane%d |       |       |", plane_idx);
 		DC_LOG_DC(" |DPP%d----|       |       |",
 				pipe->plane_res.dpp->inst);
-		capture_pipe_topology_data(dc, plane_idx, slice_idx, stream_idx,
-				pipe->plane_res.dpp->inst,
-				pipe->stream_res.opp->inst,
-				pipe->stream_res.tg->inst, is_phantom_pipe);
 	}
 }
 
 static void resource_log_pipe_for_stream(struct dc *dc, struct dc_state *state,
-		struct pipe_ctx *otg_master, int stream_idx, bool is_phantom_pipe)
+		struct pipe_ctx *otg_master, int stream_idx)
 {
 	struct pipe_ctx *opp_heads[MAX_PIPES];
 	struct pipe_ctx *dpp_pipes[MAX_PIPES];
@@ -2443,12 +2376,12 @@ static void resource_log_pipe_for_stream(struct dc *dc, struct dc_state *state,
 				resource_log_pipe(dc, dpp_pipes[dpp_idx],
 						stream_idx, slice_idx,
 						plane_idx, slice_count,
-						is_primary, is_phantom_pipe);
+						is_primary);
 			}
 		} else {
 			resource_log_pipe(dc, opp_heads[slice_idx],
 					stream_idx, slice_idx, plane_idx,
-					slice_count, true, is_phantom_pipe);
+					slice_count, true);
 		}
 
 	}
@@ -2479,10 +2412,6 @@ void resource_log_pipe_topology_update(struct dc *dc, struct dc_state *state)
 	struct pipe_ctx *otg_master;
 	int stream_idx, phantom_stream_idx;
 	DC_LOGGER_INIT(dc->ctx->logger);
-	bool is_phantom_pipe = false;
-
-	// Start a new snapshot for this topology update
-	start_new_topology_snapshot(dc, state);
 
 	DC_LOG_DC("    pipe topology update");
 	DC_LOG_DC("  ________________________");
@@ -2496,10 +2425,9 @@ void resource_log_pipe_topology_update(struct dc *dc, struct dc_state *state)
 		if (!otg_master)
 			continue;
 
-		resource_log_pipe_for_stream(dc, state, otg_master, stream_idx, is_phantom_pipe);
+		resource_log_pipe_for_stream(dc, state, otg_master, stream_idx);
 	}
 	if (state->phantom_stream_count > 0) {
-		is_phantom_pipe = true;
 		DC_LOG_DC(" |    (phantom pipes)     |");
 		for (stream_idx = 0; stream_idx < state->stream_count; stream_idx++) {
 			if (state->stream_status[stream_idx].mall_stream_config.type != SUBVP_MAIN)
@@ -2512,7 +2440,7 @@ void resource_log_pipe_topology_update(struct dc *dc, struct dc_state *state)
 			if (!otg_master)
 				continue;
 
-			resource_log_pipe_for_stream(dc, state, otg_master, stream_idx, is_phantom_pipe);
+			resource_log_pipe_for_stream(dc, state, otg_master, stream_idx);
 		}
 	}
 	DC_LOG_DC(" |________________________|\n");
@@ -2762,40 +2690,17 @@ static inline int find_fixed_dio_link_enc(const struct dc_link *link)
 }
 
 static inline int find_free_dio_link_enc(const struct resource_context *res_ctx,
-		const struct dc_link *link, const struct resource_pool *pool, struct dc_stream_state *stream)
+		const struct dc_link *link, const struct resource_pool *pool)
 {
-	int i, j = -1;
-	int stream_enc_inst = -1;
+	int i;
 	int enc_count = pool->dig_link_enc_count;
 
-	/* Find stream encoder instance for the stream */
-	if (stream) {
-		for (i = 0; i < pool->pipe_count; i++) {
-			if ((res_ctx->pipe_ctx[i].stream == stream) &&
-				(res_ctx->pipe_ctx[i].stream_res.stream_enc != NULL)) {
-				stream_enc_inst = res_ctx->pipe_ctx[i].stream_res.stream_enc->id;
-				break;
-			}
-		}
-	}
+	/* for dpia, check preferred encoder first and then the next one */
+	for (i = 0; i < enc_count; i++)
+		if (res_ctx->dio_link_enc_ref_cnts[(link->dpia_preferred_eng_id + i) % enc_count] == 0)
+			break;
 
-	/* Assign dpia preferred > stream enc instance > available */
-	for (i = 0; i < enc_count; i++) {
-		if (res_ctx->dio_link_enc_ref_cnts[i] == 0) {
-			if (j == -1)
-				j = i;
-
-			if (link->dpia_preferred_eng_id == i) {
-				j = i;
-				break;
-			}
-
-			if (stream_enc_inst == i) {
-				j = stream_enc_inst;
-			}
-		}
-	}
-	return j;
+	return (i >= 0 && i < enc_count) ? (link->dpia_preferred_eng_id + i) % enc_count : -1;
 }
 
 static inline void acquire_dio_link_enc(
@@ -2876,7 +2781,7 @@ static bool add_dio_link_enc_to_ctx(const struct dc *dc,
 		retain_dio_link_enc(res_ctx, enc_index);
 	} else {
 		if (stream->link->is_dig_mapping_flexible)
-			enc_index = find_free_dio_link_enc(res_ctx, stream->link, pool, stream);
+			enc_index = find_free_dio_link_enc(res_ctx, stream->link, pool);
 		else {
 			int link_index = 0;
 
@@ -2886,7 +2791,7 @@ static bool add_dio_link_enc_to_ctx(const struct dc *dc,
 			 * one into the acquiring link.
 			 */
 			if (enc_index >= 0 && is_dio_enc_acquired_by_other_link(stream->link, enc_index, &link_index)) {
-				int new_enc_index = find_free_dio_link_enc(res_ctx, dc->links[link_index], pool, stream);
+				int new_enc_index = find_free_dio_link_enc(res_ctx, dc->links[link_index], pool);
 
 				if (new_enc_index >= 0)
 					swap_dio_link_enc_to_muxable_ctx(context, pool, new_enc_index, enc_index);
@@ -5296,7 +5201,7 @@ struct link_encoder *get_temp_dio_link_enc(
 		enc_index = link->eng_id;
 
 	if (enc_index < 0)
-		enc_index = find_free_dio_link_enc(res_ctx, link, pool, NULL);
+		enc_index = find_free_dio_link_enc(res_ctx, link, pool);
 
 	if (enc_index >= 0)
 		link_enc = pool->link_encoders[enc_index];

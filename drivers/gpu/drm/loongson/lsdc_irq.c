@@ -3,7 +3,6 @@
  * Copyright (C) 2023 Loongson Technology Corporation Limited
  */
 
-#include <drm/drm_print.h>
 #include <drm/drm_vblank.h>
 
 #include "lsdc_irq.h"

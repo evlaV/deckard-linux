@@ -10,9 +10,8 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
-#include <linux/rbtree.h>
 
-struct drm_printer;
+#include <drm/drm_print.h>
 
 #define DRM_BUDDY_RANGE_ALLOCATION		BIT(0)
 #define DRM_BUDDY_TOPDOWN_ALLOCATION		BIT(1)
@@ -45,11 +44,7 @@ struct drm_buddy_block {
 	 * a list, if so desired. As soon as the block is freed with
 	 * drm_buddy_free* ownership is given back to the mm.
 	 */
-	union {
-		struct rb_node rb;
-		struct list_head link;
-	};
-
+	struct list_head link;
 	struct list_head tmp_link;
 };
 
@@ -64,7 +59,7 @@ struct drm_buddy_block {
  */
 struct drm_buddy {
 	/* Maintain a free list for each order. */
-	struct rb_root **free_trees;
+	struct list_head *free_list;
 
 	/*
 	 * Maintain explicit binary tree(s) to track the allocation of the
@@ -90,7 +85,7 @@ struct drm_buddy {
 };
 
 static inline u64
-drm_buddy_block_offset(const struct drm_buddy_block *block)
+drm_buddy_block_offset(struct drm_buddy_block *block)
 {
 	return block->header & DRM_BUDDY_HEADER_OFFSET;
 }

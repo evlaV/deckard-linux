@@ -7,8 +7,6 @@
 #include <linux/list_sort.h>
 #include <linux/llist.h>
 
-#include <drm/drm_print.h>
-
 #include "i915_drv.h"
 #include "intel_engine.h"
 #include "intel_engine_user.h"

@@ -11,14 +11,12 @@
 #include <linux/slab.h>
 
 #include <drm/drm_client.h>
-#include <drm/drm_client_event.h>
 #include <drm/drm_device.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_file.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_gem.h>
-#include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_mode.h>
 #include <drm/drm_print.h>
 
@@ -170,59 +168,29 @@ void drm_client_release(struct drm_client_dev *client)
 
 	drm_client_modeset_free(client);
 	drm_client_close(client);
-
-	if (client->funcs && client->funcs->free)
-		client->funcs->free(client);
-
 	drm_dev_put(dev);
 }
 EXPORT_SYMBOL(drm_client_release);
 
-/**
- * drm_client_buffer_delete - Delete a client buffer
- * @buffer: DRM client buffer
- */
-void drm_client_buffer_delete(struct drm_client_buffer *buffer)
+static void drm_client_buffer_delete(struct drm_client_buffer *buffer)
 {
-	struct drm_gem_object *gem;
-	int ret;
-
-	if (!buffer)
-		return;
-
-	gem = buffer->fb->obj[0];
-	drm_gem_vunmap(gem, &buffer->map);
-
-	ret = drm_mode_rmfb(buffer->client->dev, buffer->fb->base.id, buffer->client->file);
-	if (ret)
-		drm_err(buffer->client->dev,
-			"Error removing FB:%u (%d)\n", buffer->fb->base.id, ret);
-
-	drm_gem_object_put(buffer->gem);
+	if (buffer->gem) {
+		drm_gem_vunmap(buffer->gem, &buffer->map);
+		drm_gem_object_put(buffer->gem);
+	}
 
 	kfree(buffer);
 }
-EXPORT_SYMBOL(drm_client_buffer_delete);
 
 static struct drm_client_buffer *
 drm_client_buffer_create(struct drm_client_dev *client, u32 width, u32 height,
-			 u32 format, u32 handle, u32 pitch)
+			 u32 format, u32 *handle)
 {
-	struct drm_mode_fb_cmd2 fb_req = {
-		.width = width,
-		.height = height,
-		.pixel_format = format,
-		.handles = {
-			handle,
-		},
-		.pitches = {
-			pitch,
-		},
-	};
+	const struct drm_format_info *info = drm_format_info(format);
+	struct drm_mode_create_dumb dumb_args = { };
 	struct drm_device *dev = client->dev;
 	struct drm_client_buffer *buffer;
 	struct drm_gem_object *obj;
-	struct drm_framebuffer *fb;
 	int ret;
 
 	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
@@ -231,38 +199,28 @@ drm_client_buffer_create(struct drm_client_dev *client, u32 width, u32 height,
 
 	buffer->client = client;
 
-	obj = drm_gem_object_lookup(client->file, handle);
+	dumb_args.width = width;
+	dumb_args.height = height;
+	dumb_args.bpp = drm_format_info_bpp(info, 0);
+	ret = drm_mode_create_dumb(dev, &dumb_args, client->file);
+	if (ret)
+		goto err_delete;
+
+	obj = drm_gem_object_lookup(client->file, dumb_args.handle);
 	if (!obj)  {
 		ret = -ENOENT;
 		goto err_delete;
 	}
 
-	ret = drm_mode_addfb2(dev, &fb_req, client->file);
-	if (ret)
-		goto err_drm_gem_object_put;
-
-	fb = drm_framebuffer_lookup(dev, client->file, fb_req.fb_id);
-	if (drm_WARN_ON(dev, !fb)) {
-		ret = -ENOENT;
-		goto err_drm_mode_rmfb;
-	}
-
-	/* drop the reference we picked up in framebuffer lookup */
-	drm_framebuffer_put(fb);
-
-	strscpy(fb->comm, client->name, TASK_COMM_LEN);
-
+	buffer->pitch = dumb_args.pitch;
 	buffer->gem = obj;
-	buffer->fb = fb;
+	*handle = dumb_args.handle;
 
 	return buffer;
 
-err_drm_mode_rmfb:
-	drm_mode_rmfb(dev, fb_req.fb_id, client->file);
-err_drm_gem_object_put:
-	drm_gem_object_put(obj);
 err_delete:
-	kfree(buffer);
+	drm_client_buffer_delete(buffer);
+
 	return ERR_PTR(ret);
 }
 
@@ -289,7 +247,7 @@ err_delete:
 int drm_client_buffer_vmap_local(struct drm_client_buffer *buffer,
 				 struct iosys_map *map_copy)
 {
-	struct drm_gem_object *gem = buffer->fb->obj[0];
+	struct drm_gem_object *gem = buffer->gem;
 	struct iosys_map *map = &buffer->map;
 	int ret;
 
@@ -318,7 +276,7 @@ EXPORT_SYMBOL(drm_client_buffer_vmap_local);
  */
 void drm_client_buffer_vunmap_local(struct drm_client_buffer *buffer)
 {
-	struct drm_gem_object *gem = buffer->fb->obj[0];
+	struct drm_gem_object *gem = buffer->gem;
 	struct iosys_map *map = &buffer->map;
 
 	drm_gem_vunmap_locked(gem, map);
@@ -349,10 +307,9 @@ EXPORT_SYMBOL(drm_client_buffer_vunmap_local);
 int drm_client_buffer_vmap(struct drm_client_buffer *buffer,
 			   struct iosys_map *map_copy)
 {
-	struct drm_gem_object *gem = buffer->fb->obj[0];
 	int ret;
 
-	ret = drm_gem_vmap(gem, &buffer->map);
+	ret = drm_gem_vmap(buffer->gem, &buffer->map);
 	if (ret)
 		return ret;
 	*map_copy = buffer->map;
@@ -371,14 +328,57 @@ EXPORT_SYMBOL(drm_client_buffer_vmap);
  */
 void drm_client_buffer_vunmap(struct drm_client_buffer *buffer)
 {
-	struct drm_gem_object *gem = buffer->fb->obj[0];
-
-	drm_gem_vunmap(gem, &buffer->map);
+	drm_gem_vunmap(buffer->gem, &buffer->map);
 }
 EXPORT_SYMBOL(drm_client_buffer_vunmap);
 
+static void drm_client_buffer_rmfb(struct drm_client_buffer *buffer)
+{
+	int ret;
+
+	if (!buffer->fb)
+		return;
+
+	ret = drm_mode_rmfb(buffer->client->dev, buffer->fb->base.id, buffer->client->file);
+	if (ret)
+		drm_err(buffer->client->dev,
+			"Error removing FB:%u (%d)\n", buffer->fb->base.id, ret);
+
+	buffer->fb = NULL;
+}
+
+static int drm_client_buffer_addfb(struct drm_client_buffer *buffer,
+				   u32 width, u32 height, u32 format,
+				   u32 handle)
+{
+	struct drm_client_dev *client = buffer->client;
+	struct drm_mode_fb_cmd2 fb_req = { };
+	int ret;
+
+	fb_req.width = width;
+	fb_req.height = height;
+	fb_req.pixel_format = format;
+	fb_req.handles[0] = handle;
+	fb_req.pitches[0] = buffer->pitch;
+
+	ret = drm_mode_addfb2(client->dev, &fb_req, client->file);
+	if (ret)
+		return ret;
+
+	buffer->fb = drm_framebuffer_lookup(client->dev, buffer->client->file, fb_req.fb_id);
+	if (WARN_ON(!buffer->fb))
+		return -ENOENT;
+
+	/* drop the reference we picked up in framebuffer lookup */
+	drm_framebuffer_put(buffer->fb);
+
+	strscpy(buffer->fb->comm, client->name, TASK_COMM_LEN);
+
+	return 0;
+}
+
 /**
- * drm_client_buffer_create_dumb - Create a client buffer backed by a dumb buffer
+ * drm_client_framebuffer_create - Create a client framebuffer
  * @client: DRM client
  * @width: Framebuffer width
  * @height: Framebuffer height
@@ -386,33 +386,24 @@ EXPORT_SYMBOL(drm_client_buffer_vunmap);
  *
  * This function creates a &drm_client_buffer which consists of a
  * &drm_framebuffer backed by a dumb buffer.
- * Call drm_client_buffer_delete() to free the buffer.
+ * Call drm_client_framebuffer_delete() to free the buffer.
  *
  * Returns:
  * Pointer to a client buffer or an error pointer on failure.
  */
 struct drm_client_buffer *
-drm_client_buffer_create_dumb(struct drm_client_dev *client, u32 width, u32 height, u32 format)
+drm_client_framebuffer_create(struct drm_client_dev *client, u32 width, u32 height, u32 format)
 {
-	const struct drm_format_info *info = drm_format_info(format);
-	struct drm_device *dev = client->dev;
-	struct drm_mode_create_dumb dumb_args = { };
 	struct drm_client_buffer *buffer;
+	u32 handle;
 	int ret;
 
-	dumb_args.width = width;
-	dumb_args.height = height;
-	dumb_args.bpp = drm_format_info_bpp(info, 0);
-	ret = drm_mode_create_dumb(dev, &dumb_args, client->file);
-	if (ret)
-		return ERR_PTR(ret);
-
 	buffer = drm_client_buffer_create(client, width, height, format,
-					  dumb_args.handle, dumb_args.pitch);
-	if (IS_ERR(buffer)) {
-		ret = PTR_ERR(buffer);
-		goto err_drm_mode_destroy_dumb;
-	}
+					  &handle);
+	if (IS_ERR(buffer))
+		return buffer;
+
+	ret = drm_client_buffer_addfb(buffer, width, height, format, handle);
 
 	/*
 	 * The handle is only needed for creating the framebuffer, destroy it
@@ -420,19 +411,34 @@ drm_client_buffer_create_dumb(struct drm_client_dev *client, u32 width, u32 heig
 	 * object as DMA-buf. The framebuffer and our buffer structure are still
 	 * holding references to the GEM object to prevent its destruction.
 	 */
-	drm_mode_destroy_dumb(client->dev, dumb_args.handle, client->file);
+	drm_mode_destroy_dumb(client->dev, handle, client->file);
+
+	if (ret) {
+		drm_client_buffer_delete(buffer);
+		return ERR_PTR(ret);
+	}
 
 	return buffer;
-
-err_drm_mode_destroy_dumb:
-	drm_mode_destroy_dumb(client->dev, dumb_args.handle, client->file);
-	return ERR_PTR(ret);
 }
-EXPORT_SYMBOL(drm_client_buffer_create_dumb);
+EXPORT_SYMBOL(drm_client_framebuffer_create);
 
 /**
- * drm_client_buffer_flush - Manually flush client buffer
- * @buffer: DRM client buffer
+ * drm_client_framebuffer_delete - Delete a client framebuffer
+ * @buffer: DRM client buffer (can be NULL)
+ */
+void drm_client_framebuffer_delete(struct drm_client_buffer *buffer)
+{
+	if (!buffer)
+		return;
+
+	drm_client_buffer_rmfb(buffer);
+	drm_client_buffer_delete(buffer);
+}
+EXPORT_SYMBOL(drm_client_framebuffer_delete);
+
+/**
+ * drm_client_framebuffer_flush - Manually flush client framebuffer
+ * @buffer: DRM client buffer (can be NULL)
  * @rect: Damage rectangle (if NULL flushes all)
  *
  * This calls &drm_framebuffer_funcs->dirty (if present) to flush buffer changes
@@ -441,7 +447,7 @@ EXPORT_SYMBOL(drm_client_buffer_create_dumb);
  * Returns:
  * Zero on success or negative error code on failure.
  */
-int drm_client_buffer_flush(struct drm_client_buffer *buffer, struct drm_rect *rect)
+int drm_client_framebuffer_flush(struct drm_client_buffer *buffer, struct drm_rect *rect)
 {
 	if (!buffer || !buffer->fb || !buffer->fb->funcs->dirty)
 		return 0;
@@ -461,4 +467,4 @@ int drm_client_buffer_flush(struct drm_client_buffer *buffer, struct drm_rect *r
 	return buffer->fb->funcs->dirty(buffer->fb, buffer->client->file,
 					0, 0, NULL, 0);
 }
-EXPORT_SYMBOL(drm_client_buffer_flush);
+EXPORT_SYMBOL(drm_client_framebuffer_flush);

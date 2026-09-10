@@ -295,7 +295,7 @@ static int pl111_amba_probe(struct amba_device *amba_dev,
 			       variant->name, priv);
 	if (ret != 0) {
 		dev_err(dev, "%s failed irq %d\n", __func__, ret);
-		goto dev_put;
+		return ret;
 	}
 
 	ret = pl111_modeset_init(drm);

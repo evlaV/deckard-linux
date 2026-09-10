@@ -3,8 +3,6 @@
  * Copyright © 2019 Intel Corporation
  */
 
-#include <drm/drm_print.h>
-
 #include "i915_drv.h"
 #include "i915_pci.h"
 #include "i915_reg.h"
@@ -20,6 +18,16 @@
 #include "gt/intel_gt_regs.h"
 
 #ifdef CONFIG_64BIT
+static void _release_bars(struct pci_dev *pdev)
+{
+	int resno;
+
+	for (resno = PCI_STD_RESOURCES; resno < PCI_STD_RESOURCE_END; resno++) {
+		if (pci_resource_len(pdev, resno))
+			pci_release_resource(pdev, resno);
+	}
+}
+
 static void
 _resize_bar(struct drm_i915_private *i915, int resno, resource_size_t size)
 {
@@ -27,7 +35,9 @@ _resize_bar(struct drm_i915_private *i915, int resno, resource_size_t size)
 	int bar_size = pci_rebar_bytes_to_size(size);
 	int ret;
 
-	ret = pci_resize_resource(pdev, resno, bar_size, 0);
+	_release_bars(pdev);
+
+	ret = pci_resize_resource(pdev, resno, bar_size);
 	if (ret) {
 		drm_info(&i915->drm, "Failed to resize BAR%d to %dM (%pe)\n",
 			 resno, 1 << bar_size, ERR_PTR(ret));
@@ -51,12 +61,16 @@ static void i915_resize_lmem_bar(struct drm_i915_private *i915, resource_size_t 
 	current_size = roundup_pow_of_two(pci_resource_len(pdev, GEN12_LMEM_BAR));
 
 	if (i915->params.lmem_bar_size) {
-		rebar_size = i915->params.lmem_bar_size * (resource_size_t)SZ_1M;
+		u32 bar_sizes;
+
+		rebar_size = i915->params.lmem_bar_size *
+			(resource_size_t)SZ_1M;
+		bar_sizes = pci_rebar_get_possible_sizes(pdev, GEN12_LMEM_BAR);
+
 		if (rebar_size == current_size)
 			return;
 
-		if (!pci_rebar_size_supported(pdev, GEN12_LMEM_BAR,
-					      pci_rebar_bytes_to_size(rebar_size)) ||
+		if (!(bar_sizes & BIT(pci_rebar_bytes_to_size(rebar_size))) ||
 		    rebar_size >= roundup_pow_of_two(lmem_size)) {
 			rebar_size = lmem_size;
 

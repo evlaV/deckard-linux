@@ -179,11 +179,11 @@ static void intel_dmc_wl_work(struct work_struct *work)
 	if (refcount_read(&wl->refcount))
 		goto out_unlock;
 
-	intel_de_rmw_fw(display, DMC_WAKELOCK1_CTL, DMC_WAKELOCK_CTL_REQ, 0);
+	__intel_de_rmw_nowl(display, DMC_WAKELOCK1_CTL, DMC_WAKELOCK_CTL_REQ, 0);
 
-	if (intel_de_wait_fw_us_atomic(display, DMC_WAKELOCK1_CTL,
-				       DMC_WAKELOCK_CTL_ACK, 0,
-				       DMC_WAKELOCK_CTL_TIMEOUT_US, NULL)) {
+	if (__intel_de_wait_for_register_atomic_nowl(display, DMC_WAKELOCK1_CTL,
+						     DMC_WAKELOCK_CTL_ACK, 0,
+						     DMC_WAKELOCK_CTL_TIMEOUT_US)) {
 		WARN_RATELIMIT(1, "DMC wakelock release timed out");
 		goto out_unlock;
 	}
@@ -207,16 +207,17 @@ static void __intel_dmc_wl_take(struct intel_display *display)
 	if (wl->taken)
 		return;
 
-	intel_de_rmw_fw(display, DMC_WAKELOCK1_CTL, 0, DMC_WAKELOCK_CTL_REQ);
+	__intel_de_rmw_nowl(display, DMC_WAKELOCK1_CTL, 0,
+			    DMC_WAKELOCK_CTL_REQ);
 
 	/*
 	 * We need to use the atomic variant of the waiting routine
 	 * because the DMC wakelock is also taken in atomic context.
 	 */
-	if (intel_de_wait_fw_us_atomic(display, DMC_WAKELOCK1_CTL,
-				       DMC_WAKELOCK_CTL_ACK,
-				       DMC_WAKELOCK_CTL_ACK,
-				       DMC_WAKELOCK_CTL_TIMEOUT_US, NULL)) {
+	if (__intel_de_wait_for_register_atomic_nowl(display, DMC_WAKELOCK1_CTL,
+						     DMC_WAKELOCK_CTL_ACK,
+						     DMC_WAKELOCK_CTL_ACK,
+						     DMC_WAKELOCK_CTL_TIMEOUT_US)) {
 		WARN_RATELIMIT(1, "DMC wakelock ack timed out");
 		return;
 	}
@@ -359,7 +360,7 @@ void intel_dmc_wl_enable(struct intel_display *display, u32 dc_state)
 	 * wakelock, because we're just enabling it, so call the
 	 * non-locking version directly here.
 	 */
-	intel_de_rmw_fw(display, DMC_WAKELOCK_CFG, 0, DMC_WAKELOCK_CFG_ENABLE);
+	__intel_de_rmw_nowl(display, DMC_WAKELOCK_CFG, 0, DMC_WAKELOCK_CFG_ENABLE);
 
 	wl->enabled = true;
 
@@ -401,7 +402,7 @@ void intel_dmc_wl_disable(struct intel_display *display)
 		goto out_unlock;
 
 	/* Disable wakelock in DMC */
-	intel_de_rmw_fw(display, DMC_WAKELOCK_CFG, DMC_WAKELOCK_CFG_ENABLE, 0);
+	__intel_de_rmw_nowl(display, DMC_WAKELOCK_CFG, DMC_WAKELOCK_CFG_ENABLE, 0);
 
 	wl->enabled = false;
 
@@ -413,7 +414,7 @@ void intel_dmc_wl_disable(struct intel_display *display)
 	 *
 	 * TODO: Get the correct expectation from the hardware team.
 	 */
-	intel_de_rmw_fw(display, DMC_WAKELOCK1_CTL, DMC_WAKELOCK_CTL_REQ, 0);
+	__intel_de_rmw_nowl(display, DMC_WAKELOCK1_CTL, DMC_WAKELOCK_CTL_REQ, 0);
 
 	wl->taken = false;
 

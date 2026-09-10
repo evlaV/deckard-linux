@@ -8,7 +8,6 @@
 #include <linux/vgaarb.h>
 
 #include <drm/drm_managed.h>
-#include <drm/drm_print.h>
 #include <drm/intel/i915_drm.h>
 
 #include "../display/intel_display_core.h" /* FIXME */

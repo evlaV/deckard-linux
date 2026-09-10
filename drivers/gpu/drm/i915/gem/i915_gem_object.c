@@ -27,7 +27,6 @@
 #include <linux/sched/mm.h>
 
 #include <drm/drm_cache.h>
-#include <drm/drm_print.h>
 
 #include "display/intel_frontbuffer.h"
 #include "pxp/intel_pxp.h"
@@ -477,24 +476,24 @@ static void i915_gem_free_object(struct drm_gem_object *gem_obj)
 void __i915_gem_object_flush_frontbuffer(struct drm_i915_gem_object *obj,
 					 enum fb_op_origin origin)
 {
-	struct i915_frontbuffer *front;
+	struct intel_frontbuffer *front;
 
-	front = i915_gem_object_frontbuffer_lookup(obj);
+	front = i915_gem_object_get_frontbuffer(obj);
 	if (front) {
-		intel_frontbuffer_flush(&front->base, origin);
-		i915_gem_object_frontbuffer_put(front);
+		intel_frontbuffer_flush(front, origin);
+		intel_frontbuffer_put(front);
 	}
 }
 
 void __i915_gem_object_invalidate_frontbuffer(struct drm_i915_gem_object *obj,
 					      enum fb_op_origin origin)
 {
-	struct i915_frontbuffer *front;
+	struct intel_frontbuffer *front;
 
-	front = i915_gem_object_frontbuffer_lookup(obj);
+	front = i915_gem_object_get_frontbuffer(obj);
 	if (front) {
-		intel_frontbuffer_invalidate(&front->base, origin);
-		i915_gem_object_frontbuffer_put(front);
+		intel_frontbuffer_invalidate(front, origin);
+		intel_frontbuffer_put(front);
 	}
 }
 

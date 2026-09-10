@@ -345,8 +345,7 @@ union MESAPI__REMOVE_QUEUE {
 			uint32_t unmap_kiq_utility_queue  : 1;
 			uint32_t preempt_legacy_gfx_queue : 1;
 			uint32_t unmap_legacy_queue       : 1;
-			uint32_t remove_queue_after_reset : 1;
-			uint32_t reserved                 : 27;
+			uint32_t reserved                 : 28;
 		};
 		struct MES_API_STATUS	    api_status;
 

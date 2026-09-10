@@ -49,7 +49,6 @@
 #include <linux/stacktrace.h>
 
 #include <drm/drm_mm.h>
-#include <drm/drm_print.h>
 
 /**
  * DOC: Overview

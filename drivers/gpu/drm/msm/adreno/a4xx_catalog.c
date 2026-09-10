@@ -7,7 +7,6 @@
  */
 
 #include "adreno_gpu.h"
-#include "a4xx_gpu.h"
 
 static const struct adreno_info a4xx_gpus[] = {
 	{
@@ -20,7 +19,7 @@ static const struct adreno_info a4xx_gpus[] = {
 		},
 		.gmem  = SZ_256K,
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-		.funcs = &a4xx_gpu_funcs,
+		.init  = a4xx_gpu_init,
 	}, {
 		.chip_ids = ADRENO_CHIP_IDS(0x04020000),
 		.family = ADRENO_4XX,
@@ -31,7 +30,7 @@ static const struct adreno_info a4xx_gpus[] = {
 		},
 		.gmem  = (SZ_1M + SZ_512K),
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-		.funcs = &a4xx_gpu_funcs,
+		.init  = a4xx_gpu_init,
 	}, {
 		.chip_ids = ADRENO_CHIP_IDS(0x04030002),
 		.family = ADRENO_4XX,
@@ -42,7 +41,7 @@ static const struct adreno_info a4xx_gpus[] = {
 		},
 		.gmem  = (SZ_1M + SZ_512K),
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-		.funcs = &a4xx_gpu_funcs,
+		.init  = a4xx_gpu_init,
 	}
 };
 DECLARE_ADRENO_GPULIST(a4xx);

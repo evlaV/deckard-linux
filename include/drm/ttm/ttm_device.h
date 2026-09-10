@@ -27,7 +27,6 @@
 
 #include <linux/types.h>
 #include <linux/workqueue.h>
-#include <drm/ttm/ttm_allocation.h>
 #include <drm/ttm/ttm_resource.h>
 #include <drm/ttm/ttm_pool.h>
 
@@ -221,11 +220,6 @@ struct ttm_device {
 	struct list_head device_list;
 
 	/**
-	 * @alloc_flags: TTM_ALLOCATION_* flags.
-	 */
-	unsigned int alloc_flags;
-
-	/**
 	 * @funcs: Function table for the device.
 	 * Constant after bo device init
 	 */
@@ -298,7 +292,7 @@ static inline void ttm_set_driver_manager(struct ttm_device *bdev, int type,
 int ttm_device_init(struct ttm_device *bdev, const struct ttm_device_funcs *funcs,
 		    struct device *dev, struct address_space *mapping,
 		    struct drm_vma_offset_manager *vma_manager,
-		    unsigned int alloc_flags);
+		    bool use_dma_alloc, bool use_dma32);
 void ttm_device_fini(struct ttm_device *bdev);
 void ttm_device_clear_dma_mappings(struct ttm_device *bdev);
 

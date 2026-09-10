@@ -27,7 +27,6 @@
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_panel.h>
-#include <drm/drm_print.h>
 
 #include "tidss_crtc.h"
 #include "tidss_dispc.h"
@@ -58,6 +57,12 @@ static const u16 tidss_k2g_common_regs[DISPC_COMMON_REG_TABLE_LEN] = {
 };
 
 const struct dispc_features dispc_k2g_feats = {
+	.min_pclk_khz = 4375,
+
+	.max_pclk_khz = {
+		[DISPC_VP_DPI] = 150000,
+	},
+
 	/*
 	 * XXX According TRM the RGB input buffer width up to 2560 should
 	 *     work on 3 taps, but in practice it only works up to 1280.
@@ -140,6 +145,11 @@ static const u16 tidss_am65x_common_regs[DISPC_COMMON_REG_TABLE_LEN] = {
 };
 
 const struct dispc_features dispc_am65x_feats = {
+	.max_pclk_khz = {
+		[DISPC_VP_DPI] = 165000,
+		[DISPC_VP_OLDI_AM65X] = 165000,
+	},
+
 	.scaling = {
 		.in_width_max_5tap_rgb = 1280,
 		.in_width_max_3tap_rgb = 2560,
@@ -235,6 +245,11 @@ static const u16 tidss_j721e_common_regs[DISPC_COMMON_REG_TABLE_LEN] = {
 };
 
 const struct dispc_features dispc_j721e_feats = {
+	.max_pclk_khz = {
+		[DISPC_VP_DPI] = 170000,
+		[DISPC_VP_INTERNAL] = 600000,
+	},
+
 	.scaling = {
 		.in_width_max_5tap_rgb = 2048,
 		.in_width_max_3tap_rgb = 4096,
@@ -301,6 +316,11 @@ const struct dispc_features dispc_j721e_feats = {
 };
 
 const struct dispc_features dispc_am625_feats = {
+	.max_pclk_khz = {
+		[DISPC_VP_DPI] = 165000,
+		[DISPC_VP_INTERNAL] = 170000,
+	},
+
 	.scaling = {
 		.in_width_max_5tap_rgb = 1280,
 		.in_width_max_3tap_rgb = 2560,
@@ -357,6 +377,15 @@ const struct dispc_features dispc_am625_feats = {
 };
 
 const struct dispc_features dispc_am62a7_feats = {
+	/*
+	 * if the code reaches dispc_mode_valid with VP1,
+	 * it should return MODE_BAD.
+	 */
+	.max_pclk_khz = {
+		[DISPC_VP_TIED_OFF] = 0,
+		[DISPC_VP_DPI] = 165000,
+	},
+
 	.scaling = {
 		.in_width_max_5tap_rgb = 1280,
 		.in_width_max_3tap_rgb = 2560,
@@ -413,6 +442,10 @@ const struct dispc_features dispc_am62a7_feats = {
 };
 
 const struct dispc_features dispc_am62l_feats = {
+	.max_pclk_khz = {
+		[DISPC_VP_DPI] = 165000,
+	},
+
 	.subrev = DISPC_AM62L,
 
 	.common = "common",
@@ -1018,22 +1051,20 @@ struct dispc_bus_format *dispc_vp_find_bus_fmt(struct dispc_device *dispc,
 int dispc_vp_bus_check(struct dispc_device *dispc, u32 hw_videoport,
 		       const struct drm_crtc_state *state)
 {
-	struct tidss_device *tidss = dispc->tidss;
-	struct drm_device *dev = &tidss->ddev;
 	const struct tidss_crtc_state *tstate = to_tidss_crtc_state(state);
 	const struct dispc_bus_format *fmt;
 
 	fmt = dispc_vp_find_bus_fmt(dispc, hw_videoport, tstate->bus_format,
 				    tstate->bus_flags);
 	if (!fmt) {
-		drm_dbg(dev, "%s: Unsupported bus format: %u\n",
+		dev_dbg(dispc->dev, "%s: Unsupported bus format: %u\n",
 			__func__, tstate->bus_format);
 		return -EINVAL;
 	}
 
 	if (dispc->feat->vp_bus_type[hw_videoport] != DISPC_VP_OLDI_AM65X &&
 	    fmt->is_oldi_fmt) {
-		drm_dbg(dev, "%s: %s is not OLDI-port\n",
+		dev_dbg(dispc->dev, "%s: %s is not OLDI-port\n",
 			__func__, dispc->feat->vp_name[hw_videoport]);
 		return -EINVAL;
 	}
@@ -1130,9 +1161,6 @@ void dispc_vp_prepare(struct dispc_device *dispc, u32 hw_videoport,
 {
 	const struct tidss_crtc_state *tstate = to_tidss_crtc_state(state);
 	const struct dispc_bus_format *fmt;
-	const struct drm_display_mode *mode = &state->adjusted_mode;
-	bool align, onoff, rf, ieo, ipc, ihs, ivs;
-	u32 hsw, hfp, hbp, vsw, vfp, vbp;
 
 	fmt = dispc_vp_find_bus_fmt(dispc, hw_videoport, tstate->bus_format,
 				    tstate->bus_flags);
@@ -1145,6 +1173,22 @@ void dispc_vp_prepare(struct dispc_device *dispc, u32 hw_videoport,
 
 		dispc_enable_am65x_oldi(dispc, hw_videoport, fmt);
 	}
+}
+
+void dispc_vp_enable(struct dispc_device *dispc, u32 hw_videoport,
+		     const struct drm_crtc_state *state)
+{
+	const struct drm_display_mode *mode = &state->adjusted_mode;
+	const struct tidss_crtc_state *tstate = to_tidss_crtc_state(state);
+	bool align, onoff, rf, ieo, ipc, ihs, ivs;
+	const struct dispc_bus_format *fmt;
+	u32 hsw, hfp, hbp, vsw, vfp, vbp;
+
+	fmt = dispc_vp_find_bus_fmt(dispc, hw_videoport, tstate->bus_format,
+				    tstate->bus_flags);
+
+	if (WARN_ON(!fmt))
+		return;
 
 	dispc_set_num_datalines(dispc, hw_videoport, fmt->data_width);
 
@@ -1200,10 +1244,7 @@ void dispc_vp_prepare(struct dispc_device *dispc, u32 hw_videoport,
 				  mode->crtc_hdisplay - 1) |
 		       FIELD_PREP(DISPC_VP_SIZE_SCREEN_VDISPLAY_MASK,
 				  mode->crtc_vdisplay - 1));
-}
 
-void dispc_vp_enable(struct dispc_device *dispc, u32 hw_videoport)
-{
 	VP_REG_FLD_MOD(dispc, hw_videoport, DISPC_VP_CONTROL, 1,
 		       DISPC_VP_CONTROL_ENABLE_MASK);
 }
@@ -1290,60 +1331,32 @@ static void dispc_vp_set_default_color(struct dispc_device *dispc,
 			DISPC_OVR_DEFAULT_COLOR2, (v >> 32) & 0xffff);
 }
 
-/*
- * Calculate the percentage difference between the requested pixel clock rate
- * and the effective rate resulting from calculating the clock divider value.
- */
-unsigned int dispc_pclk_diff(unsigned long rate, unsigned long real_rate)
-{
-	int r = rate / 100, rr = real_rate / 100;
-
-	return (unsigned int)(abs(((rr - r) * 100) / r));
-}
-
-static int check_pixel_clock(struct dispc_device *dispc, u32 hw_videoport,
-			     unsigned long clock)
-{
-	unsigned long round_clock;
-
-	/*
-	 * For VP's with external clocking, clock operations must be
-	 * delegated to respective driver, so we skip the check here.
-	 */
-	if (dispc->tidss->is_ext_vp_clk[hw_videoport])
-		return 0;
-
-	round_clock = clk_round_rate(dispc->vp_clk[hw_videoport], clock);
-	/*
-	 * To keep the check consistent with dispc_vp_set_clk_rate(), we
-	 * use the same 5% check here.
-	 */
-	if (dispc_pclk_diff(clock, round_clock) > 5)
-		return -EINVAL;
-
-	return 0;
-}
-
 enum drm_mode_status dispc_vp_mode_valid(struct dispc_device *dispc,
 					 u32 hw_videoport,
 					 const struct drm_display_mode *mode)
 {
 	u32 hsw, hfp, hbp, vsw, vfp, vbp;
 	enum dispc_vp_bus_type bus_type;
+	int max_pclk;
 
 	bus_type = dispc->feat->vp_bus_type[hw_videoport];
 
-	if (WARN_ON(bus_type == DISPC_VP_TIED_OFF))
+	max_pclk = dispc->feat->max_pclk_khz[bus_type];
+
+	if (WARN_ON(max_pclk == 0))
 		return MODE_BAD;
+
+	if (mode->clock < dispc->feat->min_pclk_khz)
+		return MODE_CLOCK_LOW;
+
+	if (mode->clock > max_pclk)
+		return MODE_CLOCK_HIGH;
 
 	if (mode->hdisplay > 4096)
 		return MODE_BAD;
 
 	if (mode->vdisplay > 4096)
 		return MODE_BAD;
-
-	if (check_pixel_clock(dispc, hw_videoport, mode->clock * 1000))
-		return MODE_CLOCK_RANGE;
 
 	/* TODO: add interlace support */
 	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
@@ -1406,6 +1419,17 @@ int dispc_vp_enable_clk(struct dispc_device *dispc, u32 hw_videoport)
 void dispc_vp_disable_clk(struct dispc_device *dispc, u32 hw_videoport)
 {
 	clk_disable_unprepare(dispc->vp_clk[hw_videoport]);
+}
+
+/*
+ * Calculate the percentage difference between the requested pixel clock rate
+ * and the effective rate resulting from calculating the clock divider value.
+ */
+unsigned int dispc_pclk_diff(unsigned long rate, unsigned long real_rate)
+{
+	int r = rate / 100, rr = real_rate / 100;
+
+	return (unsigned int)(abs(((rr - r) * 100) / r));
 }
 
 int dispc_vp_set_clk_rate(struct dispc_device *dispc, u32 hw_videoport,
@@ -2825,6 +2849,8 @@ int dispc_runtime_resume(struct dispc_device *dispc)
 
 void dispc_remove(struct tidss_device *tidss)
 {
+	dev_dbg(tidss->dev, "%s\n", __func__);
+
 	tidss->dispc = NULL;
 }
 
@@ -2965,6 +2991,8 @@ int dispc_init(struct tidss_device *tidss)
 	const struct dispc_features *feat;
 	unsigned int i, num_fourccs;
 	int r = 0;
+
+	dev_dbg(dev, "%s\n", __func__);
 
 	feat = tidss->feat;
 

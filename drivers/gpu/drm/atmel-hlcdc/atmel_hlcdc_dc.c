@@ -25,7 +25,6 @@
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_module.h>
-#include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_vblank.h>
 
@@ -725,19 +724,19 @@ static int atmel_hlcdc_dc_modeset_init(struct drm_device *dev)
 
 	ret = atmel_hlcdc_create_outputs(dev);
 	if (ret) {
-		drm_err(dev, "failed to create HLCDC outputs: %d\n", ret);
+		dev_err(dev->dev, "failed to create HLCDC outputs: %d\n", ret);
 		return ret;
 	}
 
 	ret = atmel_hlcdc_create_planes(dev);
 	if (ret) {
-		drm_err(dev, "failed to create planes: %d\n", ret);
+		dev_err(dev->dev, "failed to create planes: %d\n", ret);
 		return ret;
 	}
 
 	ret = atmel_hlcdc_crtc_create(dev);
 	if (ret) {
-		drm_err(dev, "failed to create crtc\n");
+		dev_err(dev->dev, "failed to create crtc\n");
 		return ret;
 	}
 
@@ -779,7 +778,7 @@ static int atmel_hlcdc_dc_load(struct drm_device *dev)
 
 	ret = clk_prepare_enable(dc->hlcdc->periph_clk);
 	if (ret) {
-		drm_err(dev, "failed to enable periph_clk\n");
+		dev_err(dev->dev, "failed to enable periph_clk\n");
 		return ret;
 	}
 
@@ -787,13 +786,13 @@ static int atmel_hlcdc_dc_load(struct drm_device *dev)
 
 	ret = drm_vblank_init(dev, 1);
 	if (ret < 0) {
-		drm_err(dev, "failed to initialize vblank\n");
+		dev_err(dev->dev, "failed to initialize vblank\n");
 		goto err_periph_clk_disable;
 	}
 
 	ret = atmel_hlcdc_dc_modeset_init(dev);
 	if (ret < 0) {
-		drm_err(dev, "failed to initialize mode setting\n");
+		dev_err(dev->dev, "failed to initialize mode setting\n");
 		goto err_periph_clk_disable;
 	}
 
@@ -803,7 +802,7 @@ static int atmel_hlcdc_dc_load(struct drm_device *dev)
 	ret = atmel_hlcdc_dc_irq_install(dev, dc->hlcdc->irq);
 	pm_runtime_put_sync(dev->dev);
 	if (ret < 0) {
-		drm_err(dev, "failed to install IRQ handler\n");
+		dev_err(dev->dev, "failed to install IRQ handler\n");
 		goto err_periph_clk_disable;
 	}
 

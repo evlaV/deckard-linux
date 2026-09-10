@@ -3,8 +3,6 @@
  * Copyright © 2021 Intel Corporation
  */
 
-#include <drm/drm_print.h>
-
 #include "gem/i915_gem_lmem.h"
 #include "gem/i915_gem_region.h"
 #include "i915_drv.h"
@@ -133,7 +131,6 @@ initial_plane_vma(struct intel_display *display,
 	struct drm_mm_node orig_mm = {};
 	struct i915_vma *vma;
 	resource_size_t phys_base;
-	unsigned int tiling;
 	u32 base, size;
 	u64 pinctl;
 
@@ -180,19 +177,17 @@ initial_plane_vma(struct intel_display *display,
 	i915_gem_object_set_cache_coherency(obj, HAS_WT(i915) ?
 					    I915_CACHE_WT : I915_CACHE_NONE);
 
-	tiling = intel_fb_modifier_to_tiling(plane_config->fb->base.modifier);
-
-	switch (tiling) {
+	switch (plane_config->tiling) {
 	case I915_TILING_NONE:
 		break;
 	case I915_TILING_X:
 	case I915_TILING_Y:
 		obj->tiling_and_stride =
 			plane_config->fb->base.pitches[0] |
-			tiling;
+			plane_config->tiling;
 		break;
 	default:
-		MISSING_CASE(tiling);
+		MISSING_CASE(plane_config->tiling);
 		goto err_obj;
 	}
 
@@ -377,7 +372,7 @@ valid_fb:
 	plane_state->uapi.crtc_w = fb->width;
 	plane_state->uapi.crtc_h = fb->height;
 
-	if (fb->modifier != DRM_FORMAT_MOD_LINEAR)
+	if (plane_config->tiling)
 		dev_priv->preserve_bios_swizzle = true;
 
 	plane_state->uapi.fb = fb;

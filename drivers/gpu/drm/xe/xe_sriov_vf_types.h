@@ -33,11 +33,15 @@ struct xe_device_vf {
 
 	/** @migration: VF Migration state data */
 	struct {
+		/** @migration.worker: VF migration recovery worker */
+		struct work_struct worker;
+		/** @migration.gt_flags: Per-GT request flags for VF migration recovery */
+		unsigned long gt_flags;
 		/**
-		 * @migration.disabled: flag indicating if migration support
-		 * was turned off due to missing prerequisites
+		 * @migration.enabled: flag indicating if migration support
+		 * was enabled or not due to missing prerequisites
 		 */
-		bool disabled;
+		bool enabled;
 	} migration;
 
 	/** @ccs: VF CCS state data */

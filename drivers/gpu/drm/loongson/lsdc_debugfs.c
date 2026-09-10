@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_debugfs.h>
-#include <drm/drm_print.h>
 
 #include "lsdc_benchmark.h"
 #include "lsdc_drv.h"

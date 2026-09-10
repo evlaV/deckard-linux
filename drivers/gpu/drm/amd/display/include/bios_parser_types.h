@@ -135,8 +135,12 @@ struct bp_external_encoder_control {
 struct bp_crtc_source_select {
 	enum engine_id engine_id;
 	enum controller_id controller_id;
+	/* from GPU Tx aka asic_signal */
+	enum signal_type signal;
+	/* sink_signal may differ from asicSignal if Translator encoder */
 	enum signal_type sink_signal;
-	enum dc_color_depth color_depth;
+	enum display_output_bit_depth display_output_bit_depth;
+	bool enable_dp_audio;
 };
 
 struct bp_transmitter_control {
@@ -160,11 +164,6 @@ struct bp_transmitter_control {
 	bool coherent;
 	bool multi_path;
 	bool single_pll_mode;
-};
-
-struct bp_load_detection_parameters {
-	enum engine_id engine_id;
-	uint16_t device_id;
 };
 
 struct bp_hw_crtc_timing_parameters {

@@ -861,12 +861,11 @@ out:
 static int smu_v13_0_5_print_clk_levels(struct smu_context *smu,
 				enum smu_clk_type clk_type, char *buf)
 {
-	int i, idx, size = 0, ret = 0, start_offset = 0;
+	int i, idx, size = 0, ret = 0;
 	uint32_t cur_value = 0, value = 0, count = 0;
 	uint32_t min = 0, max = 0;
 
 	smu_cmn_get_sysfs_buf(&buf, &size);
-	start_offset = size;
 
 	switch (clk_type) {
 	case SMU_OD_SCLK:
@@ -929,7 +928,7 @@ static int smu_v13_0_5_print_clk_levels(struct smu_context *smu,
 	}
 
 print_clk_out:
-	return size - start_offset;
+	return size;
 }
 
 

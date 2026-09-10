@@ -30,7 +30,6 @@
 #include <linux/dma-fence-array.h>
 
 #include <drm/drm_exec.h>
-#include <drm/drm_print.h>
 #include <drm/drm_syncobj.h>
 
 #include "uapi/drm/vc4_drm.h"

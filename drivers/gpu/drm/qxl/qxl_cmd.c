@@ -27,7 +27,6 @@
 
 #include <linux/delay.h>
 
-#include <drm/drm_print.h>
 #include <drm/drm_util.h>
 
 #include "qxl_drv.h"

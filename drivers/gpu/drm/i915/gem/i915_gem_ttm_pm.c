@@ -3,7 +3,6 @@
  * Copyright © 2021 Intel Corporation
  */
 
-#include <drm/drm_print.h>
 #include <drm/ttm/ttm_placement.h>
 #include <drm/ttm/ttm_tt.h>
 

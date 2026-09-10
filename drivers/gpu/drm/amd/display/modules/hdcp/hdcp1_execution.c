@@ -29,7 +29,6 @@ static inline enum mod_hdcp_status validate_bksv(struct mod_hdcp *hdcp)
 {
 	uint64_t n = 0;
 	uint8_t count = 0;
-	enum mod_hdcp_status status;
 	u8 bksv[sizeof(n)] = { };
 
 	memcpy(bksv, hdcp->auth.msg.hdcp1.bksv, sizeof(hdcp->auth.msg.hdcp1.bksv));
@@ -39,14 +38,8 @@ static inline enum mod_hdcp_status validate_bksv(struct mod_hdcp *hdcp)
 		count++;
 		n &= (n - 1);
 	}
-
-	if (count == 20) {
-		hdcp->connection.trace.hdcp1.attempt_count++;
-		status = MOD_HDCP_STATUS_SUCCESS;
-	} else {
-		status = MOD_HDCP_STATUS_HDCP1_INVALID_BKSV;
-	}
-	return status;
+	return (count == 20) ? MOD_HDCP_STATUS_SUCCESS :
+			MOD_HDCP_STATUS_HDCP1_INVALID_BKSV;
 }
 
 static inline enum mod_hdcp_status check_ksv_ready(struct mod_hdcp *hdcp)
@@ -141,8 +134,6 @@ static inline enum mod_hdcp_status check_device_count(struct mod_hdcp *hdcp)
 	/* Avoid device count == 0 to do authentication */
 	if (get_device_count(hdcp) == 0)
 		return MOD_HDCP_STATUS_HDCP1_DEVICE_COUNT_MISMATCH_FAILURE;
-
-	hdcp->connection.trace.hdcp1.downstream_device_count = get_device_count(hdcp);
 
 	/* Some MST display may choose to report the internal panel as an HDCP RX.
 	 * To update this condition with 1(because the immediate repeater's internal

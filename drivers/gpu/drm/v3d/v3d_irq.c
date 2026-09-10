@@ -16,8 +16,6 @@
 #include <linux/platform_device.h>
 #include <linux/sched/clock.h>
 
-#include <drm/drm_print.h>
-
 #include "v3d_drv.h"
 #include "v3d_regs.h"
 #include "v3d_trace.h"

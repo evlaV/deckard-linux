@@ -210,7 +210,7 @@ config DRM_GPUVM
 
 config DRM_GPUSVM
 	tristate
-	depends on DRM
+	depends on DRM && DEVICE_PRIVATE
 	select HMM_MIRROR
 	select MMU_NOTIFIER
 	help

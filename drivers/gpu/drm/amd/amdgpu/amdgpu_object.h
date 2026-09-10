@@ -96,7 +96,6 @@ struct amdgpu_bo_va {
 	 * if non-zero, cannot unmap from GPU because user queues may still access it
 	 */
 	unsigned int			queue_refcount;
-	atomic_t			userq_va_mapped;
 };
 
 struct amdgpu_bo {

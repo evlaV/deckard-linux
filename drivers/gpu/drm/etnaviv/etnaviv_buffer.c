@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_drv.h>
-#include <drm/drm_print.h>
 
 #include "etnaviv_cmdbuf.h"
 #include "etnaviv_gpu.h"

@@ -80,7 +80,6 @@
 #include <drm/drm_gem.h>
 #include <drm/drm_audio_component.h>
 #include <drm/drm_suballoc.h>
-#include <drm/drm_print.h>
 
 #include "radeon_family.h"
 #include "radeon_mode.h"

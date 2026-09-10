@@ -274,8 +274,8 @@ static unsigned long dw_mipi_dsi_clk_recalc_rate(struct clk_hw *hw,
 	return (unsigned long)pll_out_khz * 1000;
 }
 
-static int dw_mipi_dsi_clk_determine_rate(struct clk_hw *hw,
-					  struct clk_rate_request *req)
+static long dw_mipi_dsi_clk_round_rate(struct clk_hw *hw, unsigned long rate,
+				       unsigned long *parent_rate)
 {
 	struct dw_mipi_dsi_stm *dsi = clk_to_dw_mipi_dsi_stm(hw);
 	unsigned int idf, ndiv, odf, pll_in_khz, pll_out_khz;
@@ -283,14 +283,14 @@ static int dw_mipi_dsi_clk_determine_rate(struct clk_hw *hw,
 
 	DRM_DEBUG_DRIVER("\n");
 
-	pll_in_khz = (unsigned int)(req->best_parent_rate / 1000);
+	pll_in_khz = (unsigned int)(*parent_rate / 1000);
 
 	/* Compute best pll parameters */
 	idf = 0;
 	ndiv = 0;
 	odf = 0;
 
-	ret = dsi_pll_get_params(dsi, pll_in_khz, req->rate / 1000,
+	ret = dsi_pll_get_params(dsi, pll_in_khz, rate / 1000,
 				 &idf, &ndiv, &odf);
 	if (ret)
 		DRM_WARN("Warning dsi_pll_get_params(): bad params\n");
@@ -298,9 +298,7 @@ static int dw_mipi_dsi_clk_determine_rate(struct clk_hw *hw,
 	/* Get the adjusted pll out value */
 	pll_out_khz = dsi_pll_get_clkout_khz(pll_in_khz, idf, ndiv, odf);
 
-	req->rate = pll_out_khz * 1000;
-
-	return 0;
+	return pll_out_khz * 1000;
 }
 
 static int dw_mipi_dsi_clk_set_rate(struct clk_hw *hw, unsigned long rate,
@@ -353,7 +351,7 @@ static const struct clk_ops dw_mipi_dsi_stm_clk_ops = {
 	.disable = dw_mipi_dsi_clk_disable,
 	.is_enabled = dw_mipi_dsi_clk_is_enabled,
 	.recalc_rate = dw_mipi_dsi_clk_recalc_rate,
-	.determine_rate = dw_mipi_dsi_clk_determine_rate,
+	.round_rate = dw_mipi_dsi_clk_round_rate,
 	.set_rate = dw_mipi_dsi_clk_set_rate,
 };
 

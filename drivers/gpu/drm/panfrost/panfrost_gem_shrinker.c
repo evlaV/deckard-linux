@@ -97,7 +97,7 @@ panfrost_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
  */
 int panfrost_gem_shrinker_init(struct drm_device *dev)
 {
-	struct panfrost_device *pfdev = to_panfrost_device(dev);
+	struct panfrost_device *pfdev = dev->dev_private;
 
 	pfdev->shrinker = shrinker_alloc(0, "drm-panfrost");
 	if (!pfdev->shrinker)
@@ -120,7 +120,7 @@ int panfrost_gem_shrinker_init(struct drm_device *dev)
  */
 void panfrost_gem_shrinker_cleanup(struct drm_device *dev)
 {
-	struct panfrost_device *pfdev = to_panfrost_device(dev);
+	struct panfrost_device *pfdev = dev->dev_private;
 
 	if (pfdev->shrinker)
 		shrinker_free(pfdev->shrinker);

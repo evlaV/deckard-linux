@@ -5,7 +5,6 @@
  */
 
 #include <drm/drm_drv.h>
-#include <drm/drm_print.h>
 
 #include "gem/i915_gem_context.h"
 #include "gem/i915_gem_object.h"

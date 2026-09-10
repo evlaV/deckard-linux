@@ -9,7 +9,6 @@
 #include <linux/stop_machine.h>
 
 #include <drm/drm_managed.h>
-#include <drm/drm_print.h>
 #include <drm/intel/i915_drm.h>
 #include <drm/intel/intel-gtt.h>
 

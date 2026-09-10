@@ -17,6 +17,4 @@ intel_cursor_plane_create(struct intel_display *display,
 
 void intel_cursor_unpin_work(struct kthread_work *base);
 
-void intel_cursor_mode_config_init(struct intel_display *display);
-
 #endif

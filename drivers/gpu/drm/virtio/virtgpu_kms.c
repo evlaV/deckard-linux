@@ -29,7 +29,6 @@
 
 #include <drm/drm_file.h>
 #include <drm/drm_managed.h>
-#include <drm/drm_print.h>
 
 #include "virtgpu_drv.h"
 

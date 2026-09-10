@@ -28,7 +28,6 @@
 #include <drm/drm_device.h>
 #include <drm/drm_file.h>
 #include <drm/drm_mode_object.h>
-#include <drm/drm_plane.h>
 #include <drm/drm_print.h>
 
 #include "drm_crtc_internal.h"
@@ -387,7 +386,6 @@ EXPORT_SYMBOL(drm_object_property_get_default_value);
 
 /* helper for getconnector and getproperties ioctls */
 int drm_mode_object_get_properties(struct drm_mode_object *obj, bool atomic,
-				   bool plane_color_pipeline,
 				   uint32_t __user *prop_ptr,
 				   uint64_t __user *prop_values,
 				   uint32_t *arg_count_props)
@@ -400,21 +398,6 @@ int drm_mode_object_get_properties(struct drm_mode_object *obj, bool atomic,
 
 		if ((prop->flags & DRM_MODE_PROP_ATOMIC) && !atomic)
 			continue;
-
-		if (plane_color_pipeline && obj->type == DRM_MODE_OBJECT_PLANE) {
-			struct drm_plane *plane = obj_to_plane(obj);
-
-			if (prop == plane->color_encoding_property ||
-			    prop == plane->color_range_property)
-				continue;
-		}
-
-		if (!plane_color_pipeline && obj->type == DRM_MODE_OBJECT_PLANE) {
-			struct drm_plane *plane = obj_to_plane(obj);
-
-			if (prop == plane->color_pipeline_property)
-				continue;
-		}
 
 		if (*arg_count_props > count) {
 			ret = __drm_object_property_get_value(obj, prop, &val);
@@ -474,7 +457,6 @@ int drm_mode_obj_get_properties_ioctl(struct drm_device *dev, void *data,
 	}
 
 	ret = drm_mode_object_get_properties(obj, file_priv->atomic,
-			file_priv->plane_color_pipeline,
 			(uint32_t __user *)(unsigned long)(arg->props_ptr),
 			(uint64_t __user *)(unsigned long)(arg->prop_values_ptr),
 			&arg->count_props);

@@ -1363,8 +1363,7 @@ map_pages:
 		order = drm_gpusvm_hmm_pfn_to_order(pfns[i], i, npages);
 		if (is_device_private_page(page) ||
 		    is_device_coherent_page(page)) {
-			if (!ctx->allow_mixed &&
-			    zdd != page->zone_device_data && i > 0) {
+			if (zdd != page->zone_device_data && i > 0) {
 				err = -EOPNOTSUPP;
 				goto err_unmap;
 			}
@@ -1400,8 +1399,7 @@ map_pages:
 		} else {
 			dma_addr_t addr;
 
-			if (is_zone_device_page(page) ||
-			    (pagemap && !ctx->allow_mixed)) {
+			if (is_zone_device_page(page) || pagemap) {
 				err = -EOPNOTSUPP;
 				goto err_unmap;
 			}

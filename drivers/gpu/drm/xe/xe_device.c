@@ -8,7 +8,6 @@
 #include <linux/aperture.h>
 #include <linux/delay.h>
 #include <linux/fault-inject.h>
-#include <linux/iopoll.h>
 #include <linux/units.h>
 
 #include <drm/drm_atomic_helper.h>
@@ -52,7 +51,6 @@
 #include "xe_nvm.h"
 #include "xe_oa.h"
 #include "xe_observation.h"
-#include "xe_pagefault.h"
 #include "xe_pat.h"
 #include "xe_pcode.h"
 #include "xe_pm.h"
@@ -438,7 +436,7 @@ struct xe_device *xe_device_create(struct pci_dev *pdev,
 
 	err = ttm_device_init(&xe->ttm, &xe_ttm_funcs, xe->drm.dev,
 			      xe->drm.anon_inode->i_mapping,
-			      xe->drm.vma_offset_manager, 0);
+			      xe->drm.vma_offset_manager, false, false);
 	if (WARN_ON(err))
 		goto err;
 
@@ -632,22 +630,16 @@ mask_err:
 	return err;
 }
 
-static int lmem_initializing(struct xe_device *xe)
+static bool verify_lmem_ready(struct xe_device *xe)
 {
-	if (xe_mmio_read32(xe_root_tile_mmio(xe), GU_CNTL) & LMEM_INIT)
-		return 0;
+	u32 val = xe_mmio_read32(xe_root_tile_mmio(xe), GU_CNTL) & LMEM_INIT;
 
-	if (signal_pending(current))
-		return -EINTR;
-
-	return 1;
+	return !!val;
 }
 
 static int wait_for_lmem_ready(struct xe_device *xe)
 {
-	const unsigned long TIMEOUT_SEC = 60;
-	unsigned long prev_jiffies;
-	int initializing;
+	unsigned long timeout, start;
 
 	if (!IS_DGFX(xe))
 		return 0;
@@ -655,35 +647,39 @@ static int wait_for_lmem_ready(struct xe_device *xe)
 	if (IS_SRIOV_VF(xe))
 		return 0;
 
-	if (!lmem_initializing(xe))
+	if (verify_lmem_ready(xe))
 		return 0;
 
 	drm_dbg(&xe->drm, "Waiting for lmem initialization\n");
-	prev_jiffies = jiffies;
 
-	/*
-	 * The boot firmware initializes local memory and
-	 * assesses its health. If memory training fails,
-	 * the punit will have been instructed to keep the GT powered
-	 * down.we won't be able to communicate with it
-	 *
-	 * If the status check is done before punit updates the register,
-	 * it can lead to the system being unusable.
-	 * use a timeout and defer the probe to prevent this.
-	 */
-	poll_timeout_us(initializing = lmem_initializing(xe),
-			initializing <= 0,
-			20 * USEC_PER_MSEC, TIMEOUT_SEC * USEC_PER_SEC, true);
-	if (initializing < 0)
-		return initializing;
+	start = jiffies;
+	timeout = start + secs_to_jiffies(60); /* 60 sec! */
 
-	if (initializing) {
-		drm_dbg(&xe->drm, "lmem not initialized by firmware\n");
-		return -EPROBE_DEFER;
-	}
+	do {
+		if (signal_pending(current))
+			return -EINTR;
+
+		/*
+		 * The boot firmware initializes local memory and
+		 * assesses its health. If memory training fails,
+		 * the punit will have been instructed to keep the GT powered
+		 * down.we won't be able to communicate with it
+		 *
+		 * If the status check is done before punit updates the register,
+		 * it can lead to the system being unusable.
+		 * use a timeout and defer the probe to prevent this.
+		 */
+		if (time_after(jiffies, timeout)) {
+			drm_dbg(&xe->drm, "lmem not initialized by firmware\n");
+			return -EPROBE_DEFER;
+		}
+
+		msleep(20);
+
+	} while (!verify_lmem_ready(xe));
 
 	drm_dbg(&xe->drm, "lmem ready after %ums",
-		jiffies_to_msecs(jiffies - prev_jiffies));
+		jiffies_to_msecs(jiffies - start));
 
 	return 0;
 }
@@ -783,8 +779,6 @@ static int probe_has_flat_ccs(struct xe_device *xe)
 		return 0;
 
 	gt = xe_root_mmio_gt(xe);
-	if (!gt)
-		return 0;
 
 	fw_ref = xe_force_wake_get(gt_to_fw(gt), XE_FW_GT);
 	if (!fw_ref)
@@ -897,10 +891,6 @@ int xe_device_probe(struct xe_device *xe)
 			return err;
 	}
 
-	err = xe_pagefault_init(xe);
-	if (err)
-		return err;
-
 	if (xe->tiles->media_gt &&
 	    XE_GT_WA(xe->tiles->media_gt, 15015404425_disable))
 		XE_DEVICE_WA_DISABLE(xe, 15015404425);
@@ -984,6 +974,8 @@ void xe_device_remove(struct xe_device *xe)
 {
 	xe_display_unregister(xe);
 
+	xe_nvm_fini(xe);
+
 	drm_dev_unplug(&xe->drm);
 
 	xe_bo_pci_dev_remove_all(xe);
@@ -1054,7 +1046,7 @@ static void tdf_request_sync(struct xe_device *xe)
 		 * transient and need to be flushed..
 		 */
 		if (xe_mmio_wait32(&gt->mmio, XE2_TDF_CTRL, TRANSIENT_FLUSH_REQUEST, 0,
-				   300, NULL, false))
+				   150, NULL, false))
 			xe_gt_err_once(gt, "TD flush timeout\n");
 
 		xe_force_wake_put(gt_to_fw(gt), fw_ref);
@@ -1067,8 +1059,6 @@ void xe_device_l2_flush(struct xe_device *xe)
 	unsigned int fw_ref;
 
 	gt = xe_root_mmio_gt(xe);
-	if (!gt)
-		return;
 
 	if (!XE_GT_WA(gt, 16023588340))
 		return;
@@ -1114,9 +1104,6 @@ void xe_device_td_flush(struct xe_device *xe)
 		return;
 
 	root_gt = xe_root_mmio_gt(xe);
-	if (!root_gt)
-		return;
-
 	if (XE_GT_WA(root_gt, 16023588340)) {
 		/* A transient flush is not sufficient: flush the L2 */
 		xe_device_l2_flush(xe);
@@ -1220,7 +1207,7 @@ static void xe_device_wedged_fini(struct drm_device *drm, void *arg)
  *
  *   /sys/bus/pci/devices/<device>/survivability_mode
  *
- * - Admin/userspace consumer can use firmware flashing tools like fwupd to flash
+ * - Admin/userpsace consumer can use firmware flashing tools like fwupd to flash
  *   firmware and restore device to normal operation.
  */
 

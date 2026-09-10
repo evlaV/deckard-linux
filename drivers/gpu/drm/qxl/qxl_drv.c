@@ -44,7 +44,6 @@
 #include <drm/drm_module.h>
 #include <drm/drm_modeset_helper.h>
 #include <drm/drm_prime.h>
-#include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 
 #include "qxl_object.h"

@@ -549,8 +549,7 @@ void write_scdc_data(struct ddc_service *ddc_service,
 	/*Lower than 340 Scramble bit from SCDC caps*/
 
 	if (ddc_service->link->local_sink &&
-		(ddc_service->link->local_sink->edid_caps.panel_patch.skip_scdc_overwrite ||
-		!ddc_service->link->local_sink->edid_caps.scdc_present))
+		ddc_service->link->local_sink->edid_caps.panel_patch.skip_scdc_overwrite)
 		return;
 
 	link_query_ddc_data(ddc_service, slave_address, &offset,

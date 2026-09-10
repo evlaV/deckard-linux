@@ -291,12 +291,11 @@ static int cyan_skillfish_print_clk_levels(struct smu_context *smu,
 					enum smu_clk_type clk_type,
 					char *buf)
 {
-	int ret = 0, size = 0, start_offset = 0;
+	int ret = 0, size = 0;
 	uint32_t cur_value = 0;
 	int i;
 
 	smu_cmn_get_sysfs_buf(&buf, &size);
-	start_offset = size;
 
 	switch (clk_type) {
 	case SMU_OD_SCLK:
@@ -354,7 +353,7 @@ static int cyan_skillfish_print_clk_levels(struct smu_context *smu,
 		return ret;
 	}
 
-	return size - start_offset;
+	return size;
 }
 
 static bool cyan_skillfish_is_dpm_running(struct smu_context *smu)

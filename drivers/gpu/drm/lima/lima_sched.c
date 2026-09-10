@@ -8,8 +8,6 @@
 #include <linux/vmalloc.h>
 #include <linux/pm_runtime.h>
 
-#include <drm/drm_print.h>
-
 #include "lima_devfreq.h"
 #include "lima_drv.h"
 #include "lima_sched.h"

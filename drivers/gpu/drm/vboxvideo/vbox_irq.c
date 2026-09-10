@@ -12,7 +12,6 @@
 #include <linux/pci.h>
 
 #include <drm/drm_drv.h>
-#include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 
 #include "vbox_drv.h"

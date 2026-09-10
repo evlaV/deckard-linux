@@ -2,8 +2,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <drm/drm_print.h>
-
 #include "display/intel_overlay.h"
 #include "gem/i915_gem_mman.h"
 #include "gt/intel_engine_user.h"

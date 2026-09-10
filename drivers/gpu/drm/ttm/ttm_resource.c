@@ -34,7 +34,6 @@
 #include <drm/ttm/ttm_resource.h>
 #include <drm/ttm/ttm_tt.h>
 
-#include <drm/drm_print.h>
 #include <drm/drm_util.h>
 
 /* Detach the cursor from the bulk move list*/
@@ -524,15 +523,14 @@ void ttm_resource_manager_init(struct ttm_resource_manager *man,
 {
 	unsigned i;
 
+	spin_lock_init(&man->move_lock);
 	man->bdev = bdev;
 	man->size = size;
 	man->usage = 0;
 
 	for (i = 0; i < TTM_MAX_BO_PRIORITY; ++i)
 		INIT_LIST_HEAD(&man->lru[i]);
-	spin_lock_init(&man->eviction_lock);
-	for (i = 0; i < TTM_NUM_MOVE_FENCES; i++)
-		man->eviction_fences[i] = NULL;
+	man->move = NULL;
 }
 EXPORT_SYMBOL(ttm_resource_manager_init);
 
@@ -553,7 +551,7 @@ int ttm_resource_manager_evict_all(struct ttm_device *bdev,
 		.no_wait_gpu = false,
 	};
 	struct dma_fence *fence;
-	int ret, i;
+	int ret;
 
 	do {
 		ret = ttm_bo_evict_first(bdev, man, &ctx);
@@ -563,24 +561,18 @@ int ttm_resource_manager_evict_all(struct ttm_device *bdev,
 	if (ret && ret != -ENOENT)
 		return ret;
 
-	ret = 0;
+	spin_lock(&man->move_lock);
+	fence = dma_fence_get(man->move);
+	spin_unlock(&man->move_lock);
 
-	spin_lock(&man->eviction_lock);
-	for (i = 0; i < TTM_NUM_MOVE_FENCES; i++) {
-		fence = man->eviction_fences[i];
-		if (fence && !dma_fence_is_signaled(fence)) {
-			dma_fence_get(fence);
-			spin_unlock(&man->eviction_lock);
-			ret = dma_fence_wait(fence, false);
-			dma_fence_put(fence);
-			if (ret)
-				return ret;
-			spin_lock(&man->eviction_lock);
-		}
+	if (fence) {
+		ret = dma_fence_wait(fence, false);
+		dma_fence_put(fence);
+		if (ret)
+			return ret;
 	}
-	spin_unlock(&man->eviction_lock);
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL(ttm_resource_manager_evict_all);
 
@@ -594,9 +586,6 @@ EXPORT_SYMBOL(ttm_resource_manager_evict_all);
 uint64_t ttm_resource_manager_usage(struct ttm_resource_manager *man)
 {
 	uint64_t usage;
-
-	if (WARN_ON_ONCE(!man->bdev))
-		return 0;
 
 	spin_lock(&man->bdev->lru_lock);
 	usage = man->usage;

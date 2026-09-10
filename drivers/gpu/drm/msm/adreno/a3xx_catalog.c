@@ -7,7 +7,6 @@
  */
 
 #include "adreno_gpu.h"
-#include "a3xx_gpu.h"
 
 static const struct adreno_info a3xx_gpus[] = {
 	{
@@ -19,7 +18,7 @@ static const struct adreno_info a3xx_gpus[] = {
 		},
 		.gmem  = SZ_128K,
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-		.funcs = &a3xx_gpu_funcs,
+		.init  = a3xx_gpu_init,
 	}, {
 		.chip_ids = ADRENO_CHIP_IDS(0x03000520),
 		.family = ADRENO_3XX,
@@ -30,7 +29,7 @@ static const struct adreno_info a3xx_gpus[] = {
 		},
 		.gmem  = SZ_256K,
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-		.funcs = &a3xx_gpu_funcs,
+		.init  = a3xx_gpu_init,
 	}, {
 		.chip_ids = ADRENO_CHIP_IDS(0x03000600),
 		.family = ADRENO_3XX,
@@ -41,7 +40,7 @@ static const struct adreno_info a3xx_gpus[] = {
 		},
 		.gmem  = SZ_128K,
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-		.funcs = &a3xx_gpu_funcs,
+		.init  = a3xx_gpu_init,
 	}, {
 		.chip_ids = ADRENO_CHIP_IDS(0x03000620),
 		.family = ADRENO_3XX,
@@ -52,7 +51,7 @@ static const struct adreno_info a3xx_gpus[] = {
 		},
 		.gmem = SZ_128K,
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-		.funcs = &a3xx_gpu_funcs,
+		.init = a3xx_gpu_init,
 	}, {
 		.chip_ids = ADRENO_CHIP_IDS(
 			0x03020000,
@@ -67,7 +66,7 @@ static const struct adreno_info a3xx_gpus[] = {
 		},
 		.gmem  = SZ_512K,
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-		.funcs = &a3xx_gpu_funcs,
+		.init  = a3xx_gpu_init,
 	}, {
 		.chip_ids = ADRENO_CHIP_IDS(
 			0x03030000,
@@ -82,7 +81,7 @@ static const struct adreno_info a3xx_gpus[] = {
 		},
 		.gmem  = SZ_1M,
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-		.funcs = &a3xx_gpu_funcs,
+		.init  = a3xx_gpu_init,
 	}
 };
 DECLARE_ADRENO_GPULIST(a3xx);

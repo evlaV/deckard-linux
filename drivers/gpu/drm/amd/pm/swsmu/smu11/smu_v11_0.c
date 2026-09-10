@@ -1022,12 +1022,7 @@ int smu_v11_0_enable_thermal_alert(struct smu_context *smu)
 
 int smu_v11_0_disable_thermal_alert(struct smu_context *smu)
 {
-	int ret = 0;
-
-	if (smu->smu_table.thermal_controller_type)
-		ret = amdgpu_irq_put(smu->adev, &smu->irq_source, 0);
-
-	return ret;
+	return amdgpu_irq_put(smu->adev, &smu->irq_source, 0);
 }
 
 static uint16_t convert_to_vddc(uint8_t vid)

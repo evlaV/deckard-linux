@@ -244,14 +244,6 @@ struct drm_plane_state {
 	enum drm_scaling_filter scaling_filter;
 
 	/**
-	 * @color_pipeline:
-	 *
-	 * The first colorop of the active color pipeline, or NULL, if no
-	 * color pipeline is active.
-	 */
-	struct drm_colorop *color_pipeline;
-
-	/**
 	 * @commit: Tracks the pending commit to prevent use-after-free conditions,
 	 * and for async plane updates.
 	 *
@@ -792,14 +784,6 @@ struct drm_plane {
 	struct drm_property *color_range_property;
 
 	/**
-	 * @color_pipeline_property:
-	 *
-	 * Optional "COLOR_PIPELINE" enum property for specifying
-	 * a color pipeline to use on the plane.
-	 */
-	struct drm_property *color_pipeline_property;
-
-	/**
 	 * @scaling_filter_property: property to apply a particular filter while
 	 * scaling.
 	 */
@@ -1024,7 +1008,4 @@ int drm_plane_add_size_hints_property(struct drm_plane *plane,
 				      const struct drm_plane_size_hint *hints,
 				      int num_hints);
 
-int drm_plane_create_color_pipeline_property(struct drm_plane *plane,
-					     const struct drm_prop_enum_list *pipelines,
-					     int num_pipelines);
 #endif

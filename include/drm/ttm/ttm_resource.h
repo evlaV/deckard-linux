@@ -31,15 +31,14 @@
 #include <linux/iosys-map.h>
 #include <linux/dma-fence.h>
 
+#include <drm/drm_print.h>
 #include <drm/ttm/ttm_caching.h>
 #include <drm/ttm/ttm_kmap_iter.h>
 
 #define TTM_MAX_BO_PRIORITY	4U
 #define TTM_NUM_MEM_TYPES 9
 
-struct dentry;
 struct dmem_cgroup_device;
-struct drm_printer;
 struct ttm_device;
 struct ttm_resource_manager;
 struct ttm_resource;
@@ -50,15 +49,6 @@ struct iosys_map;
 struct io_mapping;
 struct sg_table;
 struct scatterlist;
-
-/**
- * define TTM_NUM_MOVE_FENCES - How many entities can be used for evictions
- *
- * Pipelined evictions can be spread on multiple entities. This
- * is the max number of entities that can be used by the driver
- * for that purpose.
- */
-#define TTM_NUM_MOVE_FENCES 8
 
 /**
  * enum ttm_lru_item_type - enumerate ttm_lru_item subclasses
@@ -190,8 +180,8 @@ struct ttm_resource_manager_func {
  * @size: Size of the managed region.
  * @bdev: ttm device this manager belongs to
  * @func: structure pointer implementing the range manager. See above
- * @eviction_lock: lock for eviction fences
- * @eviction_fences: The fences of the last pipelined move operation.
+ * @move_lock: lock for move fence
+ * @move: The fence of the last pipelined move operation.
  * @lru: The lru list for this memory type.
  *
  * This structure is used to identify and manage memory types for a device.
@@ -205,12 +195,12 @@ struct ttm_resource_manager {
 	struct ttm_device *bdev;
 	uint64_t size;
 	const struct ttm_resource_manager_func *func;
+	spinlock_t move_lock;
 
-	/* This is very similar to a dma_resv object, but locking rules make
-	 * it difficult to use one in this context.
+	/*
+	 * Protected by @move_lock.
 	 */
-	spinlock_t eviction_lock;
-	struct dma_fence *eviction_fences[TTM_NUM_MOVE_FENCES];
+	struct dma_fence *move;
 
 	/*
 	 * Protected by the bdev->lru_lock.
@@ -431,12 +421,8 @@ static inline bool ttm_resource_manager_used(struct ttm_resource_manager *man)
 static inline void
 ttm_resource_manager_cleanup(struct ttm_resource_manager *man)
 {
-	int i;
-
-	for (i = 0; i < TTM_NUM_MOVE_FENCES; i++) {
-		dma_fence_put(man->eviction_fences[i]);
-		man->eviction_fences[i] = NULL;
-	}
+	dma_fence_put(man->move);
+	man->move = NULL;
 }
 
 void ttm_lru_bulk_move_init(struct ttm_lru_bulk_move *bulk);

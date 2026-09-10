@@ -34,9 +34,6 @@
  */
 
 #include <linux/vmalloc.h>
-
-#include <drm/drm_print.h>
-
 #include "i915_drv.h"
 #include "i915_reg.h"
 #include "display/intel_display_regs.h"
@@ -52,7 +49,7 @@
  * @gpa: guest physical address
  *
  * Returns:
- * The MMIO offset of the given GPA
+ * Zero on success, negative error code if failed
  */
 int intel_vgpu_gpa_to_mmio_offset(struct intel_vgpu *vgpu, u64 gpa)
 {
@@ -61,7 +58,7 @@ int intel_vgpu_gpa_to_mmio_offset(struct intel_vgpu *vgpu, u64 gpa)
 }
 
 #define reg_is_mmio(gvt, reg)  \
-	(reg < gvt->device_info.mmio_size)
+	(reg >= 0 && reg < gvt->device_info.mmio_size)
 
 #define reg_is_gtt(gvt, reg)   \
 	(reg >= gvt->device_info.gtt_start_offset \

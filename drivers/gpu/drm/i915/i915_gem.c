@@ -37,7 +37,6 @@
 #include <linux/mman.h>
 
 #include <drm/drm_cache.h>
-#include <drm/drm_print.h>
 #include <drm/drm_vma_manager.h>
 
 #include "gem/i915_gem_clflush.h"
@@ -1299,8 +1298,6 @@ void i915_gem_init_early(struct drm_i915_private *dev_priv)
 {
 	i915_gem_init__mm(dev_priv);
 	i915_gem_init__contexts(dev_priv);
-
-	spin_lock_init(&dev_priv->frontbuffer_lock);
 }
 
 void i915_gem_cleanup_early(struct drm_i915_private *dev_priv)

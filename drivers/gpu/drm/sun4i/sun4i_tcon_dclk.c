@@ -67,8 +67,8 @@ static unsigned long sun4i_dclk_recalc_rate(struct clk_hw *hw,
 	return parent_rate / val;
 }
 
-static int sun4i_dclk_determine_rate(struct clk_hw *hw,
-				     struct clk_rate_request *req)
+static long sun4i_dclk_round_rate(struct clk_hw *hw, unsigned long rate,
+				  unsigned long *parent_rate)
 {
 	struct sun4i_dclk *dclk = hw_to_dclk(hw);
 	struct sun4i_tcon *tcon = dclk->tcon;
@@ -77,7 +77,7 @@ static int sun4i_dclk_determine_rate(struct clk_hw *hw,
 	int i;
 
 	for (i = tcon->dclk_min_div; i <= tcon->dclk_max_div; i++) {
-		u64 ideal = (u64)req->rate * i;
+		u64 ideal = (u64)rate * i;
 		unsigned long rounded;
 
 		/*
@@ -99,19 +99,17 @@ static int sun4i_dclk_determine_rate(struct clk_hw *hw,
 			goto out;
 		}
 
-		if (abs(req->rate - rounded / i) <
-		    abs(req->rate - best_parent / best_div)) {
+		if (abs(rate - rounded / i) <
+		    abs(rate - best_parent / best_div)) {
 			best_parent = rounded;
 			best_div = i;
 		}
 	}
 
 out:
-	req->best_parent_rate = best_parent;
+	*parent_rate = best_parent;
 
-	req->rate = best_parent / best_div;
-
-	return 0;
+	return best_parent / best_div;
 }
 
 static int sun4i_dclk_set_rate(struct clk_hw *hw, unsigned long rate,
@@ -157,7 +155,7 @@ static const struct clk_ops sun4i_dclk_ops = {
 	.is_enabled	= sun4i_dclk_is_enabled,
 
 	.recalc_rate	= sun4i_dclk_recalc_rate,
-	.determine_rate = sun4i_dclk_determine_rate,
+	.round_rate	= sun4i_dclk_round_rate,
 	.set_rate	= sun4i_dclk_set_rate,
 
 	.get_phase	= sun4i_dclk_get_phase,

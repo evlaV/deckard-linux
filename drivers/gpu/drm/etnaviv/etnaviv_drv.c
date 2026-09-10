@@ -17,7 +17,6 @@
 #include <drm/drm_ioctl.h>
 #include <drm/drm_of.h>
 #include <drm/drm_prime.h>
-#include <drm/drm_print.h>
 
 #include "etnaviv_cmdbuf.h"
 #include "etnaviv_drv.h"

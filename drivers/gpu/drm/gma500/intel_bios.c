@@ -8,7 +8,6 @@
 
 #include <drm/display/drm_dp_helper.h>
 #include <drm/drm.h>
-#include <drm/drm_print.h>
 
 #include "intel_bios.h"
 #include "psb_drv.h"

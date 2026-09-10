@@ -51,24 +51,12 @@ nvkm_subdev_info(struct nvkm_subdev *subdev, u64 mthd, u64 *data)
 }
 
 int
-nvkm_subdev_fini(struct nvkm_subdev *subdev, enum nvkm_suspend_state suspend)
+nvkm_subdev_fini(struct nvkm_subdev *subdev, bool suspend)
 {
 	struct nvkm_device *device = subdev->device;
-	const char *action;
+	const char *action = suspend ? "suspend" : subdev->use.enabled ? "fini" : "reset";
 	s64 time;
 
-	switch (suspend) {
-	case NVKM_POWEROFF:
-	default:
-		action = subdev->use.enabled ? "fini" : "reset";
-		break;
-	case NVKM_SUSPEND:
-		action = "suspend";
-		break;
-	case NVKM_RUNTIME_SUSPEND:
-		action = "runtime";
-		break;
-	}
 	nvkm_trace(subdev, "%s running...\n", action);
 	time = ktime_to_us(ktime_get());
 
@@ -198,7 +186,7 @@ void
 nvkm_subdev_unref(struct nvkm_subdev *subdev)
 {
 	if (refcount_dec_and_mutex_lock(&subdev->use.refcount, &subdev->use.mutex)) {
-		nvkm_subdev_fini(subdev, NVKM_POWEROFF);
+		nvkm_subdev_fini(subdev, false);
 		mutex_unlock(&subdev->use.mutex);
 	}
 }

@@ -22,7 +22,6 @@
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_of.h>
-#include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 
 #include "sti_drv.h"
@@ -232,15 +231,23 @@ static const struct component_master_ops sti_ops = {
 static int sti_platform_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	int ret;
+	struct device_node *node = dev->of_node;
+	struct device_node *child_np;
+	struct component_match *match = NULL;
 
-	ret = dma_set_coherent_mask(dev, DMA_BIT_MASK(32));
-	if (ret)
-		return ret;
+	dma_set_coherent_mask(dev, DMA_BIT_MASK(32));
 
 	devm_of_platform_populate(dev);
 
-	return drm_of_component_probe(dev, component_compare_of, &sti_ops);
+	child_np = of_get_next_available_child(node, NULL);
+
+	while (child_np) {
+		drm_of_component_match_add(dev, &match, component_compare_of,
+					   child_np);
+		child_np = of_get_next_available_child(node, child_np);
+	}
+
+	return component_master_add_with_match(dev, &sti_ops, match);
 }
 
 static void sti_platform_remove(struct platform_device *pdev)

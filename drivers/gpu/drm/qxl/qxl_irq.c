@@ -26,7 +26,6 @@
 #include <linux/pci.h>
 
 #include <drm/drm_drv.h>
-#include <drm/drm_print.h>
 
 #include "qxl_drv.h"
 

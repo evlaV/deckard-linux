@@ -34,6 +34,7 @@ struct dpu_hw_dither_cfg {
 };
 
 /**
+ *
  * struct dpu_hw_pingpong_ops : Interface to the pingpong Hw driver functions
  *  Assumption is these functions will be called after clocks are enabled
  *  @enable_tearcheck: program and enable tear check block
@@ -43,52 +44,51 @@ struct dpu_hw_dither_cfg {
  */
 struct dpu_hw_pingpong_ops {
 	/**
-	 * @enable_tearcheck: enables vysnc generation and sets up init value of
+	 * enables vysnc generation and sets up init value of
 	 * read pointer and programs the tear check cofiguration
 	 */
 	int (*enable_tearcheck)(struct dpu_hw_pingpong *pp,
 			struct dpu_hw_tear_check *cfg);
 
 	/**
-	 * @disable_tearcheck: disables tear check block
+	 * disables tear check block
 	 */
 	int (*disable_tearcheck)(struct dpu_hw_pingpong *pp);
 
 	/**
-	 * @connect_external_te: read, modify, write to either set or clear
-	 * listening to external TE
+	 * read, modify, write to either set or clear listening to external TE
 	 * @Return: 1 if TE was originally connected, 0 if not, or -ERROR
 	 */
 	int (*connect_external_te)(struct dpu_hw_pingpong *pp,
 			bool enable_external_te);
 
 	/**
-	 * @get_line_count: Obtain current vertical line counter
+	 * Obtain current vertical line counter
 	 */
 	u32 (*get_line_count)(struct dpu_hw_pingpong *pp);
 
 	/**
-	 * @disable_autorefresh: Disable autorefresh if enabled
+	 * Disable autorefresh if enabled
 	 */
 	void (*disable_autorefresh)(struct dpu_hw_pingpong *pp, uint32_t encoder_id, u16 vdisplay);
 
 	/**
-	 * @setup_dither: Setup dither matix for pingpong block
+	 * Setup dither matix for pingpong block
 	 */
 	void (*setup_dither)(struct dpu_hw_pingpong *pp,
 			struct dpu_hw_dither_cfg *cfg);
 	/**
-	 * @enable_dsc: Enable DSC
+	 * Enable DSC
 	 */
 	int (*enable_dsc)(struct dpu_hw_pingpong *pp);
 
 	/**
-	 * @disable_dsc: Disable DSC
+	 * Disable DSC
 	 */
 	void (*disable_dsc)(struct dpu_hw_pingpong *pp);
 
 	/**
-	 * @setup_dsc: Setup DSC
+	 * Setup DSC
 	 */
 	int (*setup_dsc)(struct dpu_hw_pingpong *pp);
 };

@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_framebuffer.h>
-#include <drm/drm_print.h>
 
 #include "gem/i915_gem_object.h"
 
@@ -19,7 +18,8 @@ void intel_fb_bo_framebuffer_fini(struct drm_gem_object *obj)
 	/* Nothing to do for i915 */
 }
 
-int intel_fb_bo_framebuffer_init(struct drm_gem_object *_obj,
+int intel_fb_bo_framebuffer_init(struct drm_framebuffer *fb,
+				 struct drm_gem_object *_obj,
 				 struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	struct drm_i915_gem_object *obj = to_intel_bo(_obj);

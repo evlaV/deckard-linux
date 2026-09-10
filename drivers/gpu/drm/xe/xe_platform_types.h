@@ -24,8 +24,6 @@ enum xe_platform {
 	XE_LUNARLAKE,
 	XE_BATTLEMAGE,
 	XE_PANTHERLAKE,
-	XE_NOVALAKE_S,
-	XE_CRESCENTISLAND,
 };
 
 enum xe_subplatform {
@@ -36,7 +34,6 @@ enum xe_subplatform {
 	XE_SUBPLATFORM_DG2_G10,
 	XE_SUBPLATFORM_DG2_G11,
 	XE_SUBPLATFORM_DG2_G12,
-	XE_SUBPLATFORM_BATTLEMAGE_G21,
 };
 
 #endif

@@ -158,19 +158,39 @@ void xe_gt_sriov_pf_init_hw(struct xe_gt *gt)
 	xe_gt_sriov_pf_service_update(gt);
 }
 
+static u32 pf_get_vf_regs_stride(struct xe_device *xe)
+{
+	return GRAPHICS_VERx100(xe) > 1200 ? 0x400 : 0x1000;
+}
+
+static struct xe_reg xe_reg_vf_to_pf(struct xe_reg vf_reg, unsigned int vfid, u32 stride)
+{
+	struct xe_reg pf_reg = vf_reg;
+
+	pf_reg.vf = 0;
+	pf_reg.addr += stride * vfid;
+
+	return pf_reg;
+}
+
 static void pf_clear_vf_scratch_regs(struct xe_gt *gt, unsigned int vfid)
 {
-	struct xe_mmio mmio;
-	int n;
-
-	xe_mmio_init_vf_view(&mmio, &gt->mmio, vfid);
+	u32 stride = pf_get_vf_regs_stride(gt_to_xe(gt));
+	struct xe_reg scratch;
+	int n, count;
 
 	if (xe_gt_is_media_type(gt)) {
-		for (n = 0; n < MED_VF_SW_FLAG_COUNT; n++)
-			xe_mmio_write32(&mmio, MED_VF_SW_FLAG(n), 0);
+		count = MED_VF_SW_FLAG_COUNT;
+		for (n = 0; n < count; n++) {
+			scratch = xe_reg_vf_to_pf(MED_VF_SW_FLAG(n), vfid, stride);
+			xe_mmio_write32(&gt->mmio, scratch, 0);
+		}
 	} else {
-		for (n = 0; n < VF_SW_FLAG_COUNT; n++)
-			xe_mmio_write32(&mmio, VF_SW_FLAG(n), 0);
+		count = VF_SW_FLAG_COUNT;
+		for (n = 0; n < count; n++) {
+			scratch = xe_reg_vf_to_pf(VF_SW_FLAG(n), vfid, stride);
+			xe_mmio_write32(&gt->mmio, scratch, 0);
+		}
 	}
 }
 

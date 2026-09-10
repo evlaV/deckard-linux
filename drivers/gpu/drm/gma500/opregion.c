@@ -22,9 +22,6 @@
  *
  */
 #include <linux/acpi.h>
-
-#include <drm/drm_print.h>
-
 #include "psb_drv.h"
 #include "psb_irq.h"
 #include "psb_intel_reg.h"

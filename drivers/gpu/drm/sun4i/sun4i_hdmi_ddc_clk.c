@@ -59,15 +59,13 @@ static unsigned long sun4i_ddc_calc_divider(unsigned long rate,
 	return best_rate;
 }
 
-static int sun4i_ddc_determine_rate(struct clk_hw *hw,
-				    struct clk_rate_request *req)
+static long sun4i_ddc_round_rate(struct clk_hw *hw, unsigned long rate,
+				 unsigned long *prate)
 {
 	struct sun4i_ddc *ddc = hw_to_ddc(hw);
 
-	req->rate = sun4i_ddc_calc_divider(req->rate, req->best_parent_rate,
-					   ddc->pre_div, ddc->m_offset, NULL, NULL);
-
-	return 0;
+	return sun4i_ddc_calc_divider(rate, *prate, ddc->pre_div,
+				      ddc->m_offset, NULL, NULL);
 }
 
 static unsigned long sun4i_ddc_recalc_rate(struct clk_hw *hw,
@@ -103,7 +101,7 @@ static int sun4i_ddc_set_rate(struct clk_hw *hw, unsigned long rate,
 
 static const struct clk_ops sun4i_ddc_ops = {
 	.recalc_rate	= sun4i_ddc_recalc_rate,
-	.determine_rate = sun4i_ddc_determine_rate,
+	.round_rate	= sun4i_ddc_round_rate,
 	.set_rate	= sun4i_ddc_set_rate,
 };
 

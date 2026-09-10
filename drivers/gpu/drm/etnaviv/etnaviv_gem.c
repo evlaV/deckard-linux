@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_prime.h>
-#include <drm/drm_print.h>
 #include <linux/dma-mapping.h>
 #include <linux/shmem_fs.h>
 #include <linux/spinlock.h>

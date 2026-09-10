@@ -5,7 +5,6 @@
 
 #include "xe_bo.h"
 #include "intel_bo.h"
-#include "intel_frontbuffer.h"
 
 bool intel_bo_is_tiled(struct drm_gem_object *obj)
 {
@@ -29,6 +28,10 @@ bool intel_bo_is_protected(struct drm_gem_object *obj)
 	return xe_bo_is_protected(gem_to_xe_bo(obj));
 }
 
+void intel_bo_flush_if_display(struct drm_gem_object *obj)
+{
+}
+
 int intel_bo_fb_mmap(struct drm_gem_object *obj, struct vm_area_struct *vma)
 {
 	return drm_gem_prime_mmap(obj, vma);
@@ -41,60 +44,15 @@ int intel_bo_read_from_page(struct drm_gem_object *obj, u64 offset, void *dst, i
 	return xe_bo_read(bo, offset, dst, size);
 }
 
-struct xe_frontbuffer {
-	struct intel_frontbuffer base;
-	struct drm_gem_object *obj;
-	struct kref ref;
-};
-
-struct intel_frontbuffer *intel_bo_frontbuffer_get(struct drm_gem_object *obj)
+struct intel_frontbuffer *intel_bo_get_frontbuffer(struct drm_gem_object *obj)
 {
-	struct xe_frontbuffer *front;
-
-	front = kmalloc(sizeof(*front), GFP_KERNEL);
-	if (!front)
-		return NULL;
-
-	intel_frontbuffer_init(&front->base, obj->dev);
-
-	kref_init(&front->ref);
-
-	drm_gem_object_get(obj);
-	front->obj = obj;
-
-	return &front->base;
+	return NULL;
 }
 
-void intel_bo_frontbuffer_ref(struct intel_frontbuffer *_front)
+struct intel_frontbuffer *intel_bo_set_frontbuffer(struct drm_gem_object *obj,
+						   struct intel_frontbuffer *front)
 {
-	struct xe_frontbuffer *front =
-		container_of(_front, typeof(*front), base);
-
-	kref_get(&front->ref);
-}
-
-static void frontbuffer_release(struct kref *ref)
-{
-	struct xe_frontbuffer *front =
-		container_of(ref, typeof(*front), ref);
-
-	intel_frontbuffer_fini(&front->base);
-
-	drm_gem_object_put(front->obj);
-
-	kfree(front);
-}
-
-void intel_bo_frontbuffer_put(struct intel_frontbuffer *_front)
-{
-	struct xe_frontbuffer *front =
-		container_of(_front, typeof(*front), base);
-
-	kref_put(&front->ref, frontbuffer_release);
-}
-
-void intel_bo_frontbuffer_flush_for_display(struct intel_frontbuffer *front)
-{
+	return front;
 }
 
 void intel_bo_describe(struct seq_file *m, struct drm_gem_object *obj)

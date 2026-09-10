@@ -8,7 +8,6 @@
  */
 #include <linux/pci.h>
 #include <drm/drm_file.h>
-#include <drm/drm_print.h>
 #include "vbox_drv.h"
 
 int vbox_mm_init(struct vbox_private *vbox)

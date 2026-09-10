@@ -41,8 +41,6 @@
  * this validation is only performed at BO creation time.
  */
 
-#include <drm/drm_print.h>
-
 #include "vc4_drv.h"
 #include "vc4_qpu_defines.h"
 

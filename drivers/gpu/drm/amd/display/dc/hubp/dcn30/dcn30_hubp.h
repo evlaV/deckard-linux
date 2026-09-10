@@ -296,8 +296,6 @@ void hubp3_dmdata_set_attributes(
 
 void hubp3_read_state(struct hubp *hubp);
 
-void hubp3_read_reg_state(struct hubp *hubp, struct dcn_hubp_reg_state *reg_state);
-
 void hubp3_init(struct hubp *hubp);
 
 void hubp3_clear_tiling(struct hubp *hubp);

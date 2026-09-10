@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright 2019 Linaro, Ltd, Rob Herring <robh@kernel.org> */
+/* Copyright 2025 Amazon.com, Inc. or its affiliates */
 
 #include <linux/cleanup.h>
 #include <linux/err.h>
@@ -8,10 +9,26 @@
 #include <linux/dma-mapping.h>
 
 #include <drm/panfrost_drm.h>
-#include <drm/drm_print.h>
 #include "panfrost_device.h"
+#include "panfrost_drv.h"
 #include "panfrost_gem.h"
 #include "panfrost_mmu.h"
+
+void panfrost_gem_init(struct panfrost_device *pfdev)
+{
+	int err;
+
+	if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) &&
+	    !panfrost_transparent_hugepage)
+		return;
+
+	err = drm_gem_huge_mnt_create(&pfdev->base, "within_size");
+	if (drm_gem_get_huge_mnt(&pfdev->base))
+		drm_info(&pfdev->base, "Using Transparent Hugepage\n");
+	else if (err)
+		drm_warn(&pfdev->base, "Can't use Transparent Hugepage (%d)\n",
+			 err);
+}
 
 #ifdef CONFIG_DEBUG_FS
 static void panfrost_gem_debugfs_bo_add(struct panfrost_device *pfdev,
@@ -27,7 +44,7 @@ static void panfrost_gem_debugfs_bo_add(struct panfrost_device *pfdev,
 
 static void panfrost_gem_debugfs_bo_rm(struct panfrost_gem_object *bo)
 {
-	struct panfrost_device *pfdev = to_panfrost_device(bo->base.base.dev);
+	struct panfrost_device *pfdev = bo->base.base.dev->dev_private;
 
 	if (list_empty(&bo->debugfs.node))
 		return;
@@ -49,7 +66,7 @@ static void panfrost_gem_debugfs_bo_rm(struct panfrost_gem_object *bo) {}
 static void panfrost_gem_free_object(struct drm_gem_object *obj)
 {
 	struct panfrost_gem_object *bo = to_panfrost_bo(obj);
-	struct panfrost_device *pfdev = to_panfrost_device(obj->dev);
+	struct panfrost_device *pfdev = obj->dev->dev_private;
 
 	/*
 	 * Make sure the BO is no longer inserted in the shrinker list before
@@ -77,7 +94,7 @@ static void panfrost_gem_free_object(struct drm_gem_object *obj)
 
 		for (i = 0; i < n_sgt; i++) {
 			if (bo->sgts[i].sgl) {
-				dma_unmap_sgtable(pfdev->base.dev, &bo->sgts[i],
+				dma_unmap_sgtable(pfdev->dev, &bo->sgts[i],
 						  DMA_BIDIRECTIONAL, 0);
 				sg_free_table(&bo->sgts[i]);
 			}
@@ -285,7 +302,7 @@ static const struct drm_gem_object_funcs panfrost_gem_funcs = {
  */
 struct drm_gem_object *panfrost_gem_create_object(struct drm_device *dev, size_t size)
 {
-	struct panfrost_device *pfdev = to_panfrost_device(dev);
+	struct panfrost_device *pfdev = dev->dev_private;
 	struct panfrost_gem_object *obj;
 
 	obj = kzalloc(sizeof(*obj), GFP_KERNEL);

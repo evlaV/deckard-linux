@@ -27,7 +27,6 @@
 #include <core/tegra.h>
 
 #include "priv.h"
-#include "gk20a_devfreq.h"
 #include "gk20a.h"
 
 #define GPCPLL_CFG_SYNC_MODE	BIT(2)
@@ -869,10 +868,6 @@ gm20b_clk_init(struct nvkm_clk *base)
 		nvkm_error(subdev, "cannot initialize clock\n");
 		return ret;
 	}
-
-	ret = gk20a_devfreq_init(base, &clk->devfreq);
-	if (ret)
-		return ret;
 
 	return 0;
 }

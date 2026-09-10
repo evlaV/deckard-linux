@@ -7,7 +7,6 @@
 #define _XE_GUC_RELAY_TYPES_H_
 
 #include <linux/mempool.h>
-#include <linux/ratelimit_types.h>
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 
@@ -32,9 +31,6 @@ struct xe_guc_relay {
 
 	/** @last_rid: last Relay-ID used while sending a message. */
 	u32 last_rid;
-
-	/** @diag_ratelimit: ratelimit state used to throttle diagnostics messages. */
-	struct ratelimit_state diag_ratelimit;
 };
 
 #endif

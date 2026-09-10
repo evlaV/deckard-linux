@@ -710,8 +710,7 @@ bool dcn31_set_backlight_level(struct pipe_ctx *pipe_ctx,
 			panel_cntl->inst,
 			panel_cntl->pwrseq_inst);
 
-	if (backlight_level_params->control_type != BACKLIGHT_CONTROL_AMD_AUX)
-		dmub_abm_set_backlight(dc, backlight_level_params, panel_cntl->inst);
+	dmub_abm_set_backlight(dc, backlight_level_params, panel_cntl->inst);
 
 	return true;
 }

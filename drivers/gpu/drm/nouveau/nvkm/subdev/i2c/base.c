@@ -135,7 +135,7 @@ nvkm_i2c_intr(struct nvkm_subdev *subdev)
 }
 
 static int
-nvkm_i2c_fini(struct nvkm_subdev *subdev, enum nvkm_suspend_state suspend)
+nvkm_i2c_fini(struct nvkm_subdev *subdev, bool suspend)
 {
 	struct nvkm_i2c *i2c = nvkm_i2c(subdev);
 	struct nvkm_i2c_pad *pad;

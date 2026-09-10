@@ -10,13 +10,11 @@
 #include <linux/pm.h>
 #include <linux/regulator/consumer.h>
 #include <linux/spinlock.h>
-#include <drm/drm_auth.h>
 #include <drm/drm_device.h>
 #include <drm/drm_mm.h>
 #include <drm/gpu_scheduler.h>
 
 #include "panfrost_devfreq.h"
-#include "panfrost_job.h"
 
 struct panfrost_device;
 struct panfrost_mmu;
@@ -24,11 +22,8 @@ struct panfrost_job_slot;
 struct panfrost_job;
 struct panfrost_perfcnt;
 
+#define NUM_JOB_SLOTS 3
 #define MAX_PM_DOMAINS 5
-
-#define ALL_JS_INT_MASK					\
-	(GENMASK(16 + NUM_JOB_SLOTS - 1, 16) |		\
-	 GENMASK(NUM_JOB_SLOTS - 1, 0))
 
 enum panfrost_drv_comp_bits {
 	PANFROST_COMP_BIT_GPU,
@@ -128,7 +123,9 @@ struct panfrost_device_debugfs {
 };
 
 struct panfrost_device {
-	struct drm_device base;
+	struct device *dev;
+	struct drm_device *ddev;
+	struct platform_device *pdev;
 	int gpu_irq;
 	int mmu_irq;
 
@@ -147,6 +144,7 @@ struct panfrost_device {
 	DECLARE_BITMAP(is_suspended, PANFROST_COMP_BIT_MAX);
 
 	spinlock_t as_lock;
+	unsigned long as_in_use_mask;
 	unsigned long as_alloc_mask;
 	unsigned long as_faulty_mask;
 	struct list_head as_lru_list;
@@ -208,22 +206,16 @@ struct panfrost_engine_usage {
 struct panfrost_file_priv {
 	struct panfrost_device *pfdev;
 
-	struct xarray jm_ctxs;
+	struct drm_sched_entity sched_entity[NUM_JOB_SLOTS];
 
 	struct panfrost_mmu *mmu;
 
 	struct panfrost_engine_usage engine_usage;
 };
 
-static inline bool panfrost_high_prio_allowed(struct drm_file *file)
-{
-	/* Higher priorities require CAP_SYS_NICE or DRM_MASTER */
-	return (capable(CAP_SYS_NICE) || drm_is_current_master(file));
-}
-
 static inline struct panfrost_device *to_panfrost_device(struct drm_device *ddev)
 {
-	return container_of(ddev, struct panfrost_device, base);
+	return ddev->dev_private;
 }
 
 static inline int panfrost_model_cmp(struct panfrost_device *pfdev, s32 id)
@@ -249,7 +241,7 @@ int panfrost_unstable_ioctl_check(void);
 
 int panfrost_device_init(struct panfrost_device *pfdev);
 void panfrost_device_fini(struct panfrost_device *pfdev);
-void panfrost_device_reset(struct panfrost_device *pfdev, bool enable_job_int);
+void panfrost_device_reset(struct panfrost_device *pfdev);
 
 extern const struct dev_pm_ops panfrost_pm_ops;
 
