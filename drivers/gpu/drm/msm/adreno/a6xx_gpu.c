@@ -23,8 +23,6 @@
 
 static u64 read_gmu_ao_counter(struct a6xx_gpu *a6xx_gpu)
 {
-	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
-	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 	u64 count_hi, count_lo, temp;
 
 	do {
