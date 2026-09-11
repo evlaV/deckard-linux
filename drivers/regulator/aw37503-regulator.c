@@ -14,6 +14,8 @@
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 
+#include <dt-bindings/regulator/awinic,aw37505.h>
+
 #define AW37503_REG_VPOS		0x00
 #define AW37503_REG_VNEG		0x01
 #define AW37503_REG_APPS		0x03
@@ -31,8 +33,6 @@
 #define AW37503_REG_APPS_DIS_VPOS	BIT(1)
 #define AW37503_REG_APPS_DIS_VNEG	BIT(0)
 #define AW37503_REG_APPS_MODE   	BIT(6)
-#define AW37505_MODE_HPM				1
-#define AW37505_MODE_LPM				0
 
 #define AW37503_REGULATOR_ID_VPOS	0
 #define AW37503_REGULATOR_ID_VNEG	1
@@ -112,6 +112,18 @@ static const struct regulator_ops aw37503_regulator_ops = {
 	.set_active_discharge = regulator_set_active_discharge_regmap,
 };
 
+static unsigned int aw37505_of_map_mode(unsigned int mode)
+{
+	switch (mode) {
+	case AW37505_MODE_NORMAL:
+		return REGULATOR_MODE_NORMAL;
+	case AW37505_MODE_HPM:
+		return REGULATOR_MODE_FAST;
+	default:
+		return REGULATOR_MODE_INVALID;
+	}
+}
+
 static int aw37505_regulator_set_mode(struct regulator_dev *rdev, unsigned int mode)
 {
     struct aw37503_regulator *chip = rdev_get_drvdata(rdev);
@@ -119,11 +131,11 @@ static int aw37505_regulator_set_mode(struct regulator_dev *rdev, unsigned int m
 
     switch (mode) {
     case REGULATOR_MODE_FAST:
-        val = AW37505_MODE_HPM;
+        val = AW37503_REG_APPS_MODE;
         break;
     case REGULATOR_MODE_NORMAL:
     case REGULATOR_MODE_IDLE:
-        val = AW37505_MODE_LPM;
+        val = 0;
         break;
     default:
         return -EINVAL;
@@ -204,6 +216,7 @@ static const struct regulator_desc aw37503_regs_desc[AW37503_MAX_REGULATORS] = {
 		.id = AW37503_REGULATOR_ID_##_id,	\
 		.of_match = of_match_ptr(#_name),	\
 		.of_parse_cb = aw37503_of_parse_cb,	\
+		.of_map_mode = aw37505_of_map_mode, \
 		.ops = &aw37505_regulator_ops,		\
 		.n_voltages = AW37505_VOUT_N_VOLTAGE,	\
 		.min_uV = AW37503_VOUT_VMIN,		\
@@ -285,6 +298,7 @@ static int aw37503_probe(struct i2c_client *client)
 
 static const struct i2c_device_id aw37503_id[] = {
 	{.name = "aw37503",},
+	{.name = "aw37505",},
 	{},
 };
 MODULE_DEVICE_TABLE(i2c, aw37503_id);
@@ -300,6 +314,7 @@ MODULE_DEVICE_TABLE(of, aw37503_of_match);
 static struct i2c_driver aw37503_i2c_driver = {
 	.driver = {
 		.name = "aw37503",
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = aw37503_of_match,
 	},
 	.probe = aw37503_probe,
