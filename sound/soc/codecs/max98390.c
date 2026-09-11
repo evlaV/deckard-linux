@@ -523,6 +523,22 @@ static const char * const max98390_int3_msg[8] = {
 					 MAX98390_INT1_THERMWARN_END)
 
 /*
+ * Log any data or clock errors. These are non-routine and make sense to flag
+ * as a log. The corresponding monitors might auto restart or not, and those
+ * are deemed less interesting in the interest of keeping logging to a minimum.
+ * Note that these will not be triggered unless the clock/data monitors are
+ * enabled.
+ */
+#define MAX98390_INT3_DAT_MON_ERR	BIT(6)
+#define MAX98390_INT3_PCM_FRAME_ERR	BIT(4)
+#define MAX98390_INT3_LRCLK_ERR		BIT(2)
+#define MAX98390_INT3_BCLK_ERR		BIT(0)
+#define MAX98390_INT3_ESSENTIAL		(MAX98390_INT3_DAT_MON_ERR | \
+					 MAX98390_INT3_PCM_FRAME_ERR | \
+					 MAX98390_INT3_LRCLK_ERR | \
+					 MAX98390_INT3_BCLK_ERR)
+
+/*
  * A source the driver cannot keep up with would otherwise loop indefinitely: a
  * level-triggered line that is not cleared re-asserts as soon as the threaded
  * handler unmasks it, and because each pass returns IRQ_HANDLED the core's own
@@ -552,7 +568,7 @@ static const char * const max98390_int3_msg[8] = {
  */
 static unsigned int max98390_int_en1 = MAX98390_INT1_ESSENTIAL;
 static unsigned int max98390_int_en2;
-static unsigned int max98390_int_en3;
+static unsigned int max98390_int_en3 = MAX98390_INT3_ESSENTIAL;
 
 module_param_named(int_en1, max98390_int_en1, uint, 0444);
 MODULE_PARM_DESC(int_en1,
