@@ -29,7 +29,7 @@ enum msm_format_flags {
 #define DRM_FORMAT_PLANAR_CAC_B fourcc_code('C', 'A', 'C', 'B') /* [31:0] 8:8:8:8 little endian */
 #define DRM_FORMAT_PLANAR_CAC_G fourcc_code('C', 'A', 'C', 'G') /* [31:0] 8:8:8:8 little endian */
 
-/**
+/*
  * DPU HW,Component order color map
  */
 enum {
@@ -42,6 +42,10 @@ enum {
 /**
  * struct msm_format: defines the format configuration
  * @pixel_format: format fourcc
+ * @bpc_g_y: element bit widths: BPC for G or Y
+ * @bpc_b_cb: element bit widths: BPC for B or Cb
+ * @bpc_r_cr: element bit widths: BPC for R or Cr
+ * @bpc_a: element bit widths: BPC for the alpha channel
  * @element: element color ordering
  * @fetch_type: how the color components are packed in pixel format
  * @chroma_sample: chroma sub-samplng type

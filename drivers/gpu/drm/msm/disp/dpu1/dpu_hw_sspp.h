@@ -14,7 +14,7 @@ struct dpu_hw_sspp;
 
 #define DPU_SSPP_MAX_PITCH_SIZE		0xffff
 
-/**
+/*
  * Flags
  */
 #define DPU_SSPP_FLIP_LR		BIT(0)
@@ -23,8 +23,7 @@ struct dpu_hw_sspp;
 #define DPU_SSPP_ROT_90			BIT(3)
 #define DPU_SSPP_SOLID_FILL		BIT(4)
 
-
-/**
+/*
  * Component indices
  */
 enum {
@@ -37,9 +36,10 @@ enum {
 };
 
 /**
- * DPU_SSPP_RECT_SOLO - multirect disabled
- * DPU_SSPP_RECT_0 - rect0 of a multirect pipe
- * DPU_SSPP_RECT_1 - rect1 of a multirect pipe
+ * enum dpu_sspp_multirect_index - multirect mode
+ * @DPU_SSPP_RECT_SOLO: multirect disabled
+ * @DPU_SSPP_RECT_0: rect0 of a multirect pipe
+ * @DPU_SSPP_RECT_1: rect1 of a multirect pipe
  *
  * Note: HW supports multirect with either RECT0 or
  * RECT1. Considering no benefit of such configs over
@@ -181,7 +181,7 @@ struct cac_blob {
  * struct dpu_sw_pipe_cfg : software pipe configuration
  * @src_rect:  src ROI, caller takes into account the different operations
  *             such as decimation, flip etc to program this field
- * @dest_rect: destination ROI.
+ * @dst_rect: destination ROI.
  * @rotation: simplified drm rotation hint
  */
 struct dpu_sw_pipe_cfg {
@@ -204,8 +204,8 @@ struct dpu_hw_pipe_ts_cfg {
 /**
  * struct dpu_sw_pipe - software pipe description
  * @sspp:      backing SSPP pipe
- * @index:     index of the rectangle of SSPP
- * @mode:      parallel or time multiplex multirect mode
+ * @multirect_index:     index of the rectangle of SSPP
+ * @multirect_mode:      parallel or time multiplex multirect mode
  */
 struct dpu_sw_pipe {
 	struct dpu_hw_sspp *sspp;
@@ -220,7 +220,7 @@ struct dpu_sw_pipe {
  */
 struct dpu_hw_sspp_ops {
 	/**
-	 * setup_format - setup pixel format cropping rectangle, flip
+	 * @setup_format: setup pixel format cropping rectangle, flip
 	 * @pipe: Pointer to software pipe context
 	 * @cfg: Pointer to pipe config structure
 	 * @flags: Extra flags for format config
@@ -229,7 +229,7 @@ struct dpu_hw_sspp_ops {
 			     const struct msm_format *fmt, u32 flags);
 
 	/**
-	 * setup_rects - setup pipe ROI rectangles
+	 * @setup_rects: setup pipe ROI rectangles
 	 * @pipe: Pointer to software pipe context
 	 * @cfg: Pointer to pipe config structure
 	 */
@@ -237,7 +237,7 @@ struct dpu_hw_sspp_ops {
 			    struct dpu_sw_pipe_cfg *cfg);
 
 	/**
-	 * setup_pe - setup pipe pixel extension
+	 * @setup_pe: setup pipe pixel extension
 	 * @ctx: Pointer to pipe context
 	 * @pe_ext: Pointer to pixel ext settings
 	 */
@@ -245,20 +245,20 @@ struct dpu_hw_sspp_ops {
 			struct dpu_hw_pixel_ext *pe_ext);
 
 	/**
-	 * setup_cac - setup pipe as planar CAC mode
+	 * @setup_cac: setup pipe as planar CAC mode
 	 * @ctx: Pointer to pipe context
 	 * @cac: Pointer to CAC blob from user space
 	 */
 	void (*setup_cac)(struct dpu_hw_sspp *ctx, struct cac_blob *cac);
 
 	/**
-	 * disable_cac - disable CAC mode for pipe
+	 * @disable_cac: disable CAC mode for pipe
 	 * @ctx: Pointer to pipe context
 	 */
 	void (*disable_cac)(struct dpu_hw_sspp *ctx);
 
 	/**
-	 * setup_sourceaddress - setup pipe source addresses
+	 * @setup_sourceaddress: setup pipe source addresses
 	 * @pipe: Pointer to software pipe context
 	 * @layout: format layout information for programming buffer to hardware
 	 * @cac: cac mode enablement
@@ -268,14 +268,14 @@ struct dpu_hw_sspp_ops {
 				    bool cac);
 
 	/**
-	 * setup_csc - setup color space coversion
+	 * @setup_csc: setup color space coversion
 	 * @ctx: Pointer to pipe context
 	 * @data: Pointer to config structure
 	 */
 	void (*setup_csc)(struct dpu_hw_sspp *ctx, const struct dpu_csc_cfg *data);
 
 	/**
-	 * setup_solidfill - enable/disable colorfill
+	 * @setup_solidfill: enable/disable colorfill
 	 * @pipe: Pointer to software pipe context
 	 * @const_color: Fill color value
 	 * @flags: Pipe flags
@@ -283,23 +283,22 @@ struct dpu_hw_sspp_ops {
 	void (*setup_solidfill)(struct dpu_sw_pipe *pipe, u32 color);
 
 	/**
-	 * setup_multirect - setup multirect configuration
+	 * @setup_multirect: setup multirect configuration
 	 * @pipe: Pointer to software pipe context
 	 */
 
 	void (*setup_multirect)(struct dpu_sw_pipe *pipe);
 
 	/**
-	 * setup_sharpening - setup sharpening
+	 * @setup_sharpening: setup sharpening
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to config structure
 	 */
 	void (*setup_sharpening)(struct dpu_hw_sspp *ctx,
 			struct dpu_hw_sharp_cfg *cfg);
 
-
 	/**
-	 * setup_qos_lut - setup QoS LUTs
+	 * @setup_qos_lut: setup QoS LUTs
 	 * @ctx: Pointer to pipe context
 	 * @cfg: LUT configuration
 	 */
@@ -307,7 +306,7 @@ struct dpu_hw_sspp_ops {
 			struct dpu_hw_qos_cfg *cfg);
 
 	/**
-	 * setup_qos_ctrl - setup QoS control
+	 * @setup_qos_ctrl: setup QoS control
 	 * @ctx: Pointer to pipe context
 	 * @danger_safe_en: flags controlling enabling of danger/safe QoS/LUT
 	 */
@@ -315,7 +314,7 @@ struct dpu_hw_sspp_ops {
 			       bool danger_safe_en);
 
 	/**
-	 * setup_clk_force_ctrl - setup clock force control
+	 * @setup_clk_force_ctrl: setup clock force control
 	 * @ctx: Pointer to pipe context
 	 * @enable: enable clock force if true
 	 */
@@ -323,7 +322,7 @@ struct dpu_hw_sspp_ops {
 				     bool enable);
 
 	/**
-	 * setup_histogram - setup histograms
+	 * @setup_histogram: setup histograms
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to histogram configuration
 	 */
@@ -331,7 +330,7 @@ struct dpu_hw_sspp_ops {
 			void *cfg);
 
 	/**
-	 * setup_scaler - setup scaler
+	 * @setup_scaler: setup scaler
 	 * @scaler3_cfg: Pointer to scaler configuration
 	 * @format: pixel format parameters
 	 */
@@ -340,7 +339,7 @@ struct dpu_hw_sspp_ops {
 		const struct msm_format *format);
 
 	/**
-	 * setup_cdp - setup client driven prefetch
+	 * @setup_cdp: setup client driven prefetch
 	 * @pipe: Pointer to software pipe context
 	 * @fmt: format used by the sw pipe
 	 * @enable: whether the CDP should be enabled for this pipe
@@ -357,6 +356,7 @@ struct dpu_hw_sspp_ops {
  * @ubwc: UBWC configuration data
  * @idx: pipe index
  * @cap: pointer to layer_cfg
+ * @mdss_ver: MDSS version info to use for feature checks
  * @ops: pointer to operations possible for this pipe
  */
 struct dpu_hw_sspp {

@@ -29,9 +29,6 @@
 #include <linux/export.h>
 #include <linux/file.h>
 #include <linux/fs.h>
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
-#include <linux/fs_context.h>
-#endif
 #include <linux/iosys-map.h>
 #include <linux/mem_encrypt.h>
 #include <linux/mm.h>
@@ -39,7 +36,6 @@
 #include <linux/module.h>
 #include <linux/pagemap.h>
 #include <linux/pagevec.h>
-#include <linux/sched/mm.h>
 #include <linux/shmem_fs.h>
 #include <linux/slab.h>
 #include <linux/string_helpers.h>
@@ -85,60 +81,6 @@
  * up at a later date, and as our interface with shmfs for memory allocation.
  */
 
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
-static void drm_gem_huge_mnt_free(struct drm_device *dev, void *data)
-{
-	kern_unmount(dev->huge_mnt);
-}
-
-/**
- * drm_gem_huge_mnt_create - Create, mount and use a huge tmpfs mountpoint
- * @dev: DRM device that will use the huge tmpfs mountpoint
- * @value: huge tmpfs mount option value
- *
- * This function creates and mounts a dedicated huge tmpfs mountpoint for the
- * lifetime of the DRM device @dev which is used at GEM object initialization
- * with drm_gem_object_init().
- *
- * The most common option for @value is "within_size" which only allocates huge
- * pages if the page will be fully within the GEM object size. "always",
- * "advise" and "never" are supported too but the latter would just create a
- * mountpoint similar to the default one (`shm_mnt`). See shmemfs and
- * Transparent Hugepage for more information.
- *
- * Returns:
- * 0 on success or a negative error code on failure.
- */
-int drm_gem_huge_mnt_create(struct drm_device *dev, const char *value)
-{
-	struct file_system_type *type;
-	struct fs_context *fc;
-	int ret;
-
-	if (unlikely(drm_gem_get_huge_mnt(dev)))
-		return 0;
-
-	type = get_fs_type("tmpfs");
-	if (unlikely(!type))
-		return -EOPNOTSUPP;
-	fc = fs_context_for_mount(type, SB_KERNMOUNT);
-	if (IS_ERR(fc))
-		return PTR_ERR(fc);
-	ret = vfs_parse_fs_string(fc, "source", "tmpfs");
-	if (unlikely(ret))
-		return -ENOPARAM;
-	ret = vfs_parse_fs_string(fc, "huge", value);
-	if (unlikely(ret))
-		return -ENOPARAM;
-
-	dev->huge_mnt = fc_mount_longterm(fc);
-	put_fs_context(fc);
-
-	return drmm_add_action_or_reset(dev, drm_gem_huge_mnt_free, NULL);
-}
-EXPORT_SYMBOL_GPL(drm_gem_huge_mnt_create);
-#endif
-
 static void
 drm_gem_init_release(struct drm_device *dev, void *ptr)
 {
@@ -159,10 +101,8 @@ drm_gem_init(struct drm_device *dev)
 
 	vma_offset_manager = drmm_kzalloc(dev, sizeof(*vma_offset_manager),
 					  GFP_KERNEL);
-	if (!vma_offset_manager) {
-		DRM_ERROR("out of memory\n");
+	if (!vma_offset_manager)
 		return -ENOMEM;
-	}
 
 	dev->vma_offset_manager = vma_offset_manager;
 	drm_vma_offset_manager_init(vma_offset_manager,
@@ -173,28 +113,29 @@ drm_gem_init(struct drm_device *dev)
 }
 
 /**
- * drm_gem_object_init - initialize an allocated shmem-backed GEM object
+ * drm_gem_object_init_with_mnt - initialize an allocated shmem-backed GEM
+ * object in a given shmfs mountpoint
  *
  * @dev: drm_device the object should be initialized for
  * @obj: drm_gem_object to initialize
  * @size: object size
+ * @gemfs: tmpfs mount where the GEM object will be created. If NULL, use
+ * the usual tmpfs mountpoint (`shm_mnt`).
  *
  * Initialize an already allocated GEM object of the specified size with
- * shmfs backing store. A huge mountpoint can be used by calling
- * drm_gem_huge_mnt_create() beforehand.
+ * shmfs backing store.
  */
-int drm_gem_object_init(struct drm_device *dev, struct drm_gem_object *obj,
-			size_t size)
+int drm_gem_object_init_with_mnt(struct drm_device *dev,
+				 struct drm_gem_object *obj, size_t size,
+				 struct vfsmount *gemfs)
 {
-	struct vfsmount *huge_mnt;
 	struct file *filp;
 
 	drm_gem_private_object_init(dev, obj, size);
 
-	huge_mnt = drm_gem_get_huge_mnt(dev);
-	if (huge_mnt)
-		filp = shmem_file_setup_with_mnt(huge_mnt, "drm mm object",
-						 size, VM_NORESERVE);
+	if (gemfs)
+		filp = shmem_file_setup_with_mnt(gemfs, "drm mm object", size,
+						 VM_NORESERVE);
 	else
 		filp = shmem_file_setup("drm mm object", size, VM_NORESERVE);
 
@@ -204,6 +145,22 @@ int drm_gem_object_init(struct drm_device *dev, struct drm_gem_object *obj,
 	obj->filp = filp;
 
 	return 0;
+}
+EXPORT_SYMBOL(drm_gem_object_init_with_mnt);
+
+/**
+ * drm_gem_object_init - initialize an allocated shmem-backed GEM object
+ * @dev: drm_device the object should be initialized for
+ * @obj: drm_gem_object to initialize
+ * @size: object size
+ *
+ * Initialize an already allocated GEM object of the specified size with
+ * shmfs backing store.
+ */
+int drm_gem_object_init(struct drm_device *dev, struct drm_gem_object *obj,
+			size_t size)
+{
+	return drm_gem_object_init_with_mnt(dev, obj, size, NULL);
 }
 EXPORT_SYMBOL(drm_gem_object_init);
 
@@ -826,9 +783,9 @@ static int objects_lookup(struct drm_file *filp, u32 *handle, int count,
 int drm_gem_objects_lookup(struct drm_file *filp, void __user *bo_handles,
 			   int count, struct drm_gem_object ***objs_out)
 {
-	int ret;
-	u32 *handles;
 	struct drm_gem_object **objs;
+	u32 *handles;
+	int ret;
 
 	if (!count)
 		return 0;
@@ -840,20 +797,11 @@ int drm_gem_objects_lookup(struct drm_file *filp, void __user *bo_handles,
 
 	*objs_out = objs;
 
-	handles = kvmalloc_array(count, sizeof(u32), GFP_KERNEL);
-	if (!handles) {
-		ret = -ENOMEM;
-		goto out;
-	}
-
-	if (copy_from_user(handles, bo_handles, count * sizeof(u32))) {
-		ret = -EFAULT;
-		DRM_DEBUG("Failed to copy in GEM handles\n");
-		goto out;
-	}
+	handles = vmemdup_array_user(bo_handles, count, sizeof(u32));
+	if (IS_ERR(handles))
+		return PTR_ERR(handles);
 
 	ret = objects_lookup(filp, handles, count, objs);
-out:
 	kvfree(handles);
 	return ret;
 
@@ -896,12 +844,13 @@ EXPORT_SYMBOL(drm_gem_object_lookup);
 long drm_gem_dma_resv_wait(struct drm_file *filep, u32 handle,
 				    bool wait_all, unsigned long timeout)
 {
-	long ret;
+	struct drm_device *dev = filep->minor->dev;
 	struct drm_gem_object *obj;
+	long ret;
 
 	obj = drm_gem_object_lookup(filep, handle);
 	if (!obj) {
-		DRM_DEBUG("Failed to look up GEM BO %d\n", handle);
+		drm_dbg_core(dev, "Failed to look up GEM BO %d\n", handle);
 		return -EINVAL;
 	}
 
@@ -1011,33 +960,41 @@ int drm_gem_change_handle_ioctl(struct drm_device *dev, void *data,
 {
 	struct drm_gem_change_handle *args = data;
 	struct drm_gem_object *obj;
-	int ret;
+	int handle, ret;
 
 	if (!drm_core_check_feature(dev, DRIVER_GEM))
 		return -EOPNOTSUPP;
+
+	/* idr_alloc() limitation. */
+	if (args->new_handle > INT_MAX)
+		return -EINVAL;
+	handle = args->new_handle;
 
 	obj = drm_gem_object_lookup(file_priv, args->handle);
 	if (!obj)
 		return -ENOENT;
 
-	if (args->handle == args->new_handle)
-		return 0;
+	if (args->handle == handle) {
+		ret = 0;
+		goto out;
+	}
 
 	mutex_lock(&file_priv->prime.lock);
 
 	spin_lock(&file_priv->table_lock);
-	ret = idr_alloc(&file_priv->object_idr, obj,
-		args->new_handle, args->new_handle + 1, GFP_NOWAIT);
+	ret = idr_alloc(&file_priv->object_idr, obj, handle, handle + 1,
+			GFP_NOWAIT);
 	spin_unlock(&file_priv->table_lock);
 
 	if (ret < 0)
 		goto out_unlock;
 
 	if (obj->dma_buf) {
-		ret = drm_prime_add_buf_handle(&file_priv->prime, obj->dma_buf, args->new_handle);
+		ret = drm_prime_add_buf_handle(&file_priv->prime, obj->dma_buf,
+					       handle);
 		if (ret < 0) {
 			spin_lock(&file_priv->table_lock);
-			idr_remove(&file_priv->object_idr, args->new_handle);
+			idr_remove(&file_priv->object_idr, handle);
 			spin_unlock(&file_priv->table_lock);
 			goto out_unlock;
 		}
@@ -1053,6 +1010,8 @@ int drm_gem_change_handle_ioctl(struct drm_device *dev, void *data,
 
 out_unlock:
 	mutex_unlock(&file_priv->prime.lock);
+out:
+	drm_gem_object_put(obj);
 
 	return ret;
 }
@@ -1230,27 +1189,36 @@ EXPORT_SYMBOL(drm_gem_mmap_obj);
 
 int kgsl_mmap(struct drm_file *priv, struct drm_device *dev, struct vm_area_struct *vma);
 
-/*
- * Look up a GEM object in offset space based on the exact start address. The
- * caller must be granted access to the object. Returns a GEM object on success
- * or a negative error code on failure. The returned GEM object needs to be
- * released with drm_gem_object_put().
+/**
+ * drm_gem_mmap - memory map routine for GEM objects
+ * @filp: DRM file pointer
+ * @vma: VMA for the area to be mapped
+ *
+ * If a driver supports GEM object mapping, mmap calls on the DRM file
+ * descriptor will end up here.
+ *
+ * Look up the GEM object based on the offset passed in (vma->vm_pgoff will
+ * contain the fake offset we created when the GTT map ioctl was called on
+ * the object) and map it with a call to drm_gem_mmap_obj().
+ *
+ * If the caller is not granted access to the buffer object, the mmap will fail
+ * with EACCES. Please see the vma manager for more information.
  */
-static struct drm_gem_object *
-drm_gem_object_lookup_at_offset(struct file *filp, unsigned long start,
-				unsigned long pages)
+int drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	struct drm_file *priv = filp->private_data;
 	struct drm_device *dev = priv->minor->dev;
 	struct drm_gem_object *obj = NULL;
 	struct drm_vma_offset_node *node;
+	int ret;
 
 	if (drm_dev_is_unplugged(dev))
-		return ERR_PTR(-ENODEV);
+		return -ENODEV;
 
 	drm_vma_offset_lock_lookup(dev->vma_offset_manager);
 	node = drm_vma_offset_exact_lookup_locked(dev->vma_offset_manager,
-						  start, pages);
+						  vma->vm_pgoff,
+						  vma_pages(vma));
 	if (likely(node)) {
 		obj = container_of(node, struct drm_gem_object, vma_node);
 		/*
@@ -1269,91 +1237,14 @@ drm_gem_object_lookup_at_offset(struct file *filp, unsigned long start,
 	drm_vma_offset_unlock_lookup(dev->vma_offset_manager);
 
 	if (!obj)
-		return ERR_PTR(-EINVAL);
+		return -EINVAL;
 
 	if (!drm_vma_node_is_allowed(node, priv)) {
 		drm_gem_object_put(obj);
-		return ERR_PTR(-EACCES);
+		return -EACCES;
 	}
 
-	return obj;
-}
-
-/**
- * drm_gem_get_unmapped_area - get memory mapping region routine for GEM objects
- * @filp: DRM file pointer
- * @uaddr: User address hint
- * @len: Mapping length
- * @pgoff: Offset (in pages)
- * @flags: Mapping flags
- *
- * If a driver supports GEM object mapping, before ending up in drm_gem_mmap(),
- * mmap calls on the DRM file descriptor will first try to find a free linear
- * address space large enough for a mapping. Since GEM objects are backed by
- * shmem buffers, this should preferably be handled by the shmem virtual memory
- * filesystem which can appropriately align addresses to huge page sizes when
- * needed.
- *
- * Look up the GEM object based on the offset passed in (vma->vm_pgoff will
- * contain the fake offset we created) and call shmem_get_unmapped_area() with
- * the right file pointer.
- *
- * If a GEM object is not available at the given offset or if the caller is not
- * granted access to it, fall back to mm_get_unmapped_area().
- */
-unsigned long drm_gem_get_unmapped_area(struct file *filp, unsigned long uaddr,
-					unsigned long len, unsigned long pgoff,
-					unsigned long flags)
-{
-	struct drm_gem_object *obj;
-	unsigned long ret;
-
-	obj = drm_gem_object_lookup_at_offset(filp, pgoff, len >> PAGE_SHIFT);
-	if (IS_ERR(obj) || !obj->filp || !obj->filp->f_op->get_unmapped_area)
-		return mm_get_unmapped_area(filp, uaddr, len, 0,
-					    flags);
-
-	ret = obj->filp->f_op->get_unmapped_area(obj->filp, uaddr, len, 0,
-						 flags);
-
-	drm_gem_object_put(obj);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(drm_gem_get_unmapped_area);
-
-/**
- * drm_gem_mmap - memory map routine for GEM objects
- * @filp: DRM file pointer
- * @vma: VMA for the area to be mapped
- *
- * If a driver supports GEM object mapping, mmap calls on the DRM file
- * descriptor will end up here.
- *
- * Look up the GEM object based on the offset passed in (vma->vm_pgoff will
- * contain the fake offset we created) and map it with a call to
- * drm_gem_mmap_obj().
- *
- * If the caller is not granted access to the buffer object, the mmap will fail
- * with EACCES. Please see the vma manager for more information.
- */
-int drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
-{
-	struct drm_file *priv = filp->private_data;
-	struct drm_device *dev = priv->minor->dev;
-	struct drm_gem_object *obj;
-	int ret;
-
-	if (vma->vm_pgoff < DRM_FILE_PAGE_OFFSET_START)
-		return kgsl_mmap(priv, dev, vma);
-
-	obj = drm_gem_object_lookup_at_offset(filp, vma->vm_pgoff,
-					      vma_pages(vma));
-	if (IS_ERR(obj))
-		return PTR_ERR(obj);
-
-	ret = drm_gem_mmap_obj(obj,
-			       drm_vma_node_size(&obj->vma_node) << PAGE_SHIFT,
+	ret = drm_gem_mmap_obj(obj, drm_vma_node_size(node) << PAGE_SHIFT,
 			       vma);
 
 	drm_gem_object_put(obj);
@@ -1526,10 +1417,12 @@ EXPORT_SYMBOL(drm_gem_unlock_reservations);
  * drm_gem_lru_init - initialize a LRU
  *
  * @lru: The LRU to initialize
+ * @lock: The lock protecting the LRU
  */
 void
-drm_gem_lru_init(struct drm_gem_lru *lru)
+drm_gem_lru_init(struct drm_gem_lru *lru, struct mutex *lock)
 {
+	lru->lock = lock;
 	lru->count = 0;
 	INIT_LIST_HEAD(&lru->list);
 }
@@ -1554,10 +1447,14 @@ drm_gem_lru_remove_locked(struct drm_gem_object *obj)
 void
 drm_gem_lru_remove(struct drm_gem_object *obj)
 {
-	mutex_lock(&obj->dev->gem_lru_mutex);
-	if (obj->lru)
-		drm_gem_lru_remove_locked(obj);
-	mutex_unlock(&obj->dev->gem_lru_mutex);
+	struct drm_gem_lru *lru = obj->lru;
+
+	if (!lru)
+		return;
+
+	mutex_lock(lru->lock);
+	drm_gem_lru_remove_locked(obj);
+	mutex_unlock(lru->lock);
 }
 EXPORT_SYMBOL(drm_gem_lru_remove);
 
@@ -1572,7 +1469,7 @@ EXPORT_SYMBOL(drm_gem_lru_remove);
 void
 drm_gem_lru_move_tail_locked(struct drm_gem_lru *lru, struct drm_gem_object *obj)
 {
-	lockdep_assert_held_once(&obj->dev->gem_lru_mutex);
+	lockdep_assert_held_once(lru->lock);
 
 	if (obj->lru)
 		drm_gem_lru_remove_locked(obj);
@@ -1596,9 +1493,9 @@ EXPORT_SYMBOL(drm_gem_lru_move_tail_locked);
 void
 drm_gem_lru_move_tail(struct drm_gem_lru *lru, struct drm_gem_object *obj)
 {
-	mutex_lock(&obj->dev->gem_lru_mutex);
+	mutex_lock(lru->lock);
 	drm_gem_lru_move_tail_locked(lru, obj);
-	mutex_unlock(&obj->dev->gem_lru_mutex);
+	mutex_unlock(lru->lock);
 }
 EXPORT_SYMBOL(drm_gem_lru_move_tail);
 
@@ -1612,15 +1509,13 @@ EXPORT_SYMBOL(drm_gem_lru_move_tail);
  * of the shrink callback to check for this (ie. dma_resv_test_signaled())
  * or if necessary block until the buffer becomes idle.
  *
- * @dev: DRM device the LRU belongs to
  * @lru: The LRU to scan
  * @nr_to_scan: The number of pages to try to reclaim
  * @remaining: The number of pages left to reclaim, should be initialized by caller
  * @shrink: Callback to try to shrink/reclaim the object.
  */
 unsigned long
-drm_gem_lru_scan(struct drm_device *dev,
-		 struct drm_gem_lru *lru,
+drm_gem_lru_scan(struct drm_gem_lru *lru,
 		 unsigned int nr_to_scan,
 		 unsigned long *remaining,
 		 bool (*shrink)(struct drm_gem_object *obj))
@@ -1629,9 +1524,9 @@ drm_gem_lru_scan(struct drm_device *dev,
 	struct drm_gem_object *obj;
 	unsigned freed = 0;
 
-	drm_gem_lru_init(&still_in_lru);
+	drm_gem_lru_init(&still_in_lru, lru->lock);
 
-	mutex_lock(&dev->gem_lru_mutex);
+	mutex_lock(lru->lock);
 
 	while (freed < nr_to_scan) {
 		obj = list_first_entry_or_null(&lru->list, typeof(*obj), lru_node);
@@ -1654,7 +1549,7 @@ drm_gem_lru_scan(struct drm_device *dev,
 		 * rest of the loop body, to reduce contention with other
 		 * code paths that need the LRU lock
 		 */
-		mutex_unlock(&dev->gem_lru_mutex);
+		mutex_unlock(lru->lock);
 
 		/*
 		 * Note that this still needs to be trylock, since we can
@@ -1683,7 +1578,7 @@ drm_gem_lru_scan(struct drm_device *dev,
 
 tail:
 		drm_gem_object_put(obj);
-		mutex_lock(&dev->gem_lru_mutex);
+		mutex_lock(lru->lock);
 	}
 
 	/*
@@ -1695,7 +1590,7 @@ tail:
 	list_splice_tail(&still_in_lru.list, &lru->list);
 	lru->count += still_in_lru.count;
 
-	mutex_unlock(&dev->gem_lru_mutex);
+	mutex_unlock(lru->lock);
 
 	return freed;
 }

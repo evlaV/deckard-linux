@@ -288,7 +288,6 @@ static int submit_lock_objects_vmbind(struct msm_gem_submit *submit)
 	}
 
 	drm_exec_init(&submit->exec, flags, submit->nr_bos);
-	submit->has_exec = true;
 
 	drm_exec_until_all_locked (&submit->exec) {
 		ret = drm_gpuvm_prepare_vm(submit->vm, exec, 1);
@@ -315,7 +314,6 @@ static int submit_lock_objects(struct msm_gem_submit *submit)
 		return submit_lock_objects_vmbind(submit);
 
 	drm_exec_init(&submit->exec, flags, submit->nr_bos);
-	submit->has_exec = true;
 
 	drm_exec_until_all_locked (&submit->exec) {
 		ret = drm_exec_lock_obj(&submit->exec,
@@ -362,7 +360,7 @@ static int submit_fence_sync(struct msm_gem_submit *submit)
 
 static int submit_pin_objects(struct msm_gem_submit *submit)
 {
-	struct drm_device *dev = submit->dev;
+	struct msm_drm_private *priv = submit->dev->dev_private;
 	int i, ret = 0;
 
 	for (i = 0; i < submit->nr_bos; i++) {
@@ -385,9 +383,9 @@ static int submit_pin_objects(struct msm_gem_submit *submit)
 	}
 
 	for (i = 0; i < submit->nr_bos; i++) {
-		mutex_lock(&dev->gem_lru_mutex);
+		mutex_lock(&priv->lru.lock);
 		msm_gem_pin_obj_locked(submit->bos[i].obj);
-		mutex_unlock(&dev->gem_lru_mutex);
+		mutex_unlock(&priv->lru.lock);
 	}
 
 	submit->bos_pinned = true;
@@ -528,7 +526,7 @@ static void submit_cleanup(struct msm_gem_submit *submit, bool error)
 	if (error)
 		submit_unpin_objects(submit);
 
-	if (submit->has_exec)
+	if (submit->exec.objects)
 		drm_exec_fini(&submit->exec);
 
 	/* if job wasn't enqueued to scheduler, early retirement: */

@@ -24,6 +24,7 @@ adreno-y := \
 	adreno/a6xx_gmu.o \
 	adreno/a6xx_hfi.o \
 	adreno/a6xx_preempt.o \
+	adreno/a8xx_gpu.o \
 
 adreno-$(CONFIG_DEBUG_FS) += adreno/a5xx_debugfs.o \
 
@@ -120,7 +121,6 @@ msm-y += \
 	msm_io_utils.o \
 	msm_iommu.o \
 	msm_kgsl.o \
-	msm_perf.o \
 	msm_rd.o \
 	msm_ringbuffer.o \
 	msm_submitqueue.o \
@@ -202,6 +202,7 @@ ADRENO_HEADERS = \
 	generated/a6xx_perfcntrs.xml.h \
 	generated/a7xx_enums.xml.h \
 	generated/a7xx_perfcntrs.xml.h \
+	generated/a8xx_enums.xml.h \
 	generated/a6xx_gmu.xml.h \
 	generated/adreno_common.xml.h \
 	generated/adreno_pm4.xml.h \

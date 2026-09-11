@@ -156,6 +156,13 @@ struct msm_drm_private {
 		 * DONTNEED state (ie. can be purged)
 		 */
 		struct drm_gem_lru dontneed;
+
+		/**
+		 * lock:
+		 *
+		 * Protects manipulation of all of the LRUs.
+		 */
+		struct mutex lock;
 	} lru;
 
 	struct notifier_block vmap_notifier;
