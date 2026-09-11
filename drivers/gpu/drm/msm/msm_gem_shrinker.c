@@ -61,7 +61,6 @@ with_vm_locks(void (*fn)(struct drm_gem_object *obj),
 	 */
 	struct drm_gpuvm_bo *vm_bo, *last_locked = NULL;
 	bool locked = true;
-	int ret = 0;
 
 	drm_gem_for_each_gpuvm_bo (vm_bo, obj) {
 		struct dma_resv *resv = drm_gpuvm_resv(vm_bo->vm);
@@ -104,7 +103,7 @@ out_unlock:
 		}
 	}
 
-	return ret == 0;
+	return locked;
 }
 
 static bool
