@@ -1,0 +1,9 @@
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
+
+#ifndef _DT_BINDINGS_REGULATOR_AWINIC_AW37505_H
+#define _DT_BINDINGS_REGULATOR_AWINIC_AW37505_H
+
+#define AW37505_MODE_NORMAL			0
+#define AW37505_MODE_HPM			1
+
+#endif

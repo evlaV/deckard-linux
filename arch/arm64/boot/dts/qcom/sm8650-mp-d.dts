@@ -2,6 +2,7 @@
 
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+#include <dt-bindings/regulator/awinic,aw37505.h>
 #include <dt-bindings/phy/phy.h>
 #include "dt-bindings/usb/pd.h"
 #include "sm8650.dtsi"
@@ -1344,8 +1345,11 @@
 		pinctrl-0 = <&display_resx1>, <&display_resx2>;
 		pinctrl-names = "default";
 
-		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,
-			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&pm8550_gpios 3 GPIO_ACTIVE_HIGH>,	//LEFT & RIGHT (default)
+			      <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;		//RIGHT (resistor stuff option)
+
+		te-gpios = <&tlmm 162 GPIO_ACTIVE_HIGH>,	//162: TE2_LEFT
+                    <&tlmm 178 GPIO_ACTIVE_HIGH>;	//178: TE2_RIGHT
 
 		//Bias supplies enabled via GPIO
 		left-pos-supply = <&vpos_left>;
@@ -1381,12 +1385,12 @@
 
 &mdss_dsi0_out {
 	remote-endpoint = <&panel0_in>;
-	data-lanes = <0 1 2>;
+	data-lanes = <0 1 2 3>;
 };
 
 &mdss_dsi0_phy {
 	vdds-supply = <&vreg_l1i_0p88>;
-	phy-type = <PHY_TYPE_CPHY>;
+	phy-type = <PHY_TYPE_DPHY>;
 	status = "okay";
 };
 
@@ -1402,13 +1406,13 @@
 
 &mdss_dsi1_out {
 	remote-endpoint = <&panel1_in>;
-	data-lanes = <0 1 2>;
+	data-lanes = <0 1 2 3>;
 };
 
 &mdss_dsi1_phy {
 	vdds-supply = <&vreg_l1i_0p88>;
 	status = "okay";
-	phy-type = <PHY_TYPE_CPHY>;
+	phy-type = <PHY_TYPE_DPHY>;
 };
 
 &pcie0 {
@@ -1843,28 +1847,24 @@
 	};
 
 	aw37505@3e{
-		#address-cells = <1>;
-		#size-cells = <0>;
 		compatible = "awinic,aw37505";
 		reg = <0x3e>;
 		pinctrl-0 = <&display_avdd_en_r>, <&display_avee_en_r>;
 		pinctrl-names = "default";
 		status = "okay";
-		regulators {
-			vpos_right: vpos{
-				regulator-name = "lcd_right_vpos";
-				enp-gpios = <&pm8550_gpios 8 GPIO_ACTIVE_HIGH>;
-				regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				regulator-min-microvolt = <5400000>;
-				regulator-max-microvolt = <5500000>;
-			};
-			vneg_right: vneg{
-				regulator-name = "lcd_right_vneg";
-				enn-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
-				regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				regulator-min-microvolt = <5400000>;
-				regulator-max-microvolt = <6300000>;
-			};
+		vpos_right: outp{
+			regulator-name = "lcd_right_vpos";
+			enable-gpios = <&pm8550_gpios 8 GPIO_ACTIVE_HIGH>;
+			regulator-initial-mode = <AW37505_MODE_HPM>;
+			regulator-min-microvolt = <5400000>;
+			regulator-max-microvolt = <5500000>;
+		};
+		vneg_right: outn{
+			regulator-name = "lcd_right_vneg";
+			enable-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_HIGH>;
+			regulator-initial-mode = <AW37505_MODE_HPM>;
+			regulator-min-microvolt = <5400000>;
+			regulator-max-microvolt = <6300000>;
 		};
 	};
 };
@@ -1903,28 +1903,24 @@
 	};
 
 	aw37505@3e{
-		#address-cells = <1>;
-		#size-cells = <0>;
 		compatible = "awinic,aw37505";
 		reg = <0x3e>;
 		pinctrl-0 = <&display_avdd_en_l>, <&display_avee_en_l>;
 		pinctrl-names = "default";
 		status = "okay";
-		regulators {
-			vpos_left: vpos{
-				regulator-name = "lcd_left_vpos";
-				enp-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
-				regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				regulator-min-microvolt = <5400000>;
-				regulator-max-microvolt = <5500000>;
-			};
-			vneg_left: vneg{
-				regulator-name = "lcd_left_vneg";
-				enn-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
-				regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-				regulator-min-microvolt = <5400000>;
-				regulator-max-microvolt = <6300000>;
-			};
+		vpos_left: outp{
+			regulator-name = "lcd_left_vpos";
+			enable-gpios = <&pm8550_gpios 4 GPIO_ACTIVE_HIGH>;
+			regulator-initial-mode = <AW37505_MODE_HPM>;
+			regulator-min-microvolt = <5400000>;
+			regulator-max-microvolt = <5500000>;
+		};
+		vneg_left: outn{
+			regulator-name = "lcd_left_vneg";
+			enable-gpios = <&pm8550_gpios 9 GPIO_ACTIVE_HIGH>;
+			regulator-initial-mode = <AW37505_MODE_HPM>;
+			regulator-min-microvolt = <5400000>;
+			regulator-max-microvolt = <6300000>;
 		};
 	};
 };
@@ -2106,13 +2102,15 @@
 };
 
 &i2c5 {
+    clock-frequency = <400000>;
+
     // BOOT EEPROM
     eeprom@50 {
         compatible  = "atmel,24c64";
         status      = "okay";
         label		= "core_v2_eeprom";
         reg         = <0x50>;
-		pagesize    = <32>;
+		pagesize    = <16>;
 		size        = <8192>;
 		address-width = <16>;
         wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
