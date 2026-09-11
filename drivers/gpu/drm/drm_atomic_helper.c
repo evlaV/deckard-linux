@@ -1391,9 +1391,9 @@ disable_outputs(struct drm_device *dev, struct drm_atomic_commit *state)
 {
 	drm_atomic_helper_commit_encoder_bridge_disable(dev, state);
 
-	drm_atomic_helper_commit_encoder_bridge_post_disable(dev, state);
-
 	drm_atomic_helper_commit_crtc_disable(dev, state);
+
+	drm_atomic_helper_commit_encoder_bridge_post_disable(dev, state);
 }
 
 /**
@@ -1779,11 +1779,11 @@ EXPORT_SYMBOL(drm_atomic_helper_commit_encoder_bridge_enable);
 void drm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 					      struct drm_atomic_commit *state)
 {
-	drm_atomic_helper_commit_crtc_enable(dev, state);
-
 	drm_atomic_helper_commit_encoder_bridge_pre_enable(dev, state);
 
-	drm_atomic_helper_commit_encoder_bridge_enable(dev, state);
+	drm_atomic_helper_commit_crtc_enable(dev, state);
+
+	drm_atomic_helper_commit_encoder_bridge_enable(dev,	 state);
 
 	drm_atomic_helper_commit_writebacks(dev, state);
 }
