@@ -772,9 +772,7 @@ static void max98390_mute_work(struct work_struct *work)
 		container_of(work, struct max98390_priv, mute_work);
 
 	if (max98390->mute) {
-		regmap_update_bits(max98390->regmap,
-			MAX98390_R23FF_GLOBAL_EN,
-			MAX98390_GLOBAL_EN_MASK, 0);
+		regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x00);
 		msleep(50);
 		regmap_update_bits(max98390->regmap,
 			MAX98390_R203A_AMP_EN,
@@ -783,9 +781,7 @@ static void max98390_mute_work(struct work_struct *work)
 		regmap_update_bits(max98390->regmap,
 			MAX98390_R203A_AMP_EN,
 			MAX98390_AMP_EN_MASK, 1);
-		regmap_update_bits(max98390->regmap,
-			MAX98390_R23FF_GLOBAL_EN,
-			MAX98390_GLOBAL_EN_MASK, 1);
+		regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x01);
 		msleep(10);
 	}
 }
@@ -965,8 +961,7 @@ static int max98390_dsm_calib_put(struct snd_kcontrol *kcontrol,
 		/* Enable the codec for the duration of calibration readout */
 		regmap_update_bits(max98390->regmap, MAX98390_R203A_AMP_EN,
 				   MAX98390_AMP_EN_MASK, 1);
-		regmap_update_bits(max98390->regmap, MAX98390_R23FF_GLOBAL_EN,
-				   MAX98390_GLOBAL_EN_MASK, 1);
+		regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x01);
 	}
 
 	regmap_read(max98390->regmap, THERMAL_RDC_RD_BACK_BYTE1, &rdc);
@@ -975,8 +970,7 @@ static int max98390_dsm_calib_put(struct snd_kcontrol *kcontrol,
 
 	if (!val) {
 		/* Disable the codec if it was disabled */
-		regmap_update_bits(max98390->regmap, MAX98390_R23FF_GLOBAL_EN,
-				   MAX98390_GLOBAL_EN_MASK, 0);
+		regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x00);
 		regmap_update_bits(max98390->regmap, MAX98390_R203A_AMP_EN,
 				   MAX98390_AMP_EN_MASK, 0);
 	}
