@@ -773,7 +773,10 @@ static void max98390_mute_work(struct work_struct *work)
 
 	if (max98390->mute) {
 		regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x00);
-		msleep(50);
+		/* Might need a 400us or 6ms sleep here based
+		 * DSM_VOL_RMP_DN_BYP values, we pick the higher number
+		 * to be sure EN=1 after this can latch */
+		usleep_range(6000, 8000);
 		regmap_update_bits(max98390->regmap,
 			MAX98390_R203A_AMP_EN,
 			MAX98390_AMP_EN_MASK, 0);
@@ -782,7 +785,10 @@ static void max98390_mute_work(struct work_struct *work)
 			MAX98390_R203A_AMP_EN,
 			MAX98390_AMP_EN_MASK, 1);
 		regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x01);
-		msleep(10);
+		/* Might need a 750us or 10ms sleep here based on SPK_SPEEDUP
+		 * and DSM_VOL_RMP_UP_BYP values, we pick the higher number
+		 * to be sure tON is complete */
+		usleep_range(10000, 12000);
 	}
 }
 
