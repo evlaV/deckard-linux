@@ -44,6 +44,8 @@ static DECLARE_DELAYED_WORK(qcom_pon_kmsg_dump_work, qcom_pon_kmsg_dump);
 #define PON_AOP_ON_REASON		0x726b
 #define PON_AOP_POFF_REASON1		0x726c
 #define PON_AOP_OFF_REASON1		0x726d
+#define PON_AOP_OFF_FAULT_REASON1	0x726e
+#define PON_AOP_OFF_FAULT_REASON2	0x726f
 
 struct qcom_pon_data {
 	long reason_shift;
@@ -68,6 +70,17 @@ struct pm_pon_reason_type
   u32 reserved:8;         /* reserved  */
 };
 
+const char *pm_pon_reason_type_str[] = {
+	"HARD_RESET",
+	"SMPL",
+	"RTC",
+	"DC_CHG",
+	"USB_CHG",
+	"PON1",
+	"CBL_PWR1_N",
+	"KPDPWR_N",
+};
+
 /*! \struct pm_pon_warm_reset_reason_type
    \brief Warm Reset reason type.
  */
@@ -88,6 +101,16 @@ struct pm_pon_warm_reset_reason_type
   u32 reserved:8;             /* reserved  */
 };
 
+const char *pm_pon_warm_reset_reason_type_str[] = {
+	"KPDPWR_N",
+	"RESIN_N",
+	"KPDPWR_AND_RESIN",
+	"GP2",
+	"GP1",
+	"PMIC_WD",
+	"PS_HOLD",
+	"SOFT",
+};
 
 /*! \struct pm_pon_on_state_reason_type
    \brief Power on sequences type.
@@ -120,6 +143,17 @@ struct pm_pon_poff_reason_type
   u32 reserved:8;              /* reserved  */
 };
 
+const char *pm_pon_poff_reason_type_str[] = {
+	"SOFT",
+	"PS_HOLD",
+	"PMIC_WD",
+	"GP1",
+	"GP2",
+	"KPDPWR_AND_RESIN",
+	"RESIN",
+	"KPDPWR",
+};
+
 /*! \struct pm_pon_off_state_reason_type
    \brief Power Off reason type.
  */
@@ -129,16 +163,26 @@ struct pm_pon_off_state_reason_type
   unsigned raw_xvdd_rb_occured : 1;     /* raw_xvdd_rb event occured */
   unsigned raw_dvdd_rb_occured : 1;     /* raw_dvdd_rb event occured  */
   unsigned immediate_xvdd_shutdown : 1; /* immediate_xvdd_shutdown s2 Reset */
-  unsigned s3_reset : 4;                /* Stage 3 Reset */
+  unsigned s3_reset : 1;                /* Stage 3 Reset */
   unsigned fault_seq : 1;               /* fault-handling sequence */
   unsigned poff_seq : 1;                /* normal powering-off sequence */
 };
 
+const char *pm_pon_off_reason_type_str[] = {
+	"RESERVED",
+	"RESERVED",
+	"RAW_XVDD_RB_OCCURED",
+	"RAW_DVDD_RB_OCCURED",
+	"IMMEDIATE_XVDD_SHUTDOWN",
+	"S3_RESET",
+	"FAULT_SEQ",
+	"POFF_SEQ",
+};
 
 /*! \struct pm_pon_fault_state_reason_type
    \brief Pon fault reason type.
  */
-struct pm_pon_fault_state_reason_type
+struct pm_pon_fault1_state_reason_type
 {
   unsigned gp_fault0 : 1;         /* Triggered by general-purpose fault #0 */
   unsigned gp_fault1 : 1;         /* Triggered by general-purpose fault #1 */
@@ -148,12 +192,37 @@ struct pm_pon_fault_state_reason_type
   unsigned ovlo : 1;              /* OVLO event    */
   unsigned uvlo : 1;              /* UVLO event    */
   unsigned avdd_rb : 1;           /* AVDD_RB event */
+};
+
+const char *pm_pon_fault1_reason_type_str[] = {
+	"GP_FAULT0",
+	"GP_FAULT1",
+	"GP_FAULT2",
+	"GP_FAULT3",
+	"MBG_FAULT",
+	"OVLO",
+	"UVLO",
+	"AVDD_RB",
+};
+
+struct pm_pon_fault2_state_reason_type {
   unsigned reserved1 : 3;         /* Reserved bits */
   unsigned fault_n : 1;           /* FAULT_N bus */
   unsigned pbs_watchdog_to : 1;   /* PBS WATCHDOG */
   unsigned pbs_nack : 1;          /* PBS NACK event */
   unsigned restart_pon : 1;       /* RESTART PON */
   unsigned otst3 : 1;             /* OTST3 */
+};
+
+const char *pm_pon_fault2_reason_type_str[] = {
+	"RESERVED",
+	"RESERVED",
+	"RESERVED",
+	"FAULT_N",
+	"PBS_WATCHDOG_TO",
+	"PBS_NACK",
+	"RESTART_PON",
+	"OTST3",
 };
 
 struct qcom_pon {
@@ -169,13 +238,33 @@ struct qcom_pon {
 	struct input_handler input_handler;
 	bool needs_pbs_ps_hold_sw_ctl;
 	union {
-		u32 trigger_regval;
-		struct pm_pon_reason_type trigger_fields;
-	} pmic_pon;
+		u32 regval;
+		struct pm_pon_reason_type fields;
+	} pmic_pon_trigger;
 	union {
-		u32 type_regval;
-		struct pm_pon_on_state_reason_type type_fields;
+		u32 regval;
+		struct pm_pon_on_state_reason_type fields;
 	} pmic_pon_type;
+	union {
+		u32 regval;
+		struct pm_pon_warm_reset_reason_type fields;
+	} pmic_pon_warm;
+	union {
+		u32 regval;
+		struct pm_pon_poff_reason_type fields;
+	} pmic_pon_poff;
+	union {
+		u32 regval;
+		struct pm_pon_off_state_reason_type fields;
+	} pmic_off;
+	union {
+		u32 regval;
+		struct pm_pon_fault1_state_reason_type fields;
+	} pmic_fault1;
+	union {
+		u32 regval;
+		struct pm_pon_fault2_state_reason_type fields;
+	} pmic_fault2;
 };
 
 static int qcom_pon_reboot(struct notifier_block *nb,
@@ -257,7 +346,7 @@ static int qcom_pon_reboot_mode_write(struct reboot_mode_driver *reboot,
 static ssize_t pon_type_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct qcom_pon *pon = dev_get_drvdata(dev);
-	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon_type.type_regval);
+	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon_type.regval);
 }
 static DEVICE_ATTR_RO(pon_type);
 
@@ -267,7 +356,7 @@ static ssize_t pon_type_##field##_show(struct device *dev, struct device_attribu
 {										\
 	struct qcom_pon *pon = dev_get_drvdata(dev);				\
 										\
-	return sysfs_emit(buf, "%d\n", pon->pmic_pon_type.type_fields.field);		\
+	return sysfs_emit(buf, "%d\n", pon->pmic_pon_type.fields.field);	\
 }										\
 static DEVICE_ATTR_RO(pon_type_##field);
 
@@ -277,7 +366,7 @@ PON_TYPE_FIELD(pon_seq);
 static ssize_t pon_reason_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct qcom_pon *pon = dev_get_drvdata(dev);
-	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon.trigger_regval);
+	return scnprintf(buf, PAGE_SIZE, "0x%02X\n", pon->pmic_pon_trigger.regval);
 }
 static DEVICE_ATTR_RO(pon_reason);
 
@@ -287,7 +376,7 @@ static ssize_t pon_reason_##field##_show(struct device *dev, struct device_attri
 {										\
 	struct qcom_pon *pon = dev_get_drvdata(dev);				\
 										\
-	return sysfs_emit(buf, "%d\n", pon->pmic_pon.trigger_fields.field);		\
+	return sysfs_emit(buf, "%d\n", pon->pmic_pon_trigger.fields.field);	\
 }										\
 static DEVICE_ATTR_RO(pon_reason_##field);
 
@@ -415,42 +504,93 @@ static struct input_handler qcom_pon_combo_handler = {
 	.id_table   = qcom_pon_combo_ids,
 };
 
+static void qcom_pon_register_str(u8 regval, const char *qcom_pon_reg_str[])
+{
+	int i;
+
+	if (!regval)
+		pr_cont(" none");
+	else {
+		for (i = 0; i < BITS_PER_BYTE; i++) {
+			if (regval & BIT(i))
+				pr_cont(" %s", qcom_pon_reg_str[i]);
+		}
+	}
+	pr_cont("\n");
+}
+
 static void qcom_pon_reason_dump(struct qcom_pon *pon)
 {
+	u32 pmic_pon_regval = 0;
+	int error;
+
+	/*
+	 * 0x09 -> `reboot` w/ USB connected
+	 * 0x01 -> `reboot` w/o USB
+	 * 0x81 -> power button for 16 seconds HARD_RESET
+	 * 0x08 -> remove battery and power on via USB insertion
+	 * 0x08 -> poweroff with USB removed then USB insertion
+	 * 0x80 -> poweroff then power on button with no USB connected
+	 *
+	 * NOTE buttonledcontrol only looks at 0x80 to start steamvr
+	 */
+
+	/* Load the PON Reason from the Always On Processor in PMK8550 SDAM3 */
+	/* NOTE The PMK8550 seems to detect USB Insertion as Wireless,
+	 * but otherwise the codes are unchanged from XR2 */
 	/* first dump the pon reason type */
-	if (pon->pmic_pon_type.type_fields.warm_seq)
-		dev_warn(pon->dev, "PON: type: Warm reset\n");
-	else if (pon->pmic_pon_type.type_fields.pon_seq)
-		dev_warn(pon->dev, "PON: type: PON reset seq\n");
+	error = regmap_read(pon->regmap, PON_AOP_ON_REASON, &pmic_pon_regval);
+	pr_info("PON: type [0x%02X]: ", pmic_pon_regval);
+	pon->pmic_pon_type.regval = pmic_pon_regval;
+
+	if (pon->pmic_pon_type.fields.warm_seq)
+		pr_cont("Warm reset\n");
+	else if (pon->pmic_pon_type.fields.pon_seq)
+		pr_cont("PON reset seq\n");
 
 	/* after dump the pon reason trigger */
-	if (pon->pmic_pon.trigger_fields.hard_reset)
-		dev_warn(pon->dev, "PON: trigger: Hard reset\n");
-	if (pon->pmic_pon.trigger_fields.smpl)
-		dev_warn(pon->dev, "PON: trigger: SPML\n");
-	if (pon->pmic_pon.trigger_fields.rtc)
-		dev_warn(pon->dev, "PON: trigger: RTC\n");
-	if (pon->pmic_pon.trigger_fields.dc_chg)
-		dev_warn(pon->dev, "PON: trigger: DC_CHG\n");
-	if (pon->pmic_pon.trigger_fields.usb_chg)
-		dev_warn(pon->dev, "PON: trigger: USB_CHG\n");
-	if (pon->pmic_pon.trigger_fields.pon1)
-		dev_warn(pon->dev, "PON: trigger: PON1\n");
-	if (pon->pmic_pon.trigger_fields.cblpwr)
-		dev_warn(pon->dev, "PON: trigger: CBL_PWR1_N\n");
-	if (pon->pmic_pon.trigger_fields.kpdpwr)
-		dev_warn(pon->dev, "PON: trigger: KPDPWR_N\n");
-	if (pon->pmic_pon.trigger_fields.known_rsn)
-		dev_warn(pon->dev, "PON: trigger: known_rsn\n");
-	if (!pon->pmic_pon.trigger_regval)
-		dev_warn(pon->dev, "PON: trigger: none\n");
+	error = regmap_read(pon->regmap, PON_AOP_PON_REASON1, &pmic_pon_regval);
+	pr_info("PON: trigger [0x%02X]:", pmic_pon_regval);
+	pon->pmic_pon_trigger.regval = pmic_pon_regval;
+	qcom_pon_register_str(pmic_pon_regval, pm_pon_reason_type_str);
+
+	/* warm reset reason */
+	error = regmap_read(pon->regmap, PON_AOP_WARM_RESET_REASON1,
+			    &pmic_pon_regval);
+	pr_info("PON: warm_reset_reason [0x%02X]:", pmic_pon_regval);
+	pon->pmic_pon_warm.regval = pmic_pon_regval;
+	qcom_pon_register_str(pmic_pon_regval, pm_pon_warm_reset_reason_type_str);
+}
+
+static void qcom_poff_reason_dump(struct qcom_pon *pon)
+{
+	u32 pmic_pon_regval = 0;
+	int error;
+
+	error = regmap_read(pon->regmap, PON_AOP_POFF_REASON1, &pmic_pon_regval);
+	pr_info("PON: poff_reason [0x%02X]:", pmic_pon_regval);
+	qcom_pon_register_str(pmic_pon_regval, pm_pon_poff_reason_type_str);
+	pon->pmic_pon_poff.regval = pmic_pon_regval;
+
+	error = regmap_read(pon->regmap, PON_AOP_OFF_REASON1, &pmic_pon_regval);
+	pr_info("PON: off_reason [0x%02X]:", pmic_pon_regval);
+	qcom_pon_register_str(pmic_pon_regval, pm_pon_off_reason_type_str);
+	pon->pmic_off.regval = pmic_pon_regval;
+
+	error = regmap_read(pon->regmap, pon->pbs_baseaddr + PON_PBS_FAULT_REASON1,
+			    &pmic_pon_regval);
+	pon->pmic_fault1.regval = pmic_pon_regval & 0xff;
+	pon->pmic_fault2.regval = (pmic_pon_regval >> 8) & 0xff;
+	pr_info("PON: fault_reason1 [0x%02X]:", pon->pmic_fault1.regval);
+	qcom_pon_register_str(pon->pmic_fault1.regval, pm_pon_fault1_reason_type_str);
+	pr_info("PON: fault_reason2 [0x%02X]:", pon->pmic_fault2.regval);
+	qcom_pon_register_str(pon->pmic_fault2.regval, pm_pon_fault2_reason_type_str);
 }
 
 static int qcom_pon_probe(struct platform_device *pdev)
 {
 	const struct qcom_pon_data *data;
 	struct qcom_pon *pon;
-	u32 pmic_pon_regval;
 	int error;
 
 	data = device_get_match_data(&pdev->dev);
@@ -511,43 +651,10 @@ static int qcom_pon_probe(struct platform_device *pdev)
 			return error;
 		}
 
-		/*
-		* 0x09 -> `reboot` w/ USB connected
-		* 0x01 -> `reboot` w/o USB
-		* 0x81 -> power button for 16 seconds HARD_RESET
-		* 0x08 -> remove battery and power on via USB insertion
-		* 0x08 -> poweroff with USB removed then USB insertion
-		* 0x80 -> poweroff then power on button with no USB connected
-		*
-		* NOTE buttonledcontrol only looks at 0x80 to start steamvr
-		*/
-
-		/* Load the PON Reason from the Always On Processor in PMK8550 SDAM3 */
-		/* NOTE The PMK8550 seems to detect USB Insertion as Wireless,
-			* but otherwise the codes are unchanged from XR2 */
-		error = regmap_read(pon->regmap, PON_AOP_PON_REASON1, &pmic_pon_regval);
-		dev_warn(&pdev->dev, "PON_PON_REASON1 0x%02X\n", pmic_pon_regval);
-		pon->pmic_pon.trigger_regval = pmic_pon_regval;
-
-		error = regmap_read(pon->regmap, PON_AOP_WARM_RESET_REASON1, &pmic_pon_regval);
-		dev_warn(&pdev->dev, "PON_WARM_RESET_REASON1 0x%02X\n", pmic_pon_regval);
-
-		error = regmap_read(pon->regmap, PON_AOP_ON_REASON, &pmic_pon_regval);
-		dev_warn(&pdev->dev, "PON_ON_REASON 0x%02X\n", pmic_pon_regval);
-		pon->pmic_pon_type.type_regval = pmic_pon_regval;
-
-		error = regmap_read(pon->regmap, PON_AOP_POFF_REASON1, &pmic_pon_regval);
-		dev_warn(&pdev->dev, "PON_POFF_REASON1 0x%02X\n", pmic_pon_regval);
-
-		error = regmap_read(pon->regmap, PON_AOP_OFF_REASON1, &pmic_pon_regval);
-		dev_warn(&pdev->dev, "PON_OFF_REASON1 0x%08X\n", pmic_pon_regval);
-
-		error = regmap_read(pon->regmap, pon->pbs_baseaddr + PON_PBS_FAULT_REASON1,
-				    &pmic_pon_regval);
-		dev_warn(&pdev->dev, "PON_PBS_FAULT_REASON1 0x%08X\n", pmic_pon_regval);
-
 		/* now dump a more human information */
 		qcom_pon_reason_dump(pon);
+
+		qcom_poff_reason_dump(pon);
 	}
 
 	/* register input handler to get combo keys pressed to trigger warm reset */
