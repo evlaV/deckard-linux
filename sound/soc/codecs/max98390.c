@@ -790,6 +790,28 @@ static void max98390_mute_work(struct work_struct *work)
 		 * to be sure tON is complete */
 		usleep_range(10000, 12000);
 	}
+
+	/* EN=1 sometimes fails to latch, lets try to handle that */
+	if (!max98390->mute) {
+		struct snd_soc_component *component = max98390->component;
+		unsigned int val = 0;
+		int ret;
+
+		regmap_read(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, &val);
+		if (!(val & MAX98390_GLOBAL_EN_MASK)) {
+			dev_warn(component->dev, "EN=1 latch failed, retry\n");
+			ret = regmap_write(max98390->regmap,
+					MAX98390_R23FF_GLOBAL_EN, 0x01);
+			usleep_range(10000, 12000);
+
+			regmap_read(max98390->regmap,
+					MAX98390_R23FF_GLOBAL_EN, &val);
+			if (!(val & MAX98390_GLOBAL_EN_MASK)) {
+				dev_warn(component->dev, "EN=1 latch failed"
+						"(%d), gave up\n", ret);
+			}
+		}
+	}
 }
 
 static int max98390_dac_mute(struct snd_soc_dai *dai, int mute, int stream)
