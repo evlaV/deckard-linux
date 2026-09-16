@@ -466,6 +466,51 @@ static int max98390_dai_set_sysclk(struct snd_soc_dai *dai,
 	return 0;
 }
 
+static void max98390_do_mute(struct max98390_priv *max98390)
+{
+	if (max98390->mute) {
+		regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x00);
+		/* Might need a 400us or 6ms sleep here based
+		 * DSM_VOL_RMP_DN_BYP values, we pick the higher number
+		 * to be sure EN=1 after this can latch */
+		regmap_update_bits(max98390->regmap,
+			MAX98390_R203A_AMP_EN,
+			MAX98390_AMP_EN_MASK, 0);
+		usleep_range(6000, 8000);
+	} else {
+		regmap_update_bits(max98390->regmap,
+			MAX98390_R203A_AMP_EN,
+			MAX98390_AMP_EN_MASK, 1);
+		regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x01);
+		/* Might need a 750us or 10ms sleep here based on SPK_SPEEDUP
+		 * and DSM_VOL_RMP_UP_BYP values, we pick the higher number
+		 * to be sure tON is complete */
+		usleep_range(10000, 12000);
+	}
+
+	/* EN=1 sometimes fails to latch, lets try to handle that */
+	if (!max98390->mute) {
+		struct snd_soc_component *component = max98390->component;
+		unsigned int val = 0;
+		int ret;
+
+		regmap_read(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, &val);
+		if (!(val & MAX98390_GLOBAL_EN_MASK)) {
+			dev_warn(component->dev, "EN=1 latch failed, retry\n");
+			ret = regmap_write(max98390->regmap,
+					MAX98390_R23FF_GLOBAL_EN, 0x01);
+			usleep_range(10000, 12000);
+
+			regmap_read(max98390->regmap,
+					MAX98390_R23FF_GLOBAL_EN, &val);
+			if (!(val & MAX98390_GLOBAL_EN_MASK)) {
+				dev_warn(component->dev, "EN=1 latch failed"
+						"(%d), gave up\n", ret);
+			}
+		}
+	}
+}
+
 /*
  * Interrupt decode, indexed by bit position within the latched flag banks.
  * *_STATE is set by a rising edge on the corresponding *_RAW bit and cleared
@@ -627,6 +672,8 @@ static void max98390_log_state(struct max98390_priv *max98390)
  */
 static void max98390_thermal_rearm(struct max98390_priv *max98390)
 {
+	struct snd_soc_dapm_context *dapm =
+		snd_soc_component_get_dapm(max98390->component);
 	unsigned int val;
 
 	if (regmap_read(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, &val))
@@ -635,19 +682,19 @@ static void max98390_thermal_rearm(struct max98390_priv *max98390)
 	if (val & MAX98390_GLOBAL_EN_MASK)
 		return;
 
-	/*
-	 * Tested last, and not locked against the trigger path. If the stream
-	 * stops in the window that remains, mute_work reads the current value
-	 * and performs the disable instead, so the cost is a stray log line
-	 * rather than an amplifier enabled behind userspace's back.
-	 */
-	if (max98390->mute)
+	snd_soc_dapm_mutex_lock(dapm);
+
+	if (max98390->mute) {
+		snd_soc_dapm_mutex_unlock(dapm);
 		return;
+	}
 
 	dev_warn_ratelimited(max98390->dev,
 			     "restarting after thermal shutdown\n");
 
-	schedule_work(&max98390->mute_work);
+	max98390_do_mute(max98390);
+
+	snd_soc_dapm_mutex_unlock(dapm);
 }
 
 static irqreturn_t max98390_irq(int irq, void *data)
@@ -766,66 +813,19 @@ static void max98390_irq_setup(struct snd_soc_component *component)
 	enable_irq(max98390->irq);
 }
 
-static void max98390_mute_work(struct work_struct *work)
-{
-	struct max98390_priv *max98390 =
-		container_of(work, struct max98390_priv, mute_work);
-
-	if (max98390->mute) {
-		regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x00);
-		/* Might need a 400us or 6ms sleep here based
-		 * DSM_VOL_RMP_DN_BYP values, we pick the higher number
-		 * to be sure EN=1 after this can latch */
-		regmap_update_bits(max98390->regmap,
-			MAX98390_R203A_AMP_EN,
-			MAX98390_AMP_EN_MASK, 0);
-		usleep_range(6000, 8000);
-	} else {
-		regmap_update_bits(max98390->regmap,
-			MAX98390_R203A_AMP_EN,
-			MAX98390_AMP_EN_MASK, 1);
-		regmap_write(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, 0x01);
-		/* Might need a 750us or 10ms sleep here based on SPK_SPEEDUP
-		 * and DSM_VOL_RMP_UP_BYP values, we pick the higher number
-		 * to be sure tON is complete */
-		usleep_range(10000, 12000);
-	}
-
-	/* EN=1 sometimes fails to latch, lets try to handle that */
-	if (!max98390->mute) {
-		struct snd_soc_component *component = max98390->component;
-		unsigned int val = 0;
-		int ret;
-
-		regmap_read(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, &val);
-		if (!(val & MAX98390_GLOBAL_EN_MASK)) {
-			dev_warn(component->dev, "EN=1 latch failed, retry\n");
-			ret = regmap_write(max98390->regmap,
-					MAX98390_R23FF_GLOBAL_EN, 0x01);
-			usleep_range(10000, 12000);
-
-			regmap_read(max98390->regmap,
-					MAX98390_R23FF_GLOBAL_EN, &val);
-			if (!(val & MAX98390_GLOBAL_EN_MASK)) {
-				dev_warn(component->dev, "EN=1 latch failed"
-						"(%d), gave up\n", ret);
-			}
-		}
-	}
-}
 
 static int max98390_dac_mute(struct snd_soc_dai *dai, int mute, int stream)
 {
-	struct snd_soc_component *component = dai->component;
-	struct max98390_priv *max98390 =
-		snd_soc_component_get_drvdata(component);
+        struct snd_soc_component *component = dai->component;
+        struct max98390_priv *max98390 =
+                snd_soc_component_get_drvdata(component);
 
-	if (max98390->mute != mute) {
-		max98390->mute = mute;
-		schedule_work(&max98390->mute_work);
-	}
+        if (max98390->mute != mute) {
+                max98390->mute = mute;
+                max98390_do_mute(max98390);
+        }
 
-	return 0;
+        return 0;
 }
 
 static const struct snd_soc_dai_ops max98390_dai_ops = {
@@ -834,7 +834,6 @@ static const struct snd_soc_dai_ops max98390_dai_ops = {
 	.hw_params = max98390_dai_hw_params,
 	.set_tdm_slot = max98390_dai_tdm_slot,
 	.mute_stream = max98390_dac_mute,
-	.mute_unmute_on_trigger = true,
 };
 
 static int max98390_dac_event(struct snd_soc_dapm_widget *w,
@@ -1503,7 +1502,6 @@ static int max98390_i2c_probe(struct i2c_client *i2c)
 		max98390->dsm_param_name = "default";
 
 	max98390->mute = 1;
-	INIT_WORK(&max98390->mute_work, max98390_mute_work);
 
 	/* voltage/current slot configuration */
 	max98390_slot_config(i2c, max98390);

@@ -667,7 +667,6 @@ struct max98390_priv {
 	unsigned int ambient_temp_value;
 	const char *dsm_param_name;
 	bool mute;
-	struct work_struct mute_work;
     char filename[128];
     struct snd_soc_component *component;
 };
