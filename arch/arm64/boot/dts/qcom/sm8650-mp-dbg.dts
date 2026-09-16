@@ -2136,6 +2136,12 @@
         vcc-supply  = <&vreg_l15b_1p8>;
     };
 
+
+    broadcaster: broadcaster@2c {
+        compatible = "i2c-sw-broadcaster";
+        reg = <0x2c>;
+    };
+	
     max34417_1: max34417@12 {
         compatible = "maxim,max34417";
         reg = <0x12>;
@@ -2145,6 +2151,7 @@
         status = "okay";
         #address-cells = <1>;
         #size-cells = <0>;
+        broadcaster-parent = <&broadcaster>;
 
         // CH 1 : Kryo APC0 Cores
         // CH 2 : Kryo APC2 Cores
@@ -2181,6 +2188,7 @@
         status = "okay";
         #address-cells = <1>;
         #size-cells = <0>;
+	broadcaster-parent = <&broadcaster>;
 
         // CH 1 : GFX Power
         // CH 2 : Tensor Processor – NSP2
@@ -2218,6 +2226,7 @@
         status = "okay";
         #address-cells = <1>;
         #size-cells = <0>;
+	broadcaster-parent = <&broadcaster>;
 	
         // CH 1 : VPH
         // CH 2 : S1C ~1.25V Subregulation
@@ -2258,6 +2267,92 @@
 		nvm_reg     = /bits/ 8 <0x0b>;
 		rsense      = <25>;      /* 100's of microOhms */
 	};
+
+    broadcaster2: broadcaster@2c {
+        compatible = "i2c-sw-broadcaster";
+        reg = <0x2c>;
+    };
+    
+    max34417_ext0: max34417@14 {
+        compatible = "maxim,max34417";
+        reg = <0x14>;
+        maxim,sense-resistor = <1>;
+        vdd-supply = <&vreg_l2b_3p0>;
+        vio-supply = <&vreg_l15b_1p8>;
+        status = "okay";
+        #address-cells = <1>;
+        #size-cells = <0>;
+	broadcaster-parent = <&broadcaster2>;
+
+        // CH 1 : VDD_CX (S8I 0p73)
+        // CH 2 : APC2
+        // CH 3 : DDR VDD_2H
+        // CH 4 : VDD_MX_A (S3I_0p75)
+		input@0 {
+			reg = <0>;
+			label = "ext_vdd_cx";
+			shunt-resistor = <10>;
+		};
+
+		input@1 {
+			reg = <1>;
+			label = "ext_apc2";
+			shunt-resistor = <5>;
+		};
+
+		input@2 {
+			reg = <2>;
+			label = "ext_ddr_vdd_2h";
+			shunt-resistor = <10>;
+		};
+
+		input@3 {
+			reg = <3>;
+			label = "ext_vdd_mx_a";
+			shunt-resistor = <5>;
+		};
+    };
+
+
+    max34417_ext1: max34417@1c {
+        compatible = "maxim,max34417";
+        reg = <0x1c>;
+        maxim,sense-resistor = <1>;
+        vdd-supply = <&vreg_l2b_3p0>;
+        vio-supply = <&vreg_l15b_1p8>;
+        status = "okay";
+        #address-cells = <1>;
+        #size-cells = <0>;
+	broadcaster-parent = <&broadcaster2>;
+	
+        // CH 1 : MXC(S3D_0p75)
+        // CH 2 : VDD_MODEM (S5G_S6G_0p73)
+        // CH 3 : APC1
+        // CH 4 : APC0
+		input@0 {
+			reg = <0>;
+			label = "ext_mxc";
+			shunt-resistor = <5>;
+		};
+
+		input@1 {
+			reg = <1>;
+			label = "ext_vdd_modem";
+			shunt-resistor = <5>;
+		};
+
+		input@2 {
+			reg = <2>;
+			label = "ext_apc1";
+			shunt-resistor = <5>;
+		};
+
+		input@3 {
+			reg = <3>;
+			label = "ext_apc0";
+			shunt-resistor = <10>;
+		};
+    };
 
 	// Southgate/Northgate Secondary Hotswap Battery
 	// NOTE This is handled dynamically by northgate_hotswap driver
