@@ -1188,6 +1188,10 @@ static int dpu_crtc_kickoff_clone_mode(struct drm_crtc *crtc)
 		return -EINVAL;
 	}
 
+	/* wait for rt encoder(dsi) to flip a new buffer to trigger writeback */
+	if(!crtc->state->planes_changed)
+		return 0;
+
 	dpu_encoder_prepare_for_kickoff(wb_encoder);
 	dpu_encoder_prepare_for_kickoff(rt_encoder);
 
