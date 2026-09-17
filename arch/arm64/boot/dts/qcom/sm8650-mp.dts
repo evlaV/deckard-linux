@@ -2121,36 +2121,42 @@
 };
 
 &i2c5 {
-    clock-frequency = <400000>;
-    
-    // BOOT EEPROM
-    eeprom@50 {
-        compatible  = "atmel,24c64";
-        status      = "okay";
-        label		= "core_v2_eeprom";
-        reg         = <0x50>;
+	clock-frequency = <400000>;
+
+	// BOOT EEPROM
+	eeprom@50 {
+		compatible  = "atmel,24c64";
+		status      = "okay";
+		label		= "core_v2_eeprom";
+		reg         = <0x50>;
 		pagesize    = <16>;
 		size        = <8192>;
 		address-width = <16>;
-        wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
-        vcc-supply  = <&vreg_l15b_1p8>;
-    };
+		wp-gpios = <&tlmm 78 GPIO_ACTIVE_HIGH>;
+		vcc-supply  = <&vreg_l15b_1p8>;
+	};
 
-    max34417_1: max34417@12 {
-        compatible = "maxim,max34417";
-        reg = <0x12>;
-        maxim,sense-resistor = <1>;
-        vdd-supply = <&vreg_l2b_3p0>;
-        vio-supply = <&vreg_l15b_1p8>;
-        status = "okay";
-        #address-cells = <1>;
-        #size-cells = <0>;
+	broadcaster: broadcaster@2c {
+	    compatible = "i2c-sw-broadcaster";
+	    reg = <0x2c>;
+	};
 
-        // CH 1 : Kryo APC0 Cores
-        // CH 2 : Kryo APC2 Cores
-        // CH 3 : Kryo APC1 Cores
-        // CH 4 : Tensor Processor – NSP1
-        // Note: both 1.8 and 3.0V rails are always on for other sensors
+	max34417_1: max34417@12 {
+		compatible = "maxim,max34417";
+		reg = <0x12>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&vreg_l2b_3p0>;
+		vio-supply = <&vreg_l15b_1p8>;
+		status = "okay";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		broadcaster-parent = <&broadcaster>;
+
+		// CH 1 : Kryo APC0 Cores
+		// CH 2 : Kryo APC2 Cores
+		// CH 3 : Kryo APC1 Cores
+		// CH 4 : Tensor Processor – NSP1
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
 		input@0 {
 			reg = <0>;
 			label = "apc0";
@@ -2170,23 +2176,24 @@
 			reg = <3>;
 			label = "nsp1";
 		};
-    };
+	};
 
-    max34417_2: max34417@1a {
-        compatible = "maxim,max34417";
-        reg = <0x1a>;
-        maxim,sense-resistor = <1>;
-        vdd-supply = <&vreg_l2b_3p0>;
-        vio-supply = <&vreg_l15b_1p8>;
-        status = "okay";
-        #address-cells = <1>;
-        #size-cells = <0>;
+	max34417_2: max34417@1a {
+		compatible = "maxim,max34417";
+		reg = <0x1a>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&vreg_l2b_3p0>;
+		vio-supply = <&vreg_l15b_1p8>;
+		status = "okay";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		broadcaster-parent = <&broadcaster>;
 
-        // CH 1 : GFX Power
-        // CH 2 : Tensor Processor – NSP2
-        // CH 3 : Bob Power
-        // CH 4 : Unused
-        // Note: both 1.8 and 3.0V rails are always on for other sensors
+		// CH 1 : GFX Power
+		// CH 2 : Tensor Processor – NSP2
+		// CH 3 : Bob Power
+		// CH 4 : Unused
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
 		input@0 {
 			reg = <0>;
 			label = "gfx";
@@ -2206,24 +2213,25 @@
 			reg = <3>;
 			label = "unused";
 		};
-    };
+	};
 
-    // TODO enable verr ( varies based on common mode range )
-    max34417_3: max34417@10 {
-        compatible = "maxim,max34417";
-        reg = <0x10>;
-        maxim,sense-resistor = <1>;
-        vdd-supply = <&vreg_l2b_3p0>;
-        vio-supply = <&vreg_l15b_1p8>;
-        status = "okay";
-        #address-cells = <1>;
-        #size-cells = <0>;
-	
-        // CH 1 : VPH
-        // CH 2 : S1C ~1.25V Subregulation
-        // CH 3 : S3C ~0.97V Subregulation
-        // CH 4 : S6C ~1.86V Subregulation
-        // Note: both 1.8 and 3.0V rails are always on for other sensors
+	// TODO enable verr ( varies based on common mode range )
+	max34417_3: max34417@10 {
+		compatible = "maxim,max34417";
+		reg = <0x10>;
+		maxim,sense-resistor = <1>;
+		vdd-supply = <&vreg_l2b_3p0>;
+		vio-supply = <&vreg_l15b_1p8>;
+		status = "okay";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		broadcaster-parent = <&broadcaster>;
+
+		// CH 1 : VPH
+		// CH 2 : S1C ~1.25V Subregulation
+		// CH 3 : S3C ~0.97V Subregulation
+		// CH 4 : S6C ~1.86V Subregulation
+		// Note: both 1.8 and 3.0V rails are always on for other sensors
 		input@0 {
 			reg = <0>;
 			label = "vph";
@@ -2243,7 +2251,7 @@
 			reg = <3>;
 			label = "s6c";
 		};
-    }; 
+	}; 
 };
 
 // Custom Connector I2C ( Paddle Card )
