@@ -75,6 +75,7 @@ enum chip_id {
 struct max34417_input {
 	const char *label;
 	int shunt_resistor;
+	int correction;
 	//TODO:
 };
 
@@ -95,60 +96,52 @@ struct max34417_data {
 static int max34417_accumulator_read(struct device *dev, unsigned int *acc_count);
 static int max34417_accumulator_update(struct device *dev, int channel, int flags);
 
-static long max34417_power_calc(const struct max34417_data *data,
-				unsigned long long raw_power, unsigned int acc_count)
+static long max34417_power_calc(u32 correction, unsigned long long raw_power, unsigned int acc_count)
 {
 	unsigned long long scaled_avg;
-
-	scaled_avg = div_u64(raw_power, acc_count) * 1000000 * data->correction;
+	scaled_avg = div_u64(raw_power, acc_count) * 1000000 * correction;
 	return scaled_avg >> MAX34417_PWR_AVG_FULL_SCALE_BITS;
 }
 
-static int max34417_calc_correction(const struct device *dev)
+static int max34417_calc_correction(u32 rsense, u32 * correction)
 {
-	struct max34417_data *data = dev_get_drvdata(dev);
-
-	switch (data->rsense) {
+	switch (rsense) {
 	case 100:
-		data->correction = 1 * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 1 * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	case 50:
-		data->correction = 2 * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 2 * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	case 40:
-		data->correction = 2.5 * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 2.5 * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	case 25:
-		data->correction = 4 * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 4 * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	case 20:
-		data->correction = 5 * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 5 * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	case 15:
-		data->correction = 6.667f * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 6.667f * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	case 10:
-		data->correction = 10 * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 10 * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	case 5:
-		data->correction = 20 * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 20 * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	case 4:
-		data->correction = 25 * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 25 * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	case 2:
-		data->correction = 50 * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 50 * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	case 1:
-		data->correction = 100 * MAX34417_PWR_CORRECTION_SCALE;
+		*correction = 100 * MAX34417_PWR_CORRECTION_SCALE;
 		break;
 	default:
-		dev_err(dev, "Unsupported sense resistor value: %d\n",
-			(data->rsense));
 		return -EINVAL;
 	}
-
-	dev_info(dev, "correction factor %d\n", data->correction);
 
 	return 0;
 }
@@ -788,7 +781,8 @@ static int max34417_read(struct device *dev, enum hwmon_sensor_types type,
 				}
 			}
 
-			*val = max34417_power_calc(data, power, acc_count);
+			struct max34417_input *input = &data->inputs[channel];
+			*val = max34417_power_calc(input->correction, power, acc_count);
 
 			if (data->config & MAX34417_CAM_BITMASK) {
 				cfg = i2c_smbus_read_byte_data(data->client,
@@ -987,6 +981,7 @@ static int max34417_probe(struct i2c_client *client)
 
 	for_each_child_of_node_scoped(np, child) {
 		u32 val;
+		u32 shunt_resistor;
 		int ret = of_property_read_u32(child, "reg", &val);
 		if (ret) {
 			dev_err(dev, "missing reg property of %pOFn\n", child);
@@ -1000,6 +995,20 @@ static int max34417_probe(struct i2c_client *client)
 
 		/* Save the connected input label if available */
 		of_property_read_string(child, "label", &input->label);
+		
+		/* Get shunt resistor value if it exists for the input*/
+		ret = of_property_read_u32(np, "shunt-resistor", &shunt_resistor);
+		input->shunt_resistor = ret ? r_sense : shunt_resistor;
+
+		u32 correction = 1;
+		if (max34417_calc_correction(input->shunt_resistor, &correction))
+		{
+			//failed get proper shunt resistor correction
+		}
+		else
+		{
+			input->correction = correction;
+		}
 	}
 
 	broadcaster_node = of_parse_phandle(client->dev.of_node,
@@ -1012,13 +1021,15 @@ static int max34417_probe(struct i2c_client *client)
 	dev_set_drvdata(dev, data);
 
 	data->client = client;
-	data->rsense = r_sense;
 	data->perr_verr = 1; /* enabled by default */
 	data->accumulator_update_mode = 1; //auto mode
-	if (max34417_calc_correction(dev)) {
-		dev_err(dev, "Could not calculate power correction\n");
+	u32 correction = 1; //default value
+	if (max34417_calc_correction(r_sense, &correction)) {
+		dev_err(dev, "Could not calculate power correction for rs=%d\n",r_sense);
 		return -EINVAL;
 	}
+	//this is the default r_sense value -- can be overriden by the shunt_resistor value for each channel
+	data->rsense = r_sense;
 
 	mutex_init(&data->update_lock);
 
