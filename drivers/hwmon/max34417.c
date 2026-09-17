@@ -1072,7 +1072,7 @@ static int max34417_probe(struct i2c_client *client)
 	}
 
 	strscpy(old_name, client->name, sizeof(old_name));
-	snprintf(client->name, sizeof(client->name), "%s_%x", old_name, client->addr);
+	snprintf(client->name, sizeof(client->name), "%s_%d_%x", old_name, i2c_adapter_id(client->adapter), client->addr);
 
 	hwmon_dev = devm_hwmon_device_register_with_info(dev, client->name,
 							 data,
