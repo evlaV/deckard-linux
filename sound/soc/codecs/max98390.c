@@ -776,10 +776,10 @@ static void max98390_mute_work(struct work_struct *work)
 		/* Might need a 400us or 6ms sleep here based
 		 * DSM_VOL_RMP_DN_BYP values, we pick the higher number
 		 * to be sure EN=1 after this can latch */
-		usleep_range(6000, 8000);
 		regmap_update_bits(max98390->regmap,
 			MAX98390_R203A_AMP_EN,
 			MAX98390_AMP_EN_MASK, 0);
+		usleep_range(6000, 8000);
 	} else {
 		regmap_update_bits(max98390->regmap,
 			MAX98390_R203A_AMP_EN,
