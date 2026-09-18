@@ -16,6 +16,7 @@
 #include "bcm-voter.h"
 #include "icc-common.h"
 #include "icc-rpmh.h"
+#include <trace/gpuvis.h>
 
 /* QNOC QoS */
 #define QOSGEN_MAINCTL_LO(p, qp)	(0x8 + (p->port_offsets[qp]))
@@ -89,6 +90,7 @@ int qcom_icc_aggregate(struct icc_node *node, u32 tag, u32 avg_bw,
 
 	qn = node->data;
 
+	TRACE_BEGIN_CTX("qcom_icc_aggregate");
 	if (!tag)
 		tag = QCOM_ICC_TAG_ALWAYS;
 
