@@ -18,6 +18,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/units.h>
+#include <trace/gpuvis.h>
 
 #define LUT_MAX_ENTRIES			40U
 #define LUT_SRC				GENMASK(31, 30)
@@ -117,6 +118,8 @@ static int qcom_cpufreq_hw_target_index(struct cpufreq_policy *policy,
 	const struct qcom_cpufreq_soc_data *soc_data = qcom_cpufreq.soc_data;
 	unsigned long freq = policy->freq_table[index].frequency;
 	unsigned int i;
+
+	TRACE_BEGIN_CTX("qcom_cpufreq_hw_target_index");
 
 	writel_relaxed(index, data->base + soc_data->reg_perf_state);
 
