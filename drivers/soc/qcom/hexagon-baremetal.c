@@ -11,6 +11,7 @@
 #include <linux/scatterlist.h>
 #include <linux/dma-buf.h>
 #include <linux/interrupt.h>
+#include <linux/panic_notifier.h>
 #include <linux/poll.h>
 #include <linux/interconnect.h>
 #include <dt-bindings/mailbox/qcom-ipcc.h>
@@ -86,6 +87,9 @@ struct map_direct {
 	u32 pa;
 	u32 size;
 };
+
+static struct dsp *panic_adsp;
+static struct dsp *panic_cdsp;
 
 #define DSP_IOCTL_IRQ_STATUS 	_IO('C', 0) /* returns mask of pending ipcc signals and clears */
 /* note: dsp fd will have POLLIN event if there are any pending ipcc signals */
@@ -474,6 +478,17 @@ static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 	return readl(dsp->base + QDSP6SS_BOOT_STATUS);
 }
 
+static void dsp_shutdown_low_level_atomic(struct dsp *dsp)
+{
+	writel(7, dsp->base + QDSP6SS_INTF_HALTREQ);
+	printk("haltack=%d\n", readl(dsp->base + QDSP6SS_INTF_HALTACK));
+	writel(0, dsp->base + QDSP6SS_INTF_HALTREQ);
+
+	writel(~0u, dsp->base +  QDSP6SS_RESET_CFG);
+	writel(1, dsp->base +  QDSP6SS_RESET_CMD);
+	writel(0, dsp->base +  QDSP6SS_RESET_CFG);
+}
+
 static int dsp_shutdown(struct dsp *dsp)
 {
 	// XXX possible race condition if dsp_shutdown called twice simultaneously..
@@ -521,13 +536,6 @@ static int dsp_shutdown(struct dsp *dsp)
 		writel(1, dsp->base +  QDSP6SS_RESET_CMD);
 		usleep_range(10000, 20000); // XXX
 		writel(0, dsp->base +  QDSP6SS_RESET_CFG);
-		//writel(1, dsp->base +  QDSP6SS_RESET_CMD);
-
-#if 0
-		writel(0, dsp->base +  QDSP6SS_XO_CBCR);
-		writel(0, dsp->base +  QDSP6SS_SLEEP_CBCR);
-		writel(0, dsp->base +  QDSP6SS_CORE_CBCR);
-#endif
 
 		if (dsp->is_cdsp)  {
 			dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
@@ -554,6 +562,26 @@ static int dsp_shutdown(struct dsp *dsp)
 	atomic_set(&dsp->booted, 0);
 	return 0;
 }
+
+static int dsp_panic_nb(struct notifier_block *this, unsigned long event,
+		         void *ptr)
+{
+	if (panic_adsp && atomic_read(&panic_adsp->booted)) {
+		dsp_shutdown_low_level_atomic(panic_adsp);
+		atomic_set(&panic_adsp->booted, 0);
+	}
+
+	if (panic_cdsp && atomic_read(&panic_cdsp->booted)) {
+		dsp_shutdown_low_level_atomic(panic_cdsp);
+		atomic_set(&panic_cdsp->booted, 0);
+	}
+
+	return 0;
+}
+
+static struct notifier_block dsp_notifier= {
+	.notifier_call = dsp_panic_nb,
+};
 
 static int dsp_handover(struct dsp *dsp)
 {
@@ -1013,6 +1041,7 @@ static int dsp_probe(struct platform_device *pdev)
 	{
 		void __iomem *turingcc = devm_ioremap(dev, 0x32008000, 0x20000);
 		WARN_ON(IS_ERR_OR_NULL(turingcc));
+		panic_cdsp = dsp;
 
 		// 0x32008404 ?
 		writel_relaxed(1, turingcc + 0x404); // TURING_Q6SS_Q6_AXIM_CBCR
@@ -1032,11 +1061,14 @@ static int dsp_probe(struct platform_device *pdev)
 
 	if (dsp->is_adsp)
 	{
+		panic_adsp = dsp;
 		writel(0, dsp->base + DSP_APP_DEV_STATE);
 		dsp->dma_path = devm_of_icc_get(dev, "mem");
 		WARN_ON(IS_ERR(dsp->dma_path));
 		icc_set_bw(dsp->dma_path, 0, UINT_MAX);
 	}
+
+	atomic_notifier_chain_register(&panic_notifier_list, &dsp_notifier);
 
 	return 0;
 }
@@ -1045,6 +1077,7 @@ static void dsp_remove(struct platform_device *pdev)
 {
 	struct dsp *dsp = platform_get_drvdata(pdev);
 
+	atomic_notifier_chain_unregister(&panic_notifier_list, &dsp_notifier);
 	misc_deregister(&dsp->miscdev);
 	return;
 }
