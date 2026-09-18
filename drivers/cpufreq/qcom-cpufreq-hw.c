@@ -78,16 +78,29 @@ static int qcom_cpufreq_set_bw(struct cpufreq_policy *policy,
 	struct device *dev;
 	int ret;
 
-	dev = get_cpu_device(policy->cpu);
+	{
+		TRACE_BEGIN_CTX("get_cpu_device call");
+		dev = get_cpu_device(policy->cpu);
+	}
+	
 	if (!dev)
 		return -ENODEV;
 
-	opp = dev_pm_opp_find_freq_exact(dev, freq_hz, true);
+	{
+		TRACE_BEGIN_CTX("dev_pm_opp_find_freq_exact call");
+		opp = dev_pm_opp_find_freq_exact(dev, freq_hz, true);
+	}
 	if (IS_ERR(opp))
 		return PTR_ERR(opp);
 
-	ret = dev_pm_opp_set_opp(dev, opp);
-	dev_pm_opp_put(opp);
+	{
+		TRACE_BEGIN_CTX("dev_pm_opp_set_opp call");
+		ret = dev_pm_opp_set_opp2(dev, opp);
+	}
+	{
+		TRACE_BEGIN_CTX("dev_pm_opp_put call");
+		dev_pm_opp_put(opp);
+	}
 	return ret;
 }
 

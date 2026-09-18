@@ -19,7 +19,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/xarray.h>
-
+#include <trace/gpuvis.h>
 #include "opp.h"
 
 /*
@@ -1397,6 +1397,113 @@ static int _set_opp(struct device *dev, struct opp_table *opp_table,
 	return ret;
 }
 
+static int _set_opp2(struct device *dev, struct opp_table *opp_table,
+		    struct dev_pm_opp *opp, void *clk_data, bool forced)
+{
+	struct dev_pm_opp *old_opp;
+	int scaling_down, ret;
+
+	TRACE_BEGIN_CTX("_set_opp2");
+
+	if (unlikely(!opp))
+		return _disable_opp_table(dev, opp_table);
+
+	/* Find the currently set OPP if we don't know already */
+	if (unlikely(!opp_table->current_opp))
+		_find_current_opp(dev, opp_table);
+
+	old_opp = opp_table->current_opp;
+
+	/* Return early if nothing to do */
+	if (!forced && old_opp == opp && opp_table->enabled) {
+		dev_dbg_ratelimited(dev, "%s: OPPs are same, nothing to do\n", __func__);
+		return 0;
+	}
+
+	dev_dbg(dev, "%s: switching OPP: Freq %lu -> %lu Hz, Level %u -> %u, Bw %u -> %u\n",
+		__func__, old_opp->rates[0], opp->rates[0], old_opp->level,
+		opp->level, old_opp->bandwidth ? old_opp->bandwidth[0].peak : 0,
+		opp->bandwidth ? opp->bandwidth[0].peak : 0);
+
+	scaling_down = _opp_compare_key(opp_table, old_opp, opp);
+	if (scaling_down == -1)
+		scaling_down = 0;
+
+	/* Scaling up? Configure required OPPs before frequency */
+	if (!scaling_down) {
+		ret = _set_required_opps(dev, opp_table, opp, true);
+		if (ret) {
+			dev_err(dev, "Failed to set required opps: %d\n", ret);
+			return ret;
+		}
+
+		ret = _set_opp_level(dev, opp);
+		if (ret)
+			return ret;
+
+		ret = _set_opp_bw(opp_table, opp, dev);
+		if (ret) {
+			dev_err(dev, "Failed to set bw: %d\n", ret);
+			return ret;
+		}
+
+		if (opp_table->config_regulators) {
+			ret = opp_table->config_regulators(dev, old_opp, opp,
+							   opp_table->regulators,
+							   opp_table->regulator_count);
+			if (ret) {
+				dev_err(dev, "Failed to set regulator voltages: %d\n",
+					ret);
+				return ret;
+			}
+		}
+	}
+
+	if (opp_table->config_clks) {
+		ret = opp_table->config_clks(dev, opp_table, opp, clk_data, scaling_down);
+		if (ret)
+			return ret;
+	}
+
+	/* Scaling down? Configure required OPPs after frequency */
+	if (scaling_down) {
+		if (opp_table->config_regulators) {
+			ret = opp_table->config_regulators(dev, old_opp, opp,
+							   opp_table->regulators,
+							   opp_table->regulator_count);
+			if (ret) {
+				dev_err(dev, "Failed to set regulator voltages: %d\n",
+					ret);
+				return ret;
+			}
+		}
+
+		ret = _set_opp_bw(opp_table, opp, dev);
+		if (ret) {
+			dev_err(dev, "Failed to set bw: %d\n", ret);
+			return ret;
+		}
+
+		ret = _set_opp_level(dev, opp);
+		if (ret)
+			return ret;
+
+		ret = _set_required_opps(dev, opp_table, opp, false);
+		if (ret) {
+			dev_err(dev, "Failed to set required opps: %d\n", ret);
+			return ret;
+		}
+	}
+
+	opp_table->enabled = true;
+	dev_pm_opp_put(old_opp);
+
+	/* Make sure current_opp doesn't get freed */
+	opp_table->current_opp = dev_pm_opp_get(opp);
+
+	return ret;
+}
+
 /**
  * dev_pm_opp_set_rate() - Configure new OPP based on frequency
  * @dev:	 device for which we do this operation
@@ -1488,6 +1595,22 @@ int dev_pm_opp_set_opp(struct device *dev, struct dev_pm_opp *opp)
 	return _set_opp(dev, opp_table, opp, NULL, false);
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_set_opp);
+
+int dev_pm_opp_set_opp2(struct device *dev, struct dev_pm_opp *opp)
+{
+	struct opp_table *opp_table __free(put_opp_table);
+
+	TRACE_BEGIN_CTX("dev_pm_opp_set_opp2");
+
+	opp_table = _find_opp_table(dev);
+	if (IS_ERR(opp_table)) {
+		dev_err(dev, "%s: device opp doesn't exist\n", __func__);
+		return PTR_ERR(opp_table);
+	}
+
+	return _set_opp2(dev, opp_table, opp, NULL, false);
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_set_opp2);
 
 /* OPP-dev Helpers */
 static void _remove_opp_dev(struct opp_device *opp_dev,
