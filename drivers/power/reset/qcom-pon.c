@@ -36,7 +36,7 @@
 
 static void qcom_pon_kmsg_dump(struct work_struct *work);
 
-#define QCOM_PON_COMBO_TIMEOUT_MS 3000
+#define QCOM_PON_COMBO_TIMEOUT_MS 3500
 static DEFINE_SPINLOCK(qcom_pon_combo_lock);
 static DECLARE_DELAYED_WORK(qcom_pon_kmsg_dump_work, qcom_pon_kmsg_dump);
 
