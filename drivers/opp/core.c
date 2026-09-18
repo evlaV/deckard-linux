@@ -1173,6 +1173,37 @@ static int _set_opp_bw(const struct opp_table *opp_table,
 	return 0;
 }
 
+
+static int _set_opp_bw2(const struct opp_table *opp_table,
+		       struct dev_pm_opp *opp, struct device *dev)
+{
+	u32 avg, peak;
+	int i, ret;
+
+	if (!opp_table->paths)
+		return 0;
+
+	TRACE_BEGIN_CTX("_set_opp_bw2");
+
+	for (i = 0; i < opp_table->path_count; i++) {
+		if (!opp) {
+			avg = 0;
+			peak = 0;
+		} else {
+			avg = opp->bandwidth[i].avg;
+			peak = opp->bandwidth[i].peak;
+		}
+		ret = icc_set_bw(opp_table->paths[i], avg, peak);
+		if (ret) {
+			dev_err(dev, "Failed to %s bandwidth[%d]: %d\n",
+				opp ? "set" : "remove", i, ret);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 static int _set_opp_level(struct device *dev, struct dev_pm_opp *opp)
 {
 	unsigned int level = 0;
