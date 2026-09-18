@@ -10,6 +10,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
+#include <linux/panic_notifier.h>
 #include <linux/platform_device.h>
 #include <linux/reboot-mode.h>
 #include <linux/reboot.h>
@@ -401,8 +402,9 @@ static struct attribute_group sysfs_group = {
 
 static void qcom_pon_kmsg_dump(struct work_struct *work)
 {
+	pr_info("%s: calling panic notifier dumping dmesg to pstore\n", __func__);
+	atomic_notifier_call_chain(&panic_notifier_list, 0, NULL);
 	kmsg_dump(KMSG_DUMP_PANIC);
-	pr_info("%s: dumping dmesg to pstore\n", __func__);
 }
 
 static struct qcom_pon *qcom_pon_input_handler_to_qcom_pon(struct input_handler *handler)
