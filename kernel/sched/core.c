@@ -2135,6 +2135,13 @@ static void __init init_uclamp(void)
 		root_task_group.uclamp[clamp_id] = uc_max;
 #endif
 	}
+
+	/*
+	 * Ensures that a default set in the kernel 
+	 * (as opposed to sysutil) still triggers uclamp. 
+	 */
+	if (sysctl_sched_uclamp_util_min_rt_default != SCHED_CAPACITY_SCALE)
+		sched_uclamp_enable();
 }
 
 #else /* !CONFIG_UCLAMP_TASK: */
