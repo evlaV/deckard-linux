@@ -12,6 +12,15 @@
 /dts-v1/;
 /plugin/;
 
+&{/reserved-memory} {
+	linux,cma {
+		compatible = "shared-dma-pool";
+		size = <0x0 0x40000000>;
+		reusable;
+		linux,cma-default;
+	};
+};
+
 &camss {
 	vdd-csiphy35-0p9-supply = <&vreg_l2i_0p88>;
 	vdd-csiphy35-1p2-supply = <&vreg_l3i_1p2>;
