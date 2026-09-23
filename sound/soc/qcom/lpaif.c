@@ -269,6 +269,19 @@ lpaif_prepare(struct snd_soc_component *component, struct snd_pcm_substream *sub
 {
 	struct lpaif *lpaif = snd_soc_component_get_drvdata(component);
 	struct lpaif_channel *ch = substream->runtime->private_data;
+	bool is_master = !is_slave(lpaif, ch) && ch->slave_chan;
+	u32 intf = ch->intf;
+	if (is_slave(lpaif, ch))
+		intf = ch->slave_chan->intf;
+
+	/* workaround for enabling I2S clock output at prepare() for max98390 speakers:
+	 * it looks like HW wants the I2S enable to come after DMA enable
+	 * ungate the I2S clock by enabling the MIC mode here (instead of SPKR mode)
+	 * on trigger it will swap to SPKR mode after the DMA enable, which should keep the clock going seamlessly
+	 */
+	if (!is_master && !(intf & LPASS_INTF_CODEC) && substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		writel_relaxed(I2S_CTL_MIC_MODE(1) | I2S_CTL_MIC_EN,
+			       lpaif->base + I2S_BASE((intf & 0xf) - 1) + REG_I2S_CTL);
 
 	if (is_slave(lpaif, ch))
 		return 0;
@@ -300,6 +313,22 @@ lpaif_prepare(struct snd_soc_component *component, struct snd_pcm_substream *sub
 	writel_relaxed((snd_pcm_lib_buffer_bytes(substream) >> 2) - 1, ch->base + REG_DMA_LEN);
 	writel_relaxed((snd_pcm_lib_period_bytes(substream) >> 2) - 1, ch->base + REG_DMA_PER_LEN);
 
+	return 0;
+}
+
+static int
+lpaif_hw_free(struct snd_soc_component *component, struct snd_pcm_substream *substream)
+{
+	struct lpaif *lpaif = snd_soc_component_get_drvdata(component);
+	struct lpaif_channel *ch = substream->runtime->private_data;
+	bool is_master = !is_slave(lpaif, ch) && ch->slave_chan;
+	u32 intf = ch->intf;
+	if (is_slave(lpaif, ch))
+		intf = ch->slave_chan->intf;
+
+	/* workaround to keep I2S clock output untill hw_free() for max98390 speakers: */
+	if (!is_master && !(intf & LPASS_INTF_CODEC) && substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		writel_relaxed(0, lpaif->base + I2S_BASE((intf & 0xf) - 1) + REG_I2S_CTL);
 	return 0;
 }
 
@@ -386,6 +415,9 @@ lpaif_trigger(struct snd_soc_component *component,
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		if (intf & LPASS_INTF_CODEC)
 			writel_relaxed(0, base + REG_DMA_CODEC_INTF);
+		/* workaround to keep I2S clock output untill hw_free() for max98390 speakers: */
+		else if (!is_master && substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			writel_relaxed(I2S_CTL_MIC_MODE(1) | I2S_CTL_MIC_EN, i2s_base + REG_I2S_CTL);
 		else
 			writel_relaxed(0, i2s_base + REG_I2S_CTL);
 		writel_relaxed(0, base + REG_DMA_CTL);
@@ -409,6 +441,7 @@ static const struct snd_soc_component_driver lpaif_component_driver = {
 	.open = lpaif_open,
 	.close = lpaif_close,
 	.prepare = lpaif_prepare,
+	.hw_free = lpaif_hw_free,
 	.trigger = lpaif_trigger,
 	.pointer = lpaif_pointer,
 };
