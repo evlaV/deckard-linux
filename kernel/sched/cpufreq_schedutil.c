@@ -396,6 +396,28 @@ static inline void ignore_dl_rate_limit(struct sugov_cpu *sg_cpu)
 		sg_cpu->sg_policy->need_freq_update = true;
 }
 
+/*
+ * Make sugov_should_update_freq() ignore the rate limit when a uclamp.min 
+ * above the last computed floor has just been enqueued. Otherwise the request 
+ * is dropped, and for an RT task, nothing asks again until it sleeps.
+ * 
+ * On this system, SCHED_RR tasks are used for deadline-driven, periodic 
+ * bursts of work, similar to SCHED_DEADLINE tasks on other systems. 
+ * Therefore, it makes sense to implement a mechanism that's equivalent 
+ * to ignore_dl_rate_limit() for these tasks.
+ *
+ * The default behavior exists to prevent thrashing. Therefore, do not 
+ * clamp any threads that wake up at a high rate (multiple times per frame).
+ */
+static inline void ignore_uclamp_rate_limit(struct sugov_cpu *sg_cpu)
+{
+#ifdef CONFIG_UCLAMP_TASK
+	if (uclamp_is_used() &&
+	    uclamp_rq_get(cpu_rq(sg_cpu->cpu), UCLAMP_MIN) > sg_cpu->bw_min)
+		sg_cpu->sg_policy->need_freq_update = true;
+#endif
+}
+
 static inline bool sugov_update_single_common(struct sugov_cpu *sg_cpu,
 					      u64 time, unsigned long max_cap,
 					      unsigned int flags)
@@ -406,6 +428,7 @@ static inline bool sugov_update_single_common(struct sugov_cpu *sg_cpu,
 	sg_cpu->last_update = time;
 
 	ignore_dl_rate_limit(sg_cpu);
+	ignore_uclamp_rate_limit(sg_cpu);
 
 	if (!sugov_should_update_freq(sg_cpu->sg_policy, time))
 		return false;
@@ -523,6 +546,7 @@ sugov_update_shared(struct update_util_data *hook, u64 time, unsigned int flags)
 	sg_cpu->last_update = time;
 
 	ignore_dl_rate_limit(sg_cpu);
+	ignore_uclamp_rate_limit(sg_cpu);
 
 	if (sugov_should_update_freq(sg_policy, time)) {
 		next_f = sugov_next_freq_shared(sg_cpu, time);
