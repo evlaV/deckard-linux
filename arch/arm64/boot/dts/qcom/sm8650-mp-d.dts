@@ -30,9 +30,9 @@
 
 		simple-framebuffer {
 			compatible = "simple-framebuffer";
-			width = <4320>;
-			height = <2160>;
-			stride = <(4320 * 4)>;
+			width = <3552>;
+			height = <1920>;
+			stride = <(3552 * 4)>;
 			format = "a8r8g8b8";
 			memory-region = <&framebuffer_mem>;
 			status = "disabled";
