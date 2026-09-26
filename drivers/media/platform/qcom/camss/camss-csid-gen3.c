@@ -953,7 +953,7 @@ static int csid_init_regs_update_buffers_and_workqueue(struct csid_device *csid)
 		dev_err(csid->camss->dev, "regs update workqueue alloc failed\n");
 		return -ENOMEM;
 	}
-
+#if 0
 	// Configure the workqueue to run on CPU 2/3
 	struct workqueue_attrs *attrs;
 	attrs = alloc_workqueue_attrs();
@@ -974,6 +974,7 @@ static int csid_init_regs_update_buffers_and_workqueue(struct csid_device *csid)
 		return -EINVAL;
 	}
 	free_workqueue_attrs(attrs);
+#endif
 
 	INIT_WORK(&csid->csid_vfe_regs_update_work, csid_vfe_regs_update_work_fn);
 
