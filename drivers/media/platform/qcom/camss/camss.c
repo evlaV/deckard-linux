@@ -4061,7 +4061,7 @@ static const struct camss_subdev_resources vfe_res_8650[] = {
 	{
 		.regulators = {},
 		.clock = { "gcc_axi_hf", "cpas_ahb", "cpas_fast_ahb",
-			   "camnoc_axi_rt", "vfe0_fast_ahb", "vfe0", "cpas_vfe0",
+			   "camnoc_axi", "vfe0_fast_ahb", "vfe0", "cpas_vfe0",
 			   "qdss_debug_xo",
 		},
 		.clock_rate = { { 0 },
@@ -4088,7 +4088,7 @@ static const struct camss_subdev_resources vfe_res_8650[] = {
 	{
 		.regulators = {},
 		.clock = { "gcc_axi_hf", "cpas_ahb", "cpas_fast_ahb",
-			   "camnoc_axi_rt", "vfe1_fast_ahb", "vfe1", "cpas_vfe1",
+			   "camnoc_axi", "vfe1_fast_ahb", "vfe1", "cpas_vfe1",
 			   "qdss_debug_xo",
 		},
 		.clock_rate = {	{ 0 },
@@ -4115,7 +4115,7 @@ static const struct camss_subdev_resources vfe_res_8650[] = {
 	{
 		.regulators = {},
 		.clock = { "gcc_axi_hf", "cpas_ahb", "cpas_fast_ahb",
-			   "camnoc_axi_rt", "vfe2_fast_ahb", "vfe2", "cpas_vfe2",
+			   "camnoc_axi", "vfe2_fast_ahb", "vfe2", "cpas_vfe2",
 			   "qdss_debug_xo",
 		},
 		.clock_rate = {	{ 0 },
@@ -4141,7 +4141,7 @@ static const struct camss_subdev_resources vfe_res_8650[] = {
 	/* VFE3 lite */
 	{
 		.regulators = {},
-		.clock = { "gcc_axi_hf", "cpas_ahb", "camnoc_axi_rt",
+		.clock = { "gcc_axi_hf", "cpas_ahb", "camnoc_axi",
 			   "vfe_lite_ahb", "vfe_lite", "cpas_vfe_lite",
 			   "qdss_debug_xo",
 		},
@@ -4166,7 +4166,7 @@ static const struct camss_subdev_resources vfe_res_8650[] = {
 	/* VFE4 lite */
 	{
 		.regulators = {},
-		.clock = { "gcc_axi_hf", "cpas_ahb", "camnoc_axi_rt",
+		.clock = { "gcc_axi_hf", "cpas_ahb", "camnoc_axi",
 			   "vfe_lite_ahb", "vfe_lite", "cpas_vfe_lite",
 			   "qdss_debug_xo",
 		},
@@ -4220,7 +4220,7 @@ static const struct resources_icc icc_res_sm8650[] = {
 		.icc_bw_tbl.peak = 76800,
 	},
 	{
-		.name = "hf_0_mnoc",
+		.name = "hf_mnoc",
 		.icc_bw_tbl.avg = 2097152,
 		.icc_bw_tbl.peak = 2097152,
 	},
