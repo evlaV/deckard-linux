@@ -1,0 +1,85 @@
+stages:
+  - build
+  - collect
+
+variables:
+  # Selects `deckard/linux-${KVER}-deckard` (and friends) within holo
+  KVER: "72"
+
+.kernel-base:
+  stage: build
+  image: registry.gitlab.steamos.cloud/deckard/deckardos/holo/steamos-arm64-package-builder-main:latest
+  variables:
+    PKGDEST: "${CI_PROJECT_DIR}/local_repo"
+    GIT_STRATEGY: "none"
+  before_script:
+    # Clone into a subdirectory, as `local_repo/` may already exist here from the artifacts of jobs we `need`
+    - git clone https://gitlab.steamos.cloud/deckard/deckardos/holo holo
+    # Every package that sources `kernel_common.pkgbuild` picks up this commit (and its `+g<sha>` pkgver)
+    - sed -i -e "s/^_commit=.*/_commit=${CI_COMMIT_SHA}/" holo/deckard/linux-${KVER}-deckard/kernel_common.pkgbuild
+    - cat holo/deckard/linux-${KVER}-deckard/kernel_common.pkgbuild
+    # Force every package we build to include the `kernel_common.pkgbuild` under test, whichever one it sourced before
+    - |
+      for PKG in linux-${KVER}-deckard linux-${KVER}-v4l2loopback-deckard linux-api-headers linux-tools; do
+        sed -i -e "s@^[[:space:]]*\(source\|\.\)[[:space:]].*kernel_common\.pkgbuild.*\$@source ../linux-${KVER}-deckard/kernel_common.pkgbuild@" "holo/deckard/${PKG}/PKGBUILD"
+        grep -qx "source ../linux-${KVER}-deckard/kernel_common.pkgbuild" "holo/deckard/${PKG}/PKGBUILD" || { echo "ERROR: ${PKG} does not source kernel_common.pkgbuild" >&2; exit 1; }
+      done
+    - ulimit -c 0
+    - sudo pacman -Syy
+    # Install packages built by the jobs we `need`, so that we build against them rather than the published ones.
+    # Move them out of `local_repo` first so that each job only exports what it built itself.
+    - mkdir -p needs_repo
+    - if compgen -G ./local_repo/*.pkg.tar.zst; then mv ./local_repo/*.pkg.tar.zst needs_repo/ && sudo pacman --noconfirm -U ./needs_repo/*.pkg.tar.zst; fi
+  tags:
+    - aarch64-linux-docker-heavy
+  artifacts:
+    paths:
+      - local_repo/*.pkg.tar.zst
+
+linux-deckard_build:
+  extends: .kernel-base
+  timeout: 3h
+  script:
+    - ./holo/.ci_scripts/build_package.sh holo/deckard/linux-${KVER}-deckard
+
+v4l2loopback-deckard_build:
+  extends: .kernel-base
+  needs:
+    - job: linux-deckard_build
+  script:
+    # Build against the exact kernel release that `linux-deckard_build` produced
+    - KREL="$(pacman -Qlq linux-${KVER}-deckard-headers | sed -n 's|^/usr/lib/modules/\([^/]*\)/build/$|\1|p')"
+    - test -n "${KREL}"
+    - sed -i -e "s/^_kernel_release=.*/_kernel_release=\"${KREL}\"/" holo/deckard/linux-${KVER}-v4l2loopback-deckard/PKGBUILD
+    - ./holo/.ci_scripts/build_package.sh holo/deckard/linux-${KVER}-v4l2loopback-deckard
+
+linux-api-headers_build:
+  extends: .kernel-base
+  script:
+    - ./holo/.ci_scripts/build_package.sh holo/deckard/linux-api-headers
+
+linux-tools_build:
+  extends: .kernel-base
+  needs:
+    - job: linux-api-headers_build
+  script:
+    - ./holo/.ci_scripts/build_package.sh holo/deckard/linux-tools
+
+# Gather every package into a single artifact archive, so they can all be downloaded and installed together
+kernel-packages:
+  stage: collect
+  image: registry.gitlab.steamos.cloud/deckard/deckardos/holo/steamos-arm64-package-builder-main:latest
+  variables:
+    GIT_STRATEGY: "none"
+  needs:
+    - job: linux-deckard_build
+    - job: v4l2loopback-deckard_build
+    - job: linux-api-headers_build
+    - job: linux-tools_build
+  script:
+    - ls -la local_repo/
+  tags:
+    - aarch64-linux-docker
+  artifacts:
+    paths:
+      - local_repo/*.pkg.tar.zst
