@@ -158,6 +158,8 @@ struct lpm026m648c_ctx {
 	uint16_t vcom90[2];
 
 	lpm026m648c_modes_t current_mode;
+
+    bool display_connected[2];
 };
 
 static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
@@ -242,20 +244,24 @@ static const struct drm_display_mode modes[5] = {
 
 #define lpm026m648c_dsi_write_seq(ctx, cmd, seq...)					\
 	do {										\
-		u8 d[] = {cmd, seq};							\
-		struct mipi_dsi_multi_context dsi_ctx0 = { .dsi = ctx->dsi[0] };	\
-		mipi_dsi_dcs_write_buffer_multi(&dsi_ctx0, d, ARRAY_SIZE(d));		\
-		if (ctx->is_dual_panel) {						\
+		u8 d[] = {cmd, seq};                    \
+		if ( ctx->display_connected[0]){							\
+			struct mipi_dsi_multi_context dsi_ctx0 = { .dsi = ctx->dsi[0] };	\
+			mipi_dsi_dcs_write_buffer_multi(&dsi_ctx0, d, ARRAY_SIZE(d));		\
+		}									\
+		if (ctx->is_dual_panel && ctx->display_connected[1]) {						\
 			struct mipi_dsi_multi_context dsi_ctx1 = { .dsi = ctx->dsi[1] };\
 			mipi_dsi_dcs_write_buffer_multi(&dsi_ctx1, d, ARRAY_SIZE(d));	\
 		}									\
 	} while (0)
 
 #define lpm026m648c_dsi_write_buffer(ctx, d)						\
-	do {										\
-		struct mipi_dsi_multi_context dsi_ctx0 = { .dsi = ctx->dsi[0] };	\
-		mipi_dsi_dcs_write_buffer_multi(&dsi_ctx0, d, ARRAY_SIZE(d));		\
-		if (ctx->is_dual_panel) {						\
+	do {									\
+		if ( ctx->display_connected[0]){										\
+			struct mipi_dsi_multi_context dsi_ctx0 = { .dsi = ctx->dsi[0] };	\
+			mipi_dsi_dcs_write_buffer_multi(&dsi_ctx0, d, ARRAY_SIZE(d));		\
+		}									\
+		if (ctx->is_dual_panel && ctx->display_connected[1]) {						\
 			struct mipi_dsi_multi_context dsi_ctx1 = { .dsi = ctx->dsi[1] };\
 			mipi_dsi_dcs_write_buffer_multi(&dsi_ctx1, d, ARRAY_SIZE(d));	\
 		}									\
@@ -535,12 +541,20 @@ static int get_panel_info(struct drm_panel *panel)
 
 	panel_num = ctx->is_dual_panel ? 2 : 1;
 	for (id = 0; id < panel_num; id++) {
-		offset =  id*PANEL_MFG_INFO_NUM_BYTES;
-		ret = mipi_dsi_generic_read(ctx->dsi[id], panel_info_regs, 1,
-				&info[offset], PANEL_MFG_INFO_NUM_BYTES);
+		if ( ctx->display_connected[id] ) {
+			offset =  id*PANEL_MFG_INFO_NUM_BYTES;
+			ret = mipi_dsi_generic_read(ctx->dsi[id], panel_info_regs, 1,
+					&info[offset], PANEL_MFG_INFO_NUM_BYTES);
+		} else {
+			DRM_DEV_ERROR(ctx->dev, "panel %d disabled\n", id);
+			ret = -1;
+		}
 		if (ret < 0) {
 			DRM_DEV_ERROR(ctx->dev, "failed to read panel%d info\n", id);
-        }
+			ctx->display_connected[id] = false;
+		} else {
+			ctx->display_connected[id] = true;
+		}
 	}
 	// save left vcom values
 	ctx->vcom120[0] = ctx->panel_mfg_info[VCOM120_OFFSET] << 8 | ctx->panel_mfg_info[VCOM120_OFFSET + 1];
@@ -1349,6 +1363,10 @@ static int lpm026m648c_probe(struct mipi_dsi_device *dsi)
 	ctx->is_dual_panel = of_property_read_bool(dev->of_node, "dual-panel");
 	if (!ctx->is_dual_panel)
 		goto skip_panel2;
+
+	// for panel tester we disable left disable
+	ctx->display_connected[0] = false;
+	ctx->display_connected[1] = true;
 
 	dsi1 = of_graph_get_remote_node(dsi->dev.of_node, 1, -1);
 	if (!dsi1) {
