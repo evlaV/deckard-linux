@@ -673,7 +673,7 @@ static void max98390_log_state(struct max98390_priv *max98390)
 static void max98390_thermal_rearm(struct max98390_priv *max98390)
 {
 	struct snd_soc_dapm_context *dapm =
-		snd_soc_component_get_dapm(max98390->component);
+		snd_soc_component_to_dapm(max98390->component);
 	unsigned int val;
 
 	if (regmap_read(max98390->regmap, MAX98390_R23FF_GLOBAL_EN, &val))
