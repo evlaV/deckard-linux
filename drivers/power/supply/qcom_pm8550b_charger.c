@@ -66,6 +66,9 @@ struct pm8550b_charger {
 
 	bool aicl_complete;
 
+	/* Last CHGR_CHARGER_STATUS read from the charger IRQ, exposed via sysfs */
+	u8 charger_status;
+
 	// spinlock_t lock; /* Register atomicity */
 };
 
@@ -840,6 +843,14 @@ static ssize_t qph2_show(struct device *dev, struct device_attribute *attr, char
 	return sysfs_emit(buf, "%d\n", !!(reg & CHGR2_INT_CHG_PATH_STS_MASK));
 }
 
+static ssize_t charger_status_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct pm8550b_charger *chg = power_supply_get_drvdata(psy);
+
+	return sysfs_emit(buf, "%u\n", READ_ONCE(chg->charger_status));
+}
+
 static ssize_t ship_mode_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct power_supply *psy = dev_get_drvdata(dev);
@@ -876,6 +887,7 @@ static DEVICE_ATTR_RW(qph2_allow);
 static DEVICE_ATTR_WO(qph2_resume);
 static DEVICE_ATTR_RO(qph2);
 static DEVICE_ATTR_WO(ship_mode);
+static DEVICE_ATTR_RO(charger_status);
 
 static struct attribute *pm8550b_battery_attrs[] = {
 	&dev_attr_aicl_status.attr,
@@ -889,6 +901,7 @@ static struct attribute *pm8550b_battery_attrs[] = {
 	&dev_attr_qph2_resume.attr,
 	&dev_attr_qph2.attr,
 	&dev_attr_ship_mode.attr,
+	&dev_attr_charger_status.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(pm8550b_battery);
@@ -902,15 +915,67 @@ static const struct power_supply_desc pm8550b_charger_desc = {
 	.property_is_writeable = pm8550b_charger_is_writeable,
 };
 
+static const char * const pm8550b_charger_status_strings[] = {
+	[CHGR_CHARGER_STATUS_INHIBIT] = "STATUS_INHIBIT",
+	[CHGR_CHARGER_STATUS_TRICKLE] = "STATUS_TRICKLE",
+	[CHGR_CHARGER_STATUS_PRECHARGE] = "STATUS_PRECHARGE",
+	[CHGR_CHARGER_STATUS_FULLON] = "STATUS_FULLON",
+	[CHGR_CHARGER_STATUS_TAPER] = "STATUS_TAPER",
+	[CHGR_CHARGER_STATUS_TERMINATION] = "STATUS_TERMINATION",
+	[CHGR_CHARGER_STATUS_PAUSE] = "STATUS_CHARGING_PAUSE",
+	[CHGR_CHARGER_STATUS_CHARGING_DISABLED] = "STATUS_CHARGING_DISABLED",
+};
+
+static const char *pm8550b_charger_status_str(unsigned int status)
+{
+	if (status >= ARRAY_SIZE(pm8550b_charger_status_strings) || !pm8550b_charger_status_strings[status])
+		return "STATUS_UNKNOWN";
+
+	return pm8550b_charger_status_strings[status];
+}
+
+/**
+ * pm8550b_charger_update_status() - Cache the charger status register
+ * @chg: charger instance
+ *
+ * Reads CHGR_CHARGER_STATUS, stores it in @chg->charger_status and notifies
+ * pollers of the charger_status sysfs attribute. Pollers are notified on
+ * every call, so a repeated error with an unchanged value still wakes them.
+ *
+ * Return: the raw register value.
+ */
+static unsigned int pm8550b_charger_update_status(struct pm8550b_charger *chg)
+{
+	unsigned int reg = 0;
+
+	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHARGER_STATUS_ADDR, &reg);
+
+	WRITE_ONCE(chg->charger_status, (u8)reg);
+	sysfs_notify(&chg->psy->dev.kobj, NULL, dev_attr_charger_status.attr.name);
+
+	return reg;
+}
+
 static irqreturn_t qcom_pm8550b_charger_isr(int irq, void *dev_id)
 {
 	struct pm8550b_charger_irq_data *irq_data = dev_id;
 	struct pm8550b_charger *chg = irq_data->charger;
 	unsigned int reg = 0;
+	bool overcurrent, overvoltage, safety_timer;
+
+	dev_dbg(&chg->psy->dev, "8550B IRQ: %i\n", irq_data->virq);
 
 	switch (irq_data->virq) {
 	case PM8550B_CHARGER_STATE_CHANGE_IRQ:
-		regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHARGER_STATUS_ADDR, &reg);
+		reg = pm8550b_charger_update_status(chg);
+
+		overcurrent = !!(reg & BIT(3));
+		overvoltage = !!(reg & BIT(4));
+		safety_timer = !!(reg & BIT(5));
+		dev_dbg(&chg->psy->dev, "8550B REG: %u: %s, overcurrent: %i, overvoltage: %i, safety_timer: %i\n",
+			reg, pm8550b_charger_status_str(reg & CHGR_CHARGER_STATUS_MASK),
+			overcurrent, overvoltage, safety_timer);
+
 		if (!(reg & CHGR_CHARGER_STATUS_VALID_POWER_MASK)) {
 			// If power is disconnected, clear AICL... Best I have got at the moment
 			chg->aicl_complete = false;
@@ -920,7 +985,9 @@ static irqreturn_t qcom_pm8550b_charger_isr(int irq, void *dev_id)
 		break;
 	case PM8550B_CHARGER_CHARGING_ERROR_IRQ:
 		/* Safety Timer Expiration, Battery Overvoltage, or Battery Missing/Detected */
+		reg = pm8550b_charger_update_status(chg);
 		power_supply_changed(chg->psy);
+		dev_warn(&chg->psy->dev, "Charging error IRQ, status: %u\n", reg);
 		break;
 	}
 
@@ -971,10 +1038,12 @@ static irqreturn_t qcom_pm8550b_misc_isr(int irq, void *dev_id)
 		return IRQ_HANDLED;
 
 	// spin_lock_irq(&chg->lock);
+	dev_dbg(&chg->psy->dev, "8550B MISC IRQ: %i\n", irq_data->virq);
 
 	switch (irq_data->virq) {
 	case PM8550B_MISC_AICL_FAIL_IRQ:
 		// TODO We care about this, but not sure how to handle it...
+		dev_dbg(&chg->psy->dev, "AICL failed\n");
 
 		break;
 	case PM8550B_MISC_AICL_DONE_IRQ:
@@ -1115,6 +1184,9 @@ static int qcom_pm8550b_charger_probe(struct platform_device *pdev)
 	chg->psy = devm_power_supply_register(dev, &pm8550b_charger_desc, &psy_cfg);
 	if (IS_ERR(chg->psy))
 		return dev_err_probe(dev, PTR_ERR(chg->psy), "Failed to register power supply\n");
+
+	/* Seed the cached status before the IRQs can update it */
+	pm8550b_charger_update_status(chg);
 
 	/* Setup IRQ */
 	struct pm8550b_charger_irq_data *irq_data;
