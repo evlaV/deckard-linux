@@ -51,6 +51,7 @@
 #include <linux/uaccess.h>
 #include <linux/sched/isolation.h>
 #include <linux/sched/debug.h>
+#include <uapi/linux/sched/types.h>
 #include <linux/nmi.h>
 #include <linux/kvm_para.h>
 #include <linux/delay.h>
@@ -2825,8 +2826,25 @@ static struct worker *create_worker(struct worker_pool *pool)
 		if( pool->attrs->prio != 255 && pool->attrs->prio != 0 ) 
 		{
 			struct sched_param sp;
+			/*
+			 * The superhighpri pool carries the DRM atomic commit, which
+			 * must finish before the next vblank.  With a non-default RT
+			 * uclamp floor, these worker need an additional bump in frequency.
+			 *
+			 * Half of the capacity scale is enough: on a Steam Frame at
+			 * 144 Hz, 512 kept timed-out presents equal to 1024 with the
+			 * mid cluster's time at its top OPP going from 70 % to 0 %,
+			 * while 320 quadrupled the timeouts.
+			 */
+			struct sched_attr ua = {
+				.sched_flags = SCHED_FLAG_KEEP_ALL | SCHED_FLAG_UTIL_CLAMP_MIN,
+				.sched_util_min = SCHED_CAPACITY_SCALE / 2,
+			};
 			sp.sched_priority = pool->attrs->prio ;
 			sched_setscheduler_nocheck(worker->task, SCHED_RR, &sp);
+			if (sched_setattr_nocheck(worker->task, &ua))
+				pr_warn_once("workqueue: could not set uclamp_min on %s\n",
+					     worker->task->comm);
 		}
 		kthread_bind_mask(worker->task, pool_allowed_cpus(pool));
 	}
