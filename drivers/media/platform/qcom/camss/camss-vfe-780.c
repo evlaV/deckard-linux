@@ -178,6 +178,16 @@ static void vfe_subdev_init(struct device *dev, struct vfe_device *vfe)
 	/* RDI2 */
 	vfe_add_rdi(&vfe->line[VFE_LINE_RDI2], VFE_WM_RDI2, VFE_V3_COMP_GRP_16);
 
+	/* PIX YUV: FULL Y + C, one plane each, group 0 */
+	vfe->line[VFE_LINE_PIX].is_pix = true;
+	vfe->line[VFE_LINE_PIX].output[0].wm_num = 2;
+	vfe->line[VFE_LINE_PIX].output[0].wm[0].bus_client = VFE_WM_VIDEO_FULL_Y;
+	vfe->line[VFE_LINE_PIX].output[0].wm[0].plane = 0;
+	vfe->line[VFE_LINE_PIX].output[0].wm[1].bus_client = VFE_WM_VIDEO_FULL_C;
+	vfe->line[VFE_LINE_PIX].output[0].wm[1].plane = 1;
+	vfe->line[VFE_LINE_PIX].output[0].comp_group = VFE_V3_COMP_GRP_0;
+	vfe->line[VFE_LINE_PIX].output[0].type = VFE_OUTPUT_TYPE_PIXEL_YUV;
+
 	return;
 }
 
