@@ -335,7 +335,7 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 		vfe->id, client, pix->width, pix->height, stride);
 }
 
-static void vfe_wm_stop(struct vfe_device *vfe, u8 wm)
+static void vfe_wm_stop(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 {
 	u8 client = tfe_wm_client_map[wm];
 

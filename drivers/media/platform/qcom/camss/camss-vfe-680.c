@@ -193,7 +193,7 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 rdi, struct vfe_line *line)
 		rdi, wm, pix->width, pix->height, stride);
 }
 
-static void vfe_wm_stop(struct vfe_device *vfe, u8 rdi)
+static void vfe_wm_stop(struct vfe_device *vfe, u8 rdi, struct vfe_line *line)
 {
 	u8 wm = RDI_WM(rdi);
 

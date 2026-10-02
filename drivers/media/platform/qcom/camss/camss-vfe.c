@@ -1012,7 +1012,7 @@ static void vfe_disable_output(struct vfe_line *line)
 		ops->vfe_output_stop(vfe, output);
 	else
 		for (i = 0; i < output->wm_num; i++)
-			ops->vfe_wm_stop(vfe, output->wm[i].bus_client);
+			ops->vfe_wm_stop(vfe, output->wm[i].bus_client, line);
 	output->gen2.active_num = 0;
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 }
