@@ -960,6 +960,10 @@ static void ath12k_dp_tx_complete_msdu(struct ath12k *ar,
 			   ts->peer_id);
 
 			spin_unlock_bh(&ab->base_lock);
+
+			/* mac80211 only frees the skb if it is set in status. */
+			status.info = info;
+			status.skb = msdu;
 			goto update_and_exit;
 		}
 	}
