@@ -4177,10 +4177,8 @@ ath12k_dp_rx_mon_mpdu_pop(struct ath12k *ar, int mac_id,
 				continue;
 			}
 			if (!rxcb->unmapped) {
-				dma_unmap_single(ar->ab->dev, rxcb->paddr,
-						 msdu->len +
-						 skb_tailroom(msdu),
-						 DMA_FROM_DEVICE);
+				ath12k_dp_rx_buf_unmap(ar->ab->dev, desc_info,
+						       msdu);
 				rxcb->unmapped = 1;
 			}
 			if (drop_mpdu) {

@@ -20,6 +20,7 @@ struct ath12k_vif;
 struct ath12k_link_vif;
 struct hal_tcl_status_ring;
 struct ath12k_ext_irq_grp;
+struct page_pool;
 
 #define DP_MON_PURGE_TIMEOUT_MS     100
 #define DP_MON_SERVICE_BUDGET       128
@@ -43,6 +44,7 @@ struct dp_rxdma_mon_ring {
 
 struct dp_rxdma_ring {
 	struct dp_srng refill_buf_ring;
+	struct page_pool *pp;
 	int bufs_max;
 };
 
@@ -320,6 +322,7 @@ struct ath12k_rx_desc_info {
 	u8 in_use	: 1,
 	   device_id	: 3,
 	   reserved	: 4;
+	bool from_pp;
 };
 
 struct ath12k_tx_desc_info {

@@ -3,6 +3,7 @@ config ATH12K
 	tristate "Qualcomm Technologies Wi-Fi 7 support (ath12k)"
 	depends on MAC80211 && HAS_DMA && PCI
 	select CRYPTO_MICHAEL_MIC
+	select PAGE_POOL
 	select QCOM_QMI_HELPERS
 	select MHI_BUS
 	select QRTR

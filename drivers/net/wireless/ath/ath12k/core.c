@@ -45,6 +45,11 @@ bool ath12k_ftm_mode;
 module_param_named(ftm_mode, ath12k_ftm_mode, bool, 0444);
 MODULE_PARM_DESC(ftm_mode, "Boots up in factory test mode");
 
+bool ath12k_rx_page_pool = true;
+module_param_named(rx_page_pool, ath12k_rx_page_pool, bool, 0444);
+MODULE_PARM_DESC(rx_page_pool,
+		 "Recycle pre-mapped RX buffers from a page pool: 1=enable (default), 0=map each buffer");
+
 static void ath12k_egap_reconfig_all(void);
 
 static int ath12k_egap_param_set(const char *val, const struct kernel_param *kp)

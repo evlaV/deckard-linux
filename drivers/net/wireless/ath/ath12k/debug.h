@@ -44,6 +44,7 @@ extern unsigned int ath12k_debug_mask;
 extern bool ath12k_ftm_mode;
 extern int ath12k_gtx;
 extern bool ath12k_disable_txbf;
+extern bool ath12k_rx_page_pool;
 
 #ifdef CONFIG_ATH12K_DEBUG
 __printf(3, 4) void __ath12k_dbg(struct ath12k_base *ab,

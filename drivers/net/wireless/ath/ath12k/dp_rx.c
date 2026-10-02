@@ -8,6 +8,7 @@
 #include <linux/kernel.h>
 #include <linux/skbuff.h>
 #include <crypto/hash.h>
+#include <net/page_pool/helpers.h>
 #include "core.h"
 #include "debug.h"
 #include "hal_desc.h"
@@ -304,6 +305,98 @@ static void ath12k_dp_rx_enqueue_free(struct ath12k_dp *dp,
 	spin_unlock_bh(&dp->rx_desc_lock);
 }
 
+#define ATH12K_DP_RX_PP_HEADROOM	DP_RX_BUFFER_ALIGN_SIZE
+#define ATH12K_DP_RX_PP_BUF_SIZE					\
+	ALIGN(SKB_DATA_ALIGN(ATH12K_DP_RX_PP_HEADROOM + DP_RX_BUFFER_SIZE) + \
+	      SKB_DATA_ALIGN(sizeof(struct skb_shared_info)),		\
+	      DP_RX_BUFFER_ALIGN_SIZE)
+/* At least two buffers per page, so the pool hands out fragments */
+#define ATH12K_DP_RX_PP_ORDER		get_order(2 * ATH12K_DP_RX_PP_BUF_SIZE)
+
+static void ath12k_dp_rx_page_pool_create(struct ath12k_base *ab,
+					  struct dp_rxdma_ring *rx_ring)
+{
+	struct page_pool_params pp_params = {
+		.flags = PP_FLAG_DMA_MAP | PP_FLAG_DMA_SYNC_DEV,
+		.order = ATH12K_DP_RX_PP_ORDER,
+		.pool_size = DP_RXDMA_BUF_RING_SIZE,
+		.nid = NUMA_NO_NODE,
+		.dev = ab->dev,
+		.dma_dir = DMA_FROM_DEVICE,
+		.max_len = PAGE_SIZE << ATH12K_DP_RX_PP_ORDER,
+	};
+	struct page_pool *pp;
+
+	if (!ath12k_rx_page_pool)
+		return;
+
+	pp = page_pool_create(&pp_params);
+	if (IS_ERR(pp)) {
+		ath12k_warn(ab, "failed to create rx page pool, mapping each rx buffer: %ld\n",
+			    PTR_ERR(pp));
+		return;
+	}
+
+	rx_ring->pp = pp;
+}
+
+static void ath12k_dp_rx_page_pool_destroy(struct dp_rxdma_ring *rx_ring)
+{
+	page_pool_destroy(rx_ring->pp);
+	rx_ring->pp = NULL;
+}
+
+static struct sk_buff *ath12k_dp_rx_pp_alloc_skb(struct page_pool *pp,
+						 dma_addr_t *paddr)
+{
+	unsigned int size = ATH12K_DP_RX_PP_BUF_SIZE;
+	unsigned int offset;
+	struct sk_buff *skb;
+	struct page *page;
+
+	BUILD_BUG_ON(SKB_WITH_OVERHEAD(ATH12K_DP_RX_PP_BUF_SIZE) -
+		     ATH12K_DP_RX_PP_HEADROOM < DP_RX_BUFFER_SIZE);
+
+	page = page_pool_dev_alloc(pp, &offset, &size);
+	if (!page)
+		return NULL;
+
+	skb = build_skb(page_address(page) + offset, size);
+	if (!skb) {
+		page_pool_put_page(pp, page, -1, false);
+		return NULL;
+	}
+
+	skb_reserve(skb, ATH12K_DP_RX_PP_HEADROOM);
+	skb_mark_for_recycle(skb);
+
+	*paddr = page_pool_get_dma_addr(page) + offset +
+		 ATH12K_DP_RX_PP_HEADROOM;
+	if (WARN_ON_ONCE(!IS_ALIGNED(*paddr, DP_RX_BUFFER_ALIGN_SIZE))) {
+		dev_kfree_skb_any(skb);
+		return NULL;
+	}
+
+	return skb;
+}
+
+/* Page pool buffers stay mapped while they are recycled, so only hand the
+ * received data over to the CPU.
+ */
+void ath12k_dp_rx_buf_unmap(struct device *dev,
+			    struct ath12k_rx_desc_info *desc_info,
+			    struct sk_buff *skb)
+{
+	dma_addr_t paddr = ATH12K_SKB_RXCB(skb)->paddr;
+
+	if (desc_info->from_pp)
+		dma_sync_single_for_cpu(dev, paddr, DP_RX_BUFFER_SIZE,
+					DMA_FROM_DEVICE);
+	else
+		dma_unmap_single(dev, paddr, skb->len + skb_tailroom(skb),
+				 DMA_FROM_DEVICE);
+}
+
 /* Returns number of Rx buffers replenished */
 int ath12k_dp_rx_bufs_replenish(struct ath12k_base *ab,
 				struct dp_rxdma_ring *rx_ring,
@@ -320,6 +413,7 @@ int ath12k_dp_rx_bufs_replenish(struct ath12k_base *ab,
 	struct ath12k_dp *dp = &ab->dp;
 	struct ath12k_rx_desc_info *rx_desc;
 	enum hal_rx_buf_return_buf_manager mgr = ab->hw_params->hal_params->rx_buf_rbm;
+	bool from_pp;
 
 	req_entries = min(req_entries, rx_ring->bufs_max);
 
@@ -350,23 +444,33 @@ int ath12k_dp_rx_bufs_replenish(struct ath12k_base *ab,
 	}
 
 	while (num_remain > 0) {
-		skb = dev_alloc_skb(DP_RX_BUFFER_SIZE +
-				    DP_RX_BUFFER_ALIGN_SIZE);
-		if (!skb)
-			break;
+		skb = NULL;
+		from_pp = false;
 
-		if (!IS_ALIGNED((unsigned long)skb->data,
-				DP_RX_BUFFER_ALIGN_SIZE)) {
-			skb_pull(skb,
-				 PTR_ALIGN(skb->data, DP_RX_BUFFER_ALIGN_SIZE) -
-				 skb->data);
+		if (rx_ring->pp) {
+			skb = ath12k_dp_rx_pp_alloc_skb(rx_ring->pp, &paddr);
+			from_pp = !!skb;
 		}
 
-		paddr = dma_map_single(ab->dev, skb->data,
-				       skb->len + skb_tailroom(skb),
-				       DMA_FROM_DEVICE);
-		if (dma_mapping_error(ab->dev, paddr))
-			goto fail_free_skb;
+		if (!skb) {
+			skb = dev_alloc_skb(DP_RX_BUFFER_SIZE +
+					    DP_RX_BUFFER_ALIGN_SIZE);
+			if (!skb)
+				break;
+
+			if (!IS_ALIGNED((unsigned long)skb->data,
+					DP_RX_BUFFER_ALIGN_SIZE)) {
+				skb_pull(skb,
+					 PTR_ALIGN(skb->data, DP_RX_BUFFER_ALIGN_SIZE) -
+					 skb->data);
+			}
+
+			paddr = dma_map_single(ab->dev, skb->data,
+					       skb->len + skb_tailroom(skb),
+					       DMA_FROM_DEVICE);
+			if (dma_mapping_error(ab->dev, paddr))
+				goto fail_free_skb;
+		}
 
 		rx_desc = list_first_entry_or_null(used_list,
 						   struct ath12k_rx_desc_info,
@@ -375,6 +479,7 @@ int ath12k_dp_rx_bufs_replenish(struct ath12k_base *ab,
 			goto fail_dma_unmap;
 
 		rx_desc->skb = skb;
+		rx_desc->from_pp = from_pp;
 		cookie = rx_desc->cookie;
 
 		desc = ath12k_hal_srng_src_get_next_entry(ab, srng);
@@ -392,8 +497,9 @@ int ath12k_dp_rx_bufs_replenish(struct ath12k_base *ab,
 	goto out;
 
 fail_dma_unmap:
-	dma_unmap_single(ab->dev, paddr, skb->len + skb_tailroom(skb),
-			 DMA_FROM_DEVICE);
+	if (!from_pp)
+		dma_unmap_single(ab->dev, paddr, skb->len + skb_tailroom(skb),
+				 DMA_FROM_DEVICE);
 fail_free_skb:
 	dev_kfree_skb_any(skb);
 out:
@@ -3004,9 +3110,7 @@ try_again:
 		list_add_tail(&desc_info->list, &rx_desc_used_list[device_id]);
 
 		rxcb = ATH12K_SKB_RXCB(msdu);
-		dma_unmap_single(partner_ab->dev, rxcb->paddr,
-				 msdu->len + skb_tailroom(msdu),
-				 DMA_FROM_DEVICE);
+		ath12k_dp_rx_buf_unmap(partner_ab->dev, desc_info, msdu);
 
 		num_buffs_reaped[device_id]++;
 		ab->device_stats.reo_rx[ring_id][ab->device_id]++;
@@ -3415,6 +3519,7 @@ static int ath12k_dp_rx_h_defrag_reo_reinject(struct ath12k *ar,
 	}
 
 	desc_info->skb = defrag_skb;
+	desc_info->from_pp = false;
 	desc_info->in_use = true;
 
 	list_del(&desc_info->list);
@@ -3708,7 +3813,6 @@ ath12k_dp_process_rx_err_buf(struct ath12k *ar, struct hal_reo_dest_ring *desc,
 {
 	struct ath12k_base *ab = ar->ab;
 	struct sk_buff *msdu;
-	struct ath12k_skb_rxcb *rxcb;
 	struct hal_rx_desc *rx_desc;
 	u16 msdu_len;
 	u32 hal_rx_desc_sz = ab->hal.hal_desc_sz;
@@ -3737,10 +3841,7 @@ ath12k_dp_process_rx_err_buf(struct ath12k *ar, struct hal_reo_dest_ring *desc,
 
 	list_add_tail(&desc_info->list, used_list);
 
-	rxcb = ATH12K_SKB_RXCB(msdu);
-	dma_unmap_single(ar->ab->dev, rxcb->paddr,
-			 msdu->len + skb_tailroom(msdu),
-			 DMA_FROM_DEVICE);
+	ath12k_dp_rx_buf_unmap(ar->ab->dev, desc_info, msdu);
 
 	if (drop) {
 		dev_kfree_skb_any(msdu);
@@ -4226,9 +4327,7 @@ int ath12k_dp_rx_process_wbm_err(struct ath12k_base *ab,
 		list_add_tail(&desc_info->list, &rx_desc_used_list[device_id]);
 
 		rxcb = ATH12K_SKB_RXCB(msdu);
-		dma_unmap_single(partner_ab->dev, rxcb->paddr,
-				 msdu->len + skb_tailroom(msdu),
-				 DMA_FROM_DEVICE);
+		ath12k_dp_rx_buf_unmap(partner_ab->dev, desc_info, msdu);
 
 		num_buffs_reaped[device_id]++;
 		total_num_buffs_reaped++;
@@ -4451,6 +4550,8 @@ void ath12k_dp_rx_free(struct ath12k_base *ab)
 	ath12k_dp_srng_cleanup(ab, &dp->rxdma_mon_buf_ring.refill_buf_ring);
 
 	ath12k_dp_rxdma_buf_free(ab);
+
+	ath12k_dp_rx_page_pool_destroy(&dp->rx_refill_buf_ring);
 }
 
 void ath12k_dp_rx_pdev_free(struct ath12k_base *ab, int mac_id)
@@ -4684,6 +4785,8 @@ int ath12k_dp_rx_alloc(struct ath12k_base *ab)
 			}
 		}
 	}
+
+	ath12k_dp_rx_page_pool_create(ab, &dp->rx_refill_buf_ring);
 
 	ret = ath12k_dp_rxdma_buf_setup(ab);
 	if (ret) {

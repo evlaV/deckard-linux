@@ -1180,10 +1180,12 @@ static void ath12k_dp_cc_cleanup(struct ath12k_base *ab)
 				if (!skb)
 					continue;
 
-				dma_unmap_single(ab->dev,
-						 ATH12K_SKB_RXCB(skb)->paddr,
-						 skb->len + skb_tailroom(skb),
-						 DMA_FROM_DEVICE);
+				/* Page pool buffers are unmapped by the pool */
+				if (!desc_info[j].from_pp)
+					dma_unmap_single(ab->dev,
+							 ATH12K_SKB_RXCB(skb)->paddr,
+							 skb->len + skb_tailroom(skb),
+							 DMA_FROM_DEVICE);
 				dev_kfree_skb_any(skb);
 			}
 
