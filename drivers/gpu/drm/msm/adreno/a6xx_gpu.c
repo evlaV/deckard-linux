@@ -567,7 +567,8 @@ static void a7xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	a6xx_gpu->last_seqno[ring->id] = submit->seqno;
 
 	/* write the ctx timestamp (for kgsl memstore) */
-	timestamp_iova = a6xx_gpu->shadow_iova + KGSL_MEMSTORE_OFFSET(submit->queue->id, eoptimestamp);
+	BUILD_BUG_ON(ARRAY_SIZE(gpu->id_map) * 64 * sizeof(struct kgsl_devmemstore) > KGSL_MEMSTORE_SIZE);
+	timestamp_iova = a6xx_gpu->memstore_iova + KGSL_MEMSTORE_OFFSET(submit->queue->id, eoptimestamp);
 	//OUT_PKT7(ring, CP_EVENT_WRITE, 4);
 	//OUT_RING(ring, CACHE_CLEAN | BIT(31) | BIT(27));
 	//OUT_RING(ring, lower_32_bits(timestamp_iova));
@@ -632,11 +633,11 @@ uint64_t a7xx_gpu_shadow_iova(struct msm_gpu *gpu)
 	return a6xx_gpu->shadow_iova;
 }
 
-struct drm_gem_object *a7xx_gpu_shadow_bo(struct msm_gpu *gpu)
+struct drm_gem_object *a7xx_gpu_memstore_bo(struct msm_gpu *gpu)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
-	return a6xx_gpu->shadow_bo;
+	return a6xx_gpu->memstore_bo;
 }
 
 void a7xx_reset_memstore(struct msm_gpu *gpu, uint32_t ctx_id)
@@ -1177,10 +1178,10 @@ static int a6xx_ucode_load(struct msm_gpu *gpu)
 						      gpu->vm, &a6xx_gpu->memstore_bo,
 						      &a6xx_gpu->memstore_iova);
 
-		if (IS_ERR(a6xx_gpu->shadow))
-			return PTR_ERR(a6xx_gpu->shadow);
+		if (IS_ERR(a6xx_gpu->memstore))
+			return PTR_ERR(a6xx_gpu->memstore);
 
-		msm_gem_object_set_name(a6xx_gpu->shadow_bo, "shadow");
+		msm_gem_object_set_name(a6xx_gpu->memstore_bo, "memstore");
 	}
 
 	a6xx_gpu->pwrup_reglist_ptr = msm_gem_kernel_new(gpu->dev, PAGE_SIZE,

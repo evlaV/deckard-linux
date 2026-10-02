@@ -48,7 +48,7 @@ signed long drm_syncobj_array_wait_timeout(struct drm_syncobj **syncobjs,
 						  uint32_t *idx);
 
 uint64_t a7xx_gpu_shadow_iova(struct msm_gpu *gpu);
-struct drm_gem_object *a7xx_gpu_shadow_bo(struct msm_gpu *gpu);
+struct drm_gem_object *a7xx_gpu_memstore_bo(struct msm_gpu *gpu);
 
 
 struct kgsl_bind_range {
@@ -258,7 +258,7 @@ int kgsl_mmap(struct drm_file *file_priv, struct drm_device *dev, struct vm_area
 	int ret;
 
 	if ((vma->vm_pgoff << PAGE_SHIFT) == KGSL_MEMSTORE_TOKEN_ADDRESS)
-		return drm_gem_mmap_obj(a7xx_gpu_shadow_bo(gpu), KGSL_MEMSTORE_SIZE, vma);
+		return drm_gem_mmap_obj(a7xx_gpu_memstore_bo(gpu), KGSL_MEMSTORE_SIZE, vma);
 
 	obj = drm_gem_object_lookup(file_priv, vma->vm_pgoff);
 	if (!obj)
