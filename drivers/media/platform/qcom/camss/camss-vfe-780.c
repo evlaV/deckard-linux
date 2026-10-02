@@ -55,16 +55,6 @@ typedef enum {
 #define BUS_REG_BASE (vfe_is_lite(vfe) ? 0x200 : 0xC00)
 
 #define VFE_BUS_WM_TEST_BUS_CTRL (BUS_REG_BASE + 0xDC)
-/*
- * Bus client mapping:
- *
- * Full VFE:
- * VFE_780: 23 = RDI0, 24 = RDI1, 25 = RDI2
- *
- * VFE LITE:
- * VFE_780 : 0 = RDI0, 1 = RDI1, 2 = RDI2, 3 = RDI3, 4 = RDI4
- */
-#define RDI_WM(n)	((vfe_is_lite(vfe) ? 0x0 : 0x17) + (n))
 
 #define VFE_BUS_WM_CGC_OVERRIDE		(BUS_REG_BASE + 0x08)
 #define		WM_CGC_OVERRIDE_ALL		(0x7FFFFFF)
@@ -94,7 +84,7 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 	struct v4l2_pix_format_mplane *pix =
 		&line->output[0].video_out.active_fmt.fmt.pix_mp;
 
-	wm = RDI_WM(wm);
+	wm = line->output[0].wm[0].bus_client;
 
 	/* no clock gating at bus input */
 	writel(WM_CGC_OVERRIDE_ALL, vfe->base + VFE_BUS_WM_CGC_OVERRIDE);
@@ -124,14 +114,14 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 
 static void vfe_wm_stop(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 {
-	wm = RDI_WM(wm);
+	wm = line->output[0].wm[0].bus_client;
 	writel(0, vfe->base + VFE_BUS_WM_CFG(wm));
 }
 
 static void vfe_wm_update(struct vfe_device *vfe, u8 wm, u32 addr,
 			  struct vfe_line *line)
 {
-	wm = RDI_WM(wm);
+	wm = line->output[0].wm[0].bus_client;
 
 	writel((addr >> 8), vfe->base + VFE_BUS_WM_IMAGE_ADDR(wm));
 
@@ -159,9 +149,36 @@ static const struct camss_video_ops vfe_video_ops_780 = {
 	.flush_buffers = vfe_flush_buffers,
 };
 
+static void vfe_add_rdi(struct vfe_line *line, int bus_client, int comp_group)
+{
+	line->output[0].wm_num = 1;
+	line->output[0].wm[0].bus_client = bus_client;
+	line->output[0].wm[0].plane = 0;
+	line->output[0].comp_group = comp_group;
+}
+
 static void vfe_subdev_init(struct device *dev, struct vfe_device *vfe)
 {
 	vfe->video_ops = vfe_video_ops_780;
+
+	if (vfe_is_lite(vfe)) {
+		vfe_add_rdi(&vfe->line[VFE_LINE_RDI0], VFE_LITE_WM_RDI0, VFE_V3_COMP_GRP_1);
+		vfe_add_rdi(&vfe->line[VFE_LINE_RDI1], VFE_LITE_WM_RDI1, VFE_V3_COMP_GRP_2);
+		vfe_add_rdi(&vfe->line[VFE_LINE_RDI2], VFE_LITE_WM_RDI2, VFE_V3_COMP_GRP_3);
+		vfe_add_rdi(&vfe->line[VFE_LINE_PIX], VFE_LITE_WM_RDI3, VFE_V3_COMP_GRP_4);
+		return;
+	}
+
+	/* RDI0 */
+	vfe_add_rdi(&vfe->line[VFE_LINE_RDI0], VFE_WM_RDI0, VFE_V3_COMP_GRP_14);
+
+	/* RDI1 */
+	vfe_add_rdi(&vfe->line[VFE_LINE_RDI1], VFE_WM_RDI1, VFE_V3_COMP_GRP_15);
+
+	/* RDI2 */
+	vfe_add_rdi(&vfe->line[VFE_LINE_RDI2], VFE_WM_RDI2, VFE_V3_COMP_GRP_16);
+
+	return;
 }
 
 static void vfe_global_reset(struct vfe_device *vfe)
