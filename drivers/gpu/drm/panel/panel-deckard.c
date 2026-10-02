@@ -657,6 +657,7 @@ static void dsi_write_panel_off(struct drm_panel *panel)
 static int enable_backlight_regulators(struct lpm026m648c_ctx *ctx, bool enable)
 {
 	int i, ret = 0;
+	bool preboost_turned_on = false;
 	if( enable ) {
 		for ( i = 0; i < ARRAY_SIZE(ctx->preboost_drivers); i++ ) {
 			if ( !regulator_is_enabled(ctx->preboost_drivers[i].consumer) ) {
@@ -664,11 +665,13 @@ static int enable_backlight_regulators(struct lpm026m648c_ctx *ctx, bool enable)
 				if ( ret ) {
 					dev_err(ctx->dev, "Could not enable preboost driver\n");
 				}
+				preboost_turned_on = true;
 			}
 		}
 
-		// Preboost Startup time
-		usleep_range(40000, 50000);
+		// Preboost Startup time, only needed if a preboost was just turned on
+		if ( preboost_turned_on )
+			usleep_range(40000, 50000);
 
 		for ( i = 0; i < ARRAY_SIZE(ctx->backlight_drivers); i++ ) {
 			if ( !regulator_is_enabled(ctx->backlight_drivers[i].consumer) ) {
@@ -732,7 +735,8 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 		cam_trig_width = gpo1_tew1 + CAMERA_TRIGGER_OFFSET*2;
 	}
 
-	// make sure regulators are enabled if we are turning on the backlight
+	// make sure regulators are enabled if we are turning on the backlight,
+	// or disabled to save power if brightness is 0
 	enable_backlight_regulators(ctx, brightness > 0);
 
 	lpm026m648c_dsi_write_seq(ctx, LPM02648C_GEN_OUTPIN_SET,
@@ -745,9 +749,6 @@ static int set_brightness(struct lpm026m648c_ctx *ctx, u16 brightness,
 		if (ctx->is_dual_panel)
 			ctx->dsi[1]->mode_flags |= MIPI_DSI_MODE_LPM;
 	}
-
-	// if set to 0, disable the regulators to save power
-	enable_backlight_regulators(ctx, brightness);
 
 	return 0;
 }
