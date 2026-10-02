@@ -25,6 +25,7 @@ qcom-camss-objs += \
 		camss-vfe-340.o \
 		camss-vfe-480.o \
 		camss-vfe-680.o \
+		camss-vfe-690.o \
 		camss-vfe-780.o \
 		camss-vfe-gen1.o \
 		camss-vfe-vbif.o \
