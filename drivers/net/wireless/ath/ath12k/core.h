@@ -795,7 +795,6 @@ struct ath12k {
 	 * avoid reporting garbage data.
 	 */
 	bool ch_info_can_report_survey;
-	struct survey_info survey[ATH12K_NUM_CHANS];
 	struct completion bss_survey_done;
 
 	struct work_struct regd_update_work;
@@ -860,6 +859,11 @@ struct ath12k_hw {
 	 */
 	struct mutex hw_mutex;
 	enum ath12k_hw_state state;
+
+	/* protects survey[] shared across radios of this hw. */
+	spinlock_t survey_lock;
+	struct survey_info survey[ATH12K_NUM_CHANS];
+
 	bool regd_updated;
 	bool use_6ghz_regd;
 
