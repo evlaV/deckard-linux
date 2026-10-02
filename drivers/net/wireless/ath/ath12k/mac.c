@@ -4237,7 +4237,7 @@ static void ath12k_mac_vif_setup_ps(struct ath12k_link_vif *arvif)
 	struct ieee80211_bss_conf *info;
 	enum wmi_sta_ps_mode psmode;
 	int ret;
-	int timeout;
+	int timeout = 0;
 	bool enable_ps;
 
 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
@@ -4274,7 +4274,7 @@ static void ath12k_mac_vif_setup_ps(struct ath12k_link_vif *arvif)
 		psmode = WMI_STA_PS_MODE_DISABLED;
 	}
 
-	printk("ath12k: mac vdev %d psmode %s timeout %d\n",
+	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "mac vdev %d psmode %s timeout %d\n",
 		   arvif->vdev_id, psmode ? "enable" : "disable", timeout);
 
 	ret = ath12k_wmi_pdev_set_ps_mode(ar, arvif->vdev_id, psmode);
