@@ -491,6 +491,7 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 {
 	int ret = 0;
 
+	mutex_lock(&sensor->lock);
 	arcimx616_set_power(sensor, true);
 	ret = arcimx616_ensure_eeprom_client(sensor);
 	if (ret) {
@@ -532,7 +533,7 @@ static int arcimx616_copy_eeprom_data(struct arcimx616_dev *sensor, struct eepro
 
 	u32 eeprom_offset = access_info->offset;
 
-	if(eeprom_offset >= ARCIMX616_EEPROM_SIZE || (eeprom_offset + access_info->size) > ARCIMX616_EEPROM_SIZE)
+	if(access_info->size > ARCIMX616_EEPROM_SIZE || eeprom_offset > ARCIMX616_EEPROM_SIZE - access_info->size)
 	{
 		dev_err(&sensor->i2c_client->dev, "Invalid EEPROM access range [0x%x, 0x%x]. The available EEPROM size is 0x%x. \n",
 			eeprom_offset, eeprom_offset+access_info->size, ARCIMX616_EEPROM_SIZE);
@@ -591,6 +592,7 @@ out_nvmem:
 
 out_power:
 	arcimx616_set_power(sensor, false);
+	mutex_unlock(&sensor->lock);
 	return ret;
 }
 
