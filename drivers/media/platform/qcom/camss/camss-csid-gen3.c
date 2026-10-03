@@ -158,6 +158,113 @@ static void __csid_configure_wrapper(struct csid_device *csid)
 	writel(val, csid->camss->csid_wrapper_base + CSID_IO_PATH_CFG0(csid->id));
 }
 
+/* IPP path (pixel pipe input) */
+#define CSID_IPP_CFG0			0x300
+#define		IPP_CFG0_TIMESTAMP_EN		BIT(6)
+#define		IPP_CFG0_DECODE_FORMAT		12
+#define		IPP_CFG0_DT			16
+#define		IPP_CFG0_VC			22
+#define		IPP_CFG0_DT_ID			27
+#define		IPP_CFG0_EN			BIT(31)
+#define CSID_IPP_CTRL			0x304
+#define		IPP_CTRL_START_CMD		BIT(0)
+#define CSID_IPP_CAMIF_FRAME_CFG	0x330
+#define		IPP_CAMIF_PIXEL_PATTERN		24
+
+/* camx CAM_ISP_PATTERN_BAYER_* */
+#define IPP_PATTERN_RGRGRG		0
+#define IPP_PATTERN_GRGRGR		1
+#define IPP_PATTERN_BGBGBG		2
+#define IPP_PATTERN_GBGBGB		3
+
+static u32 csid_ipp_pixel_pattern(u32 code)
+{
+	switch (code) {
+	case MEDIA_BUS_FMT_SGRBG8_1X8:
+	case MEDIA_BUS_FMT_SGRBG10_1X10:
+	case MEDIA_BUS_FMT_SGRBG12_1X12:
+	case MEDIA_BUS_FMT_SGRBG14_1X14:
+		return IPP_PATTERN_GRGRGR;
+	case MEDIA_BUS_FMT_SBGGR8_1X8:
+	case MEDIA_BUS_FMT_SBGGR10_1X10:
+	case MEDIA_BUS_FMT_SBGGR12_1X12:
+	case MEDIA_BUS_FMT_SBGGR14_1X14:
+		return IPP_PATTERN_BGBGBG;
+	case MEDIA_BUS_FMT_SGBRG8_1X8:
+	case MEDIA_BUS_FMT_SGBRG10_1X10:
+	case MEDIA_BUS_FMT_SGBRG12_1X12:
+	case MEDIA_BUS_FMT_SGBRG14_1X14:
+		return IPP_PATTERN_GBGBGB;
+	default:
+		/* RGGB, and mono as Valve's userspace programs it */
+		return IPP_PATTERN_RGRGRG;
+	}
+}
+
+/*
+ * The IPP feeds the pixel pipe. It is used for the PIX line, and for
+ * Valve's NV12-on-RDI compat path, where the VFE line linked to this
+ * port carries NV12 and the pixel pipe output is written through RDI0's
+ * video node.
+ */
+static bool csid_port_is_nv12_compat(struct csid_device *csid, u8 port)
+{
+	struct media_pad *remote;
+	struct vfe_line *line;
+
+	remote = media_pad_remote_pad_first(&csid->pads[MSM_CSID_PAD_FIRST_SRC + port]);
+	if (!remote || !is_media_entity_v4l2_subdev(remote->entity))
+		return false;
+
+	line = v4l2_get_subdevdata(media_entity_to_v4l2_subdev(remote->entity));
+	if (!line)
+		return false;
+
+	return line->output[0].video_out.active_fmt.fmt.pix_mp.pixelformat ==
+	       V4L2_PIX_FMT_NV12;
+}
+
+static bool csid_port_uses_ipp(struct csid_device *csid, u8 port)
+{
+	/* IPP register layout is only verified for the SM8650 CSID */
+	if (csid_is_lite(csid) || csid->camss->res->version != CAMSS_8650)
+		return false;
+
+	/* Valve's NV12-on-RDI completes on RDI0 only (see csid_isr) */
+	return port == VFE_LINE_PIX ||
+	       (port == 0 && csid_port_is_nv12_compat(csid, port));
+}
+
+static void __csid_configure_ipp_stream(struct csid_device *csid, u8 enable, u8 port, u8 vc)
+{
+	struct v4l2_mbus_framefmt *input_format = &csid->fmt[MSM_CSID_PAD_FIRST_SRC + port];
+	const struct csid_format_info *format = csid_get_fmt_entry(csid->res->formats->formats,
+								   csid->res->formats->nformats,
+								   input_format->code);
+	u32 val;
+
+	/* halted until __csid_ctrl_ipp(), as Valve's userspace does */
+	writel(0, csid->base + CSID_IPP_CTRL);
+
+	/* The IPP decodes pixels for the pixel pipe: real decode format */
+	val = IPP_CFG0_TIMESTAMP_EN;
+	val |= format->decode_format << IPP_CFG0_DECODE_FORMAT;
+	val |= format->data_type << IPP_CFG0_DT;
+	val |= vc << IPP_CFG0_VC;
+	val |= 0 << IPP_CFG0_DT_ID;
+	if (enable)
+		val |= IPP_CFG0_EN;
+	writel(val, csid->base + CSID_IPP_CFG0);
+
+	writel(csid_ipp_pixel_pattern(input_format->code) << IPP_CAMIF_PIXEL_PATTERN,
+	       csid->base + CSID_IPP_CAMIF_FRAME_CFG);
+}
+
+static void __csid_ctrl_ipp(struct csid_device *csid, int resume)
+{
+	writel(resume ? IPP_CTRL_START_CMD : 0, csid->base + CSID_IPP_CTRL);
+}
+
 static void __csid_configure_rdi_stream(struct csid_device *csid, u8 enable, u8 port, u8 vc)
 {
 	u32 val;
@@ -230,10 +337,9 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 
 	if (!enable) {
 		/*
-		 * Valve NV12-on-RDI: the IPP path is started from userspace
-		 * through the private register ioctls and isn't tracked here.
-		 * Reset the CSID so nothing keeps streaming into the IFE past
-		 * STREAMOFF.
+		 * Valve NV12-on-RDI: the IPP path is resumed from userspace once
+		 * the pixel pipe has been programmed. Reset the CSID so nothing
+		 * keeps streaming into the IFE past STREAMOFF.
 		 */
 		csid_reset(csid);
 		usleep_range(10000, 20000);
@@ -242,9 +348,21 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	/* Loop through all enabled ports and configure a stream for each */
 	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++)
 		if (csid->phy.en_vc & BIT(i)) {
-			__csid_configure_rdi_stream(csid, enable, i, 0);
-			__csid_configure_rx(csid, &csid->phy, 0);
-			__csid_ctrl_rdi(csid, enable, i);
+			if (csid_port_uses_ipp(csid, i)) {
+				bool compat = i != VFE_LINE_PIX;
+
+				__csid_configure_ipp_stream(csid, enable, i, 0);
+				__csid_configure_rx(csid, &csid->phy, 0);
+				/*
+				 * NV12-on-RDI: the pixel pipe is still programmed from
+				 * userspace, which resumes the IPP when it's done.
+				 */
+				__csid_ctrl_ipp(csid, enable && !compat);
+			} else {
+				__csid_configure_rdi_stream(csid, enable, i, 0);
+				__csid_configure_rx(csid, &csid->phy, 0);
+				__csid_ctrl_rdi(csid, enable, i);
+			}
 		}
 }
 
