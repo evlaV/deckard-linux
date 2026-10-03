@@ -929,7 +929,8 @@ static int lpg_blink_set(struct lpg_led *led,
 
 	for (i = 0; i < led->num_channels; i++) {
 		chan = led->channels[i];
-		intensity = info[i].intensity;
+		/* Single-colour LEDs have no subled_info. */
+		intensity = info ? info[i].intensity : 1;
 
 		triled_mask |= chan->triled_mask;
 
@@ -938,7 +939,7 @@ static int lpg_blink_set(struct lpg_led *led,
 			continue;
 
 		/* if we never setup the brightness before do it now */
-		if (!info[i].brightness)
+		if (info && !info[i].brightness)
 			led_mc_calc_color_components(mc, LED_FULL);
 
 		lpg_calc_freq(chan, period);
