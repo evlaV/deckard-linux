@@ -248,8 +248,15 @@ static bool geni_i2c_handle_tx(struct geni_i2c_dev *gi2c, struct i2c_msg *cur)
 	u32 val;
 
 	for (j = 0; j < gi2c->tx_wm; j++) {
-		/* make the assumption that reading buf one u32 at a time is safe (99.9999999% it will be) */
-		val = *(u32*)&cur->buf[gi2c->cur_wr];
+		int remaining = cur->len - gi2c->cur_wr;
+
+		if (remaining >= 4) {
+			val = *(u32*)&cur->buf[gi2c->cur_wr];
+		} else {
+			/* Don't read past the end of the message buffer. */
+			val = 0;
+			memcpy(&val, &cur->buf[gi2c->cur_wr], remaining);
+		}
 		writel_relaxed(val, gi2c->se.base + SE_GENI_TX_FIFOn);
 		gi2c->cur_wr += 4;
 		if (gi2c->cur_wr >= cur->len) /* TX Complete */
