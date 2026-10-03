@@ -5258,7 +5258,8 @@ static int max1720x_get_property(struct power_supply *psy,
 		ret = max1720x_regmap_read(priv, priv->regs[STATUS_REG], &reg);
 		if (ret < 0)
 			return ret;
-		if (reg & MAX1720X_STATUS_BST)
+		/* Status bit 3 is undefined on the MAX17320, which has no battery-removed bit. */
+		if (priv->driver_data != ID_MAX17320 && (reg & MAX1720X_STATUS_BST))
 			val->intval = 0;
 		else
 			val->intval = 1;
