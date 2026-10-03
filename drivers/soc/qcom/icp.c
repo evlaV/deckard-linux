@@ -17,6 +17,7 @@
 #include <linux/pm_domain.h>
 #include <linux/pm_runtime.h>
 #include <linux/hwspinlock.h>
+#include <linux/mutex.h>
 
 // Custom ioctls
 #define ICP_IOCTL_BOOT _IOW('C', 0, struct icp_boot_config)
@@ -123,6 +124,7 @@ struct icp_data {
 	struct hwspinlock* hwlock_synx;
 
 	atomic_t open, booted, data_available;
+	struct mutex lock; // serializes ioctls and release
 	struct list_head maps; // stores the iommu mappings
 	wait_queue_head_t waitqueue; // to wake up polling processes on ICP2HOST or IPCC signal interrupts
 };
@@ -517,6 +519,8 @@ static int icp_release(struct inode *inode, struct file *file)
 	struct icp_data *icp = container_of(file->private_data, struct icp_data, miscdev);
 	struct dma_map *map, *n;
 
+	mutex_lock(&icp->lock);
+
 	// shutdown ICP if not already done before closing the file
 	if(atomic_read(&icp->booted)) {
 		icp_shutdown(icp);
@@ -526,6 +530,8 @@ static int icp_release(struct inode *inode, struct file *file)
 	list_for_each_entry_safe(map, n, &icp->maps, node)
 		icp_unmap(icp, map);
 	INIT_LIST_HEAD(&icp->maps);
+
+	mutex_unlock(&icp->lock);
 
 	// Release power
 	pm_runtime_put_sync(icp->dev);
@@ -538,6 +544,8 @@ static long icp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct icp_data *icp = container_of(file->private_data, struct icp_data, miscdev);
 	int ret = 0;
+
+	mutex_lock(&icp->lock);
 switch (cmd) {
 	case ICP_IOCTL_BOOT:
 		ret = icp_boot(icp, (void*)arg);
@@ -573,6 +581,7 @@ switch (cmd) {
 		ret = -ENOTTY;
 		break;
 	}
+	mutex_unlock(&icp->lock);
 	return ret;
 }
 
@@ -699,6 +708,7 @@ static int icp_probe(struct platform_device *pdev)
 
 	INIT_LIST_HEAD(&icp->maps);
 	init_waitqueue_head(&icp->waitqueue);
+	mutex_init(&icp->lock);
 
 	// IO memory mapping
 	icp->icp_base = devm_platform_ioremap_resource_byname(pdev, "icp");
