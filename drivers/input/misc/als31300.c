@@ -51,7 +51,7 @@
 struct als31300_sample {
 	u64 timestamp;
 	int x, y, z;
-	u32 temperature;
+	int temperature;
 };
 
 struct als31300_priv {
@@ -126,7 +126,7 @@ static void als31300_poll(struct input_dev *input)
 	sample.x = ((int)(s8)buf[0] << 4) | (buf[5] & 0x0F);
 	sample.y = ((int)(s8)buf[1] << 4) | ((buf[6] & 0xF0) >> 4);
 	sample.z = ((int)(s8)buf[2] << 4) | (buf[6] & 0x0F);
-	sample.temperature = ((u32)(u8)(buf[3] & 0x3F) << 6) | (buf[7] & 0x3F);
+	sample.temperature = ((int)(buf[3] & 0x3F) << 6) | (buf[7] & 0x3F);
 	/* Convert Temperature to milliC */
 	sample.temperature = 302 * (sample.temperature - 1708) * 1000 / 4096;
 	sample.timestamp = ktime_get_ns();
@@ -218,7 +218,7 @@ static ssize_t last_raw_sample_show(struct device *dev,
 	sample = priv->last_raw_sample;
 	mutex_unlock(&priv->lock);
 
-	return scnprintf(buf, PAGE_SIZE, "%llu;%d;%d;%d;%u\n", sample.timestamp,
+	return scnprintf(buf, PAGE_SIZE, "%llu;%d;%d;%d;%d\n", sample.timestamp,
 			 sample.x, sample.y, sample.z, sample.temperature);
 }
 
