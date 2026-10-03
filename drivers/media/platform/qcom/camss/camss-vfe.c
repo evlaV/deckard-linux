@@ -9,6 +9,7 @@
  */
 #include <linux/clk.h>
 #include <linux/completion.h>
+#include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/iommu.h>
 #include <linux/mutex.h>
@@ -22,6 +23,7 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 
+#include "camss-csid.h"
 #include "camss-vfe.h"
 #include "camss.h"
 
@@ -168,8 +170,12 @@ static const struct camss_format_info formats_rdi_845[] = {
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 14) },
 	{ MEDIA_BUS_FMT_Y8_1X8, 8, V4L2_PIX_FMT_GREY, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 8) },
+	{ MEDIA_BUS_FMT_Y8_1X8, 8, V4L2_PIX_FMT_NV12, 1,
+	  PER_PLANE_DATA(0, 1, 1, 2, 3, 8) },
 	{ MEDIA_BUS_FMT_Y10_1X10, 10, V4L2_PIX_FMT_Y10P, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 10) },
+	{ MEDIA_BUS_FMT_Y10_1X10, 10, V4L2_PIX_FMT_NV12, 1,
+	  PER_PLANE_DATA(0, 1, 1, 2, 3, 10) },
 	{ MEDIA_BUS_FMT_Y10_2X8_PADHI_LE, 16, V4L2_PIX_FMT_Y10, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 16) },
 };
@@ -569,7 +575,7 @@ u32 vfe_hw_version(struct vfe_device *vfe)
  * @vfe: VFE Device
  * @wm: Write master id
  */
-void vfe_buf_done(struct vfe_device *vfe, int wm)
+void vfe_buf_done(struct vfe_device *vfe, int wm, struct camss_buf_done_info *buf_done_info)
 {
 	struct vfe_line *line = &vfe->line[vfe->wm_output_map[wm]];
 	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
@@ -607,7 +613,7 @@ void vfe_buf_done(struct vfe_device *vfe, int wm)
 
 	if (output->buf[index]) {
 		ops->vfe_wm_update(vfe, output->wm[0].bus_client,
-				   output->buf[index]->addr[0],
+				   output->buf[index],
 				   line);
 		ops->reg_update(vfe, line->id);
 	} else {
@@ -645,10 +651,13 @@ static int vfe_enable_one_output(struct vfe_line *line, struct vfe_output *outpu
 	output->wait_reg_update = 0;
 	reinit_completion(&output->reg_update);
 
-	if (ops->vfe_output_start)
+	if (ops->vfe_output_start) {
 		ops->vfe_output_start(vfe, output);
-	else
+	} else {
 		ops->vfe_wm_start(vfe, output->wm[0].bus_client, line);
+		/* Valve: latch the line configuration before any buffer is queued */
+		ops->reg_update(vfe, line->id);
+	}
 
 	for (i = 0; i < CAMSS_INIT_BUF_COUNT; i++) {
 		output->buf[i] = vfe_buf_get_pending(output);
@@ -659,7 +668,7 @@ static int vfe_enable_one_output(struct vfe_line *line, struct vfe_output *outpu
 			ops->vfe_output_update(vfe, output, output->buf[i]);
 		else
 			ops->vfe_wm_update(vfe, output->wm[0].bus_client,
-					   output->buf[i]->addr[0], line);
+					   output->buf[i], line);
 		ops->reg_update(vfe, line->id);
 	}
 
@@ -730,7 +739,7 @@ int vfe_queue_buffer_v2(struct camss_video *vid,
 			ops->vfe_output_update(vfe, output, buf);
 		else
 			ops->vfe_wm_update(vfe, output->wm[0].bus_client,
-					   buf->addr[0], line);
+					   buf, line);
 		ops->reg_update(vfe, line->id);
 	} else {
 		vfe_buf_add_pending(output, buf);
@@ -1017,8 +1026,9 @@ void vfe_pm_domain_off(struct vfe_device *vfe)
 	if (!vfe->genpd)
 		return;
 
-	device_link_del(vfe->genpd_link);
-	vfe->genpd_link = NULL;
+	/* Avoid using device_link_del, we need a sync suspend to enforce safe power off/on transitions timings. */
+	pm_runtime_put_sync(vfe->genpd);
+	vfe->genpd_last_use_ts = ktime_get_raw_ns();
 }
 
 /*
@@ -1027,19 +1037,32 @@ void vfe_pm_domain_off(struct vfe_device *vfe)
  */
 int vfe_pm_domain_on(struct vfe_device *vfe)
 {
-	struct camss *camss = vfe->camss;
-
 	if (!vfe->genpd)
 		return 0;
 
-	vfe->genpd_link = device_link_add(camss->dev, vfe->genpd,
-					  DL_FLAG_STATELESS |
-					  DL_FLAG_PM_RUNTIME |
-					  DL_FLAG_RPM_ACTIVE);
-	if (!vfe->genpd_link)
-		return -EINVAL;
+	/*
+	 * IFEs seem to get in a weird broken state when their respective GDSC states change from 
+	 * off to on in less than ~70us. This causes streaming failures and unexpected ISP frame 
+	 * output (partial processing), and can happen randomly at startup when various processes
+	 * are polling the available v4l2 devices and opening video devices in parallel.
+	 * The issue itself is completely unobservable from standard debugging methods (register dumps,
+	 * clocks and power domain configurations are perfectly identical when the hardware is in a bad state).
+	 * For further investigation, this is extremely easy to reproduce by keeping the top titan gdsc 
+	 * on and power cycling any IFE's gdsc in a tight loop.
+	 *
+	 * To avoid that problem we make sure per-IFE power domain is powered on at least 200us after the last
+	 * power-off event. This has no timing impact on most transitions and helps avoid the unexpected hardware state.
+	 */
+	u64 next_allowed_pwr_on_ts = vfe->genpd_last_use_ts + 200000;
+	u64 now_ts = ktime_get_raw_ns();
+	if(now_ts < next_allowed_pwr_on_ts)
+	{
+		u64 sleep_duration_us = (next_allowed_pwr_on_ts - now_ts)/1000;
+		usleep_range(sleep_duration_us, sleep_duration_us+100);
+	}
 
-	return 0;
+	/* Using the per-IFE power domain runtime instead of device links is needed for synchronous suspend */
+	return pm_runtime_resume_and_get(vfe->genpd);
 }
 
 static int vfe_match_clock_names(struct vfe_device *vfe,
@@ -1301,6 +1324,16 @@ void vfe_put(struct vfe_device *vfe)
 
 exit:
 	mutex_unlock(&vfe->power_lock);
+}
+
+long vfe_set_statistics_config(struct vfe_device *vfe, u32 stats_cfg)
+{
+	if(vfe->res->hw_ops->set_statistics_config) {
+		return vfe->res->hw_ops->set_statistics_config(vfe, stats_cfg);
+	}
+	else {
+		return -EINVAL;
+	}
 }
 
 /*
@@ -2140,9 +2173,6 @@ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
  */
 void msm_vfe_genpd_cleanup(struct vfe_device *vfe)
 {
-	if (vfe->genpd_link)
-		device_link_del(vfe->genpd_link);
-
 	if (vfe->genpd)
 		dev_pm_domain_detach(vfe->genpd, true);
 }

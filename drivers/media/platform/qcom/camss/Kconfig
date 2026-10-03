@@ -7,3 +7,15 @@ config VIDEO_QCOM_CAMSS
 	select VIDEO_V4L2_SUBDEV_API
 	select VIDEOBUF2_DMA_SG
 	select V4L2_FWNODE
+
+config VIDEO_QCOM_CAMSS_SM8650_VALVE
+	bool "Use Valve's downstream SM8650 CAMSS backend"
+	depends on VIDEO_QCOM_CAMSS
+	default y
+	help
+	  Route SM8650 through Valve's downstream vfe-880 backend: NV12 on the
+	  RDI0 node via the CSID IPP path, the extra output plane (DS4/DS16,
+	  stats, frame headers), the per-VFE metadata nodes and the private
+	  register ioctls used by Valve's userspace.
+
+	  Say N to use the upstream SM8650 tables (vfe-780 with the PIX line).
