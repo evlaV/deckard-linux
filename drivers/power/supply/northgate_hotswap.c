@@ -518,7 +518,7 @@ static int northgate_hotswap_probe(struct i2c_client *client)
 		if (val > 0) {
 			dev_info(dev, "northgate-hotswap load aborted, unknown pattern id: %d\n", val);
 		}
-		return 0;
+		return -ENODEV;
 	}
 
 	northgate_set_cross_charger(northgate, false);
@@ -559,6 +559,10 @@ static int northgate_hotswap_probe(struct i2c_client *client)
 static void northgate_hotswap_remove(struct i2c_client *client)
 {
 	struct northgate_hotswap_psy *northgate = i2c_get_clientdata(client);
+
+	// Free the IRQ first so its thread can't requeue the work after it is cancelled
+	if (client->irq)
+		devm_free_irq(&client->dev, client->irq, northgate);
 
 	cancel_delayed_work_sync(&northgate->hotswap_work);
 
