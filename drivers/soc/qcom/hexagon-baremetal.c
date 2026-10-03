@@ -57,6 +57,7 @@ struct dsp {
 	spinlock_t lock;
 	struct list_head maps;
 	atomic_t open, booted;
+	struct mutex boot_lock; /* serializes boot, shutdown and handover */
 	struct iommu_domain *iommu;
 	struct mbox_client mbox_client;
 	struct mbox_chan *mbox_chan[4];
@@ -477,7 +478,8 @@ static int dsp_boot(struct dsp *dsp, u32 boot_addr)
 
 static int dsp_shutdown(struct dsp *dsp)
 {
-	// XXX possible race condition if dsp_shutdown called twice simultaneously..
+	lockdep_assert_held(&dsp->boot_lock);
+
 	if (atomic_read(&dsp->booted) == 0)
 		return -EBUSY;
 
@@ -596,7 +598,9 @@ static int dsp_release(struct inode *inode, struct file *file)
 	struct dsp *dsp = file->private_data;
 	struct dma_map *map, *n;
 
+	mutex_lock(&dsp->boot_lock);
 	dsp_shutdown(dsp);
+	mutex_unlock(&dsp->boot_lock);
 
 	/* no lock - ioctl() should not be ongoing when release() is called */
 	list_for_each_entry_safe(map, n, &dsp->maps, node)
@@ -736,6 +740,7 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct dsp *dsp = file->private_data;
 	char __user *argp = (char __user *)arg;
+	long ret;
 
 	switch (cmd) {
 	case DSP_IOCTL_IRQ_STATUS:
@@ -752,27 +757,37 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		mbox_client_txdone(dsp->mbox_chan[arg], 0);
 		return 0;
 	case DSP_IOCTL_BOOT:
-		if (atomic_xchg(&dsp->booted, 1))
-			return -EBUSY;
-
-		if (dsp->is_xtensa) {
+		mutex_lock(&dsp->boot_lock);
+		if (atomic_xchg(&dsp->booted, 1)) {
+			ret = -EBUSY;
+		} else if (dsp->is_xtensa) {
 			/* Bring out of reset */
 			writel(0, dsp->base + 0xc1000);
-			return 0;
+			ret = 0;
+		} else {
+			ret = dsp_boot(dsp, arg);
 		}
-		return dsp_boot(dsp, arg);
+		mutex_unlock(&dsp->boot_lock);
+		return ret;
 	case CVP_IOCTL_BOOT:
-		if (atomic_xchg(&dsp->booted, 1))
-			return -EBUSY;
-
 		// Should only call this for CVP file
 		if (!dsp->is_xtensa)
 			return -EINVAL;
 
-		writel(0, dsp->base + 0xc1000);
-		return xtensa_boot(dsp);
+		mutex_lock(&dsp->boot_lock);
+		if (atomic_xchg(&dsp->booted, 1)) {
+			ret = -EBUSY;
+		} else {
+			writel(0, dsp->base + 0xc1000);
+			ret = xtensa_boot(dsp);
+		}
+		mutex_unlock(&dsp->boot_lock);
+		return ret;
 	case DSP_IOCTL_SHUTDOWN:
-		return dsp_shutdown(dsp);
+		mutex_lock(&dsp->boot_lock);
+		ret = dsp_shutdown(dsp);
+		mutex_unlock(&dsp->boot_lock);
+		return ret;
 	case DSP_IOCTL_MAP_DMABUF:
 		return dsp_map_dmabuf(dsp, arg & 0xffffffffu, arg >> 32);
 	case DSP_IOCTL_MAP_DIRECT: {
@@ -784,7 +799,10 @@ static long dsp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case DSP_IOCTL_UNMAP:
 		return dsp_unmap_by_va(dsp, arg);
 	case DSP_IOCTL_HANDOVER:
-		return dsp_handover(dsp);
+		mutex_lock(&dsp->boot_lock);
+		ret = dsp_handover(dsp);
+		mutex_unlock(&dsp->boot_lock);
+		return ret;
 	default:
 		return -ENOTTY;
 	}
@@ -887,6 +905,7 @@ static int dsp_probe(struct platform_device *pdev)
 	init_waitqueue_head(&dsp->waitqueue);
 
 	spin_lock_init(&dsp->lock);
+	mutex_init(&dsp->boot_lock);
 
 	ret = devm_clk_bulk_get_all(dev, &dsp->clks);
 	if (ret < 0)
