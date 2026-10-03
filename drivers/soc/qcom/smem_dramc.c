@@ -54,6 +54,8 @@ struct smem_dram {
 	u8 hbb;
 };
 
+static struct smem_dram smem_dram_data;
+
 enum ddr_type {
 	DDR_TYPE_NODDR = 0,
 	DDR_TYPE_LPDDR1 = 1,
@@ -357,9 +359,9 @@ struct dentry *smem_dram_parse(struct device *dev)
 		return ERR_PTR(-EINVAL);
 	}
 
-	dram = devm_kzalloc(dev, sizeof(*dram), GFP_KERNEL);
-	if (!dram)
-		return ERR_PTR(-ENOMEM);
+	/* Static so __dram can never point at memory freed by a driver unbind. */
+	dram = &smem_dram_data;
+	memset(dram, 0, sizeof(*dram));
 
 	switch (ver) {
 	case INFO_V3:
