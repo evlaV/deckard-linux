@@ -644,17 +644,17 @@ int rpmh_rsc_send_data(struct rsc_drv *drv, const struct tcs_request *msg)
 	struct tcs_group *tcs;
 	int tcs_id;
 
-	u32 dataval = 0x6fffffff; //default, dataval[31:28] = must be 0x6, dataval[27:14] = peak mem val, dataval[13:0] = avg mem val
-
 	if(drv->memfreq != -1) {
 		u32 convertedfreq = clamp_val(drv->memfreq, 200, 4200) * 34/10; //conversion is 3.4 * target_freq_MHz
-		dataval = 0x60000000 | (convertedfreq << 14) | convertedfreq;
+		u32 mc0_addr = cmd_db_read_addr("MC0");
 
 		for (int i = 0; i < msg->num_cmds; i++) {
 			struct tcs_cmd *cmd = &msg->cmds[i];
-			if (cmd->addr == 0x50000) {
-				cmd->data = dataval;
-			}
+			/* Keep the caller's commit bit, which ends the VCD group in the batch. */
+			bool commit = cmd->data & BCM_TCS_CMD_COMMIT_MASK;
+
+			if (mc0_addr && cmd->addr == mc0_addr)
+				cmd->data = BCM_TCS_CMD(commit, true, convertedfreq, convertedfreq);
 		}
 	}
 
@@ -1180,12 +1180,12 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	//use -1 to mean "default"
 	drv->memfreq = -1;
 
+	dev_set_drvdata(&pdev->dev, drv);
+	drv->dev = &pdev->dev;
+
 	ret = sysfs_create_group(&pdev->dev.kobj, &sysfs_group);
 	if (ret)
 		return ret;
-
-	dev_set_drvdata(&pdev->dev, drv);
-	drv->dev = &pdev->dev;
 
 	ret = devm_of_platform_populate(&pdev->dev);
 	if (ret && pdev->dev.pm_domain) {
