@@ -265,10 +265,9 @@ static int mpq3367_probe(struct i2c_client *client)
 		return -ENOMEM;
 
 	mpq->en_gpio = devm_gpiod_get(dev, "en", GPIOD_OUT_LOW);
-	if (IS_ERR(mpq->en_gpio)) {
-		dev_err(dev, "cannot get en gpio %ld\n",
-			PTR_ERR(mpq->en_gpio));
-	}
+	if (IS_ERR(mpq->en_gpio))
+		return dev_err_probe(dev, PTR_ERR(mpq->en_gpio),
+				     "cannot get en gpio\n");
 
 	// default to PWM dimming if not set in DTS
 	mpq->dimming_mode = MPQ3367_PWM_DIMMING;
@@ -308,6 +307,12 @@ static int mpq3367_probe(struct i2c_client *client)
 	mpq->desc.ops = &mpq3367_ops;
 	mpq->desc.type = REGULATOR_VOLTAGE;
 
+	INIT_DELAYED_WORK(&mpq->backlight_work, backlight_delayed_work_handler);
+
+	mpq->client = client;
+	mpq->dev = dev;
+	i2c_set_clientdata(client, mpq);
+
 	rdev = devm_regulator_register(dev, &mpq->desc, &cfg);
 	if (IS_ERR(rdev)) {
 		dev_err(dev, "Failed to register regulator: %d\n", (int) PTR_ERR(rdev));
@@ -320,11 +325,6 @@ static int mpq3367_probe(struct i2c_client *client)
 		return ret;
 	}
 
-	INIT_DELAYED_WORK(&mpq->backlight_work, backlight_delayed_work_handler);
-
-	mpq->client = client;
-	mpq->dev = dev;
-	i2c_set_clientdata(client, mpq);
 	return 0;
 }
 
