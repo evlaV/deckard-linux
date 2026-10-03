@@ -485,8 +485,8 @@ static void slg4ax46073v_delayed_work_handler(struct work_struct *work)
 				       reg_val | SLG4AX46073V_OUT_WDT_RESET);
 	}
 
-	schedule_delayed_work(&slg4ax46073v->wdt_work,
-			      SLG4AX56073V_WDT_RESET_RATE);
+	queue_delayed_work(system_freezable_wq, &slg4ax46073v->wdt_work,
+			   SLG4AX56073V_WDT_RESET_RATE);
 }
 
 static void slg4ax46073v_wdt_work_init(struct slg4ax46073v *slg4ax46073v)
@@ -897,11 +897,12 @@ static int slg4ax46073v_probe(struct i2c_client *client)
 static void slg4ax46073v_remove(struct i2c_client *client)
 {
 	struct slg4ax46073v *slg4ax46073v = dev_get_drvdata(&client->dev);
-	// disarm wdt
-	slg4ax46073v_disarm_wdt(slg4ax46073v);
 
 	// Cancel the wdt so the work handler does not run in suspend
-	cancel_delayed_work(&slg4ax46073v->wdt_work);
+	cancel_delayed_work_sync(&slg4ax46073v->wdt_work);
+
+	// disarm wdt
+	slg4ax46073v_disarm_wdt(slg4ax46073v);
 
 	// turn off the oscillator to conserve power
 	regmap_write(slg4ax46073v->regmap,
@@ -922,11 +923,11 @@ static int slg4ax46073v_suspend(struct device *dev)
 	ret = regmap_read(slg4ax46073v->regmap, SLG4AX46073V_REG_VIRTUAL_INPUT,
 			  &enabled);
 	if (!ret) {
+		// Cancel the wdt so the work handler does not run in suspend
+		cancel_delayed_work_sync(&slg4ax46073v->wdt_work);
+
 		// disarm wdt
 		slg4ax46073v_disarm_wdt(slg4ax46073v);
-
-		// Cancel the wdt so the work handler does not run in suspend
-		cancel_delayed_work(&slg4ax46073v->wdt_work);
 
 		// turn off the oscillator to conserve power
 		regmap_write(slg4ax46073v->regmap,
