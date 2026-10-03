@@ -5229,13 +5229,13 @@ static int max1720x_get_status(struct max1720x_priv *priv)
 		return ret;
 	soc = reg >> 8; /* RepSOC LSB: 1/256 % */
 
-	if (soc >= 100)
-		return POWER_SUPPLY_STATUS_FULL;
-
 	ret = max1720x_regmap_read(priv, priv->regs[AVGCURRENT_REG], &reg);
 	if (ret < 0)
 		return ret;
 	cur = max1720x_raw_current_to_uamps(priv, sign_extend32(reg, 15));
+
+	if (soc >= 100 && cur >= -10000)
+		return POWER_SUPPLY_STATUS_FULL;
 
 	if (cur > 10000)
 		return POWER_SUPPLY_STATUS_CHARGING;
