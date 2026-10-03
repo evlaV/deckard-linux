@@ -11,6 +11,7 @@
 #include <linux/scatterlist.h>
 #include <linux/dma-buf.h>
 #include <linux/interrupt.h>
+#include <linux/iopoll.h>
 #include <linux/poll.h>
 #include <linux/interconnect.h>
 #include <dt-bindings/mailbox/qcom-ipcc.h>
@@ -512,8 +513,13 @@ static int dsp_shutdown(struct dsp *dsp)
 		dev_pm_genpd_set_performance_state(dsp->pds[0], 0);
 		dev_pm_genpd_set_performance_state(dsp->pds[1], 0);
 	} else {
+		u32 haltack;
+
 		writel(7, dsp->base + QDSP6SS_INTF_HALTREQ);
-		while (!readl(dsp->base + QDSP6SS_INTF_HALTACK)) usleep_range(1000,2000);
+		/* A wedged DSP must not hang shutdown, so reset it anyway on timeout. */
+		if (readl_poll_timeout(dsp->base + QDSP6SS_INTF_HALTACK, haltack, haltack,
+				       1000, 200000))
+			dev_warn(dsp->miscdev.parent, "timed out waiting for HALTACK\n");
 		printk("haltack=%d\n", readl(dsp->base + QDSP6SS_INTF_HALTACK));
 		writel(0, dsp->base + QDSP6SS_INTF_HALTREQ);
 
