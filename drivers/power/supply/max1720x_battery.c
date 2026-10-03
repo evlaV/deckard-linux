@@ -4315,12 +4315,12 @@ static ssize_t remaining_nvm_updates_show(struct device *dev,
 	u16 logical_val = 0;
 
 	// Recall indicator flags to determine remaining configuration memory writes
-	max1720x_regmap_write(priv, priv->regs[COMMAND_REG], MAX17330_COMMAND_RECALL_HISTORY_REMAINING_WRITES);
+	ret = max1720x_regmap_write(priv, priv->regs[COMMAND_REG], MAX17330_COMMAND_RECALL_HISTORY_REMAINING_WRITES);
 	if (ret < 0)
 		return ret;
 	// Wait t_recall
 	mdelay(5);
-	max1720x_regmap_read(priv, priv->regs[REMAINING_UPDATES_REG], &val);
+	ret = max1720x_regmap_read(priv, priv->regs[REMAINING_UPDATES_REG], &val);
 	if (ret < 0)
 		return ret;
 
@@ -4537,9 +4537,10 @@ static DEVICE_ATTR_RO(cell);
 static DEVICE_ATTR_RO(temp);
 static DEVICE_ATTR_RO(batt);
 static DEVICE_ATTR_RO(leakcurr);
-static DEVICE_ATTR_RO(max17320_protstat);
+/* These reads write to the gauge (ProtAlrt clear, history recall), so keep them root-only. */
+static DEVICE_ATTR_ADMIN_RO(max17320_protstat);
 static DEVICE_ATTR_RO(max17330_protstat);
-static DEVICE_ATTR_RO(remaining_nvm_updates);
+static DEVICE_ATTR_ADMIN_RO(remaining_nvm_updates);
 
 // Read/Write attributes (0644) - DEVICE_ATTR_RW
 static DEVICE_ATTR_RW(atrate);
