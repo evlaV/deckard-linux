@@ -978,8 +978,6 @@ static void ath12k_dp_tx_complete_msdu(struct ath12k *ar,
 	spin_unlock_bh(&ab->base_lock);
 
 	status.sta = peer->sta;
-	status.info = info;
-	status.skb = msdu;
 	rate = arsta->last_txrate;
 
 	status_rate.rate_idx = rate;
@@ -989,6 +987,8 @@ static void ath12k_dp_tx_complete_msdu(struct ath12k *ar,
 	status.n_rates = 1;
 
 update_and_exit:
+	status.info = info;
+	status.skb = msdu;
 	ieee80211_tx_status_ext(ath12k_ar_to_hw(ar), &status);
 
 exit:
