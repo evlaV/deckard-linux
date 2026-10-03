@@ -97,17 +97,14 @@ static const struct attribute_group control_attr_group = {
 static int reg_valve_5v_exp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct device_node *node;
 	struct valve_5v_exp_vreg *vreg;
 	struct regulator_init_data *init_data;
 	struct regulator_config reg_config = {};
 	int ret;
 
 	vreg = devm_kzalloc(dev, sizeof(*vreg), GFP_KERNEL);
-	if (!vreg) {
-		of_node_put(node);
+	if (!vreg)
 		return -ENOMEM;
-	}
 
 	init_data = of_get_regulator_init_data(dev, dev->of_node, &vreg->desc);
 	if (!init_data)
@@ -120,7 +117,7 @@ static int reg_valve_5v_exp_probe(struct platform_device *pdev)
 
 	reg_config.dev = dev;
 	reg_config.init_data = init_data;
-	reg_config.of_node	= node;
+	reg_config.of_node	= dev->of_node;
 	reg_config.driver_data	= (void*) ((size_t) vreg);
 
 	vreg->desc.n_voltages = 1;
