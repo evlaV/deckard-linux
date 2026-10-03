@@ -1623,6 +1623,11 @@ static int og0ve10_probe(struct i2c_client *client)
 	const char *id;
 	bool skip_check_chip_id = false;
 
+	if (numSensors_og0VE10 >= ARRAY_SIZE(sensors_og0VE10)) {
+		dev_err(dev, "Too many og0ve10 sensors\n");
+		return -ENODEV;
+	}
+
 	sensor = devm_kzalloc(dev, sizeof(*sensor), GFP_KERNEL);
 	if (!sensor)
 		return -ENOMEM;
@@ -1641,17 +1646,12 @@ static int og0ve10_probe(struct i2c_client *client)
 	if (strcmp(id, "upper_left") == 0) {
 		sensor->is_left_sensor = true;
 		sensor->lastGroup = 0;
-		left_sensor_idx = numSensors_og0VE10;
 	} else {
 		sensor->is_left_sensor = false;
 		sensor->lastGroup = 0;
-		right_sensor_idx = numSensors_og0VE10;
 	}
 
 	INIT_WORK(&sensor->work, update_groups_og0VE10_work_fn);
-
-	sensors_og0VE10[numSensors_og0VE10] = sensor;
-	numSensors_og0VE10++;
 	
 	sensor->group_mode = MODE_NOGROUPS;
 	sensor->is_vc_interleaved = false;
@@ -1769,6 +1769,14 @@ static int og0ve10_probe(struct i2c_client *client)
 	ret = v4l2_async_register_subdev_sensor(&sensor->sd);
 	if (ret)
 		goto free_ctrls;
+
+	/* Only publish the sensor globally once probe can no longer fail. */
+	if (sensor->is_left_sensor)
+		left_sensor_idx = numSensors_og0VE10;
+	else
+		right_sensor_idx = numSensors_og0VE10;
+	sensors_og0VE10[numSensors_og0VE10] = sensor;
+	numSensors_og0VE10++;
 
 	sensor->current_mode = &og0ve10_mode_data_640x480;
 

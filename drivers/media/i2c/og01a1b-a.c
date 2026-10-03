@@ -2124,6 +2124,11 @@ static int og01a1b_probe(struct i2c_client *client)
 	int ret;
     const char *id;
     bool skip_check_chip_id = false;
+	if (numSensors >= ARRAY_SIZE(sensors)) {
+		dev_err(dev, "Too many og01a1b sensors\n");
+		return -ENODEV;
+	}
+
 	sensor = devm_kzalloc(dev, sizeof(*sensor), GFP_KERNEL);
 	if (!sensor)
 		return -ENOMEM;
@@ -2148,26 +2153,14 @@ static int og01a1b_probe(struct i2c_client *client)
     if (strcmp(id, "slam_left") == 0) {
 		sensor->is_sync_sensor = true;
 		INIT_WORK(&sensor->work,update_groups_work_fn);
-		sync_sensor_index = sensor->sensor_index;
-		for(int i = 0; i < numSensors; i++) {
-			sensors[i]->other_sensor = sensor;
-
-			// We keep this in for the 2 camera compatibility case
-			sensor->other_sensor = sensors[i];
-		}
 		sensor->is_left_sensor = true;
     } else {
 		sensor->is_sync_sensor = false;
 		INIT_WORK(&sensor->work,update_groups_work_fn);
-		if(sync_sensor_index != -1) {
-			sensor->other_sensor = sensors[sync_sensor_index];
-			// We keep this in for the 2 camera compatibility case
-			sensors[sync_sensor_index]->other_sensor = sensor;
-		}
 		sensor->is_left_sensor = false;
     }
 
-	if(numSensors == 0) {
+	if(!sensor_workqueues[0]) {
 		for (int i = 0; i < 2; i++) {
             sensor_workqueues[i] = alloc_workqueue("sensor_workqueue%d", WQ_UNBOUND | WQ_HIGHPRI | WQ_SYSFS, 1, i);
 
@@ -2191,10 +2184,6 @@ static int og01a1b_probe(struct i2c_client *client)
         }
 	}
 
-
-	
-	sensors[numSensors] = sensor;
-	numSensors++;
 	sensor->group_mode = MODE_NOGROUPS;
 
 	sensor->i2c_client = client;
@@ -2306,6 +2295,23 @@ static int og01a1b_probe(struct i2c_client *client)
 	ret = v4l2_async_register_subdev_sensor(&sensor->sd);
 	if (ret)
 		goto free_ctrls;
+
+	/* Only publish the sensor globally once probe can no longer fail. */
+	if (sensor->is_sync_sensor) {
+		sync_sensor_index = sensor->sensor_index;
+		for(int i = 0; i < numSensors; i++) {
+			sensors[i]->other_sensor = sensor;
+
+			// We keep this in for the 2 camera compatibility case
+			sensor->other_sensor = sensors[i];
+		}
+	} else if(sync_sensor_index != -1) {
+		sensor->other_sensor = sensors[sync_sensor_index];
+		// We keep this in for the 2 camera compatibility case
+		sensors[sync_sensor_index]->other_sensor = sensor;
+	}
+	sensors[numSensors] = sensor;
+	numSensors++;
 
 	sensor->current_mode = &og01a1b_mode_data_1280x1024;
 
