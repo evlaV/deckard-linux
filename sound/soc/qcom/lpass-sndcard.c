@@ -39,8 +39,14 @@ static int i2s_hw_params(struct snd_pcm_substream *substream, struct snd_pcm_hw_
 	/* note that the clock enable could be done in a trigger() callback (atomic) */
 
 	clk_set_rate(link->clk, rate);
-	if (link->clk2) {
+	if (link->clk2)
 		clk_set_rate(link->clk2, rate);
+
+	/* hw_params can be called repeatedly before hw_free, which disables only once. */
+	if (link->clk_enabled)
+		return 0;
+
+	if (link->clk2) {
 		ret = clk_prepare_enable(link->clk2);
 		if (ret)
 			return ret;
