@@ -355,7 +355,8 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 			       cmds, commit_idx);
 	if (ret) {
 		pr_err("Error sending AMC RPMH requests (%d)\n", ret);
-		bcm->dirty = true;
+		list_for_each_entry(bcm, &voter->commit_list, list)
+			bcm->dirty = true;
 		goto out;
 	}
 
@@ -394,7 +395,8 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 	ret = rpmh_write_batch(voter->dev, RPMH_WAKE_ONLY_STATE, cmds, commit_idx);
 	if (ret) {
 		pr_err("Error sending WAKE RPMH requests (%d)\n", ret);
-		bcm->dirty = true;
+		list_for_each_entry(bcm, &voter->commit_list, list)
+			bcm->dirty = true;
 		goto out;
 	}
 
@@ -403,7 +405,8 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 	ret = rpmh_write_batch(voter->dev, RPMH_SLEEP_STATE, cmds, commit_idx);
 	if (ret) {
 		pr_err("Error sending SLEEP RPMH requests (%d)\n", ret);
-		bcm->dirty = true;
+		list_for_each_entry(bcm, &voter->commit_list, list)
+			bcm->dirty = true;
 		goto out;
 	}
 
