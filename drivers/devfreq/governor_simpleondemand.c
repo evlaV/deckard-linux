@@ -138,12 +138,14 @@ static int devfreq_simple_ondemand_handler(struct devfreq *devfreq,
 	switch (event) {
 	case DEVFREQ_GOV_START:
 		ret = simpleondemand_init(devfreq);
+		if (ret)
+			break;
 		devfreq_monitor_start(devfreq);
 		break;
 
 	case DEVFREQ_GOV_STOP:
-		simpleondemand_exit(devfreq);
 		devfreq_monitor_stop(devfreq);
+		simpleondemand_exit(devfreq);
 		break;
 
 	case DEVFREQ_GOV_UPDATE_INTERVAL:
