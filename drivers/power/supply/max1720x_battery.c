@@ -1116,12 +1116,13 @@ static ssize_t atrate_store(struct device *dev,
 	struct max1720x_priv *priv = dev_get_drvdata(dev);
 	int ret, in_val, decimal_val = 0;
 	u32 fraction_val = 0;
-	char local_buf[16], fraction_dst_buf[16];
+	char local_buf[20], fraction_dst_buf[16];
 	char *fraction_dst = fraction_dst_buf;
 	char *decimal, *fraction = local_buf;
 	size_t fraction_size = 0;
 
-	if (strnlen(buf, sizeof(local_buf)) >= sizeof(local_buf))
+	/* Leave room for strncat to pad the fraction out to 4 digits. */
+	if (strnlen(buf, sizeof(local_buf) - 4) >= sizeof(local_buf) - 4)
 		return -EINVAL;
 
 	strcpy(fraction, buf);
