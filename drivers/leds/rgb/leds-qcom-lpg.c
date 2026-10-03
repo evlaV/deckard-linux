@@ -888,7 +888,7 @@ static int lpg_brightness_mc_set(struct led_classdev *cdev,
 	 */
 	for (i = 0; i < led->num_channels; i++) {
 		chan = led->channels[i];
-		if (chan->ramp_enabled)
+		if (chan->ramp_enabled && value != LED_OFF)
 			value = LED_FULL;
 	}
 
@@ -1218,6 +1218,7 @@ static int lpg_pattern_clear(struct lpg_led *led)
 		lpg_clear_pbs_trigger(chan->lpg, chan->lut_mask);
 		chan->pattern_lo_idx = 0;
 		chan->pattern_hi_idx = 0;
+		chan->ramp_enabled = false;
 	}
 
 	mutex_unlock(&lpg->lock);
