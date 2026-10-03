@@ -272,7 +272,7 @@ static void drm_vrconsole_update(struct drm_vrconsole *dvrconsole,
 		return;
 	}
 
-	pb.w = scanout->buffer->fb->width * scanout->buffer->fb->format->cpp[0];
+	pb.w = scanout->buffer->fb->width;
 	pb.h = scanout->buffer->fb->height;
 	pb.stride = scanout->buffer->fb->pitches[0];
 	pb.map = &map;
