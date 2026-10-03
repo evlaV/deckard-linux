@@ -415,6 +415,14 @@ static struct input_handler qcom_pon_combo_handler = {
 	.id_table   = qcom_pon_combo_ids,
 };
 
+static void qcom_pon_unregister_input_handler(void *data)
+{
+	struct qcom_pon *pon = data;
+
+	input_unregister_handler(&pon->input_handler);
+	cancel_delayed_work_sync(&qcom_pon_kmsg_dump_work);
+}
+
 static void qcom_pon_reason_dump(struct qcom_pon *pon)
 {
 	/* first dump the pon reason type */
@@ -505,7 +513,7 @@ static int qcom_pon_probe(struct platform_device *pdev)
 	}
 
 	if (data->pmk8550_pon_reason) {
-		error = sysfs_create_group(&pdev->dev.kobj, &sysfs_group);
+		error = devm_device_add_group(&pdev->dev, &sysfs_group);
 		if (error) {
 			dev_err(&pdev->dev, "can't create sysfs group\n");
 			return error;
@@ -554,8 +562,13 @@ static int qcom_pon_probe(struct platform_device *pdev)
 	memcpy(&pon->input_handler, &qcom_pon_combo_handler,
 		sizeof(qcom_pon_combo_handler));
 	error = input_register_handler(&pon->input_handler);
-	if (error)
+	if (error) {
 		dev_err(&pdev->dev, "could not registered input combo handler\n");
+	} else {
+		error = devm_add_action_or_reset(&pdev->dev, qcom_pon_unregister_input_handler, pon);
+		if (error)
+			return error;
+	}
 
 	platform_set_drvdata(pdev, pon);
 
