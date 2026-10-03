@@ -62,6 +62,8 @@ struct drm_vrconsole {
 	struct input_handler input_handler;
 	bool switch_to_console;
 	bool console_enabled;
+	bool console_registered;
+	bool input_registered;
 };
 
 static struct input_handler input_switch_handler;
@@ -212,12 +214,15 @@ static void drm_vrconsole_client_unregister(struct drm_client_dev *client)
 	struct drm_vrconsole *dvrconsole = client_to_drm_vrconsole(client);
 	struct drm_device *dev = client->dev;
 
-	input_unregister_handler(&dvrconsole->input_handler);
+	if (dvrconsole->input_registered)
+		input_unregister_handler(&dvrconsole->input_handler);
 
-	console_lock();
-	do_unbind_con_driver(&dvrconsole->csw, 0, MAX_NR_CONSOLES - 1, 1);
-	do_unregister_con_driver(&dvrconsole->csw);
-	console_unlock();
+	if (dvrconsole->console_registered) {
+		console_lock();
+		do_unbind_con_driver(&dvrconsole->csw, 0, MAX_NR_CONSOLES - 1, 1);
+		do_unregister_con_driver(&dvrconsole->csw);
+		console_unlock();
+	}
 
 	release_firmware(dvrconsole->vrfont_fw);
 	release_firmware(dvrconsole->vrterminal_fw);
@@ -796,6 +801,7 @@ void drm_vrconsole_register(struct drm_device *dev)
 	of_node_put(of_node);
 
 	mutex_init(&new->lock);
+	INIT_WORK(&new->update_work, vrcon_terminal_update_work);
 	if (drm_client_init(dev, &new->client, "drm_vrconsole", &drm_vrconsole_client_funcs))
 		goto err_free;
 
@@ -844,8 +850,6 @@ void drm_vrconsole_register(struct drm_device *dev)
 			( (int) new->vrfont.maxGlyphWidth ) * 10, ( (int) new->vrfont.maxGlyphWidth ) * 10,
 			( (int) new->vrfont.maxGlyphHeight ) * 10, ( (int) new->vrfont.maxGlyphHeight ) * 10 );
 
-	INIT_WORK(&new->update_work, vrcon_terminal_update_work);
-
 	memcpy(&new->csw, &vr_con, sizeof(vr_con));
 
 	console_lock();
@@ -853,6 +857,7 @@ void drm_vrconsole_register(struct drm_device *dev)
 	console_unlock();
 	if (ret)
 		goto err_warn_console;
+	new->console_registered = true;
 
 	/* Register input handler as the very end when we are sure the console is registered */
 	memcpy(&new->input_handler, &input_switch_handler, sizeof(input_switch_handler));
@@ -860,6 +865,8 @@ void drm_vrconsole_register(struct drm_device *dev)
 	ret = input_register_handler(&new->input_handler);
 	if (ret)
 		drm_warn(dev, "failed to register input handler\n");
+	else
+		new->input_registered = true;
 
 	//dont block waiting for a VT switch when we go into suspend
 	drm_warn(dev, "vt switch on suspend ignored\n");
