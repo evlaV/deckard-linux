@@ -116,6 +116,7 @@ int load_fw(struct device *dev, const char *fw_name, phys_addr_t *mem_phys,
 	if (!mem_virt) {
 		dev_err(dev, "unable to remap fw memory region %pa size %#zx\n",
 			mem_phys, *mem_size);
+		ret = -ENOMEM;
 		goto err_release_fw;
 	}
 

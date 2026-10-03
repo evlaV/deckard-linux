@@ -1652,6 +1652,10 @@ static void arcimx616_remove(struct i2c_client *client)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct arcimx616_dev *sensor = to_arcimx616_dev(sd);
 
+	if (sensor->irq > 0)
+		disable_irq(sensor->irq);
+	cancel_delayed_work_sync(&sensor->connect_work);
+
 	arcimx616_led_remove_sysfs(sensor);
 
        /* Drop the synthetic AT24 client if we created one */

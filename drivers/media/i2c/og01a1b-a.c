@@ -1812,13 +1812,13 @@ static int og01a1b_check_chip_id(struct og01a1b_dev *sensor)
 	struct device *dev = &client->dev;
 	const char *id;
 	int ret = 0;
-	u16 chip_id;
+	u32 chip_id;
 
 	ret = og01a1b_set_power_on(sensor);
 	if (ret)
 		return ret;
 
-	ret = og01a1b_read_reg_len(sensor, OG01A1B_REG_CHIP_ID, 2, (u32 *)&chip_id);
+	ret = og01a1b_read_reg_len(sensor, OG01A1B_REG_CHIP_ID, 2, &chip_id);
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to read chip identifier\n",
 			__func__);
@@ -2399,6 +2399,7 @@ static void og01a1b_remove(struct i2c_client *client)
 	}
 
 	v4l2_async_unregister_subdev(&sensor->sd);
+	cancel_work_sync(&sensor->work);
 	pm_runtime_disable(&client->dev);
 	mutex_destroy(&sensor->lock);
 	media_entity_cleanup(&sensor->sd.entity);
