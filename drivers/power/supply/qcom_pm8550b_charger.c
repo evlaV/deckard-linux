@@ -686,7 +686,7 @@ static ssize_t status_detailed_show(struct device *dev, struct device_attribute 
 	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHG_RT_STS, &reg);
 	at += sysfs_emit_at(buf, at, "Input OK: %d\n", !!(reg & CHGR_CHG_CHG_STS_INPUT_OK_MASK));
 	at += sysfs_emit_at(buf, at, "Buck OK: %d\n", !!(reg & CHGR_CHG_CHG_STS_BUCK_OK_MASK));
-	at += sysfs_emit_at(buf, at, "Temp OK: %d\n", !!(reg & CHGR_CHG_CHG_STS_BUCK_OK_MASK));
+	at += sysfs_emit_at(buf, at, "Temp OK: %d\n", !!(reg & CHGR_CHG_CHG_STS_TEMP_OK_MASK));
 	at += sysfs_emit_at(buf, at, "BATT OK: %d\n", !!(reg & CHGR_CHG_CHG_STS_BATT_OK_MASK));
 	at += sysfs_emit_at(buf, at, "CHG Ctrl OK: %d\n", !!(reg & CHGR_CHG_CHG_STS_CHG_CTRL_OK_MASK));
 
