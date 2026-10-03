@@ -1942,23 +1942,35 @@ static ssize_t panel_read_write(struct file *file,
 	struct drm_panel *panel = s->private;
 	struct plano_ctx *ctx = panel_to_ctx(panel);
 	u8 buf[32];
+	int id, reg_addr, num_bytes;
 
+	if (count >= sizeof(buf))
+		return -EINVAL;
 	if (copy_from_user(buf, userbuf, count))
 		return -EOVERFLOW;
+	buf[count] = '\0';
 
-	ret = sscanf(buf, "%d %2x %d", &ctx->panel_read_id, &ctx->panel_read_reg_addr, &ctx->panel_read_num_bytes);
+	ret = sscanf(buf, "%d %2x %d", &id, &reg_addr, &num_bytes);
 	if(ret != 3)
 	{
 		DRM_DEV_ERROR(ctx->dev, "panel read got wrong number of input parameters from sscanf");
 		return -EINVAL;
 	}
-	if( ctx->panel_read_id != 0 && ctx->panel_read_id != 1)
+	if( (id != 0 && id != 1) || !ctx->dsi[id] )
 	{
 		// invalid panel id
-		DRM_DEV_ERROR(ctx->dev, "panel read found invalid id value %u", ctx->panel_read_id);
+		DRM_DEV_ERROR(ctx->dev, "panel read found invalid id value %d", id);
 		ctx->panel_read_id = 0;
 		return -EINVAL;
 	}
+	if (num_bytes < 1 || num_bytes > (int)sizeof(ctx->panel_read_data))
+	{
+		DRM_DEV_ERROR(ctx->dev, "panel read found invalid length %d", num_bytes);
+		return -EINVAL;
+	}
+	ctx->panel_read_id = id;
+	ctx->panel_read_reg_addr = reg_addr;
+	ctx->panel_read_num_bytes = num_bytes;
 	return count;
 }
 
@@ -1975,17 +1987,20 @@ static ssize_t panel_write_write(struct file *file,
 	struct drm_panel *panel = s->private;
 	struct plano_ctx *ctx = panel_to_ctx(panel);
 
+	if (count >= sizeof(buf))
+		return -EINVAL;
 	if (copy_from_user(buf, userbuf, count))
 		return -EOVERFLOW;
+	buf[count] = '\0';
 
 	// get the base parameters
-	ret = sscanf(buf, "%d %2x %d %s", &id, &addr, &len, char_data);
+	ret = sscanf(buf, "%d %2x %d %255s", &id, &addr, &len, char_data);
 	if(ret != 4)
 	{
 		DRM_DEV_ERROR(ctx->dev, "panel write got wrong number of input parameters (%d) from sscanf", ret);
 		return -EINVAL;
 	}
-	if(id != 0 && id != 1)
+	if((id != 0 && id != 1) || !ctx->dsi[id])
 	{
 		// invalid panel id
 		DRM_DEV_ERROR(ctx->dev, "panel read found invalid id value %u", ctx->panel_read_id);
@@ -1993,14 +2008,14 @@ static ssize_t panel_write_write(struct file *file,
 		return -EINVAL;
 	}
 	// we limit writes to a total of 256 bytes
-	if(len >256)
+	if(len < 0 || len > (int)sizeof(payload) - 1)
 	{
 		DRM_DEV_ERROR(ctx->dev, "panel write exceed max length %d\n", len);
 		return -EINVAL;
 	}
 	payload[0] = addr;
 	// get the data payload
-	for(i=0;i<len;i++)
+	for(i=0;i<len && i * 2 < strlen(char_data);i++)
 	{
 		if(sscanf(char_data + i * 2, "%2x", &v) != 1) break;
 		payload[i+1] = (unsigned char)v;
