@@ -753,14 +753,16 @@ static void arcimx616_set_power_off(struct arcimx616_dev *sensor)
 		return;
 	}
 
-	regulator_bulk_disable(arcimx616_NUM_SUPPLIES, sensor->supplies);
+	/* The datasheet requires XCLR low, then INCK off, then the rails off. */
+	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
 
 	clk_disable_unprepare(sensor->xclk);
 	clk_disable_unprepare(sensor->xclk2);
 
+	regulator_bulk_disable(arcimx616_NUM_SUPPLIES, sensor->supplies);
+
 	dev_dbg(&client->dev, "%s: Powered off\n",
 			__func__);
-	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
 
 	/* Let rails settle. */
 	usleep_range(1000, 1500);
