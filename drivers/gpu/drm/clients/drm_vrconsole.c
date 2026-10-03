@@ -339,6 +339,9 @@ static void vrcon_terminal_update_work(struct work_struct *work)
 	if (dvrconsole->switch_to_console)
 		dvrconsole->console_enabled = 1;
 
+	// Hotplug frees and recreates the scanout buffers under this lock.
+	mutex_lock(&dvrconsole->lock);
+
 	if (!dvrconsole->probed) {
 		drm_vrconsole_init_client(dvrconsole);
 		dvrconsole->terminalUpdate.full_update = 1;
@@ -350,6 +353,8 @@ static void vrcon_terminal_update_work(struct work_struct *work)
 		for (i = 0; i < dvrconsole->n_scanout; i++)
 			drm_vrconsole_update(dvrconsole, &dvrconsole->scanout[i]);
 	}
+
+	mutex_unlock(&dvrconsole->lock);
 
 	vrterminal_update_reset( &dvrconsole->terminalUpdate );
 
