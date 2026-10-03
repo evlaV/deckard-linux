@@ -497,6 +497,8 @@ static void get_comm_cmdline(struct msm_gem_submit *submit, char **comm, char **
 	put_task_struct(task);
 }
 
+static void hangcheck_ring_timer_reset(struct msm_gpu *gpu, struct msm_ringbuffer *ring);
+
 static void recover_worker(struct kthread_work *work)
 {
 	struct msm_gpu *gpu = container_of(work, struct msm_gpu, recover_work);
@@ -618,6 +620,14 @@ static void recover_worker(struct kthread_work *work)
 	pm_runtime_put(&gpu->pdev->dev);
 
 out_unlock:
+	/* msm_trigger_recovery() stops every ring's hangcheck, so restart it for rings with pending work. */
+	for (i = 0; i < gpu->nr_rings; i++) {
+		struct msm_ringbuffer *ring = gpu->rb[i];
+
+		if (fence_after(ring->fctx->last_fence, ring->memptrs->fence))
+			hangcheck_ring_timer_reset(gpu, ring);
+	}
+
 	mutex_unlock(&gpu->lock);
 
 	msm_gpu_retire(gpu);
