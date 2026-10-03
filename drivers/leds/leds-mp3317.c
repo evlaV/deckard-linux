@@ -141,6 +141,7 @@ struct mp3317 {
 	unsigned long rst;
     u8 default_map[sizeof(MP3317_DEFAULT_MAP)];
     unsigned int use_pm_ops;
+	bool en_before_suspend;
 };
 
 static ssize_t reg_dump_show(struct device *dev, struct device_attribute *attr, char *buf);
@@ -1809,6 +1810,7 @@ static int mp3317_leds_suspend(struct device *dev)
 	if ( !led->use_pm_ops )
 		return 0;
 
+	led->en_before_suspend = gpiod_get_value_cansleep(led->en_gpio);
 	gpiod_set_value_cansleep(led->en_gpio, 0);
 
 	return 0;
@@ -1820,6 +1822,9 @@ static int mp3317_leds_resume(struct device *dev)
 	struct mp3317 *led = dev_get_drvdata(dev);
 
 	if ( !led->use_pm_ops )
+		return 0;
+
+	if (!led->en_before_suspend)
 		return 0;
 
 	gpiod_set_value_cansleep(led->en_gpio, 1);
