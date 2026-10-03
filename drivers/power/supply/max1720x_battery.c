@@ -6043,7 +6043,6 @@ static int max1720x_probe(struct i2c_client *client)
 	return 0;
 
 err_attr:
-	sysfs_remove_group(&priv->dev->kobj, priv->attr_grp);
 err_irq:
 err_supply:
 	cancel_work_sync(&priv->init_worker);
