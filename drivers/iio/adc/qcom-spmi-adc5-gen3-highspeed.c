@@ -990,6 +990,13 @@ queue_next:
 	return HRTIMER_RESTART;
 }
 
+static void adc5_gen3_hs_cancel_timer(void *data)
+{
+	struct adc5_chip_hs *adc = data;
+
+	hrtimer_cancel(&adc->sample_timer);
+}
+
 static int adc5_gen3_hs_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node;
@@ -1074,6 +1081,11 @@ static int adc5_gen3_hs_probe(struct platform_device *pdev)
 	hrtimer_setup(&adc->sample_timer, &adc5_gen3_hs_start_sample,
 			CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 
+	/* Added before the IIO device so it runs after the sysfs "start" file is gone. */
+	ret = devm_add_action_or_reset(dev, adc5_gen3_hs_cancel_timer, adc);
+	if (ret)
+		return ret;
+
 	return devm_iio_device_register(dev, indio_dev);
 
 fail:
@@ -1082,9 +1094,11 @@ fail:
 
 static void adc5_gen3_hs_exit(struct platform_device *pdev)
 {
-	struct adc5_chip_hs *adc = platform_get_drvdata(pdev);
+	struct adc5_chip_hs *adc = iio_priv(platform_get_drvdata(pdev));
 	unsigned long flags;
 	u8 data = 0;
+
+	hrtimer_cancel(&adc->sample_timer);
 
 	spin_lock_irqsave(&adc->lock, flags);
 
@@ -1106,7 +1120,9 @@ static void adc5_gen3_hs_exit(struct platform_device *pdev)
 
 static int adc5_gen3_hs_freeze(struct device *dev)
 {
-	struct adc5_chip_hs *adc = dev_get_drvdata(dev);
+	struct adc5_chip_hs *adc = iio_priv(dev_get_drvdata(dev));
+
+	hrtimer_cancel(&adc->sample_timer);
 
 	devm_free_irq(dev, adc->irq, adc);
 
@@ -1115,7 +1131,7 @@ static int adc5_gen3_hs_freeze(struct device *dev)
 
 static int adc5_gen3_hs_restore(struct device *dev)
 {
-	struct adc5_chip_hs *adc = dev_get_drvdata(dev);
+	struct adc5_chip_hs *adc = iio_priv(dev_get_drvdata(dev));
 	int ret = 0;
 
 	ret = devm_request_irq(dev, adc->irq, adc5_gen3_hs_isr, 0, adc->irq_name, adc);
