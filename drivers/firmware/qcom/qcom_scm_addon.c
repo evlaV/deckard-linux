@@ -70,7 +70,7 @@ static int __qcom_scm_get_feat_version(struct device *dev, u64 feat_id, u64 *ver
 
 	ret = qcom_scm_call(__scm->dev, &desc, &res);
 
-	if (version)
+	if (!ret && version)
 		*version = res.result[0];
 
 	return ret;
@@ -273,7 +273,7 @@ int qcom_scm_query_encrypted_log_feature(u64 *enabled)
 	struct qcom_scm_res res;
 
 	ret = qcom_scm_call(__scm->dev, &desc, &res);
-	if (enabled)
+	if (!ret && enabled)
 		*enabled = res.result[0];
 
 	return ret;
@@ -319,6 +319,9 @@ bool qcom_scm_kgsl_set_smmu_aperture_available(void)
 {
 	int ret;
 
+	if (!qcom_scm_is_available())
+		return false;
+
 	ret = __qcom_scm_is_call_available(__scm->dev, QCOM_SCM_SVC_MP,
 				QCOM_SCM_MP_CP_SMMU_APERTURE_ID);
 
@@ -341,6 +344,9 @@ int qcom_scm_kgsl_set_smmu_aperture(unsigned int num_context_bank)
 		.arginfo = QCOM_SCM_ARGS(4),
 	};
 
+	if (!qcom_scm_is_available())
+		return -EPROBE_DEFER;
+
 	return qcom_scm_call(__scm->dev, &desc, NULL);
 
 }
@@ -355,6 +361,9 @@ int qcom_scm_kgsl_init_regs(u32 gpu_req)
 		.args[0] = gpu_req,
 		.arginfo = QCOM_SCM_ARGS(1),
 	};
+
+	if (!qcom_scm_is_available())
+		return -EPROBE_DEFER;
 
 	return qcom_scm_call(__scm->dev, &desc, NULL);
 }

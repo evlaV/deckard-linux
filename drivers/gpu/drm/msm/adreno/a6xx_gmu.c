@@ -2177,8 +2177,11 @@ int a6xx_gmu_init(struct a6xx_gpu *a6xx_gpu, struct device_node *node)
 	if (ret)
 		goto detach_gxpd;
 
+	/* TZ builds without the GPU init service can still run the GPU, just without BCL. */
 	ret = qcom_scm_kgsl_init_regs(GMU_BCL_EN_REQ);
-	if (ret)
+	if (ret == -EOPNOTSUPP)
+		dev_warn(gmu->dev, "TZ does not support GPU BCL init\n");
+	else if (ret)
 		goto detach_gxpd;
 
 	/* Set up the HFI queues */
