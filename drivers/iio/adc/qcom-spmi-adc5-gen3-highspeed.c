@@ -863,8 +863,8 @@ static int adc5_gen3_hs_get_dt_data(struct adc5_chip_hs *adc, struct device_node
 	if (!adc->nchannels)
 		return -EINVAL;
 
-	/* Limit support to 8 channels */
-	if (adc->nchannels > 8)
+	/* The sample buffers only hold 4 channels. */
+	if (adc->nchannels > 4)
 		return -EINVAL;
 
 	adc->iio_chans = devm_kcalloc(adc->dev, adc->nchannels, sizeof(*adc->iio_chans), GFP_KERNEL);
