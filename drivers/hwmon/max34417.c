@@ -465,7 +465,7 @@ static ssize_t accumulator_broadcast_update_show(struct device *dev,
 	if (data->broadcaster)
 		addr = data->broadcaster->addr;
 
-	return sprintf(buf, "0x%x\n", data->broadcaster->addr);
+	return sysfs_emit(buf, "0x%x\n", addr);
 }
 
 static SENSOR_DEVICE_ATTR(measurement_mode, 0644,
@@ -941,6 +941,11 @@ static void max34417_remove(void *data)
 	i2c_smbus_write_byte_data(client, MAX34417_REG_CONTROL, 0);
 }
 
+static void max34417_put_broadcaster(void *dev)
+{
+	put_device(dev);
+}
+
 static int max34417_probe(struct i2c_client *client)
 {
 	 struct device_node *broadcaster_node;
@@ -1007,6 +1012,13 @@ static int max34417_probe(struct i2c_client *client)
 	if (broadcaster_node) {
 		data->broadcaster = of_find_i2c_device_by_node(broadcaster_node);
 		of_node_put(broadcaster_node);
+	}
+
+	if (data->broadcaster) {
+		err = devm_add_action_or_reset(dev, max34417_put_broadcaster,
+					       &data->broadcaster->dev);
+		if (err)
+			return err;
 	}
 
 	dev_set_drvdata(dev, data);
