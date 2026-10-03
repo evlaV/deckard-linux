@@ -377,9 +377,14 @@ long kgsl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		// XXX: look at create.flags
 		ret = msm_submitqueue_create(dev, ctx, 0, 0, &create.drawctxt_id);
+		if (ret)
+			return ret;
 
 		queue = msm_submitqueue_get(ctx, create.drawctxt_id);
+		if (!queue)
+			return -EINVAL;
 		queue->kgsl_flags = create.flags;
+		msm_submitqueue_put(queue);
 
 		if (copy_to_user(argp, &create, sizeof(create)))
 			WARN_ON(1);
@@ -525,20 +530,24 @@ long kgsl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 #endif
 
 		fence = kzalloc(sizeof(*fence), GFP_KERNEL);
-		if (!fence)
+		if (!fence) {
+			msm_submitqueue_put(queue);
 			return -ENOMEM;
+		}
 
 		dma_fence_init(&fence->base, &kgsl_fence_ops, &fence->lock,
 			dma_fence_context_alloc(1), 0);
 
 		out_fence_fd = get_unused_fd_flags(O_CLOEXEC);
 		if (out_fence_fd < 0) {
+			msm_submitqueue_put(queue);
 			kfree(fence);
 			return out_fence_fd;
 		}
 
 		sync_file = sync_file_create(&fence->base);
 		if (!sync_file) {
+			msm_submitqueue_put(queue);
 			put_unused_fd(out_fence_fd);
 			kfree(fence);
 			return -ENOMEM;
@@ -557,15 +566,13 @@ long kgsl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			list_add_tail(&fence->node, &queue->fences);
 		}
 		spin_unlock_irqrestore(&queue->fence_lock, flags);
+		msm_submitqueue_put(queue);
 
 		if (copy_to_user(event.priv, &out_fence_fd, sizeof(out_fence_fd))) {
 			WARN_ON(1); // XXX close fd
 			return -EFAULT;
 		}
 
-		//printk("event.timestamp=%d %d %d\n", event.timestamp, queue->timestamp_retired, out_fence_fd);
-
-		msm_submitqueue_put(queue);
 		return 0;
 	}
 
@@ -738,8 +745,10 @@ case IOCTL_KGSL_GPU_COMMAND: {
 		trace_msm_kgsl_gpu_command(cmd.context_id, cmd.timestamp);
 
 	submit = submit_create(dev, gpu, queue, 0, cmd.numcmds);
-	if (IS_ERR(submit))
+	if (IS_ERR(submit)) {
+		msm_submitqueue_put(queue);
 		return PTR_ERR(submit);
+	}
 
 	mutex_lock(&queue->lock);
 	
