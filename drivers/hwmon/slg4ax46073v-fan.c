@@ -699,12 +699,10 @@ static int slg4ax46073v_write_pwm(struct device *dev, u32 attr, int channel,
 			slg4ax46073v_clear_alarm(slg4ax46073v);
 		}
 		break;
-	case hwmon_pwm_freq: // TODO fix out of range checks based on slg4 roll over bounds
-		if (val < SLG4AX46073V_PWM_PERIOD_MIN)
-			regval = SLG4AX46073V_PWM_PERIOD_MIN;
-		else if (val > SLG4AX46073V_PWM_FREQ_MAX)
-			regval = SLG4AX46073V_PWM_PERIOD_MAX;
-		else if (slg4ax46073v->version >= VERSION_7) {
+	case hwmon_pwm_freq:
+		val = clamp_val(val, SLG4AX46073V_PWM_FREQ_MIN,
+				SLG4AX46073V_PWM_FREQ_MAX);
+		if (slg4ax46073v->version >= VERSION_7) {
 			regval = (1024000 - val) / val;
 		} else {
 			regval = 1000 / (val / 1000);
