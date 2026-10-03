@@ -194,7 +194,7 @@ struct adc5_chip_hs {
 	struct adc5_channel_prop *chan_props;
 	struct iio_chan_spec *iio_chans;
 	struct completion complete;
-	struct mutex lock;
+	spinlock_t lock;
 	const struct adc5_data *data;
 
 	struct hrtimer sample_timer;
@@ -260,13 +260,11 @@ static void stop_acquisition(struct adc5_chip_hs *adc)
 {
 	// Clear any active acquisition
 	u8 val;
-	int ret;
+	unsigned long flags;
 
 	hrtimer_cancel(&adc->sample_timer);
 
-	ret = mutex_lock_interruptible(&adc->lock);
-	if (ret != 0)
-		return;
+	spin_lock_irqsave(&adc->lock, flags);
 
 	adc->state = ADC_STATE_IDLE;
 
@@ -277,7 +275,7 @@ static void stop_acquisition(struct adc5_chip_hs *adc)
 	val = ADC5_GEN3_CONV_REQ_REQ;
 	adc5_write(adc, ADC5_GEN3_CONV_REQ, &val, 1);
 
-	mutex_unlock(&adc->lock);
+	spin_unlock_irqrestore(&adc->lock, flags);
 }
 
 /* Start High Speed Acquisition of Data until the buffer fills up */
@@ -806,11 +804,10 @@ static int adc5_get_dt_channel_data(struct adc5_chip_hs *adc, struct adc5_channe
 
 static int adc5_gen3_hs_configure_channel_buffer(struct adc5_chip_hs *adc, struct adc5_channel_prop *prop, u8 channel)
 {
+	unsigned long flags;
 	int ret;
 
-	ret = mutex_lock_interruptible(&adc->lock);
-	if (ret != 0)
-		return ret;
+	spin_lock_irqsave(&adc->lock, flags);
 
 	/* Read Current Settings */
 	ret = adc5_read(adc, ADC5_GEN3_SID, prop->buffer, sizeof(prop->buffer));
@@ -846,7 +843,7 @@ static int adc5_gen3_hs_configure_channel_buffer(struct adc5_chip_hs *adc, struc
 	prop->buffer[6] |= prop->hw_settle_time;
 
 unlock:
-	mutex_unlock(&adc->lock);
+	spin_unlock_irqrestore(&adc->lock, flags);
 
 	return ret;
 }
@@ -963,7 +960,8 @@ static enum hrtimer_restart adc5_gen3_hs_start_sample(struct hrtimer *timer)
 	/* Record the start time */
 	adc->start_time = hrtimer_cb_get_time(&adc->sample_timer);
 
-	mutex_lock(&adc->lock);
+	/* Runs in hardirq context, so this must not sleep. */
+	spin_lock(&adc->lock);
 
 	/* Flag Conversion Active */
 	adc->state = ADC_STATE_SAMPLING;
@@ -983,7 +981,7 @@ static enum hrtimer_restart adc5_gen3_hs_start_sample(struct hrtimer *timer)
 	adc5_gen3_hs_sample_channel(adc, prop);
 
 unlock:
-	mutex_unlock(&adc->lock);
+	spin_unlock(&adc->lock);
 
 queue_next:
 	/* Queue the next sample */
@@ -1045,7 +1043,7 @@ static int adc5_gen3_hs_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, adc);
 
 	/* Setup our Lock */
-	mutex_init(&adc->lock);
+	spin_lock_init(&adc->lock);
 
 	ret = adc5_gen3_hs_get_dt_data(adc, node);
 	if (ret < 0) {
@@ -1085,9 +1083,10 @@ fail:
 static void adc5_gen3_hs_exit(struct platform_device *pdev)
 {
 	struct adc5_chip_hs *adc = platform_get_drvdata(pdev);
+	unsigned long flags;
 	u8 data = 0;
 
-	mutex_lock(&adc->lock);
+	spin_lock_irqsave(&adc->lock, flags);
 
 	/* Disable all available channels */
 	data = MEAS_INT_DISABLE;
@@ -1100,9 +1099,7 @@ static void adc5_gen3_hs_exit(struct platform_device *pdev)
 	data = ADC5_GEN3_CONV_REQ_REQ;
 	adc5_write(adc, ADC5_GEN3_CONV_REQ, &data, 1);
 
-	mutex_unlock(&adc->lock);
-
-	mutex_destroy(&adc->lock);
+	spin_unlock_irqrestore(&adc->lock, flags);
 
 	return;
 }
@@ -1111,11 +1108,7 @@ static int adc5_gen3_hs_freeze(struct device *dev)
 {
 	struct adc5_chip_hs *adc = dev_get_drvdata(dev);
 
-	mutex_lock(&adc->lock);
-
 	devm_free_irq(dev, adc->irq, adc);
-
-	mutex_unlock(&adc->lock);
 
 	return 0;
 }
