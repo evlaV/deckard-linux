@@ -164,7 +164,6 @@ struct parent_dev_ops {
 	int (*get)(struct camss *camss, int id);
 	int (*put)(struct camss *camss, int id);
 	void __iomem *(*get_base_address)(struct camss *camss, int id);
-	long (*set_statistics_config)(struct camss *camss, int id, u32 stats_cfg);
 };
 
 void camss_add_clock_margin(u64 *rate);
@@ -173,7 +172,6 @@ int camss_enable_clocks(int nclocks, struct camss_clock *clock,
 void camss_disable_clocks(int nclocks, struct camss_clock *clock);
 struct media_pad *camss_find_sensor_pad(struct media_entity *entity);
 struct media_entity *camss_find_sensor(struct media_entity *entity);
-struct media_entity *camss_find_sensor_from_csid(struct media_entity *entity);
 s64 camss_get_link_freq(struct media_entity *entity, unsigned int bpp,
 			unsigned int lanes);
 int camss_get_pixel_clock(struct media_entity *entity, u64 *pixel_clock);
@@ -186,6 +184,5 @@ void camss_buf_done(struct camss *camss, int hw_id, int port_id, struct camss_bu
 void camss_reg_update(struct camss *camss, int hw_id,
 		      int port_id, bool is_clear);
 void camss_report_hw_error(struct camss *camss, int hw_id, int port_id, struct camss_hw_error_info *error_info);
-void camss_trigger_delayed_csid_vfe_register_update(struct camss *camss, int hw_id, int port_id);
 
 #endif /* QC_MSM_CAMSS_H */

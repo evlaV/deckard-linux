@@ -19,20 +19,33 @@
 #include <media/v4l2-mediabus.h>
 #include <media/videobuf2-v4l2.h>
 
-// Private ioctls to access CSID/VFE registers
+/*
+ * Private ioctls to access VFE registers. The CSID is configured by the
+ * kernel; CSID_VFE_PRV_REG_TYPE_CSID is rejected. These go away once the
+ * pixel pipe is kernel-owned.
+ */
+enum csid_vfe_private_register_type {
+	CSID_VFE_PRV_REG_TYPE_CSID = 0,
+	CSID_VFE_PRV_REG_TYPE_VFE = 1
+};
+
+struct csid_vfe_private_register {
+	enum csid_vfe_private_register_type type;
+	__u32 offset;
+	__u32 value;
+};
+
+struct csid_vfe_private_registers_config {
+	__u32 count;
+	struct csid_vfe_private_register __user *regs;
+};
+
 #define VIDIOC_PRIV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
 #define VIDIOC_PRIV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
 // Keep this old ioctl to keep compatibility with older camss_extra_output_plane_cfg format which did not reserve space for additional outputs...
 #define VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY _IOWR('V', BASE_VIDIOC_PRIVATE + 3, struct camss_extra_output_plane_cfg_legacy)
 #define VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG _IOWR('V', BASE_VIDIOC_PRIVATE + 3, struct camss_extra_output_plane_cfg)
-#define VIDIOC_PRIV_S_MULTI_VCDT_CFG _IO('V', BASE_VIDIOC_PRIVATE + 4) // takes the second vc enabled as parameter
 // TODO: add layout config ioctl (to set plane stride and offsets)
-
-// S_REGS_DELAYED can be used to queue CSID/VFE register updates into buffers that are flused to hardware registers
-// after the next frame completion. This is used to help avoiding ISP updates during the frame readout, which can lead
-// to visual artifacts. ISP update timing infos are provided as part of CAMSS_EXTRA_OUTPUT_TYPE_META_2 and can 
-// be used to compare against frame SOF/EOF timings to make sure no ISP update happened during the readout.
-#define VIDIOC_PRIV_S_REGS_DELAYED _IOW('V', BASE_VIDIOC_PRIVATE + 5, struct csid_vfe_private_registers_config)
 
 // Allow setting multiplanar format plane strides and offsets
 #define VIDIOC_PRIV_S_CUSTOM_PLANE_LAYOUT _IOW('V', BASE_VIDIOC_PRIVATE + 6, struct camss_custom_plane_layout)

@@ -10,7 +10,6 @@
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/of.h>
-#include <linux/uaccess.h>
 
 #include "camss.h"
 #include "camss-csid.h"
@@ -507,74 +506,6 @@ static void csid_subdev_init(struct csid_device *csid)
 	csid->testgen.nmodes = CSID_PAYLOAD_MODE_DISABLED;
 }
 
-static int csid_vfe_access_registers(struct csid_device *csid,
-				     struct csid_vfe_private_registers_config *regs_config,
-				     bool write)
-{
-	struct csid_vfe_private_register reg;
-	void __iomem *ife_base;
-	u32 i;
-
-	/* Register access only supported for main CSID/VFEs */
-	if (csid->res->is_lite)
-		return -EINVAL;
-
-	/* No register specified: lets userspace probe for the feature */
-	if (regs_config->count == 0)
-		return 0;
-
-	/* CSID must be powered to access the registers */
-	if (!csid->power_on || !regs_config->regs)
-		return -EINVAL;
-
-	ife_base = csid->res->parent_dev_ops->get_base_address(csid->camss, csid->id);
-	if (!ife_base)
-		return -EFAULT;
-
-	for (i = 0; i < regs_config->count; i++) {
-		void __iomem *base;
-		u32 max_offset;
-
-		if (copy_from_user(&reg, regs_config->regs + i, sizeof(reg)))
-			return -EFAULT;
-
-		if (reg.type == CSID_VFE_PRV_REG_TYPE_CSID) {
-			base = csid->base;
-			max_offset = 0x1000;
-		} else if (reg.type == CSID_VFE_PRV_REG_TYPE_VFE) {
-			base = ife_base;
-			max_offset = 0xf000;
-		} else {
-			return -EINVAL;
-		}
-
-		if (reg.offset >= max_offset)
-			return -EINVAL;
-
-		if (write) {
-			writel_relaxed(reg.value, base + reg.offset);
-		} else {
-			reg.value = readl_relaxed(base + reg.offset);
-			if (copy_to_user(regs_config->regs + i, &reg, sizeof(reg)))
-				return -EFAULT;
-		}
-	}
-
-	return 0;
-}
-
-static int csid_vfe_set_registers(struct csid_device *csid,
-				  struct csid_vfe_private_registers_config *regs_config)
-{
-	return csid_vfe_access_registers(csid, regs_config, true);
-}
-
-static int csid_vfe_get_registers(struct csid_device *csid,
-				  struct csid_vfe_private_registers_config *regs_config)
-{
-	return csid_vfe_access_registers(csid, regs_config, false);
-}
-
 const struct csid_hw_ops csid_ops_gen3 = {
 	.configure_stream = csid_configure_stream,
 	.configure_testgen_pattern = csid_configure_testgen_pattern,
@@ -584,6 +515,4 @@ const struct csid_hw_ops csid_ops_gen3 = {
 	.src_pad_code = csid_src_pad_code,
 	.subdev_init = csid_subdev_init,
 	.reg_update = csid_subdev_reg_update,
-	.set_csid_vfe_registers = csid_vfe_set_registers,
-	.get_csid_vfe_registers = csid_vfe_get_registers,
 };

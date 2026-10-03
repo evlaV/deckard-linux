@@ -487,7 +487,6 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 
 	// Buffer is complete and CSID/IFE delayed regs update can be safely applied until a new frames start being received
 	// This is done through an async work triggered by the CSID
-	camss_trigger_delayed_csid_vfe_register_update(vfe->camss, vfe->id, line->id);
 
 	ready_buf = output->buf[0];
 	ready_buf->vb.vb2_buf.timestamp = ts_monotonic_raw;

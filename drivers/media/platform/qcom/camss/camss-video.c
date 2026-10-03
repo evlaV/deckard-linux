@@ -8,6 +8,7 @@
  * Copyright (C) 2015-2018 Linaro Ltd.
  */
 #include <linux/slab.h>
+#include <linux/uaccess.h>
 #include <media/media-entity.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-device.h>
@@ -639,56 +640,57 @@ static int video_s_input(struct file *file, void *fh, unsigned int input)
 	return input == 0 ? 0 : -EINVAL;
 }
 
-static struct vfe_device* video_get_vfe_device(struct camss_video *video)
+static struct vfe_device *video_get_vfe_device(struct camss_video *video)
 {
-	struct media_pad *vfe_src_pad = media_entity_remote_source_pad_unique(&video->vdev.entity);
-	if(IS_ERR(vfe_src_pad)) {
-		dev_err(video->camss->dev, "Failed to get vfe source pad");
-		return (void*)vfe_src_pad;
-	}
+	struct media_pad *pad = media_entity_remote_source_pad_unique(&video->vdev.entity);
+	struct vfe_line *line;
 
-	struct v4l2_subdev *vfe_subdev = media_entity_to_v4l2_subdev(vfe_src_pad->entity);
-	if(!vfe_subdev) {
-		dev_err(video->camss->dev, "Failed to get vfe v4l2 subdev");
+	if (IS_ERR(pad))
+		return ERR_CAST(pad);
+
+	/* VFE subdevs carry their vfe_line as subdev data */
+	line = v4l2_get_subdevdata(media_entity_to_v4l2_subdev(pad->entity));
+	if (!line)
 		return ERR_PTR(-ENODEV);
-	}
 
-	struct vfe_device *vfe = v4l2_get_subdevdata(vfe_subdev);
-	if(!vfe) {
-		dev_err(video->camss->dev, "Failed to get vfe subdev data");
-		return ERR_PTR(-ENODEV);
-	}
-
-	return vfe;
+	return to_vfe(line);
 }
 
-static struct csid_device* video_get_csid_device(struct camss_video *video)
+/* VIDIOC_PRIV_S/G_REGS: VFE registers only, until the pixel pipe is kernel-owned */
+static int video_vfe_access_registers(struct vfe_device *vfe,
+				      struct csid_vfe_private_registers_config *cfg,
+				      bool write)
 {
-	struct media_pad *vfe_src_pad = media_entity_remote_source_pad_unique(&video->vdev.entity);
-	if(IS_ERR(vfe_src_pad)) {
-		dev_err(video->camss->dev, "Failed to get vfe source pad");
-		return (void*)vfe_src_pad;
+	struct csid_vfe_private_register reg;
+	u32 i;
+
+	if (vfe->res->is_lite)
+		return -EINVAL;
+
+	/* no register: lets userspace probe for the feature */
+	if (!cfg->count)
+		return 0;
+
+	if (!vfe->power_count || !cfg->regs)
+		return -EINVAL;
+
+	for (i = 0; i < cfg->count; i++) {
+		if (copy_from_user(&reg, cfg->regs + i, sizeof(reg)))
+			return -EFAULT;
+
+		if (reg.type != CSID_VFE_PRV_REG_TYPE_VFE || reg.offset >= 0xf000)
+			return -EINVAL;
+
+		if (write) {
+			writel_relaxed(reg.value, vfe->base + reg.offset);
+		} else {
+			reg.value = readl_relaxed(vfe->base + reg.offset);
+			if (copy_to_user(cfg->regs + i, &reg, sizeof(reg)))
+				return -EFAULT;
+		}
 	}
 
-	struct media_pad *csid_src_pad = media_entity_remote_source_pad_unique(vfe_src_pad->entity);
-	if(IS_ERR(csid_src_pad)) {
-		dev_err(video->camss->dev, "Failed to get csid source pad");
-		return (void*)csid_src_pad;
-	}
-
-	struct v4l2_subdev *csid_subdev = media_entity_to_v4l2_subdev(csid_src_pad->entity);
-	if(!csid_subdev) {
-		dev_err(video->camss->dev, "Failed to get csid v4l2 subdev");
-		return ERR_PTR(-ENODEV);
-	}
-
-	struct csid_device *csid = v4l2_get_subdevdata(csid_subdev);
-	if(!csid) {
-		dev_err(video->camss->dev, "Failed to get csid subdev data");
-		return ERR_PTR(-ENODEV);
-	}
-
-	return csid;
+	return 0;
 }
 
 static int video_set_extra_output_plane_config(struct camss_video *video, void* arg, bool is_legacy)
@@ -799,70 +801,24 @@ static int video_subscribe_event(struct v4l2_fh *fh, const struct v4l2_event_sub
 static long video_ioctl(struct file *file, void *fh, bool valid_prio, unsigned int cmd, void *arg)
 {
 	struct camss_video *video = video_drvdata(file);
-	long ret = 0;
+	struct vfe_device *vfe;
 
-	// Grab the vfe and csid device since these are needed for the extended
-	// configuration and to get/set hardware registers
-	struct vfe_device *vfe = video_get_vfe_device(video);
-	if(IS_ERR(vfe)) {
-		dev_err(video->camss->dev, "Failed to get the vfe from the video device");
-		return PTR_ERR(vfe);
+	switch (cmd) {
+	case VIDIOC_PRIV_S_REGS:
+	case VIDIOC_PRIV_G_REGS:
+		vfe = video_get_vfe_device(video);
+		if (IS_ERR(vfe))
+			return PTR_ERR(vfe);
+		return video_vfe_access_registers(vfe, arg, cmd == VIDIOC_PRIV_S_REGS);
+	case VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY:
+		return video_set_extra_output_plane_config(video, arg, true);
+	case VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG:
+		return video_set_extra_output_plane_config(video, arg, false);
+	case VIDIOC_PRIV_S_CUSTOM_PLANE_LAYOUT:
+		return video_set_custom_plane_layout(video, arg);
+	default:
+		return -ENOTTY;
 	}
-
-	struct csid_device *csid = video_get_csid_device(video);
-	if(IS_ERR(csid)) {
-		dev_err(video->camss->dev, "Failed to get the csid from the video device");
-		return PTR_ERR(csid);
-	}
-
-	switch(cmd)
-	{
-		case VIDIOC_PRIV_S_REGS:
-			if(csid->res->hw_ops->set_csid_vfe_registers) {
-				ret = csid->res->hw_ops->set_csid_vfe_registers(csid, arg);
-			}
-			else {
-				// Operation not supported
-				return -EINVAL;
-			}
-			break;
-		case VIDIOC_PRIV_G_REGS:
-			if(csid->res->hw_ops->get_csid_vfe_registers) {
-				ret = csid->res->hw_ops->get_csid_vfe_registers(csid, arg);
-			}
-			else {
-				// Operation not supported
-				return -EINVAL;
-			}
-			break;
-		case VIDIOC_PRIV_S_REGS_DELAYED:
-			if(csid->res->hw_ops->set_csid_vfe_registers_delayed) {
-				ret = csid->res->hw_ops->set_csid_vfe_registers_delayed(csid, arg);
-			}
-			else {
-				// Operation not supported
-				return -EINVAL;
-			}
-			break;
-		case VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY:
-			ret = video_set_extra_output_plane_config(video, arg, true);
-			break;
-		case VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG:
-			ret = video_set_extra_output_plane_config(video, arg, false);
-			break;
-		case VIDIOC_PRIV_S_MULTI_VCDT_CFG:
-			// request the csid multi-vcdt feature to be enabled with the vc passed as parameter
-			csid->multi_vcdt_en = 1;
-			csid->multi_vcdt_vc = (uintptr_t)arg;
-			break;
-		case VIDIOC_PRIV_S_CUSTOM_PLANE_LAYOUT:
-			ret = video_set_custom_plane_layout(video, arg);
-			break;
-		default:
-			ret = -ENOTTY;
-	}
-
-	return ret;
 }
 
 static const struct v4l2_ioctl_ops msm_vid_ioctl_ops = {

@@ -678,49 +678,6 @@ u32 csid_src_pad_code(struct csid_device *csid, u32 sink_code,
 	}
 }
 
-static long csid_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
-{
-	struct csid_device *csid = v4l2_get_subdevdata(sd);
-
-	switch (cmd) {
-	case VIDIOC_CSID_VFE_PRV_S_REGS:
-		if(csid->res->hw_ops->set_csid_vfe_registers) {
-			return csid->res->hw_ops->set_csid_vfe_registers(csid, arg);
-		}
-		else {
-			// Operation not supported
-			return -EINVAL;
-		}
-		break;
-	case VIDIOC_CSID_VFE_PRV_G_REGS:
-		if(csid->res->hw_ops->get_csid_vfe_registers) {
-			return csid->res->hw_ops->get_csid_vfe_registers(csid, arg);
-		}
-		else {
-			// Operation not supported
-			return -EINVAL;
-		}
-		break;
-	case VIDIOC_CSID_VFE_PRV_STATS_CFG:
-		if(csid->res->parent_dev_ops->set_statistics_config)
-		{
-			return csid->res->parent_dev_ops->set_statistics_config(csid->camss, csid->id, (uintptr_t)arg);
-		}
-		else
-		{
-			// Operation not supported
-			return -EINVAL;
-		}
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int csid_set_metadata_callbacks(struct csid_device *csid);
-
 /*
  * csid_set_power - Power on/off CSID module
  * @sd: CSID V4L2 subdevice
@@ -786,11 +743,7 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 			return ret;
 		}
 
-		csid_set_metadata_callbacks(csid);
-
 		csid->res->hw_ops->hw_version(csid);
-
-		csid->power_on = true;
 	} else {
 		disable_irq(csid->irq);
 		camss_disable_clocks(csid->nclocks, csid->clock);
@@ -798,12 +751,6 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 				       csid->supplies);
 		pm_runtime_put_sync(dev);
 		csid->res->parent_dev_ops->put(camss, csid->id);
-
-		csid->power_on = false;
-
-		// reset multi-vcdt config on power off
-		csid->multi_vcdt_en = 0;
-		csid->multi_vcdt_vc = 0;
 	}
 
 	return ret;
@@ -838,10 +785,12 @@ static int csid_set_stream(struct v4l2_subdev *sd, int enable)
 			return -ENOLINK;
 	}
 
-	//if (csid->phy.need_vc_update) {
-		csid->res->hw_ops->configure_stream(csid, enable);
-		csid->phy.need_vc_update = false;
-	//}
+	/*
+	 * Configure on every s_stream: the pipeline stays powered from open(),
+	 * so STREAMOFF has to reach configure_stream() too.
+	 */
+	csid->res->hw_ops->configure_stream(csid, enable);
+	csid->phy.need_vc_update = false;
 
 	return 0;
 }
@@ -1377,7 +1326,6 @@ static int csid_link_setup(struct media_entity *entity,
 }
 
 static const struct v4l2_subdev_core_ops csid_core_ops = {
-	.ioctl = csid_ioctl,
 	.s_power = csid_set_power,
 	.subscribe_event = v4l2_ctrl_subdev_subscribe_event,
 	.unsubscribe_event = v4l2_event_subdev_unsubscribe,
@@ -1505,99 +1453,4 @@ void msm_csid_unregister_entity(struct csid_device *csid)
 inline bool csid_is_lite(struct csid_device *csid)
 {
 	return csid->camss->res->csid_res[csid->id].csid.is_lite;
-}
-
-int get_metadata_cb_address(struct media_entity *entity, u64 *addr, size_t *size, struct v4l2_subdev **sd) {
-	struct media_entity *sensor;
-	struct v4l2_subdev *subdev;
-	struct v4l2_ctrl *ctrl;
-	sensor = camss_find_sensor_from_csid(entity);
-	if (!sensor)
-		return -ENODEV;
-
-	subdev = media_entity_to_v4l2_subdev(sensor);
-
-	{
-		struct v4l2_querymenu qm = {.id = V4L2_CID_METADATA_CB_ADDR, };
-		ctrl = v4l2_ctrl_find(subdev->ctrl_handler, V4L2_CID_METADATA_CB_ADDR);
-		if (!ctrl)
-			return -1;
-		qm.index = v4l2_ctrl_g_ctrl(ctrl);
-
-		v4l2_querymenu(subdev->ctrl_handler, &qm);
-		*addr = qm.value;
-	}
-
-	{
-		struct v4l2_querymenu qm = {.id = V4L2_CID_METADATA_SIZE, };
-		ctrl = v4l2_ctrl_find(subdev->ctrl_handler, V4L2_CID_METADATA_SIZE);
-		if (!ctrl)
-			return -1;
-		qm.index = v4l2_ctrl_g_ctrl(ctrl);
-
-		v4l2_querymenu(subdev->ctrl_handler, &qm);
-		*size = (size_t) qm.value;
-	}
-
-
-	
-	*sd = subdev;
-
-
-	
-
-	return 0;
-
-}
-
-int get_post_sof_cb_address(struct media_entity *entity, u64 *addr) {
-	struct media_entity *sensor;
-	struct v4l2_subdev *subdev;
-	struct v4l2_ctrl *ctrl;
-
-	sensor = camss_find_sensor_from_csid(entity);
-	if (!sensor)
-		return -ENODEV;
-
-	subdev = media_entity_to_v4l2_subdev(sensor);
-
-	{
-		struct v4l2_querymenu qm = {.id = V4L2_CID_SENSOR_SOF_CB_ADDR, };
-		ctrl = v4l2_ctrl_find(subdev->ctrl_handler, V4L2_CID_SENSOR_SOF_CB_ADDR);
-		if (!ctrl)
-			return -1;
-		qm.index = v4l2_ctrl_g_ctrl(ctrl);
-
-		v4l2_querymenu(subdev->ctrl_handler, &qm);
-		*addr = qm.value;
-	}
-	return 0;
-
-}
-
-static int csid_set_metadata_callbacks(struct csid_device *csid) {
-
-	// Set these to NULL so if they don't get initialized here an old initialization won't carry over.
-	csid->get_metadata = NULL;
-	csid->do_post_sof_work = NULL;
-	csid->capture_subdev = NULL;
-	u64 addr;
-	struct v4l2_subdev *sd;
-	size_t metadata_size;
-	int ret = get_metadata_cb_address(&csid->subdev.entity,
-					&addr, &metadata_size, &sd);
-	if(ret) {
-		return -1;
-	}
-	csid->capture_subdev = sd;
-	csid->get_metadata = (void*)(uintptr_t)addr;
-	csid->metadata_size = metadata_size;
-
-	ret = get_post_sof_cb_address(&csid->subdev.entity, &addr);
-	if(ret) {
-		return -1;
-	}
-	csid->do_post_sof_work = (void*)(uintptr_t)addr;
-	csid->capture_subdev = sd;
-	return 0;
 }

@@ -4940,60 +4940,6 @@ struct media_pad *camss_find_sensor_pad(struct media_entity *entity)
 	}
 }
 
-/*
- * camss_find_sensor_from_csid - Find a linked media entity which represents a sensor
- * @entity: Media entity to start searching from
- *
- * Return a pointer to sensor media entity or NULL if not found
- */
-struct media_entity *camss_find_sensor_from_csid(struct media_entity *entity)
-{
-	struct media_pad *pad, *remote_pad, *sensor_link_pad, *sensor_pad;
-	// We know that the pad which is connected is the 0th pad on the csid entity
-	pad = &entity->pads[0];
-	if (!(pad->flags & MEDIA_PAD_FL_SINK))
-		return NULL;
-	// This gets the pad on the csiphy device
-	remote_pad = NULL;
-	//u32 found_index = 0;
-	remote_pad = media_pad_remote_pad_first(pad);
-	if(remote_pad==NULL) {
-		return NULL;
-	}
-
-	//something is wrong the csid should not be at pad0 on the csiphy
-	if(remote_pad->index == 0) {
-		return NULL;
-	}
-	sensor_link_pad = remote_pad;
-	// By convention the sensor pad is the pad before the csid pad
-	sensor_link_pad = media_pad_remote_pad_first(&sensor_link_pad->entity->pads[remote_pad->index-1]);
-	if(sensor_link_pad == NULL) {
-		return NULL;
-	}
-
-	sensor_pad = media_pad_remote_pad_first(sensor_link_pad);
-
-	entity = sensor_pad->entity;
-	if (entity->function == MEDIA_ENT_F_CAM_SENSOR) {
-		return entity;
-	}
-	else {	
-		//return camss_find_sensor(entity);
-		pad = media_pad_remote_pad_first(&entity->pads[remote_pad->index-1]);
-		if (pad->entity->function == MEDIA_ENT_F_CAM_SENSOR) {
-			entity = pad->entity;
-			return entity;
-		}
-		else {
-			printk("Didn't find sensor at: %d",remote_pad->index-1);
-		}
-	}
-
-	return NULL;
-
-}
-
 /**
  * camss_get_link_freq - Get link frequency from sensor
  * @entity: Media entity in the current pipeline
@@ -5124,22 +5070,10 @@ static void __iomem
 	return NULL;
 }
 
-static long vfe_parent_dev_ops_set_statistics_config(struct camss *camss, int id, u32 stats_cfg)
-{
-	if (id < camss->res->vfe_num) {
-		struct vfe_device *vfe = &camss->vfe[id];
-
-		return vfe_set_statistics_config(vfe, stats_cfg);
-	}
-
-	return 0;
-}
-
 static const struct parent_dev_ops vfe_parent_dev_ops = {
 	.get = vfe_parent_dev_ops_get,
 	.put = vfe_parent_dev_ops_put,
-	.get_base_address = vfe_parent_dev_ops_get_base_address,
-	.set_statistics_config = vfe_parent_dev_ops_set_statistics_config
+	.get_base_address = vfe_parent_dev_ops_get_base_address
 };
 
 /*
@@ -5498,18 +5432,6 @@ void camss_report_hw_error(struct camss *camss, int hw_id, int port_id, struct c
                if(vfe->res->hw_ops->vfe_report_hw_error)
                        vfe->res->hw_ops->vfe_report_hw_error(vfe, port_id, error_info);
        }
-}
-
-void camss_trigger_delayed_csid_vfe_register_update(struct camss *camss, int hw_id, int port_id)
-{
-	struct csid_device *csid;
-
-	if (hw_id < camss->res->csid_num) {
-		csid = &(camss->csid[hw_id]);
-
-		if (csid->res->hw_ops->trigger_delayed_csid_vfe_register_update)
-			csid->res->hw_ops->trigger_delayed_csid_vfe_register_update(csid, port_id);
-	}
 }
 
 /*
