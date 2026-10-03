@@ -542,6 +542,7 @@ long kgsl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -ENOMEM;
 		}
 
+		spin_lock_init(&fence->lock);
 		dma_fence_init(&fence->base, &kgsl_fence_ops, &fence->lock,
 			dma_fence_context_alloc(1), 0);
 
@@ -592,7 +593,9 @@ case IOCTL_KGSL_GPUOBJ_ALLOC: {
 	if (alloc.size >> 32)
 		return -EINVAL;
 
-	kgsl_alloc(file_priv, &alloc);
+	ret = kgsl_alloc(file_priv, &alloc);
+	if (ret)
+		return ret;
 
 	if (copy_to_user(argp, &alloc, sizeof(alloc)))
 		WARN_ON(1);
@@ -661,7 +664,9 @@ case IOCTL_KGSL_GPUMEM_ALLOC_ID: {
 	c_alloc.metadata_len = 0;
 	c_alloc.metadata = 0;
 
-	kgsl_alloc(file_priv, &c_alloc);
+	ret = kgsl_alloc(file_priv, &c_alloc);
+	if (ret)
+		return ret;
 
 	alloc.mmapsize = c_alloc.mmapsize;
 	alloc.id = c_alloc.id;
@@ -760,14 +765,14 @@ case IOCTL_KGSL_GPU_COMMAND: {
 	mutex_lock(&queue->lock);
 	
 	for (i = 0; i < cmd.numsyncs; i++) {
-		if (__copy_from_user(&sync, (void __user*)cmd.synclist + i * sizeof(sync), sizeof(sync))) {
+		if (copy_from_user(&sync, (void __user*)cmd.synclist + i * sizeof(sync), sizeof(sync))) {
 			WARN_ON(1);
 			continue;
 		}
 
 		switch (sync.type) {
 			case KGSL_CMD_SYNCPOINT_TYPE_FENCE: {
-				if (__copy_from_user(&fence_fd, (void __user*)sync.priv, sizeof(fence_fd))) {
+				if (copy_from_user(&fence_fd, (void __user*)sync.priv, sizeof(fence_fd))) {
 					WARN_ON(1);
 					continue;
 				}
@@ -788,7 +793,7 @@ case IOCTL_KGSL_GPU_COMMAND: {
 				struct kgsl_fence *new_fence;
 				unsigned long irq_flags;
 
-				if (__copy_from_user(&timestamp_sync, (void __user*)sync.priv, sizeof(struct kgsl_cmd_syncpoint_timestamp))) {
+				if (copy_from_user(&timestamp_sync, (void __user*)sync.priv, sizeof(struct kgsl_cmd_syncpoint_timestamp))) {
 					WARN_ON(1);
 					continue;
 				}
@@ -861,7 +866,7 @@ case IOCTL_KGSL_GPU_COMMAND: {
 
 	submit->nr_cmds = cmd.numcmds;
 	for (i = 0; i < cmd.numcmds; i++) {
-		if (__copy_from_user(&obj, (void __user*)cmd.cmdlist + i * sizeof(obj), sizeof(obj))) {
+		if (copy_from_user(&obj, (void __user*)cmd.cmdlist + i * sizeof(obj), sizeof(obj))) {
 			WARN_ON(1);
 			continue;
 		}
@@ -875,7 +880,9 @@ case IOCTL_KGSL_GPU_COMMAND: {
 	submit->user_fence = dma_fence_get(&submit->base.s_fence->finished);
 
 	if (queue->kgsl_flags & KGSL_CONTEXT_USER_GENERATED_TS) {
-		WARN_ON(cmd.timestamp < queue->timestamp);
+		if (cmd.timestamp < queue->timestamp)
+			dev_warn_ratelimited(dev->dev, "kgsl timestamp went backwards: %u < %u\n",
+					     cmd.timestamp, queue->timestamp);
 
 		submit->timestamp = cmd.timestamp;
 		queue->timestamp = cmd.timestamp;
