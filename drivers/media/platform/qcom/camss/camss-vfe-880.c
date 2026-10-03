@@ -558,7 +558,8 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 		{
 			sensorMetaDataBufferAddr = buf_done_info->sensor_metadata_buffer_addr;
 		}
-		if(vfe->stats_cfg)
+		// Buffers set up before the stats config was applied have no extra buffer
+		if(vfe->stats_cfg && ready_buf->extrabuffer_vaddr)
 		{
 			// Make buffer changes visible to CPU
 			dma_sync_single_for_cpu(vfe->camss->dev, ready_buf->extrabuffer_dma_addr, ready_buf->extrabuffer_size, DMA_BIDIRECTIONAL);
@@ -648,7 +649,7 @@ static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *bu
 					writel((buffer->addr[extra_output_addr_idx]+fh_plane_offset) >> 8, vfe->base + VFE_BUS_WM_HEADER_ADDR(wm));
 			}
 		}
-		else if(vfe->stats_cfg) {
+		else if(vfe->stats_cfg && buffer->extrabuffer_vaddr) {
 			dma_sync_single_for_device(vfe->camss->dev, buffer->extrabuffer_dma_addr, buffer->extrabuffer_size, DMA_BIDIRECTIONAL);
 			// Enqueue the buffers address for the frameheaders and extra outputs
 			if(vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
@@ -678,7 +679,7 @@ static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *bu
 			u32 fh_plane_offset = line->video_out.extra_output_plane_cfg.frameheader_offset;
 			writel((buffer->addr[extra_output_addr_idx] + fh_plane_offset) >> 8, vfe->base + VFE_BUS_WM_HEADER_ADDR(wm));
 		}
-		else if(vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
+		else if((vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN) && buffer->extrabuffer_vaddr) {
 			dma_sync_single_for_device(vfe->camss->dev, buffer->extrabuffer_dma_addr, buffer->extrabuffer_size, DMA_BIDIRECTIONAL);
 			writel((buffer->extrabuffer_dma_addr + STATS_FH_DATA_OFFSET) >> 8, vfe->base + VFE_BUS_WM_HEADER_ADDR(wm));
 		}

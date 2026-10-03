@@ -303,6 +303,8 @@ static void video_buf_cleanup(struct vb2_buffer *vb)
 	{
 		dma_unmap_single(video->camss->dev, buffer->extrabuffer_dma_addr, buffer->extrabuffer_size, DMA_BIDIRECTIONAL);
 		kfree(buffer->extrabuffer_vaddr);
+		buffer->extrabuffer_vaddr = NULL;
+		buffer->extrabuffer_dma_addr = 0;
 		buffer->extrabuffer_size = 0;
 	}
 }
