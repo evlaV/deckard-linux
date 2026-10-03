@@ -197,7 +197,8 @@ int kgsl_work_add_bind(struct drm_file *file_priv, void **work_ptr, void *work_e
 	}
 	*work_ptr = (void*) &op->range[op->num_ranges];
 
-	ret = 0;
+	/* The lookup references now belong to the work and are dropped by kgsl_bind_worker(). */
+	return 0;
 fail:
 	while (i-->0)
 		drm_gem_object_put(op->range[i].obj);
@@ -953,8 +954,9 @@ case IOCTL_KGSL_DEVICE_WAITTIMESTAMP_CTXTID: {
 case IOCTL_KGSL_GPU_AUX_COMMAND: {
 	struct kgsl_gpu_aux_command aux;
 	struct kgsl_bind_work *work;
+	struct kgsl_bind_cmd *op;
 	void *work_ptr, *work_end;
-	u32 i;
+	u32 i, j;
 
 	if (copy_from_user(&aux, argp, sizeof(aux)))
 		return -EFAULT;
@@ -998,7 +1000,8 @@ case IOCTL_KGSL_GPU_AUX_COMMAND: {
 
 		if (cmd.type == KGSL_GPU_AUX_COMMAND_BIND) {
 			ret = kgsl_work_add_bind(file_priv, &work_ptr, work_end, cmd);
-			work->num_cmds++;
+			if (ret == 0)
+				work->num_cmds++;
 		} else if (cmd.type == KGSL_GPU_AUX_COMMAND_TIMELINE) {
 			ret = kgsl_work_add_timeline(file_priv, &work->fence, cmd);
 		} else {
@@ -1022,9 +1025,19 @@ case IOCTL_KGSL_GPU_AUX_COMMAND: {
 
 	return 0;
 fail:
-	DRM_DEV_ERROR(dev->dev, "TODO: drop references on fail\n");
+	DRM_DEV_ERROR(dev->dev, "aux command failed\n");
+	op = &work->cmd[0];
+	for (i = 0; i < work->num_cmds; i++) {
+		for (j = 0; j < op->num_ranges; j++)
+			drm_gem_object_put(op->range[j].obj);
+		drm_gem_object_put(op->vbo);
+		op = (void*) &op->range[op->num_ranges];
+	}
 	msm_submitqueue_put(queue);
-	kfree(work);
+	/* Timeline points may already hold the fence, so signal it with an error instead of freeing it. */
+	dma_fence_set_error(&work->fence, -EINVAL);
+	dma_fence_signal(&work->fence);
+	dma_fence_put(&work->fence);
 	return -EINVAL;
 };
 
