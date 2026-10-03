@@ -463,8 +463,8 @@ long kgsl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		case KGSL_PROP_IS_RAYTRACING_ENABLED: { prop.val = 1; } break;
 		case KGSL_PROP_IS_FASTBLEND_ENABLED: { prop.val = 1; } break;
 		case KGSL_PROP_GPU_RESET_STAT: {
-			prop.val = to_msm_vm(ctx->vm)->faults < to_msm_vm(ctx->vm)->kgsl_last_queried_faults ?
-				KGSL_CTX_STAT_NO_ERROR : KGSL_CTX_STAT_INNOCENT_CONTEXT_RESET_EXT;
+			prop.val = to_msm_vm(ctx->vm)->faults != to_msm_vm(ctx->vm)->kgsl_last_queried_faults ?
+				KGSL_CTX_STAT_INNOCENT_CONTEXT_RESET_EXT : KGSL_CTX_STAT_NO_ERROR;
 			to_msm_vm(ctx->vm)->kgsl_last_queried_faults = to_msm_vm(ctx->vm)->faults;
 		} break;
 		case KGSL_PROP_GPU_VA64_SIZE : {
