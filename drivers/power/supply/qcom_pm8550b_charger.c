@@ -76,15 +76,18 @@ struct pm8550b_charger_port {
 
 static int pm8550b_charger_get_charger_state(struct pm8550b_charger *chg)
 {
-	unsigned int reg;
+	unsigned int reg = 0;
 	enum chgr_charge_status status;
 	int state;
 	int valid_power;
+	int ret;
 
 	if (!chg->regmap)
 		return POWER_SUPPLY_STATUS_UNKNOWN;
 
-	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHARGER_STATUS_ADDR, &reg);
+	ret = regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHARGER_STATUS_ADDR, &reg);
+	if (ret)
+		return ret;
 	status = (enum chgr_charge_status)(reg & CHGR_CHARGER_STATUS_MASK);
 	valid_power = (reg & CHGR_CHARGER_STATUS_VALID_POWER_MASK);
 
@@ -120,15 +123,18 @@ static int pm8550b_charger_get_charger_state(struct pm8550b_charger *chg)
 
 static int pm8550b_charger_get_charge_type(struct pm8550b_charger *chg)
 {
-	unsigned int reg;
+	unsigned int reg = 0;
 	enum chgr_charge_status status;
 	int state;
 	int valid_power;
+	int ret;
 
 	if (!chg->regmap)
 		return POWER_SUPPLY_CHARGE_TYPE_UNKNOWN;
 
-	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHARGER_STATUS_ADDR, &reg);
+	ret = regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHARGER_STATUS_ADDR, &reg);
+	if (ret)
+		return ret;
 	status = (enum chgr_charge_status)(reg & CHGR_CHARGER_STATUS_MASK);
 	valid_power = (reg & CHGR_CHARGER_STATUS_VALID_POWER_MASK);
 
@@ -166,9 +172,12 @@ static int pm8550b_charger_get_charge_type(struct pm8550b_charger *chg)
 
 static int pm8550b_charger_get_charge_current(struct pm8550b_charger *chg)
 {
-	unsigned int reg;
+	unsigned int reg = 0;
+	int ret;
 
-	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_ICHG_CFG_ADDR, &reg);
+	ret = regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_ICHG_CFG_ADDR, &reg);
+	if (ret)
+		return ret;
 
 	/* uA Fast Charge Current */
 	return (reg * CHGR_ICHG_CFG_MA_PER_UNIT * 1000);
@@ -176,9 +185,12 @@ static int pm8550b_charger_get_charge_current(struct pm8550b_charger *chg)
 
 static int pm8550b_charger_get_charge_current_max(struct pm8550b_charger *chg)
 {
-	unsigned int reg;
+	unsigned int reg = 0;
+	int ret;
 
-	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_ICHG_MAX_ADDR, &reg);
+	ret = regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_ICHG_MAX_ADDR, &reg);
+	if (ret)
+		return ret;
 
 	/* uA Fast Charge Current Limit */
 	return (reg * CHGR_ICHG_CFG_MA_PER_UNIT * 1000);
@@ -188,9 +200,14 @@ static int pm8550b_charger_set_charge_current(struct pm8550b_charger *chg, int v
 {
 	unsigned int reg = 0;
 	bool changed = false;
+	int max_ua;
+
+	max_ua = pm8550b_charger_get_charge_current_max(chg);
+	if (max_ua < 0)
+		return max_ua;
 
 	/* Charge Current to High */
-	if (val > pm8550b_charger_get_charge_current_max(chg)) {
+	if (val < 0 || val > max_ua) {
 		return -EINVAL;
 	}
 
@@ -331,24 +348,31 @@ static int pm8550b_charger_set_termination_current(struct pm8550b_charger *chg, 
 // TODO There is a race condition here with pm8550b_charger_set_termination_current()
 static int pm8550b_charger_get_termination_current(struct pm8550b_charger *chg)
 {
-	unsigned int reg;
+	unsigned int reg = 0;
 	s16 iadc_val = 0;
 	int term_ua = 0;
+	int ret;
 	const int termination_currents[] = { 120, 180, 240, 300, 360, 420, 480, 540 };
 
 	if (!chg->regmap)
 		return 0;
 
-	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_TERM_CFG_ADDR, &reg);
+	ret = regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_TERM_CFG_ADDR, &reg);
+	if (ret)
+		return ret;
 
 	if (!(reg & CHGR_TERM_CFG_I_TERM)) {
 		return (0);
 	} else if (reg & CHGR_TERM_CFG_USE_ANALOG_TERMINATION) {
 		return (termination_currents[reg & CHGR_TERM_CFG_ANALOG_CHARGE_CURRENT_TERMINATION] * 1000);
 	} else {
-		regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_ADC_ITERM_UP_MSB_ADDR, &reg);
+		ret = regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_ADC_ITERM_UP_MSB_ADDR, &reg);
+		if (ret)
+			return ret;
 		iadc_val = ((reg & 0xFF) << 8);
-		regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_ADC_ITERM_UP_LSB_ADDR, &reg);
+		ret = regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_ADC_ITERM_UP_LSB_ADDR, &reg);
+		if (ret)
+			return ret;
 		iadc_val |= (reg & 0xFF);
 
 		term_ua = iadc_val * 100 * 1000 / -273;
@@ -361,19 +385,32 @@ static int pm8550b_charger_get_property(struct power_supply *psy, enum power_sup
 					union power_supply_propval *val)
 {
 	struct pm8550b_charger *chg = power_supply_get_drvdata(psy);
+	int ret;
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		val->intval = pm8550b_charger_get_charger_state(chg);
+		ret = pm8550b_charger_get_charger_state(chg);
+		if (ret < 0)
+			return ret;
+		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
-		val->intval = pm8550b_charger_get_charge_type(chg);
+		ret = pm8550b_charger_get_charge_type(chg);
+		if (ret < 0)
+			return ret;
+		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
-		val->intval = pm8550b_charger_get_charge_current(chg);
+		ret = pm8550b_charger_get_charge_current(chg);
+		if (ret < 0)
+			return ret;
+		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
-		val->intval = pm8550b_charger_get_charge_current_max(chg);
+		ret = pm8550b_charger_get_charge_current_max(chg);
+		if (ret < 0)
+			return ret;
+		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE:
 		val->intval = pm8550b_charger_get_float_voltage(chg);
@@ -388,7 +425,10 @@ static int pm8550b_charger_get_property(struct power_supply *psy, enum power_sup
 		val->intval = pm8550b_charger_get_precharge_current(chg);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_TERM_CURRENT:
-		val->intval = pm8550b_charger_get_termination_current(chg);
+		ret = pm8550b_charger_get_termination_current(chg);
+		if (ret < 0)
+			return ret;
+		val->intval = ret;
 		break;
 	default:
 		return -EINVAL;
@@ -537,7 +577,7 @@ static ssize_t aicl_rerun_store(struct device *dev, struct device_attribute *att
 
 static bool charging_pause_get(struct pm8550b_charger *chg)
 {
-	unsigned int reg;
+	unsigned int reg = 0;
 
 	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHG_EN_ADDR, &reg);
 
@@ -593,7 +633,7 @@ static ssize_t charging_pause_store(struct device *dev, struct device_attribute 
 
 static bool charging_enable_get(struct pm8550b_charger *chg)
 {
-	unsigned int reg;
+	unsigned int reg = 0;
 
 	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHG_EN_ADDR, &reg);
 
@@ -605,7 +645,7 @@ static void charging_enable_set(struct pm8550b_charger *chg, bool enable)
 {
 	enum chgr_charge_status status;
 	bool enabled = false;
-	unsigned int reg;
+	unsigned int reg = 0;
 
 	regmap_read(chg->regmap, chg->base[BASE_CHG1] + CHGR_CHARGER_STATUS_ADDR, &reg);
 	status = (enum chgr_charge_status)(reg & CHGR_CHARGER_STATUS_MASK);
