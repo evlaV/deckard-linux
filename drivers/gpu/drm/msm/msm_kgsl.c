@@ -780,6 +780,10 @@ case IOCTL_KGSL_GPU_COMMAND: {
 				trace_msm_kgsl_gpu_command_sync_timestamp(timestamp_sync.context_id, timestamp_sync.timestamp);
 
 				sync_queue = msm_submitqueue_get(ctx, timestamp_sync.context_id);
+				if (!sync_queue) {
+					DRM_DEV_ERROR(dev->dev, "invalid syncpoint context %u\n", timestamp_sync.context_id);
+					continue;
+				}
 
 				spin_lock_irqsave(&sync_queue->fence_lock, irq_flags);
 				in_fence = NULL;
@@ -788,16 +792,17 @@ case IOCTL_KGSL_GPU_COMMAND: {
 						in_fence = &fence->base;
 					}
 				}
-				if (in_fence) {
-					ret = drm_sched_job_add_dependency(&submit->base, in_fence);
-					if (ret)
-						DRM_DEV_ERROR(dev->dev, "TODO: drm_sched_job_add_dependency failed\n");
-				}
+				/* The list's reference is dropped on retire, so the job needs its own. */
+				if (in_fence)
+					dma_fence_get(in_fence);
 				spin_unlock_irqrestore(&sync_queue->fence_lock, irq_flags);
 				if (!in_fence) {
 					new_fence = kzalloc(sizeof(*new_fence), GFP_KERNEL);
-					if (!new_fence)
-						return -ENOMEM;
+					if (!new_fence) {
+						msm_submitqueue_put(sync_queue);
+						ret = -ENOMEM;
+						goto out_gpu_command;
+					}
 
 					spin_lock_init(&new_fence->lock);
 
@@ -813,13 +818,20 @@ case IOCTL_KGSL_GPU_COMMAND: {
 						/* timestamp was retired while creating the fence: */
 						dma_fence_signal(in_fence);
 						dma_fence_put(in_fence);
+						in_fence = NULL;
 					} else {
 						list_add_tail(&new_fence->node, &sync_queue->fences);
-						ret = drm_sched_job_add_dependency(&submit->base, in_fence);
-						if (ret)
-							DRM_DEV_ERROR(dev->dev, "TODO: drm_sched_job_add_dependency failed\n");
+						dma_fence_get(in_fence);
 					}
 					spin_unlock_irqrestore(&sync_queue->fence_lock, irq_flags);
+				}
+				msm_submitqueue_put(sync_queue);
+
+				/* Added outside fence_lock since this can allocate with GFP_KERNEL. */
+				if (in_fence) {
+					ret = drm_sched_job_add_dependency(&submit->base, in_fence);
+					if (ret)
+						DRM_DEV_ERROR(dev->dev, "TODO: drm_sched_job_add_dependency failed\n");
 				}
 
 				break;
@@ -867,6 +879,11 @@ case IOCTL_KGSL_GPU_COMMAND: {
 		WARN_ON(1);
 
 	return 0;
+
+out_gpu_command:
+	mutex_unlock(&queue->lock);
+	msm_gem_submit_put(submit);
+	return ret;
 }
 
 case IOCTL_KGSL_PERFCOUNTER_GET: {
