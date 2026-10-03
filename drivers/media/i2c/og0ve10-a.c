@@ -324,6 +324,9 @@ static int og0ve10_add_or_set_group_reg(struct og0ve10_dev *sensor, int ctrlval)
 	u8 val = ctrlval >> 16 & 0xff;
 	u8 group = ctrlval >> 24 & 0xf;
 
+	if (group >= NUM_REGISTER_GROUPS)
+		return -EINVAL;
+
 	struct register_set *reg_set =
 		&sensor->active_group_registers.group_register_sets[group];
 	int index = -1;

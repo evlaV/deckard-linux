@@ -942,8 +942,8 @@ static int og01a1b_write_reg16_dual(struct og01a1b_dev *sensor, u16 reg, u16 val
 
 static int og01a1b_add_or_set_group_reg(struct og01a1b_dev *sensor, u16 address, u8 val, u8 group)
 {
-
-	
+	if (group >= NUM_REGISTER_GROUPS)
+		return -EINVAL;
 
 	struct register_set *reg_set =  &sensor->active_group_registers.group_register_sets[group];
 	int index = -1;
