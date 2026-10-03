@@ -82,7 +82,12 @@ static int devfreq_simple_ondemand_func(struct devfreq *df,
 
 	busy = div_u64(stat->busy_time * 1000000, stat->total_time);
 	/*        0.1  */
-	fact = 100000 * stat->total_time / (df->profile->polling_ms * 1000);
+	/* A sample longer than 10 polling intervals would make 1000000 - fact wrap. */
+	if (df->profile->polling_ms)
+		fact = min_t(unsigned long long, 1000000,
+			     100000 * stat->total_time / (df->profile->polling_ms * 1000));
+	else
+		fact = 1000000;
 	governor_data->avg_busy = busy > governor_data->avg_busy ?
 		busy :
 		div_u64(governor_data->avg_busy * (1000000 - fact) + busy * fact, 1000000);
