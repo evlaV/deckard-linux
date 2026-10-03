@@ -11,6 +11,7 @@
 
 #include "camss.h"
 #include "camss-vfe.h"
+#include "camss-vfe-880-pp.h"
 // Needed to access custom port_io values for IPP0 path RUP/AUP
 #include "camss-csid-gen3.h"
 
@@ -193,8 +194,12 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 {
 	struct v4l2_pix_format_mplane *pix = &line->output[0].video_out.active_fmt.fmt.pix_mp;
 	if (pix->pixelformat == V4L2_PIX_FMT_NV12) {
-		// IPP path config
 		u32 wm;
+
+		/* pixel pipe first: latched with the write masters by the IPP reg update */
+		vfe_880_setup_pixel_pipe(vfe, pix->width, pix->height);
+
+		// IPP path config
 		for(wm = 0; wm < 2; wm++) {
 			writel((pix->height >> wm) << 16 | pix->width, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
 			writel(0, vfe->base + VFE_BUS_WM_IMAGE_CFG_1(wm)); // X_INIT = 0
