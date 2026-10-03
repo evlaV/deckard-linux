@@ -72,11 +72,11 @@ static int qcom_pmic_typec_set_vbus(struct tcpc_dev *tcpc, bool on, bool sink)
 		dev_info(tcpm->dev, "vbus toggle for state sync\n");
 		ret = qcom_pmic_typec_port_set_vbus(tcpm->pmic_typec_port, true);
 		if (ret)
-			return ret;
+			goto done;
 
 		ret = qcom_pmic_typec_port_set_vbus(tcpm->pmic_typec_port, false);
 		if (ret)
-			return ret;
+			goto done;
 	}
 
 	if (tcpm->vbus_enabled == on)
