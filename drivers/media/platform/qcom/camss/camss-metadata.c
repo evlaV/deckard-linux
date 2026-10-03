@@ -18,10 +18,6 @@ static const struct v4l2_subdev_ops metadata_v4l2_ops = {
 
 
 struct metdata_data_buffer {
-	u64 sof_timestamp;
-	u64 eof_timestamp;
-	u64 sof_isr_timestamp;
-	s64 isp_to_kernel_raw_ts_offset_floor;
 	uint8_t sensorMetaDataBuffer[1208];
     uint8_t frameheaderData[16];
     uint8_t imgHistFrameheaderData[16];
@@ -76,11 +72,6 @@ static void metadata_vb2_buf_queue(struct vb2_buffer *vb)
 }
 
 void metadata_send(struct metadata_device *metadata,
-                   u64 wm_done_timestamp,
-                   u64 sof_isp_timestamp,
-                   u64 eof_isp_timestamp,
-                   u64 sof_isr_timestamp,
-                   s64 isp_to_kernel_raw_ts_offset_floor,
                    u32 sequence,
                    void* sensorDataBuffer,
                    void* frameheaderData,
@@ -106,10 +97,6 @@ void metadata_send(struct metadata_device *metadata,
 	cur_metadata_data_buffer = (struct metdata_data_buffer *)
 			vb2_plane_vaddr(&cur_buf->vb.vb2_buf, 0);
 
-	cur_metadata_data_buffer->sof_timestamp = sof_isp_timestamp;
-	cur_metadata_data_buffer->eof_timestamp = eof_isp_timestamp;
-	cur_metadata_data_buffer->isp_to_kernel_raw_ts_offset_floor = isp_to_kernel_raw_ts_offset_floor;
-	cur_metadata_data_buffer->sof_isr_timestamp = sof_isr_timestamp;
 	if(sensorDataBuffer != NULL) {
 		memcpy(cur_metadata_data_buffer->sensorMetaDataBuffer,sensorDataBuffer,1208);
 	}

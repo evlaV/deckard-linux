@@ -102,13 +102,8 @@ struct camss_extra_output_plane_cfg_legacy
 	u32 extra_output_frameheader_offset[CAMSS_EXTRA_OUTPUT_TYPE_MAX_LEGACY];
 };
 
-// Minimal metadata structure for CAMSS_EXTRA_OUTPUT_TYPE_META that only includes SOF/EOF info and sensor specific metadata
+// Minimal metadata structure for CAMSS_EXTRA_OUTPUT_TYPE_META: sensor specific metadata
 struct camss_metadata {
-	u64 sof_timestamp;
-	u64 eof_timestamp;
-	u64 sof_isr_timestamp;
-	u64 eof_isr_timestamp;
-	s64 isp_to_kernel_raw_ts_offset;
 	uint8_t sensorMetaDataBuffer[1208];
 };
 
@@ -117,13 +112,10 @@ struct camss_metadata {
 // New members can be added at the end of the structure but the version must be changed accordingly
 // so that userspace application can detect if the structure/driver supports the members needed.
 #define CAMSS_EXTRA_OUTPUT_METADATA_2_MAX_BUFFER_SIZE (4096)
-#define CAMSS_EXTRA_OUTPUT_METADATA_2_VERSION (1)
+#define CAMSS_EXTRA_OUTPUT_METADATA_2_VERSION (2)	/* v2: delayed-update timestamps removed */
 struct camss_metadata_2 {
 	u32 version;
 	u32 size;
-	// ----------
-	u64 last_delayed_regs_update_start_ts;
-	u64 last_delayed_regs_update_end_ts;
 };
 static_assert(sizeof(struct camss_metadata_2) <= CAMSS_EXTRA_OUTPUT_METADATA_2_MAX_BUFFER_SIZE);
 

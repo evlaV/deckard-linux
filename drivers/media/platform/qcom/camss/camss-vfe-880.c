@@ -76,8 +76,6 @@
 #define STATS_BHIST_DATA_OFFSET (STATS_BHIST_FH_DATA_OFFSET + STATS_BHIST_FH_DATA_SIZE)
 #define STATS_BHIST_DATA_SIZE ALIGN(4096, 256)
 
-#define CAM_IFE_CSID_MUL_FACTOR                 10000
-#define CAM_IFE_CSID_DIV_FACTOR                 192
 
 struct frameheader_data {
 	u64 ts;
@@ -441,8 +439,6 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 	void* ihistDataAddr = NULL;
 	void* bhistFHDataAddr = NULL;
 	void* bhistDataAddr = NULL;
-	struct frameheader_data *frameheaderData;
-	u64 sof_isp_timestamp_converted = buf_done_info->sof_isp_ts_conv;
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
 
@@ -516,13 +512,6 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 			// buffer plane instead of using an additional video device
 			size_t nb_copied;
 			struct camss_metadata meta = {0};
-			// copy sensor metadata into v4l2 plane
-			meta.sof_timestamp = buf_done_info->sof_isp_ts_conv;
-			meta.eof_timestamp = buf_done_info->eof_isp_ts_conv;
-			meta.sof_isr_timestamp = buf_done_info->sof_kernel_ts;
-			meta.eof_isr_timestamp = ts_monotonic_raw;
-			meta.isp_to_kernel_raw_ts_offset = buf_done_info->isp_to_kernel_raw_ts_offset;
-
 			// copy sensor metadata if available
 			if(buf_done_info->sensor_metadata_buffer_addr != NULL) {
 				memcpy(meta.sensorMetaDataBuffer, buf_done_info->sensor_metadata_buffer_addr, buf_done_info->sensor_metadata_buffer_size);
@@ -540,9 +529,6 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 			struct camss_metadata_2 meta_2 = {0};
 			meta_2.version = CAMSS_EXTRA_OUTPUT_METADATA_2_VERSION;
 			meta_2.size = sizeof(struct camss_metadata_2);
-			// -----
-			meta_2.last_delayed_regs_update_start_ts = buf_done_info->last_delayed_regs_update_start_ts;
-			meta_2.last_delayed_regs_update_end_ts = buf_done_info->last_delayed_regs_update_end_ts;
 
 			u32 plane_offset = line->output[0].video_out.extra_output_plane_cfg.extra_output_offset[CAMSS_EXTRA_OUTPUT_TYPE_META_2];
 			nb_copied = sg_pcopy_from_buffer(ready_buf->extra_output_plane_sgt->sgl, ready_buf->extra_output_plane_sgt->nents, &meta_2, sizeof(meta_2), plane_offset);
@@ -563,26 +549,8 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 			dma_sync_single_for_cpu(vfe->camss->dev, ready_buf->extrabuffer_dma_addr, ready_buf->extrabuffer_size, DMA_BIDIRECTIONAL);
 
 
-			// If stats are enabled, use the frameheader timestamp which should be guaranteed to be properly
-			// associated with the buffer.
 			if(vfe->stats_cfg & STATS_CFG_FH_OUTPUT_EN) {
 				frameheaderDataAddr = ready_buf->extrabuffer_vaddr + STATS_FH_DATA_OFFSET;
-				frameheaderData = (struct frameheader_data*)frameheaderDataAddr;
-				uint64_t frameheader_ts = frameheaderData->ts;
-
-				// The timestamp is 8 bits left shifted because the lower 8 bits contain virtual channel 
-				// and other information.
-				frameheader_ts >>= 8;
-
-				// Apply the same transformation as in the SOF handler
-				frameheader_ts = mul_u64_u32_div(
-					frameheader_ts,
-					CAM_IFE_CSID_MUL_FACTOR,
-					CAM_IFE_CSID_DIV_FACTOR);
-
-				// Use the existing offset to adjust the frame header timestamp
-				frameheader_ts += buf_done_info->isp_to_kernel_raw_ts_offset;
-				sof_isp_timestamp_converted = frameheader_ts;
 			}
 			if(vfe->stats_cfg & STATS_CFG_IHIST_OUTPUT_EN) {
 				ihistFHDataAddr = ready_buf->extrabuffer_vaddr + STATS_IHIST_FH_DATA_OFFSET;
@@ -594,7 +562,7 @@ static void vfe_buf_done_880(struct vfe_device *vfe, int wm, struct camss_buf_do
 			}
 		}
 
-		metadata_send(&vfe->camss->metadata[vfe->id], ts_monotonic_raw, sof_isp_timestamp_converted, buf_done_info->eof_isp_ts_conv, buf_done_info->sof_kernel_ts, buf_done_info->isp_to_kernel_raw_ts_offset,
+		metadata_send(&vfe->camss->metadata[vfe->id],
 			ready_buf->vb.sequence, sensorMetaDataBufferAddr, frameheaderDataAddr, ihistFHDataAddr, ihistDataAddr, bhistFHDataAddr, bhistDataAddr);
 	}
 

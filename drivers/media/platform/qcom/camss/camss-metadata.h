@@ -65,12 +65,7 @@ void msm_metadata_unregister_entity(struct metadata_device *metadata_format);
 void msm_metadata_format_get_metadata_format_id(struct media_entity *entity, u8 *id);
 
 //send the metadata
-void metadata_send(struct metadata_device *metadata, 
-                   u64 wm_done_timestamp,
-                   u64 sof_isp_timestamp,
-                   u64 eof_isp_timestamp,
-                   u64 sof_isr_timestamp,
-                   s64 isp_to_kernel_raw_ts_offset_floor,
+void metadata_send(struct metadata_device *metadata,
                    u32 sequence,
                    void* sensorDataBuffer,
                    void* frameheaderData,
