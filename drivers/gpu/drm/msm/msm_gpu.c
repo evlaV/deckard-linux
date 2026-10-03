@@ -253,6 +253,13 @@ static ssize_t msm_gpu_devcoredump_read(char *buffer, loff_t offset, size_t coun
 static void msm_gpu_devcoredump_free(void *data)
 {
 	struct msm_gpu *gpu = data;
+	struct msm_gpu_state *state;
+
+	/* dev_coredumpm() can call this synchronously with gpu->lock held, so don't take it here. */
+	state = xchg(&gpu->crashstate, NULL);
+	if (state)
+		gpu->funcs->gpu_state_put(state);
+
 	kvfree(gpu->devcd_saved_buffer);
 	gpu->devcd_saved_buffer = NULL;
 	gpu->devcd_size = 0;
