@@ -337,9 +337,8 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 
 	if (!enable) {
 		/*
-		 * Valve NV12-on-RDI: the IPP path is resumed from userspace once
-		 * the pixel pipe has been programmed. Reset the CSID so nothing
-		 * keeps streaming into the IFE past STREAMOFF.
+		 * Reset the CSID so nothing keeps streaming into the IFE past
+		 * STREAMOFF.
 		 */
 		csid_reset(csid);
 		usleep_range(10000, 20000);
@@ -349,15 +348,10 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++)
 		if (csid->phy.en_vc & BIT(i)) {
 			if (csid_port_uses_ipp(csid, i)) {
-				bool compat = i != VFE_LINE_PIX;
-
+				/* the VFE has programmed the pixel pipe in its s_stream */
 				__csid_configure_ipp_stream(csid, enable, i, 0);
 				__csid_configure_rx(csid, &csid->phy, 0);
-				/*
-				 * NV12-on-RDI: the pixel pipe is still programmed from
-				 * userspace, which resumes the IPP when it's done.
-				 */
-				__csid_ctrl_ipp(csid, enable && !compat);
+				__csid_ctrl_ipp(csid, enable);
 			} else {
 				__csid_configure_rdi_stream(csid, enable, i, 0);
 				__csid_configure_rx(csid, &csid->phy, 0);
