@@ -2841,8 +2841,10 @@ static struct worker *create_worker(struct worker_pool *pool)
 				.sched_util_min = SCHED_CAPACITY_SCALE / 2,
 			};
 			sp.sched_priority = pool->attrs->prio ;
-			sched_setscheduler_nocheck(worker->task, SCHED_RR, &sp);
-			if (sched_setattr_nocheck(worker->task, &ua))
+			if (sched_setscheduler_nocheck(worker->task, SCHED_RR, &sp))
+				pr_warn_once("workqueue: could not set RT priority %d on %s\n",
+					     sp.sched_priority, worker->task->comm);
+			else if (sched_setattr_nocheck(worker->task, &ua))
 				pr_warn_once("workqueue: could not set uclamp_min on %s\n",
 					     worker->task->comm);
 		}
@@ -7225,9 +7227,9 @@ static ssize_t wq_prio_store(struct device *dev, struct device_attribute *attr,
 	if (!attrs)
 		goto out_unlock;
 
+	/* 0 and 255 mean "not RT"; anything else must be a valid SCHED_RR priority. */
 	if (sscanf(buf, "%d", &attrs->prio) == 1 &&
-	    attrs->prio >= -100 && 
-		attrs->prio <= 100)
+	    ((attrs->prio >= 0 && attrs->prio < MAX_RT_PRIO) || attrs->prio == 255))
 		ret = apply_workqueue_attrs_locked(wq, attrs);
 	else
 		ret = -EINVAL;
