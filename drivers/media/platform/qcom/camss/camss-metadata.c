@@ -123,7 +123,8 @@ void metadata_send(struct metadata_device *metadata,
     if(bayerHistData && bayerHistFrameheaderData)
     {
 		memcpy(cur_metadata_data_buffer->bayerHistFrameheaderData, bayerHistFrameheaderData, 16);
-		memcpy(cur_metadata_data_buffer->bayerHistData, bayerHistData, 4096);
+		memcpy(cur_metadata_data_buffer->bayerHistData, bayerHistData,
+		       sizeof(cur_metadata_data_buffer->bayerHistData));
     }
 	vb2_set_plane_payload(&cur_buf->vb.vb2_buf, 0,
 			      sizeof(struct metdata_data_buffer)); //TODO: use a struct of a defined size
