@@ -59,6 +59,7 @@ struct als31300_priv {
 	struct i2c_client *client;
 	struct mutex lock;
 	struct als31300_sample last_raw_sample;
+	struct input_dev *input;
 };
 
 static int als31300_read_block(struct i2c_client *client, unsigned int off,
@@ -254,6 +255,7 @@ static int als31300_probe(struct i2c_client *client)
 		return -ENOMEM;
 
 	input_set_drvdata(input, priv);
+	priv->input = input;
 
 	input->name = ALS31300_DRV_NAME;
 	input->id.bustype = BUS_I2C;
@@ -286,6 +288,35 @@ static int als31300_probe(struct i2c_client *client)
 	return 0;
 }
 
+static int als31300_suspend(struct device *dev)
+{
+	struct als31300_priv *priv = dev_get_drvdata(dev);
+	struct input_dev *input = priv->input;
+
+	guard(mutex)(&input->mutex);
+
+	if (input_device_enabled(input))
+		als31300_close(input);
+
+	return 0;
+}
+
+static int als31300_resume(struct device *dev)
+{
+	struct als31300_priv *priv = dev_get_drvdata(dev);
+	struct input_dev *input = priv->input;
+
+	guard(mutex)(&input->mutex);
+
+	if (input_device_enabled(input))
+		return als31300_open(input);
+
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(als31300_pm_ops, als31300_suspend,
+				als31300_resume);
+
 static const struct i2c_device_id als31300_id[] = {
 	{ ALS31300_DRV_NAME, 0 },
 	{},
@@ -304,6 +335,7 @@ static struct i2c_driver als31300_driver = {
 	.driver = {
 		.name	= ALS31300_DRV_NAME,
 		.of_match_table = als31300_dt_ids,
+		.pm	= pm_sleep_ptr(&als31300_pm_ops),
 	},
 	.probe		= als31300_probe,
 	.id_table	= als31300_id,
