@@ -143,13 +143,15 @@ int kgsl_work_add_bind(struct drm_file *file_priv, void **work_ptr, void *work_e
 	if (!msm_gem_is_vbo(vbo))
 		goto fail;
 
-	op->vbo = vbo;
-	op->num_ranges = bind.numranges;
-
-	if ((void*)&op->range[op->num_ranges] > work_end) {
+	/* Check the space before writing anything, and without overflowing the pointer. */
+	if ((void*)&op->range[0] > work_end ||
+	    bind.numranges > (work_end - (void*)&op->range[0]) / sizeof(op->range[0])) {
 		printk("not enough work size\n");
 		goto fail;
 	}
+
+	op->vbo = vbo;
+	op->num_ranges = bind.numranges;
 
 	for (i = 0; i < bind.numranges; i++) {
 		struct drm_gem_object *obj = NULL;
