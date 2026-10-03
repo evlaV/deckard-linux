@@ -5831,15 +5831,6 @@ static int max1720x_init(struct max1720x_priv *priv)
 		}
 		priv->pdata->rsense = 5;
 	}
-	else if (priv->driver_data == ID_MAX17320)
-	{
-		// Read Number of Cells
-		ret = max1720x_regmap_read(priv, priv->regs[NPACKCFG_REG], &data);
-		data &= MAX17320_NPACKCFG_NCELLS;
-		data = data >> MAX17320_NPACKCFG_NCELLS_POS;
-
-		priv->num_cells = data + 2;
-	}
 
 	return 0;
 }
@@ -5972,6 +5963,19 @@ static int max1720x_probe(struct i2c_client *client)
 	if ( ret ) {
 		dev_err(&client->dev, "i2c comms failed: %d\n", ret);
 		return -EIO;
+	}
+
+	/* Voltage properties scale by num_cells, so it must be valid before the psy is registered. */
+	if (priv->driver_data == ID_MAX17320) {
+		ret = max1720x_regmap_read(priv, priv->regs[NPACKCFG_REG], &data);
+		if (ret) {
+			dev_err(&client->dev, "failed to read nPackCfg: %d\n", ret);
+			return ret;
+		}
+		data &= MAX17320_NPACKCFG_NCELLS;
+		data = data >> MAX17320_NPACKCFG_NCELLS_POS;
+
+		priv->num_cells = data + 2;
 	}
 
 	INIT_WORK(&priv->init_worker, max1720x_init_worker);
