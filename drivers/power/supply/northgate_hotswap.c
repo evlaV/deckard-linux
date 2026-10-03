@@ -523,6 +523,16 @@ static int northgate_hotswap_probe(struct i2c_client *client)
 
 	northgate_set_cross_charger(northgate, false);
 
+	// The IRQ thread uses the work and the psy, so set both up before requesting it
+	INIT_DELAYED_WORK(&northgate->hotswap_work, northgate_hotswap_work);
+
+	psy_cfg.drv_data = northgate;
+	psy_cfg.fwnode = dev_fwnode(dev);
+	psy_cfg.attr_grp = northgate_hotswap_groups;
+	northgate->psy = devm_power_supply_register(dev, &northgate_hotswap_psy_desc, &psy_cfg);
+	if (IS_ERR(northgate->psy))
+		return PTR_ERR(northgate->psy);
+
 	// setup of GPIO alert failed: -1
 	if (client->irq) {
 		ret = devm_request_threaded_irq(&client->dev, client->irq, NULL, northgate_hotswap_irq_thread,
@@ -534,16 +544,11 @@ static int northgate_hotswap_probe(struct i2c_client *client)
 		}
 	}
 
+	mutex_lock(&northgate->fault_mutex);
 	northgate->removable_pack_connected = northgate_hotswap_cache_and_clear_faults(northgate);
+	mutex_unlock(&northgate->fault_mutex);
+	power_supply_changed(northgate->psy);
 
-	psy_cfg.drv_data = northgate;
-	psy_cfg.fwnode = dev_fwnode(dev);
-	psy_cfg.attr_grp = northgate_hotswap_groups;
-	northgate->psy = devm_power_supply_register(dev, &northgate_hotswap_psy_desc, &psy_cfg);
-	if (IS_ERR(northgate->psy))
-		return PTR_ERR(northgate->psy);
-
-	INIT_DELAYED_WORK(&northgate->hotswap_work, northgate_hotswap_work);
 	// Determine Initial State
 	schedule_delayed_work(&northgate->hotswap_work, 0);
 
