@@ -543,7 +543,7 @@ static void adc5_gen3_aux_device_release(struct device *dev)
 {
 	struct auxiliary_device *aux = container_of(dev, struct auxiliary_device, dev);
 
-	kfree(aux);
+	kfree(container_of(aux, struct tm5_aux_dev_wrapper, aux_dev));
 }
 
 static int adc5_gen3_add_aux_tm_device(struct adc5_chip *adc)
@@ -551,7 +551,8 @@ static int adc5_gen3_add_aux_tm_device(struct adc5_chip *adc)
 	struct tm5_aux_dev_wrapper *aux_device;
 	int i, ret, i_tm = 0;
 
-	aux_device = devm_kzalloc(adc->dev, sizeof(*aux_device), GFP_KERNEL);
+	/* Freed by the release callback, since the aux device can outlive this driver. */
+	aux_device = kzalloc(sizeof(*aux_device), GFP_KERNEL);
 	if (!aux_device)
 		return -ENOMEM;
 
@@ -561,8 +562,10 @@ static int adc5_gen3_add_aux_tm_device(struct adc5_chip *adc)
 
 	aux_device->tm_props = devm_kcalloc(adc->dev, adc->n_tm_channels,
 					    sizeof(*aux_device->tm_props), GFP_KERNEL);
-	if (!aux_device->tm_props)
+	if (!aux_device->tm_props) {
+		kfree(aux_device);
 		return -ENOMEM;
+	}
 
 	aux_device->dev_data = &adc->dev_data;
 
@@ -579,7 +582,7 @@ static int adc5_gen3_add_aux_tm_device(struct adc5_chip *adc)
 
 	ret = auxiliary_device_init(&aux_device->aux_dev);
 	if (ret) {
-		kfree(&aux_device->aux_dev);
+		kfree(aux_device);
 		return ret;
 	}
 	ret = devm_add_action_or_reset(adc->dev, adc5_gen3_uninit_aux, &aux_device->aux_dev);
