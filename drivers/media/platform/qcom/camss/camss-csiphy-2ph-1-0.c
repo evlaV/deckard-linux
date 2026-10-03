@@ -114,7 +114,7 @@ static void csiphy_lanes_enable(struct csiphy_device *csiphy,
 	val |= lane_mask << 1;
 	writel_relaxed(val, csiphy->base + CAMSS_CSI_PHY_GLBL_PWR_CFG);
 
-	val = (csiphy->combo_mode ? 1 << 4 : 0);
+	val = cfg->combo_mode << 4;
 	writel_relaxed(val, csiphy->base + CAMSS_CSI_PHY_GLBL_RESET);
 
 	for (i = 0; i <= c->num_data; i++) {

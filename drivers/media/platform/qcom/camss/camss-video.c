@@ -72,59 +72,6 @@ static int video_mbus_to_pix_mp(const struct v4l2_mbus_framefmt *mbus,
 /*
  * Helper functions to identify and manage CSID and CSIPHY devices
  */
-static bool is_csid_subdev(struct v4l2_subdev *subdev)
-{
-	return strstr(subdev->name, "csid") != NULL;
-}
-
-static bool is_csiphy_subdev(struct v4l2_subdev *subdev)
-{
-	return strstr(subdev->name, "csiphy") != NULL;
-}
-
-static int csiphy_get_lanes_enable_count(struct v4l2_subdev *subdev)
-{
-	struct csiphy_device *csiphy;
-	
-	if (!is_csiphy_subdev(subdev))
-		return -1;
-		
-	csiphy = v4l2_get_subdevdata(subdev);
-	if (!csiphy)
-		return -1;
-		
-	return csiphy->lanes_enable_count;
-}
-
-static void csiphy_increment_lanes_enable_count(struct v4l2_subdev *subdev)
-{
-	struct csiphy_device *csiphy;
-	
-	if (!is_csiphy_subdev(subdev))
-		return;
-		
-	csiphy = v4l2_get_subdevdata(subdev);
-	if (csiphy)
-		csiphy->lanes_enable_count++;
-}
-
-static void csiphy_decrement_lanes_enable_count(struct v4l2_subdev *subdev)
-{
-	struct csiphy_device *csiphy;
-	
-	if (!is_csiphy_subdev(subdev))
-		return;
-		
-	csiphy = v4l2_get_subdevdata(subdev);
-	if (csiphy) {
-		csiphy->lanes_enable_count--;
-		if (csiphy->lanes_enable_count < 0) {
-			dev_warn(csiphy->camss->dev, "csiphy%d lanes_enable_count went negative, resetting to 0\n", csiphy->id);
-			csiphy->lanes_enable_count = 0;
-		}
-	}
-}
-
 static struct v4l2_subdev *video_remote_subdev(struct camss_video *video,
 					       u32 *pad)
 {
@@ -355,7 +302,7 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 	struct media_entity *entity;
 	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
-	int ret, i;
+	int ret;
 
 	ret = video_device_pipeline_alloc_start(vdev);
 	if (ret < 0) {
@@ -363,16 +310,19 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 		goto flush_buffers;
 	}
 
-	// Ignore this check when using an extra plane
-	if(!video->has_extra_output_plane_cfg) {
+	/* Valve: the extra-output-plane path bypasses the format check */
+	if (!video->has_extra_output_plane_cfg) {
 		ret = video_check_format(video);
 		if (ret < 0)
 			goto error;
 	}
 
 	entity = &vdev->entity;
-	pad = &entity->pads[0];
 	while (1) {
+		pad = &entity->pads[0];
+		if (!(pad->flags & MEDIA_PAD_FL_SINK))
+			break;
+
 		pad = media_pad_remote_pad_first(pad);
 		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
 			break;
@@ -380,56 +330,9 @@ static int video_start_streaming(struct vb2_queue *q, unsigned int count)
 		entity = pad->entity;
 		subdev = media_entity_to_v4l2_subdev(entity);
 
-		bool should_stream = true;
-		
-		if (is_csiphy_subdev(subdev)) {
-			int current_count = csiphy_get_lanes_enable_count(subdev);
-			if (current_count < 0) {
-				dev_err(video->camss->dev, "Failed to get CSIPHY lanes enable count\n");
-				goto error;
-			}
-			
-			// Only stream if this is the first enable (0 -> 1 transition)
-			should_stream = (current_count == 0);
-			
-			// Increment count regardless
-			csiphy_increment_lanes_enable_count(subdev);
-			
-			if (!should_stream) {
-				dev_dbg(video->camss->dev, "Skipping already streaming CSIPHY subdev %s when starting video pipeline %s\n", subdev->name, vdev->name);
-			}
-		}
-		else if (is_csid_subdev(subdev) && v4l2_subdev_is_streaming(subdev)) {
-			// Don't start CSID subdevs and its parent nodes more than once (forbidden by v4l2-subdev).
-			// This is required to avoid V4L2 warnings spam when streaming through multiple RDIs of a CSID 
-			// since video devices are linked to the same CSID subdev by the chain: msm_vfe0_videoX -> msm_vfe0_rdiX -> msm_csid0
-			dev_dbg(video->camss->dev, "Skipping already streaming CSID subdev %s and parent nodes when starting video pipeline %s\n", subdev->name, vdev->name);
-			break;
-		}
-
-		if (should_stream) {
-			ret = v4l2_subdev_call(subdev, video, s_stream, 1);
-			if (ret < 0 && ret != -ENOIOCTLCMD) {
-				dev_err(video->camss->dev, "Failed to start subdev %s: %d\n", subdev->name, ret);
-				goto error;
-			}
-		}
-
-		/* find corresponding sink pad */
-		for (i = 0; i < entity->num_pads; i++) {
-			if (!(entity->pads[i].flags & MEDIA_PAD_FL_SINK))
-				continue;
-
-			if (entity->ops && entity->ops->has_pad_interdep &&
-			    !entity->ops->has_pad_interdep(entity, pad->index, i))
-				continue;
-
-			pad = &entity->pads[i];
-			break;
-		}
-
-		if (i == entity->num_pads)
-			break;
+		ret = v4l2_subdev_call(subdev, video, s_stream, 1);
+		if (ret < 0 && ret != -ENOIOCTLCMD)
+			goto error;
 	}
 
 	return 0;
@@ -450,11 +353,14 @@ static void video_stop_streaming(struct vb2_queue *q)
 	struct media_entity *entity;
 	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
-	int ret, i;
+	int ret;
 
 	entity = &vdev->entity;
-	pad = &entity->pads[0];
 	while (1) {
+		pad = &entity->pads[0];
+		if (!(pad->flags & MEDIA_PAD_FL_SINK))
+			break;
+
 		pad = media_pad_remote_pad_first(pad);
 		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
 			break;
@@ -462,58 +368,12 @@ static void video_stop_streaming(struct vb2_queue *q)
 		entity = pad->entity;
 		subdev = media_entity_to_v4l2_subdev(entity);
 
-		bool should_stream = true;
-		
-		if (is_csiphy_subdev(subdev)) {
-			int current_count = csiphy_get_lanes_enable_count(subdev);
-			if (current_count < 0) {
-				dev_err(video->camss->dev, "Failed to get CSIPHY lanes enable count\n");
-				return;
-			}
-			
-			// Only stream if this will be the last disable (1 -> 0 transition)
-			should_stream = (current_count == 1);
-			
-			// Decrement count regardless
-			csiphy_decrement_lanes_enable_count(subdev);
-			
-			if (!should_stream) {
-				dev_dbg(video->camss->dev, "Skipping currently in use CSIPHY subdev %s when stopping video pipeline %s\n", subdev->name, vdev->name);
-			}
+		ret = v4l2_subdev_call(subdev, video, s_stream, 0);
+
+		if (ret) {
+			dev_err(video->camss->dev, "Video pipeline stop failed: %d\n", ret);
+			return;
 		}
-		else if (is_csid_subdev(subdev) && !v4l2_subdev_is_streaming(subdev)) {
-			// Stop the CSID when the first media pipeline requests it. Required because CSIDs halts all output paths
-			// at once during streamoff and presently is done indepently of VFE lines and stopping only when the use
-			// count is reduced to 0 could lead the hardware to attempt streaming to already unmapped buffers belonging 
-			// to stopped VFE lines.
-			// Like for the stream_on case, this is only a concern for cases where multiple RDI paths of a CSID/VFE pair are used.
-			dev_dbg(video->camss->dev, "Skipping already idle CSID subdev %s and parent nodes when stopping video pipeline %s\n", subdev->name, vdev->name);
-			break;
-		}
-
-		if (should_stream) {
-			ret = v4l2_subdev_call(subdev, video, s_stream, 0);
-			if (ret) {
-				dev_err(video->camss->dev, "Video pipeline stop failed for subdev %s: %d\n", subdev->name, ret);
-				return;
-			}
-		}
-
-		/* find corresponding sink pad */
-		for (i = 0; i < entity->num_pads; i++) {
-			if (!(entity->pads[i].flags & MEDIA_PAD_FL_SINK))
-				continue;
-
-			if (entity->ops && entity->ops->has_pad_interdep &&
-			    !entity->ops->has_pad_interdep(entity, pad->index, i))
-				continue;
-
-			pad = &entity->pads[i];
-			break;
-		}
-
-		if (i == entity->num_pads)
-			break;
 	}
 
 	video_device_pipeline_stop(vdev);
