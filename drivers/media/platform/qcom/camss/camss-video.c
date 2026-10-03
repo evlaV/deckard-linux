@@ -8,7 +8,6 @@
  * Copyright (C) 2015-2018 Linaro Ltd.
  */
 #include <linux/slab.h>
-#include <linux/uaccess.h>
 #include <media/media-entity.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-device.h>
@@ -640,59 +639,6 @@ static int video_s_input(struct file *file, void *fh, unsigned int input)
 	return input == 0 ? 0 : -EINVAL;
 }
 
-static struct vfe_device *video_get_vfe_device(struct camss_video *video)
-{
-	struct media_pad *pad = media_entity_remote_source_pad_unique(&video->vdev.entity);
-	struct vfe_line *line;
-
-	if (IS_ERR(pad))
-		return ERR_CAST(pad);
-
-	/* VFE subdevs carry their vfe_line as subdev data */
-	line = v4l2_get_subdevdata(media_entity_to_v4l2_subdev(pad->entity));
-	if (!line)
-		return ERR_PTR(-ENODEV);
-
-	return to_vfe(line);
-}
-
-/* VIDIOC_PRIV_S/G_REGS: VFE registers only, until the pixel pipe is kernel-owned */
-static int video_vfe_access_registers(struct vfe_device *vfe,
-				      struct csid_vfe_private_registers_config *cfg,
-				      bool write)
-{
-	struct csid_vfe_private_register reg;
-	u32 i;
-
-	if (vfe->res->is_lite)
-		return -EINVAL;
-
-	/* no register: lets userspace probe for the feature */
-	if (!cfg->count)
-		return 0;
-
-	if (!vfe->power_count || !cfg->regs)
-		return -EINVAL;
-
-	for (i = 0; i < cfg->count; i++) {
-		if (copy_from_user(&reg, cfg->regs + i, sizeof(reg)))
-			return -EFAULT;
-
-		if (reg.type != CSID_VFE_PRV_REG_TYPE_VFE || reg.offset >= 0xf000)
-			return -EINVAL;
-
-		if (write) {
-			writel_relaxed(reg.value, vfe->base + reg.offset);
-		} else {
-			reg.value = readl_relaxed(vfe->base + reg.offset);
-			if (copy_to_user(cfg->regs + i, &reg, sizeof(reg)))
-				return -EFAULT;
-		}
-	}
-
-	return 0;
-}
-
 static int video_set_extra_output_plane_config(struct camss_video *video, void* arg, bool is_legacy)
 {
 	// cannot configure output if queue is already active and has buffers
@@ -801,15 +747,8 @@ static int video_subscribe_event(struct v4l2_fh *fh, const struct v4l2_event_sub
 static long video_ioctl(struct file *file, void *fh, bool valid_prio, unsigned int cmd, void *arg)
 {
 	struct camss_video *video = video_drvdata(file);
-	struct vfe_device *vfe;
 
 	switch (cmd) {
-	case VIDIOC_PRIV_S_REGS:
-	case VIDIOC_PRIV_G_REGS:
-		vfe = video_get_vfe_device(video);
-		if (IS_ERR(vfe))
-			return PTR_ERR(vfe);
-		return video_vfe_access_registers(vfe, arg, cmd == VIDIOC_PRIV_S_REGS);
 	case VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY:
 		return video_set_extra_output_plane_config(video, arg, true);
 	case VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG:

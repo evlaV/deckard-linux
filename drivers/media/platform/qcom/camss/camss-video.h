@@ -19,29 +19,7 @@
 #include <media/v4l2-mediabus.h>
 #include <media/videobuf2-v4l2.h>
 
-/*
- * Private ioctls to access VFE registers. The CSID is configured by the
- * kernel; CSID_VFE_PRV_REG_TYPE_CSID is rejected. These go away once the
- * pixel pipe is kernel-owned.
- */
-enum csid_vfe_private_register_type {
-	CSID_VFE_PRV_REG_TYPE_CSID = 0,
-	CSID_VFE_PRV_REG_TYPE_VFE = 1
-};
-
-struct csid_vfe_private_register {
-	enum csid_vfe_private_register_type type;
-	__u32 offset;
-	__u32 value;
-};
-
-struct csid_vfe_private_registers_config {
-	__u32 count;
-	struct csid_vfe_private_register __user *regs;
-};
-
-#define VIDIOC_PRIV_S_REGS _IOW('V', BASE_VIDIOC_PRIVATE + 1, struct csid_vfe_private_registers_config)
-#define VIDIOC_PRIV_G_REGS _IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct csid_vfe_private_registers_config)
+/* BASE_VIDIOC_PRIVATE + 1 and + 2 were VIDIOC_PRIV_S_REGS / VIDIOC_PRIV_G_REGS */
 // Keep this old ioctl to keep compatibility with older camss_extra_output_plane_cfg format which did not reserve space for additional outputs...
 #define VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG_LEGACY _IOWR('V', BASE_VIDIOC_PRIVATE + 3, struct camss_extra_output_plane_cfg_legacy)
 #define VIDIOC_PRIV_S_EXTRA_OUTPUT_PLANE_CFG _IOWR('V', BASE_VIDIOC_PRIVATE + 3, struct camss_extra_output_plane_cfg)
