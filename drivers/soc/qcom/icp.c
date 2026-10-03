@@ -354,8 +354,10 @@ static int icp_boot(struct icp_data *icp, struct icp_boot_config __user *cfg_upt
 		return -EBUSY;
 	
 	ret = clk_bulk_prepare_enable(icp->clk_cnt, icp->clks);
-	if (ret)
+	if (ret) {
+		atomic_set(&icp->booted, 0);
 		return ret;
+	}
 
 	icc_set_bw(icp->sf_dma_path, kBps_to_icc(0), kBps_to_icc(50*1000*1000));
 	icc_set_bw(icp->icp_dma_path, kBps_to_icc(0), kBps_to_icc(50*1000*1000));
@@ -541,7 +543,9 @@ switch (cmd) {
 		ret = icp_boot(icp, (void*)arg);
 		break;
 	case ICP_IOCTL_SHUTDOWN:
-		icp_shutdown(icp);
+		// The registers are unclocked and the clocks already released when not booted
+		if (atomic_read(&icp->booted))
+			icp_shutdown(icp);
 		break;
 	case ICP_IOCTL_MAP_DMABUF:
 		ret = icp_map_dmabuf(icp, (void*)arg);
