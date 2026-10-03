@@ -5527,7 +5527,8 @@ void camss_trigger_delayed_csid_vfe_register_update(struct camss *camss, int hw_
 	if (hw_id < camss->res->csid_num) {
 		csid = &(camss->csid[hw_id]);
 
-		csid->res->hw_ops->trigger_delayed_csid_vfe_register_update(csid, port_id);
+		if (csid->res->hw_ops->trigger_delayed_csid_vfe_register_update)
+			csid->res->hw_ops->trigger_delayed_csid_vfe_register_update(csid, port_id);
 	}
 }
 
