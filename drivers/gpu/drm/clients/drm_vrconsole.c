@@ -434,6 +434,19 @@ static void vrcon_deinit(struct vc_data *vc)
 {
 }
 
+static int vrcon_resize(struct vc_data *vc, unsigned int width,
+			unsigned int height, bool from_user)
+{
+	struct drm_vrconsole *dvrconsole = consw_to_drm_vrconsole(vc->vc_sw);
+
+	// The terminal layout comes from the vrterminal file and can't change.
+	if (width != dvrconsole->vrterminal.width ||
+	    height != dvrconsole->vrterminal.height)
+		return -EINVAL;
+
+	return 0;
+}
+
 static void vrcon_clear(struct vc_data *vc, unsigned int sy, unsigned int sx,
 			   unsigned int width)
 {
@@ -495,7 +508,7 @@ const struct consw vr_con = {
 	.con_switch =	vrcon_switch,
 	.con_blank =	vrcon_blank,
 	// font...
-	// resize
+	.con_resize =	vrcon_resize,
 	// set_palette
 	// scrolldelta
 	// set_origin

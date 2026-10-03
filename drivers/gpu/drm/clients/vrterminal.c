@@ -341,8 +341,11 @@ static void vrterminal_record_update( TerminalUpdate_t * pUpdate, uint8_t x, uin
 	pUpdate->update_count++;
 }
 
-void vrterminal_putc( TerminalUpdate_t * pUpdate, VRTerminal_t * pTerminal, uint8_t x, uint8_t y, unsigned char c, unsigned char attr)
+void vrterminal_putc( TerminalUpdate_t * pUpdate, VRTerminal_t * pTerminal, int x, int y, unsigned char c, unsigned char attr)
 {
+	if ( x < 0 || x >= pTerminal->width || y < 0 || y >= pTerminal->height )
+		return;
+
 	pTerminal->cursor_y = y;
 	pTerminal->cursor_x = x;
 

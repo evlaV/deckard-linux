@@ -127,7 +127,7 @@ int vrterminal_init( VRTerminal_t * pTerminal, const uint8_t *pData, uint32_t si
 void vrterminal_update_reset( TerminalUpdate_t * pUpdate );
 
 void vrterminal_scroll_up( TerminalUpdate_t * pUpdate, VRTerminal_t *pTerminal );
-void vrterminal_putc( TerminalUpdate_t * pUpdate, VRTerminal_t * pTerminal, uint8_t x, uint8_t y, unsigned char c, unsigned char attr );
+void vrterminal_putc( TerminalUpdate_t * pUpdate, VRTerminal_t * pTerminal, int x, int y, unsigned char c, unsigned char attr );
 void vrterminal_clear_console( TerminalUpdate_t * pUpdate, VRTerminal_t * pTerminal );
 
 
