@@ -856,6 +856,11 @@ static irqreturn_t xtensa_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static void dsp_free_mbox_chan(void *chan)
+{
+	mbox_free_channel(chan);
+}
+
 static int dsp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -935,7 +940,13 @@ static int dsp_probe(struct platform_device *pdev)
 		dsp->mbox_client.knows_txdone = true;
 		for (i = 0; i < 4; i++) {
 			dsp->mbox_chan[i] = mbox_request_channel(&dsp->mbox_client, i);
-			WARN_ON(IS_ERR(dsp->mbox_chan[i]));
+			if (IS_ERR(dsp->mbox_chan[i]))
+				return dev_err_probe(dev, PTR_ERR(dsp->mbox_chan[i]),
+						     "failed to get mbox channel %d\n", i);
+
+			ret = devm_add_action_or_reset(dev, dsp_free_mbox_chan, dsp->mbox_chan[i]);
+			if (ret)
+				return ret;
 		}
 	}
 
@@ -943,16 +954,10 @@ static int dsp_probe(struct platform_device *pdev)
 	dev_set_drvdata(dev, dsp);
 
 	dsp->iommu = iommu_paging_domain_alloc(dev);
+	if (IS_ERR(dsp->iommu))
+		return PTR_ERR(dsp->iommu);
 	ret = iommu_attach_device(dsp->iommu, dev);
 	WARN_ON(ret);
-
-	dsp->miscdev.minor = MISC_DYNAMIC_MINOR;
-	dsp->miscdev.name = dev->of_node->name;
-	dsp->miscdev.fops = &dsp_fops;
-	dsp->miscdev.parent = dev;
-	ret = misc_register(&dsp->miscdev);
-	if (ret)
-		return ret;
 
 	/* Get power domains and corresponding power levels */
 	if (!strcmp(dev->of_node->name, "cvp")) {
@@ -1063,7 +1068,12 @@ static int dsp_probe(struct platform_device *pdev)
 		icc_set_bw(dsp->dma_path, 0, UINT_MAX);
 	}
 
-	return 0;
+	/* Registered last so a failed probe never leaves the device open-able. */
+	dsp->miscdev.minor = MISC_DYNAMIC_MINOR;
+	dsp->miscdev.name = dev->of_node->name;
+	dsp->miscdev.fops = &dsp_fops;
+	dsp->miscdev.parent = dev;
+	return misc_register(&dsp->miscdev);
 }
 
 static void dsp_remove(struct platform_device *pdev)
