@@ -1940,7 +1940,8 @@ static void _dpu_encoder_kickoff_phys(struct dpu_encoder_virt *dpu_enc)
 #define  MERGE_3D_IDX   23
 	/* hack CWB related ctl config in DSI path for 2nd dedicated CWB crtc case */
 	if (dpu_kms->is_dsi_driven_writeback &&
-	    dpu_enc->base.encoder_type != DRM_MODE_ENCODER_VIRTUAL) {
+	    dpu_enc->base.encoder_type == DRM_MODE_ENCODER_DSI &&
+	    dpu_enc->num_phys_encs > 1) {
 		struct dpu_encoder_phys *phys = dpu_enc->phys_encs[1];
 		ctl = phys->hw_ctl;
 		if (!list_empty(dpu_kms->wb_job_queue)) {
