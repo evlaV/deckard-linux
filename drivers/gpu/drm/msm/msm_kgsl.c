@@ -1,5 +1,6 @@
 #include "adreno/adreno_gpu.h"
 #include <linux/file.h>
+#include <linux/overflow.h>
 #include <linux/sync_file.h>
 #include <linux/uaccess.h>
 
@@ -156,6 +157,7 @@ int kgsl_work_add_bind(struct drm_file *file_priv, void **work_ptr, void *work_e
 	for (i = 0; i < bind.numranges; i++) {
 		struct drm_gem_object *obj = NULL;
 		s64 src_offset;
+		u64 end;
 
 		if (copy_from_user(&range, (void __user*)bind.rangeslist + i * sizeof(range), sizeof(range)))
 			goto fail;
@@ -174,13 +176,15 @@ int kgsl_work_add_bind(struct drm_file *file_priv, void **work_ptr, void *work_e
 		} else if (range.op == KGSL_GPUMEM_RANGE_OP_BIND)
 			goto fail;
 
-		if (vbo->size < range.target_offset + range.length) {  // XXX overflow on addition case
+		if (!range.length || !PAGE_ALIGNED(range.length) || !PAGE_ALIGNED(range.target_offset) ||
+		    check_add_overflow(range.target_offset, range.length, &end) || vbo->size < end) {
 			drm_gem_object_put(obj);
 			goto fail;
 		}
 
 		if (range.op == KGSL_GPUMEM_RANGE_OP_BIND) {
-			if (obj->size < src_offset + range.length) { // XXX overflow on addition case
+			if (!PAGE_ALIGNED(range.child_offset) ||
+			    check_add_overflow(range.child_offset, range.length, &end) || obj->size < end) {
 				drm_gem_object_put(obj);
 				goto fail;
 			}

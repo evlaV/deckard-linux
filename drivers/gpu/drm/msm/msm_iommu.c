@@ -905,6 +905,9 @@ static void msm_gem_free_vbo(struct drm_gem_object *obj)
 	msm_iommu_pagetable_unmap(vm->mmu, vbo->mm_node.start, vbo->mm_node.size);
 
 	list_for_each_entry_safe(entry, tmp, &vbo->entries, node) {
+		msm_gem_lock(entry->obj);
+		msm_gem_unpin_pages_locked(entry->obj);
+		msm_gem_unlock(entry->obj);
 		drm_gem_object_put(entry->obj);
 		kfree(entry);
 	}
@@ -994,8 +997,12 @@ void msm_gem_vbo_bind(struct drm_gem_object *_vbo, struct drm_gem_object *obj,
 	struct msm_gem_vm *vm = to_msm_vm(vbo->vm);
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct msm_gem_vbo_entry *entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+	struct page **pages;
 	int prot = IOMMU_READ;
 	int ret;
+
+	if (!entry)
+		return;
 
 	//printk("msm_gem_vbo_bind: %lld %lld %lld\n", src_offset, dst_offset, length);
 
@@ -1009,8 +1016,12 @@ void msm_gem_vbo_bind(struct drm_gem_object *_vbo, struct drm_gem_object *obj,
 	// TODO: make sure there is no overlap with other entries?
 
 	msm_gem_lock(obj);
-	msm_gem_pin_pages_locked(obj);
+	pages = msm_gem_pin_pages_locked(obj);
 	msm_gem_unlock(obj);
+	if (IS_ERR(pages)) {
+		kfree(entry);
+		return;
+	}
 
 	// TODO: switch atomically (instead of unmapping first)
 	msm_iommu_pagetable_unmap(vm->mmu, vbo->mm_node.start + dst_offset, length);
@@ -1018,6 +1029,9 @@ void msm_gem_vbo_bind(struct drm_gem_object *_vbo, struct drm_gem_object *obj,
 			msm_obj->sgt, src_offset, length, prot);
 	if (ret) {
 		WARN_ON(1);
+		msm_gem_lock(obj);
+		msm_gem_unpin_pages_locked(obj);
+		msm_gem_unlock(obj);
 		kfree(entry);
 		return;
 	}
@@ -1049,7 +1063,11 @@ void msm_gem_vbo_unbind(struct drm_gem_object *_vbo, struct drm_gem_object *obj,
 		msm_iommu_pagetable_unmap(vm->mmu, vbo->mm_node.start + entry->offset, entry->length);
 		msm_iommu_pagetable_map_zero(vm->mmu, vbo->mm_node.start + entry->offset, entry->length);
 
-		drm_gem_object_put(entry->obj);
 		list_del(&entry->node);
+		msm_gem_lock(entry->obj);
+		msm_gem_unpin_pages_locked(entry->obj);
+		msm_gem_unlock(entry->obj);
+		drm_gem_object_put(entry->obj);
+		kfree(entry);
 	}
 }
