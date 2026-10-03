@@ -92,19 +92,26 @@ void metadata_send(struct metadata_device *metadata,
 	struct metdata_data_buffer *cur_metadata_data_buffer;
 	struct metadata_buffer *cur_buf = NULL;
 	u64 timestamp = ktime_get_ns()/5;
+	unsigned long flags;
 
 	/* get one empty buffer */
+	spin_lock_irqsave(&metadata->lock, flags);
 	if (!list_empty(&metadata->metadata)) {
 		cur_buf = list_first_entry(&metadata->metadata,
 					   struct metadata_buffer, queue);
 		list_del(&cur_buf->queue);
 	}
+	spin_unlock_irqrestore(&metadata->lock, flags);
 
 	if (!cur_buf) {
 		return;
 	}
 	cur_metadata_data_buffer = (struct metdata_data_buffer *)
 			vb2_plane_vaddr(&cur_buf->vb.vb2_buf, 0);
+	if (!cur_metadata_data_buffer) {
+		vb2_buffer_done(&cur_buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
+		return;
+	}
 
 	cur_metadata_data_buffer->sof_timestamp = sof_isp_timestamp;
 	cur_metadata_data_buffer->eof_timestamp = eof_isp_timestamp;
