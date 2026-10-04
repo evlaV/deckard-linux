@@ -347,6 +347,8 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++)
 		if (csid->phy.en_vc & BIT(i)) {
 			if (csid_port_uses_ipp(csid, i)) {
+				csid->ipp_port = i;
+
 				/* the VFE has programmed the pixel pipe in its s_stream */
 				__csid_configure_ipp_stream(csid, enable, i, 0);
 				__csid_configure_rx(csid, &csid->phy, 0);
@@ -430,9 +432,9 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		}
 
 	/*
-	 * Valve NV12-on-RDI: the pixel and stats completion groups sit below
-	 * the first RDI bit. They complete on RDI0's line until the PIX line
-	 * is wired up.
+	 * The pixel and stats completion groups sit below the first RDI bit.
+	 * They complete on the line the IPP feeds: the PIX line, or RDI0 for
+	 * Valve's NV12-on-RDI.
 	 */
 	if (!csid_is_lite(csid)) {
 		u32 pix_done = buf_done_val & (BIT(BUF_DONE_IRQ_STATUS_RDI_OFFSET) - 1);
@@ -440,7 +442,7 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		if (pix_done) {
 			struct camss_buf_done_info info = { .status = pix_done };
 
-			camss_buf_done(csid->camss, csid->id, 0, &info);
+			camss_buf_done(csid->camss, csid->id, csid->ipp_port, &info);
 		}
 	}
 

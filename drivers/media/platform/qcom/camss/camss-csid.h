@@ -161,6 +161,7 @@ struct csid_device {
 	u32 irq;
 	char irq_name[30];
 	u32 reg_update;
+	u8 ipp_port;	/* source port the IPP feeds: PIX, or RDI0 for NV12 compat */
 	struct camss_clock *clock;
 	int nclocks;
 	struct regulator_bulk_data *supplies;
