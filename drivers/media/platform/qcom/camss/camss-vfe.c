@@ -821,6 +821,9 @@ int vfe_enable_v2(struct vfe_line *line)
 	if (ret < 0)
 		goto error_get_output;
 
+	if (ops->vfe_line_prepare)
+		ops->vfe_line_prepare(line);
+
 	ret = vfe_enable_output_v2(line);
 	if (ret < 0)
 		goto error_enable_output;

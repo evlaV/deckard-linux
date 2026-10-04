@@ -188,6 +188,13 @@ struct vfe_hw_ops {
 	void (*vfe_wm_update)(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
 			      struct vfe_line *line);
 
+	/*
+	 * Optional: program line-level hardware once the line's outputs are
+	 * reserved, outside output_lock. Runs before vfe_wm_start() and the
+	 * reg update that latches it.
+	 */
+	void (*vfe_line_prepare)(struct vfe_line *line);
+
 	/* Output based API - new and shiny */
 	void (*vfe_output_start)(struct vfe_device *vfe, struct vfe_output *output);
 	void (*vfe_output_stop)(struct vfe_device *vfe, struct vfe_output *output);

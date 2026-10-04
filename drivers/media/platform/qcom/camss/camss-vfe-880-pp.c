@@ -593,7 +593,7 @@ static void vfe_setup_ds16(struct vfe_device *vfe, u32 w, u32 h)
 	writel_relaxed(0x000003ff, vfe->base + IFE_CROP_RND_CLAMP_POST_DOWNSCALE_4TO1_C_VID_DS16_OUT_CH2_CLAMP_MAX);
 }
 
-/* Called from vfe_wm_start() for NV12, ahead of the write masters and the IPP reg update */
+/* Called from vfe_line_prepare() for NV12, ahead of the write masters and the IPP reg update */
 void vfe_880_setup_pixel_pipe(struct vfe_device *vfe, u32 w, u32 h)
 {
 	vfe_setup_core_config(vfe);
