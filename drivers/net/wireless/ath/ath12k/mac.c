@@ -14130,6 +14130,8 @@ static int ath12k_mac_hw_register(struct ath12k_hw *ah)
 	SET_IEEE80211_PERM_ADDR(hw, mac_addr);
 	SET_IEEE80211_DEV(hw, ab->dev);
 
+	wiphy_read_of_freq_limits(wiphy);
+
 	ret = ath12k_mac_setup_iface_combinations(ah);
 	if (ret) {
 		ath12k_err(ab, "failed to setup interface combinations: %d\n", ret);

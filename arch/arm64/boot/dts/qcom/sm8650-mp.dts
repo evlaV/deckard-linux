@@ -1436,6 +1436,9 @@
 		vddpcie1p8-supply = <&vreg_pmu_pcie_1p8>;
 
 		qcom,default-bdf = "board_77.bin";
+		ieee80211-freq-limit = <2400000 2500000>,
+				       <5170000 5815000>,
+				       <5945000 7125000>;
 	};
 };
 
