@@ -10,7 +10,9 @@
 #include <linux/iopoll.h>
 
 #include "camss.h"
+#include "camss-csid-gen3.h"
 #include "camss-vfe.h"
+#include "camss-vfe-880-pp.h"
 
 typedef enum {
 	VFE_WM_VIDEO_FULL_Y = 0,
@@ -67,6 +69,7 @@ typedef enum {
 #define VFE_BUS_WM_FRAME_INCR(n)	(BUS_REG_BASE + 0x208 + (n) * 0x100)
 #define VFE_BUS_WM_IMAGE_CFG_0(n)	(BUS_REG_BASE + 0x20c + (n) * 0x100)
 #define		WM_IMAGE_CFG_0_DEFAULT_WIDTH	(0xFFFF)
+#define VFE_BUS_WM_IMAGE_CFG_1(n)	(BUS_REG_BASE + 0x210 + (n) * 0x100)
 #define VFE_BUS_WM_IMAGE_CFG_2(n)	(BUS_REG_BASE + 0x214 + (n) * 0x100)
 #define		WM_IMAGE_CFG_2_DEFAULT_STRIDE	(0xFFFF)
 #define VFE_BUS_WM_PACKER_CFG(n)	(BUS_REG_BASE + 0x218 + (n) * 0x100)
@@ -79,6 +82,38 @@ typedef enum {
 #define VFE_BUS_WM_MMU_PREFETCH_CFG(n)		(BUS_REG_BASE + 0x260 + (n) * 0x100)
 #define VFE_BUS_WM_MMU_PREFETCH_MAX_OFFSET(n)	(BUS_REG_BASE + 0x264 + (n) * 0x100)
 
+/* One write master per plane of the PIX output: Y, then CbCr at half height */
+static void vfe_wm_start_pix(struct vfe_device *vfe, struct vfe_line *line)
+{
+	struct vfe_output *output = &line->output[0];
+	struct v4l2_pix_format_mplane *pix = &output->video_out.active_fmt.fmt.pix_mp;
+	unsigned int i;
+
+	for (i = 0; i < output->wm_num; i++) {
+		u8 wm = output->wm[i].bus_client;
+		u8 plane = output->wm[i].plane;
+
+		writel((pix->height >> plane) << 16 | pix->width,
+		       vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
+		writel(0, vfe->base + VFE_BUS_WM_IMAGE_CFG_1(wm));
+		writel(pix->plane_fmt[0].bytesperline,
+		       vfe->base + VFE_BUS_WM_IMAGE_CFG_2(wm));
+		writel(0x3, vfe->base + VFE_BUS_WM_PACKER_CFG(wm));
+
+		/* no dropped frames, one irq per frame */
+		writel(0, vfe->base + VFE_BUS_WM_FRAMEDROP_PERIOD(wm));
+		writel(1, vfe->base + VFE_BUS_WM_FRAMEDROP_PATTERN(wm));
+		writel(0, vfe->base + VFE_BUS_WM_IRQ_SUBSAMPLE_PERIOD(wm));
+		writel(1, vfe->base + VFE_BUS_WM_IRQ_SUBSAMPLE_PATTERN(wm));
+
+		writel(1, vfe->base + VFE_BUS_WM_MMU_PREFETCH_CFG(wm));
+		writel(0xFFFFFFFF, vfe->base + VFE_BUS_WM_MMU_PREFETCH_MAX_OFFSET(wm));
+
+		/* frame based */
+		writel(WM_CFG_EN, vfe->base + VFE_BUS_WM_CFG(wm));
+	}
+}
+
 static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 {
 	struct v4l2_pix_format_mplane *pix =
@@ -90,6 +125,11 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 	writel(WM_CGC_OVERRIDE_ALL, vfe->base + VFE_BUS_WM_CGC_OVERRIDE);
 
 	writel(0x0, vfe->base + VFE_BUS_WM_TEST_BUS_CTRL);
+
+	if (line->is_pix) {
+		vfe_wm_start_pix(vfe, line);
+		return;
+	}
 
 	writel(ALIGN(pix->plane_fmt[0].bytesperline, 16) * pix->height >> 8,
 	       vfe->base + VFE_BUS_WM_FRAME_INCR(wm));
@@ -114,36 +154,58 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 
 static void vfe_wm_stop(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 {
-	wm = line->output[0].wm[0].bus_client;
-	writel(0, vfe->base + VFE_BUS_WM_CFG(wm));
+	struct vfe_output *output = &line->output[0];
+	unsigned int i;
+
+	for (i = 0; i < output->wm_num; i++)
+		writel(0, vfe->base + VFE_BUS_WM_CFG(output->wm[i].bus_client));
 }
 
 static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
 			  struct vfe_line *line)
 {
-	u32 addr = buffer->addr[0];
+	struct vfe_output *output = &line->output[0];
+	unsigned int i;
 
-	wm = line->output[0].wm[0].bus_client;
+	/* camss-video sets addr[1] = addr[0] + bytesperline * height for NV12 */
+	for (i = 0; i < output->wm_num; i++) {
+		u32 addr = buffer->addr[output->wm[i].plane];
 
-	writel((addr >> 8), vfe->base + VFE_BUS_WM_IMAGE_ADDR(wm));
+		wm = output->wm[i].bus_client;
+		writel(addr >> 8, vfe->base + VFE_BUS_WM_IMAGE_ADDR(wm));
 
-	dev_dbg(vfe->camss->dev, "wm:%d, image buf addr:0x%x\n",
-		wm, addr);
+		dev_dbg(vfe->camss->dev, "wm:%d, image buf addr:0x%x\n",
+			wm, addr);
+	}
+}
+
+/* The PIX line is latched through the CSID's IPP path, RDIs through their own */
+static int vfe_reg_update_port(struct vfe_device *vfe, enum vfe_line_id line_id)
+{
+	return vfe->line[line_id].is_pix ? CSID_780_CUSTOM_PORT_ID_IPP0 : line_id;
 }
 
 static void vfe_reg_update(struct vfe_device *vfe, enum vfe_line_id line_id)
 {
-	int port_id = line_id;
-
-	camss_reg_update(vfe->camss, vfe->id, port_id, false);
+	camss_reg_update(vfe->camss, vfe->id, vfe_reg_update_port(vfe, line_id), false);
 }
 
 static inline void vfe_reg_update_clear(struct vfe_device *vfe,
 					enum vfe_line_id line_id)
 {
-	int port_id = line_id;
+	camss_reg_update(vfe->camss, vfe->id, vfe_reg_update_port(vfe, line_id), true);
+}
 
-	camss_reg_update(vfe->camss, vfe->id, port_id, true);
+/*
+ * Program the pixel pipe outside output_lock, before the write masters and
+ * the IPP reg update that latches both.
+ */
+static void vfe_line_prepare(struct vfe_line *line)
+{
+	struct v4l2_pix_format_mplane *pix = &line->output[0].video_out.active_fmt.fmt.pix_mp;
+
+	if (line->is_pix && pix->pixelformat == V4L2_PIX_FMT_NV12)
+		vfe_880_setup_pixel_pipe(to_vfe(line), pix->width, pix->height);
 }
 
 static const struct camss_video_ops vfe_video_ops_780 = {
@@ -209,6 +271,7 @@ const struct vfe_hw_ops vfe_ops_780 = {
 	.subdev_init = vfe_subdev_init,
 	.vfe_disable = vfe_disable,
 	.vfe_enable = vfe_enable_v2,
+	.vfe_line_prepare = vfe_line_prepare,
 	.vfe_halt = vfe_halt,
 	.vfe_wm_start = vfe_wm_start,
 	.vfe_wm_stop = vfe_wm_stop,
