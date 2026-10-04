@@ -196,9 +196,6 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 	if (pix->pixelformat == V4L2_PIX_FMT_NV12) {
 		u32 wm;
 
-		/* pixel pipe first: latched with the write masters by the IPP reg update */
-		vfe_880_setup_pixel_pipe(vfe, pix->width, pix->height);
-
 		// IPP path config
 		for(wm = 0; wm < 2; wm++) {
 			writel((pix->height >> wm) << 16 | pix->width, vfe->base + VFE_BUS_WM_IMAGE_CFG_0(wm));
@@ -759,6 +756,20 @@ static const struct camss_video_ops vfe_video_ops_880 = {
 	.flush_buffers = vfe_flush_buffers,
 };
 
+/*
+ * NV12: program the pixel pipe here rather than in vfe_wm_start(), which
+ * runs under output_lock with interrupts off. The outputs are already
+ * reserved, and the IPP reg update after vfe_wm_start() still latches the
+ * pipe together with the write masters.
+ */
+static void vfe_line_prepare(struct vfe_line *line)
+{
+	struct v4l2_pix_format_mplane *pix = &line->output[0].video_out.active_fmt.fmt.pix_mp;
+
+	if (pix->pixelformat == V4L2_PIX_FMT_NV12)
+		vfe_880_setup_pixel_pipe(to_vfe(line), pix->width, pix->height);
+}
+
 static void vfe_subdev_init(struct device *dev, struct vfe_device *vfe)
 {
 	vfe->video_ops = vfe_video_ops_880;
@@ -773,6 +784,7 @@ const struct vfe_hw_ops vfe_ops_880 = {
 	.subdev_init = vfe_subdev_init,
 	.vfe_disable = vfe_disable,
 	.vfe_enable = vfe_enable_v2,
+	.vfe_line_prepare = vfe_line_prepare,
 	.vfe_halt = vfe_halt,
 	.vfe_wm_start = vfe_wm_start,
 	.vfe_wm_stop = vfe_wm_stop,
