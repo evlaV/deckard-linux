@@ -1470,8 +1470,10 @@ static void vfe_try_format(struct vfe_line *line,
 			   struct v4l2_mbus_framefmt *fmt,
 			   enum v4l2_subdev_format_whence which)
 {
+	struct v4l2_mbus_framefmt *src;
 	unsigned int i;
 	u32 code;
+	u32 w, h;
 
 	switch (pad) {
 	case MSM_VFE_PAD_SINK:
@@ -1512,6 +1514,28 @@ static void vfe_try_format(struct vfe_line *line,
 		}
 
 		break;
+
+	case MSM_VFE_PAD_SRC_DS4:
+	case MSM_VFE_PAD_SRC_DS16:
+		src = __vfe_get_format(line, sd_state, MSM_VFE_PAD_SRC, which);
+		w = ALIGN(src->width, 8) / 4;
+		h = ALIGN(src->height, 8) / 4;
+
+		if (pad == MSM_VFE_PAD_SRC_DS16) {
+			w = (w / 4) & ~1u;
+			h = (h / 4) & ~1u;
+		}
+		*fmt = *src;
+		fmt->width = w;
+		fmt->height = h;
+
+		break;
+	case MSM_VFE_PAD_SRC_STATS:
+	case MSM_VFE_PAD_SINK_PARAMS:
+		memset(fmt, 0, sizeof(*fmt));
+		fmt->code = MEDIA_BUS_FMT_METADATA_FIXED;
+		fmt->field = V4L2_FIELD_NONE;
+		return;
 	}
 
 	fmt->colorspace = V4L2_COLORSPACE_SRGB;
@@ -1618,6 +1642,22 @@ static int vfe_enum_mbus_code(struct v4l2_subdev *sd,
 {
 	struct vfe_line *line = v4l2_get_subdevdata(sd);
 
+	switch (code->pad) {
+	case MSM_VFE_PAD_SRC_DS4:
+	case MSM_VFE_PAD_SRC_DS16:
+		if (code->index)
+			return -EINVAL;
+		code->code = __vfe_get_format(line, sd_state, MSM_VFE_PAD_SRC,
+					      code->which)->code;
+		return 0;
+	case MSM_VFE_PAD_SRC_STATS:
+	case MSM_VFE_PAD_SINK_PARAMS:
+		if (code->index)
+			return -EINVAL;
+		code->code = MEDIA_BUS_FMT_METADATA_FIXED;
+		return 0;
+	}
+
 	if (code->pad == MSM_VFE_PAD_SINK) {
 		if (code->index >= line->nformats)
 			return -EINVAL;
@@ -1652,6 +1692,11 @@ static int vfe_enum_frame_size(struct v4l2_subdev *sd,
 {
 	struct vfe_line *line = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt format;
+
+	/* Metadata has no frame size */
+	if (fse->pad == MSM_VFE_PAD_SRC_STATS ||
+	    fse->pad == MSM_VFE_PAD_SINK_PARAMS)
+		return -ENOTTY;
 
 	if (fse->index != 0)
 		return -EINVAL;
@@ -1695,7 +1740,11 @@ static int vfe_get_format(struct v4l2_subdev *sd,
 	if (format == NULL)
 		return -EINVAL;
 
-	fmt->format = *format;
+	/* Every pad past the src - downscalers, stats, params don't get assigned */
+	if (fmt->pad > MSM_VFE_PAD_SRC)
+		vfe_try_format(line, sd_state, fmt->pad, &fmt->format, fmt->which);
+	else
+		fmt->format = *format;
 
 	return 0;
 }
@@ -1821,6 +1870,8 @@ static int vfe_get_selection(struct v4l2_subdev *sd,
 		default:
 			return -EINVAL;
 		}
+	else
+		return -EINVAL;
 
 	return 0;
 }
@@ -2240,6 +2291,12 @@ int msm_vfe_register_entities(struct vfe_device *vfe,
 
 		pads[MSM_VFE_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 		pads[MSM_VFE_PAD_SRC].flags = MEDIA_PAD_FL_SOURCE;
+		if (vfe->line[i].num_pads == MSM_VFE_PAD_NUM_PIX) {
+			pads[MSM_VFE_PAD_SRC_DS4].flags = MEDIA_PAD_FL_SOURCE;
+			pads[MSM_VFE_PAD_SRC_DS16].flags = MEDIA_PAD_FL_SOURCE;
+			pads[MSM_VFE_PAD_SRC_STATS].flags = MEDIA_PAD_FL_SOURCE;
+			pads[MSM_VFE_PAD_SINK_PARAMS].flags = MEDIA_PAD_FL_SINK;
+		}
 
 		sd->entity.function = MEDIA_ENT_F_PROC_VIDEO_PIXEL_FORMATTER;
 		sd->entity.ops = &vfe_media_ops;
