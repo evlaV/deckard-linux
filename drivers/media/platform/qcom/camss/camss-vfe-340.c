@@ -356,6 +356,7 @@ static const struct camss_video_ops vfe_video_ops_520 = {
 static void vfe_subdev_init(struct device *dev, struct vfe_device *vfe)
 {
 	vfe->video_ops = vfe_video_ops_520;
+	vfe->line[VFE_LINE_PIX].is_pix = true;
 }
 
 static void vfe_reg_update(struct vfe_device *vfe, enum vfe_line_id line_id)
