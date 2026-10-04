@@ -148,47 +148,35 @@ static const struct camss_video_ops vfe_video_ops_780 = {
 	.queue_buffer = vfe_queue_buffer_v2,
 	.flush_buffers = vfe_flush_buffers,
 };
-
-static void vfe_add_rdi(struct vfe_line *line, int bus_client, int comp_group)
-{
-	line->output[0].wm_num = 1;
-	line->output[0].wm[0].bus_client = bus_client;
-	line->output[0].wm[0].plane = 0;
-	line->output[0].comp_group = comp_group;
-}
-
 static void vfe_subdev_init(struct device *dev, struct vfe_device *vfe)
 {
+	struct vfe_line *pix = &vfe->line[VFE_LINE_PIX];
+
 	vfe->video_ops = vfe_video_ops_780;
 
+	/* RDI lite */
 	if (vfe_is_lite(vfe)) {
-		vfe_add_rdi(&vfe->line[VFE_LINE_RDI0], VFE_LITE_WM_RDI0, VFE_V3_COMP_GRP_1);
-		vfe_add_rdi(&vfe->line[VFE_LINE_RDI1], VFE_LITE_WM_RDI1, VFE_V3_COMP_GRP_2);
-		vfe_add_rdi(&vfe->line[VFE_LINE_RDI2], VFE_LITE_WM_RDI2, VFE_V3_COMP_GRP_3);
-		vfe_add_rdi(&vfe->line[VFE_LINE_PIX], VFE_LITE_WM_RDI3, VFE_V3_COMP_GRP_4);
+		vfe_add_rdi(&vfe->line[VFE_LINE_RDI0].output[0], VFE_LITE_WM_RDI0, VFE_V3_COMP_GRP_1);
+		vfe_add_rdi(&vfe->line[VFE_LINE_RDI1].output[0], VFE_LITE_WM_RDI1, VFE_V3_COMP_GRP_2);
+		vfe_add_rdi(&vfe->line[VFE_LINE_RDI2].output[0], VFE_LITE_WM_RDI2, VFE_V3_COMP_GRP_3);
+		vfe_add_rdi(&pix->output[0], VFE_LITE_WM_RDI3, VFE_V3_COMP_GRP_4);
 		return;
 	}
 
-	/* RDI0 */
-	vfe_add_rdi(&vfe->line[VFE_LINE_RDI0], VFE_WM_RDI0, VFE_V3_COMP_GRP_14);
+	/* RDI */
+	vfe_add_rdi(&vfe->line[VFE_LINE_RDI0].output[0], VFE_WM_RDI0, VFE_V3_COMP_GRP_14);
+	vfe_add_rdi(&vfe->line[VFE_LINE_RDI1].output[0], VFE_WM_RDI1, VFE_V3_COMP_GRP_15);
+	vfe_add_rdi(&vfe->line[VFE_LINE_RDI2].output[0], VFE_WM_RDI2, VFE_V3_COMP_GRP_16);
 
-	/* RDI1 */
-	vfe_add_rdi(&vfe->line[VFE_LINE_RDI1], VFE_WM_RDI1, VFE_V3_COMP_GRP_15);
+	/* Add YUV, DS4, DS16, stats and params descriptors */
+	vfe_add_yuv(&pix->output[0], VFE_WM_VIDEO_FULL_Y, VFE_WM_VIDEO_FULL_C, VFE_V3_COMP_GRP_0);
+	vfe_add_ds(&pix->output[1], MSM_VFE_PAD_SRC_DS4, VFE_WM_VIDEO_DS_4, VFE_V3_COMP_GRP_0);
+	vfe_add_ds(&pix->output[2], MSM_VFE_PAD_SRC_DS16, VFE_WM_VIDEO_DS_16, VFE_V3_COMP_GRP_0);
+	vfe_add_stats(&pix->output[3], VFE_WM_STATS_AEC_BHIST, VFE_V3_COMP_GRP_4);
+	vfe_add_params(&pix->output[4], VFE_V3_COMP_GRP_0);
 
-	/* RDI2 */
-	vfe_add_rdi(&vfe->line[VFE_LINE_RDI2], VFE_WM_RDI2, VFE_V3_COMP_GRP_16);
-
-	/* PIX YUV: FULL Y + C, one plane each, group 0 */
-	vfe->line[VFE_LINE_PIX].is_pix = true;
-	vfe->line[VFE_LINE_PIX].output[0].wm_num = 2;
-	vfe->line[VFE_LINE_PIX].output[0].wm[0].bus_client = VFE_WM_VIDEO_FULL_Y;
-	vfe->line[VFE_LINE_PIX].output[0].wm[0].plane = 0;
-	vfe->line[VFE_LINE_PIX].output[0].wm[1].bus_client = VFE_WM_VIDEO_FULL_C;
-	vfe->line[VFE_LINE_PIX].output[0].wm[1].plane = 1;
-	vfe->line[VFE_LINE_PIX].output[0].comp_group = VFE_V3_COMP_GRP_0;
-	vfe->line[VFE_LINE_PIX].output[0].type = VFE_OUTPUT_TYPE_PIXEL_YUV;
-
-	return;
+	/* PIX mode */
+	vfe_set_pix(pix, 5);
 }
 
 static void vfe_global_reset(struct vfe_device *vfe)

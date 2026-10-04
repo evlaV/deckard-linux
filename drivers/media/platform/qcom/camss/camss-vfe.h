@@ -399,4 +399,21 @@ int vfe_queue_buffer_v2(struct camss_video *vid,
  */
 u32 vfe_bus_v3_packer_fmt(u32 v4l2_fmt, u8 plane, u8 align_shift);
 
+void vfe_add_output(struct vfe_output *output, u8 pad, u8 comp_group,
+		    unsigned int wm_num, const u8 *bus_client);
+
+void vfe_add_rdi(struct vfe_output *output, u8 bus_client, u8 comp_group);
+
+void vfe_add_yuv(struct vfe_output *output, u8 bus_client_y,
+		 u8 bus_client_c, u8 comp_group);
+
+void vfe_add_ds(struct vfe_output *output, u8 pad, u8 bus_client,
+		u8 comp_group);
+
+void vfe_add_stats(struct vfe_output *output, u8 bus_client, u8 comp_group);
+
+void vfe_add_params(struct vfe_output *output, u8 comp_group);
+
+void vfe_set_pix(struct vfe_line *line, int num_outputs);
+
 #endif /* QC_MSM_CAMSS_VFE_H */

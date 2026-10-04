@@ -2445,3 +2445,52 @@ bool vfe_is_lite(struct vfe_device *vfe)
 {
 	return vfe->camss->res->vfe_res[vfe->id].vfe.is_lite;
 }
+
+void vfe_add_output(struct vfe_output *output, u8 pad, u8 comp_group,
+		    unsigned int wm_num, const u8 *bus_client)
+{
+	unsigned int i;
+
+	output->comp_group = comp_group;
+	output->wm_num = wm_num;
+	for (i = 0; i < wm_num; i++) {
+		output->wm[i].bus_client = bus_client[i];
+		output->wm[i].plane = i;
+	}
+}
+
+void vfe_add_rdi(struct vfe_output *output, u8 bus_client, u8 comp_group)
+{
+	vfe_add_output(output, MSM_VFE_PAD_SRC, comp_group, 1, &bus_client);
+}
+
+void vfe_add_yuv(struct vfe_output *output, u8 bus_client_y,
+		 u8 bus_client_c, u8 comp_group)
+{
+	const u8 wm[] = { bus_client_y, bus_client_c };
+
+	vfe_add_output(output, MSM_VFE_PAD_SRC, comp_group, ARRAY_SIZE(wm), wm);
+}
+
+void vfe_add_ds(struct vfe_output *output, u8 pad, u8 bus_client,
+	       u8 comp_group)
+{
+	vfe_add_output(output, pad, comp_group, 1, &bus_client);
+}
+
+void vfe_add_stats(struct vfe_output *output, u8 bus_client, u8 comp_group)
+{
+	vfe_add_output(output, MSM_VFE_PAD_SRC_STATS, comp_group, 1, &bus_client);
+}
+
+void vfe_add_params(struct vfe_output *output, u8 comp_group)
+{
+	vfe_add_output(output, MSM_VFE_PAD_SINK_PARAMS, comp_group, 0, NULL);
+}
+
+void vfe_set_pix(struct vfe_line *line, int num_outputs)
+{
+	line->num_pads = MSM_VFE_PAD_NUM_PIX;
+	line->num_outputs = num_outputs;
+	line->is_pix = true;
+}
