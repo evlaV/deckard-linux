@@ -44,6 +44,13 @@ enum csid_testgen_mode {
 	CSID_PAYLOAD_MODE_NUM_SUPPORTED_GEN2 = 9, /* excluding disabled */
 };
 
+enum csid_ipp_bayer_pattern {
+	CSID_IPP_BAYER_RGGB = 0,
+	CSID_IPP_BAYER_GRBG,
+	CSID_IPP_BAYER_BGGR,
+	CSID_IPP_BAYER_GBRG,
+};
+
 struct csid_format_info {
 	u32 code;
 	u8 data_type;
@@ -246,5 +253,14 @@ u32 csid_hw_version(struct csid_device *csid);
  */
 u32 csid_src_pad_code(struct csid_device *csid, u32 sink_code,
 		      unsigned int match_format_idx, u32 match_code);
+
+/*
+ * csid_ipp_bayer_pattern - IPP Bayer pattern for media bus code
+ *
+ * code: the media_bus code
+ *
+ * Return: IPP bayer pattern constant for reg programming or -EINVAL
+ */
+int csid_ipp_bayer_pattern(u32 code);
 
 #endif /* QC_MSM_CAMSS_CSID_H */
