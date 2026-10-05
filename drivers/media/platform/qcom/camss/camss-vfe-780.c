@@ -84,10 +84,9 @@ typedef enum {
 #define VFE_BUS_WM_MMU_PREFETCH_CFG(n)		(BUS_REG_BASE + 0x260 + (n) * 0x100)
 #define VFE_BUS_WM_MMU_PREFETCH_MAX_OFFSET(n)	(BUS_REG_BASE + 0x264 + (n) * 0x100)
 
-/* One write master per plane of the PIX output: Y, then CbCr at half height */
-static void vfe_wm_start_pix(struct vfe_device *vfe, struct vfe_line *line)
+/* Each write master of the PIX output writes one plane: Y, then CbCr at half height */
+static void vfe_output_start_pix(struct vfe_device *vfe, struct vfe_output *output)
 {
-	struct vfe_output *output = &line->output[0];
 	struct v4l2_pix_format_mplane *pix = &output->video_out.active_fmt.fmt.pix_mp;
 	unsigned int i;
 
@@ -116,24 +115,8 @@ static void vfe_wm_start_pix(struct vfe_device *vfe, struct vfe_line *line)
 	}
 }
 
-static struct vfe_output *vfe_stats_output(struct vfe_line *line, u8 wm)
-{
-	unsigned int o;
-
-	if (!line->is_pix)
-		return NULL;
-
-	for (o = 1; o < line->num_outputs; o++)
-		if (line->output[o].pad == MSM_VFE_PAD_SRC_STATS &&
-		    line->output[o].wm_num &&
-		    line->output[o].wm[0].bus_client == wm)
-			return &line->output[o];
-
-	return NULL;
-}
-
 /* Statistics write masters are frame based and fill the output's kernel buffer */
-static void vfe_wm_start_stats(struct vfe_device *vfe, struct vfe_output *output)
+static void vfe_output_start_stats(struct vfe_device *vfe, struct vfe_output *output)
 {
 	u8 wm = output->wm[0].bus_client;
 
@@ -155,29 +138,11 @@ static void vfe_wm_start_stats(struct vfe_device *vfe, struct vfe_output *output
 	writel(WM_CFG_EN | WM_CFG_MODE, vfe->base + VFE_BUS_WM_CFG(wm));
 }
 
-static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
+/* An RDI output has one line based write master dumping the CSI-2 payload */
+static void vfe_output_start_rdi(struct vfe_device *vfe, struct vfe_output *output)
 {
-	struct vfe_output *stats = vfe_stats_output(line, wm);
-
-	struct v4l2_pix_format_mplane *pix =
-		&line->output[0].video_out.active_fmt.fmt.pix_mp;
-
-	wm = line->output[0].wm[0].bus_client;
-
-	/* no clock gating at bus input */
-	writel(WM_CGC_OVERRIDE_ALL, vfe->base + VFE_BUS_WM_CGC_OVERRIDE);
-
-	writel(0x0, vfe->base + VFE_BUS_WM_TEST_BUS_CTRL);
-
-	if (stats) {
-		vfe_wm_start_stats(vfe, stats);
-		return;
-	}
-
-	if (line->is_pix) {
-		vfe_wm_start_pix(vfe, line);
-		return;
-	}
+	struct v4l2_pix_format_mplane *pix = &output->video_out.active_fmt.fmt.pix_mp;
+	u8 wm = output->wm[0].bus_client;
 
 	writel(ALIGN(pix->plane_fmt[0].bytesperline, 16) * pix->height >> 8,
 	       vfe->base + VFE_BUS_WM_FRAME_INCR(wm));
@@ -200,42 +165,49 @@ static void vfe_wm_start(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 	writel(WM_CFG_EN | WM_CFG_MODE, vfe->base + VFE_BUS_WM_CFG(wm));
 }
 
-static void vfe_wm_stop(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
+static void vfe_output_start(struct vfe_device *vfe, struct vfe_output *output)
 {
-	struct vfe_output *output = &line->output[0];
-	unsigned int i;
+	/* no clock gating at bus input */
+	writel(WM_CGC_OVERRIDE_ALL, vfe->base + VFE_BUS_WM_CGC_OVERRIDE);
 
-	if (vfe_stats_output(line, wm)) {
-		writel(0, vfe->base + VFE_BUS_WM_CFG(wm));
-		return;
-	}
+	writel(0x0, vfe->base + VFE_BUS_WM_TEST_BUS_CTRL);
+
+	if (output->pad == MSM_VFE_PAD_SRC_STATS)
+		vfe_output_start_stats(vfe, output);
+	else if (output->line->is_pix)
+		vfe_output_start_pix(vfe, output);
+	else
+		vfe_output_start_rdi(vfe, output);
+}
+
+static void vfe_output_stop(struct vfe_device *vfe, struct vfe_output *output)
+{
+	unsigned int i;
 
 	for (i = 0; i < output->wm_num; i++)
 		writel(0, vfe->base + VFE_BUS_WM_CFG(output->wm[i].bus_client));
 }
 
-static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
-			  struct vfe_line *line)
+static void vfe_output_update(struct vfe_device *vfe, struct vfe_output *output,
+			      struct camss_buffer *buf)
 {
-	struct vfe_output *output = &line->output[0];
-	struct vfe_output *stats;
 	unsigned int i;
 
-	/*
-	 * Each frame consumes one programmed address, as for images: hand the
-	 * write master the output's kernel buffer once per queued buffer.
-	 */
-	stats = vfe_stats_output(line, wm);
-	if (stats) {
-		writel(stats->dma_addr >> 8, vfe->base + VFE_BUS_WM_IMAGE_ADDR(wm));
-		return;
-	}
-
-	/* camss-video sets addr[1] = addr[0] + bytesperline * height for NV12 */
 	for (i = 0; i < output->wm_num; i++) {
-		u32 addr = buffer->addr[output->wm[i].plane];
+		u8 wm = output->wm[i].bus_client;
+		u32 addr;
 
-		wm = output->wm[i].bus_client;
+		/*
+		 * Each frame consumes one programmed address. Statistics land
+		 * in the output's kernel buffer, handed over once per queued
+		 * buffer; camss-video sets addr[1] = addr[0] + bytesperline *
+		 * height for NV12.
+		 */
+		if (output->pad == MSM_VFE_PAD_SRC_STATS)
+			addr = output->dma_addr;
+		else
+			addr = buf->addr[output->wm[i].plane];
+
 		writel(addr >> 8, vfe->base + VFE_BUS_WM_IMAGE_ADDR(wm));
 
 		dev_dbg(vfe->camss->dev, "wm:%d, image buf addr:0x%x\n",
@@ -440,8 +412,8 @@ const struct vfe_hw_ops vfe_ops_780 = {
 	.params_num_types = ARRAY_SIZE(vfe_params_info),
 	.vfe_params_apply = vfe_params_apply,
 	.vfe_halt = vfe_halt,
-	.vfe_wm_start = vfe_wm_start,
-	.vfe_wm_stop = vfe_wm_stop,
 	.vfe_buf_done = vfe_buf_done,
-	.vfe_wm_update = vfe_wm_update,
+	.vfe_output_start = vfe_output_start,
+	.vfe_output_stop = vfe_output_stop,
+	.vfe_output_update = vfe_output_update,
 };
