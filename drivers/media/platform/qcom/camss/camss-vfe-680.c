@@ -144,11 +144,10 @@ static void vfe_disable_irq(struct vfe_device *vfe)
 	writel(0u, vfe->base + VFE_BUS_IRQn_MASK(vfe, 1));
 }
 
-static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
+static void vfe_wm_update(struct vfe_device *vfe, u8 rdi, u32 addr,
 			  struct vfe_line *line)
 {
-	u32 addr = buffer->addr[0];
-	wm = RDI_WM(wm); /* map to actual WM used (from wm=RDI index) */
+	u8 wm = RDI_WM(rdi);
 
 	writel(addr, vfe->base + VFE_BUS_IMAGE_ADDR(vfe, wm));
 }

@@ -96,11 +96,9 @@ static void vfe_wm_stop(struct vfe_device *vfe, u8 wm, struct vfe_line *line)
 	writel(0, vfe->base + VFE_BUS_WM_CFG(wm));
 }
 
-static void vfe_wm_update(struct vfe_device *vfe, u8 wm, struct camss_buffer *buffer,
+static void vfe_wm_update(struct vfe_device *vfe, u8 wm, u32 addr,
 			  struct vfe_line *line)
 {
-	u32 addr = buffer->addr[0];
-
 	wm = RDI_WM(wm);
 
 	writel(addr, vfe->base + VFE_BUS_WM_IMAGE_ADDR(wm));
