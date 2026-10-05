@@ -145,6 +145,7 @@ struct camss {
 struct camss_buf_done_info {
 	int hw_id;
 	int port_id;
+	u32 status;
 };
 
 struct camss_camera_interface {
