@@ -141,6 +141,28 @@ and a gamma correction block:
 	for (unsigned int i = 0; i < CAMSS_GAMMA_LUT_SIZE; i++)
 		gamma->glut[i] = gamma->blut[i] = gamma->rlut[i] = i;
 
+IFE pixel path
+==============
+
+The pixel path of the SM8650 IFE consumes the format on its
+``msm_vfeN_params`` metadata output node. It accepts the following block, and
+rejects blocks of other types:
+
+.. flat-table:: IFE parameter blocks
+    :header-rows: 1
+    :stub-columns: 0
+
+    * - Parameter block
+      - Function
+    * - :c:type:`camss_params_aec_bhist`
+      - Region of the frame counted by the AEC Bayer histogram statistics,
+        :c:type:`camss_stats_bhist`.
+
+Parameters queued before the image node starts streaming apply from the first
+frame. Parameters queued while streaming apply from a following frame; the
+buffer is returned with the sequence number of the first frame they can
+affect.
+
 .. _v4l2-meta-fmt-qcom-isp-stats:
 
 *************************************
