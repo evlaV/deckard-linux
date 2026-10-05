@@ -624,9 +624,12 @@ void vfe_buf_done(struct vfe_device *vfe, int wm)
 	output->buf[index] = vfe_buf_get_pending(output);
 
 	if (output->buf[index]) {
-		ops->vfe_wm_update(vfe, output->wm[0].bus_client,
-				   output->buf[index]->addr[0],
-				   line);
+		if (ops->vfe_output_update)
+			ops->vfe_output_update(vfe, output, output->buf[index]);
+		else
+			ops->vfe_wm_update(vfe, output->wm[0].bus_client,
+					   output->buf[index]->addr[0],
+					   line);
 		ops->reg_update(vfe, line->id);
 	} else {
 		output->gen2.active_num--;
