@@ -25,12 +25,15 @@
  *	&struct camss_params_color_correct
  * @CAMSS_PARAMS_GAMMA: per-channel gamma correction curves (CLC_GLUT),
  *	&struct camss_params_gamma
+ * @CAMSS_PARAMS_AEC_BHIST: region of the AEC Bayer histogram statistics,
+ *	&struct camss_params_aec_bhist
  */
 enum camss_params_block_type {
 	CAMSS_PARAMS_WB_GAIN = 1,
 	CAMSS_PARAMS_CHROMA_ENHAN = 2,
 	CAMSS_PARAMS_COLOR_CORRECT = 3,
 	CAMSS_PARAMS_GAMMA = 4,
+	CAMSS_PARAMS_AEC_BHIST = 5,
 };
 
 /* Number of entries in each gamma channel LUT. */
@@ -208,6 +211,31 @@ struct camss_params_gamma {
 	 sizeof(struct camss_params_chroma_enhan)	+\
 	 sizeof(struct camss_params_color_correct)	+\
 	 sizeof(struct camss_params_gamma))
+
+/**
+ * struct camss_params_aec_bhist - AEC Bayer histogram configuration
+ *
+ * Selects the region of the frame the AEC Bayer histogram,
+ * &struct camss_stats_bhist, counts. The region is given in pixels of the
+ * Bayer frame entering the ISP; every value must be even, as the histogram
+ * counts 2x2 Bayer quads. A region reaching past the frame is clipped to it.
+ *
+ * @header: block header; @header.type = CAMSS_PARAMS_AEC_BHIST
+ * @left:   horizontal offset of the region
+ * @top:    vertical offset of the region
+ * @width:  width of the region, at least 2
+ * @height: height of the region, at least 2
+ */
+struct camss_params_aec_bhist {
+	struct v4l2_isp_params_block_header header;
+	__u16 left;
+	__u16 top;
+	__u16 width;
+	__u16 height;
+} __attribute__((aligned(8)));
+
+#define CAMSS_PARAMS_IFE_MAX_PAYLOAD		\
+	sizeof(struct camss_params_aec_bhist)
 
 /**
  * enum camss_stats_block_type - CAMSS ISP statistics block identifiers
