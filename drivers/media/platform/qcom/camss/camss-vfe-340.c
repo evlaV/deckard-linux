@@ -203,8 +203,11 @@ static irqreturn_t vfe_isr(int irq, void *dev)
 		}
 
 		for (i = 0; i < TFE_SUBGROUP_NUM; i++) {
-			if (bus_status & TFE_BUS_IRQ_MASK_BUF_DONE(i))
-				vfe_buf_done(vfe, __subgroup_to_line(i));
+			if (bus_status & TFE_BUS_IRQ_MASK_BUF_DONE(i)) {
+				struct camss_buf_done_info info = {};
+
+				vfe_buf_done(vfe, __subgroup_to_line(i), &info);
+			}
 		}
 
 		if (bus_status & TFE_BUS_IRQ_MASK_0_CONS_VIOL)

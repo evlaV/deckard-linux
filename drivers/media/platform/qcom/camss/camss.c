@@ -5068,7 +5068,7 @@ void camss_buf_done(struct camss *camss, struct camss_buf_done_info *info)
 	if (info->hw_id < camss->res->vfe_num) {
 		vfe = &camss->vfe[info->hw_id];
 
-		vfe->res->hw_ops->vfe_buf_done(vfe, info->port_id);
+		vfe->res->hw_ops->vfe_buf_done(vfe, info->port_id, info);
 	}
 }
 

@@ -159,6 +159,7 @@ struct vfe_line {
 };
 
 struct vfe_device;
+struct camss_buf_done_info;
 
 struct vfe_hw_ops {
 	void (*enable_irq)(struct vfe_device *vfe);
@@ -182,7 +183,8 @@ struct vfe_hw_ops {
 			     struct vfe_line *line);
 	void (*vfe_wm_stop)(struct vfe_device *vfe, u8 wm,
 			    struct vfe_line *line);
-	void (*vfe_buf_done)(struct vfe_device *vfe, int port_id);
+	void (*vfe_buf_done)(struct vfe_device *vfe, int port_id,
+			     struct camss_buf_done_info *buf_done_info);
 	void (*vfe_wm_update)(struct vfe_device *vfe, u8 wm, u32 addr,
 			      struct vfe_line *line);
 
@@ -357,7 +359,7 @@ int vfe_enable_v2(struct vfe_line *line);
  * @vfe: VFE Device
  * @wm: Write master id
  */
-void vfe_buf_done(struct vfe_device *vfe, int wm);
+void vfe_buf_done(struct vfe_device *vfe, int wm, struct camss_buf_done_info *buf_done_info);
 
 /*
  * vfe_get_output_v2 - Get vfe output line
