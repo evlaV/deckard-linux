@@ -623,6 +623,63 @@ u32 vfe_hw_version(struct vfe_device *vfe)
  * @vfe: VFE Device
  * @wm: Write master id
  */
+static const struct v4l2_isp_stats_block_type_info vfe_stats_block_info[] = {
+	[CAMSS_STATS_AEC_BHIST] = { .size = sizeof(struct camss_stats_bhist) },
+};
+
+/*
+ * vfe_alloc_stats - Allocate the write master target of a statistics output
+ * @vfe: VFE device
+ * @output: statistics output
+ *
+ * Write master addresses are 256 byte aligned and the v4l2-isp block payloads
+ * are not, so statistics are written to a kernel buffer and copied into the
+ * userspace buffer when their completion group fires.
+ *
+ * Return 0 on success or -ENOMEM
+ */
+int vfe_alloc_stats(struct vfe_device *vfe, struct vfe_output *output)
+{
+	output->dma_size = sizeof_field(struct camss_stats_bhist, bins);
+	output->dma_vaddr = dmam_alloc_coherent(vfe->camss->dev,
+						output->dma_size,
+						&output->dma_addr, GFP_KERNEL);
+
+	return output->dma_vaddr ? 0 : -ENOMEM;
+}
+
+/*
+ * vfe_stats_fill - Serialise a frame's statistics into a userspace buffer
+ * @vfe: VFE device
+ * @output: statistics output
+ * @buf: buffer to fill
+ *
+ * Runs from the completion of the statistics group, a frame before the write
+ * master writes the kernel buffer again.
+ */
+static void vfe_stats_fill(struct vfe_device *vfe, struct vfe_output *output,
+			   struct camss_buffer *buf)
+{
+	struct v4l2_isp_buffer *stats = vb2_plane_vaddr(&buf->vb.vb2_buf, 0);
+	struct v4l2_isp_block_header *block;
+	struct camss_stats_bhist *bhist;
+
+	v4l2_isp_stats_init_buffer(stats, V4L2_ISP_VERSION_V1);
+
+	block = v4l2_isp_stats_init_block(vfe->camss->dev, stats,
+					  vfe_stats_block_info,
+					  ARRAY_SIZE(vfe_stats_block_info),
+					  CAMSS_STATS_AEC_BHIST,
+					  CAMSS_STATS_MAX_PAYLOAD);
+	if (!IS_ERR(block)) {
+		bhist = container_of(block, struct camss_stats_bhist, header);
+		memcpy(bhist->bins, output->dma_vaddr, sizeof(bhist->bins));
+	}
+
+	vb2_set_plane_payload(&buf->vb.vb2_buf, 0,
+			      v4l2_isp_buffer_size(stats->data_size));
+}
+
 /*
  * vfe_output_done - Retire the filled buffer of one output
  * @vfe: VFE device
@@ -656,6 +713,9 @@ static struct camss_buffer *vfe_output_done(struct vfe_device *vfe,
 
 	ready_buf->vb.vb2_buf.timestamp = ts;
 	ready_buf->vb.sequence = output->sequence++;
+
+	if (output->pad == MSM_VFE_PAD_SRC_STATS)
+		vfe_stats_fill(vfe, output, ready_buf);
 
 	index = 0;
 	output->buf[0] = output->buf[1];
@@ -1482,6 +1542,14 @@ int vfe_flush_buffers(struct camss_video *vid,
 
 	if (output->buf[1])
 		vb2_buffer_done(&output->buf[1]->vb.vb2_buf, state);
+
+	/*
+	 * A metadata node stops while its line runs: forget the returned
+	 * buffers so a later completion does not return them again.
+	 */
+	output->buf[0] = NULL;
+	output->buf[1] = NULL;
+	output->gen2.active_num = 0;
 
 	if (output->last_buffer) {
 		vb2_buffer_done(&output->last_buffer->vb.vb2_buf, state);

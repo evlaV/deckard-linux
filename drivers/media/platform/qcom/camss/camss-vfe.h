@@ -143,6 +143,14 @@ struct vfe_output {
 
 	struct vfe_line *line;
 	struct camss_video video_out;
+
+	/*
+	 * Kernel buffer the write masters fill, for outputs the CPU copies
+	 * to userspace at completion (statistics)
+	 */
+	void *dma_vaddr;
+	dma_addr_t dma_addr;
+	size_t dma_size;
 };
 
 struct vfe_line {
@@ -422,6 +430,7 @@ void vfe_add_ds(struct vfe_output *output, u8 pad, u8 bus_client,
 		u8 comp_group);
 
 void vfe_add_stats(struct vfe_output *output, u8 bus_client, u8 comp_group);
+int vfe_alloc_stats(struct vfe_device *vfe, struct vfe_output *output);
 
 void vfe_add_params(struct vfe_output *output, u8 comp_group);
 
