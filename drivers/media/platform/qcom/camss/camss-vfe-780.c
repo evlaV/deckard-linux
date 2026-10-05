@@ -9,6 +9,8 @@
 #include <linux/io.h>
 #include <linux/iopoll.h>
 
+#include <linux/qcom-camss-config.h>
+
 #include "camss.h"
 #include "camss-csid-gen3.h"
 #include "camss-vfe.h"
@@ -273,7 +275,105 @@ static void vfe_line_prepare(struct vfe_line *line)
 static const struct camss_video_ops vfe_video_ops_780 = {
 	.queue_buffer = vfe_queue_buffer_v2,
 	.flush_buffers = vfe_flush_buffers,
+	.prepare_buffer = vfe_params_prepare,
 };
+
+/* Blocks the IFE does not implement, the OPE's among them */
+static int vfe_params_block_unsupported(struct device *dev,
+					const struct v4l2_isp_block_header *block)
+{
+	dev_dbg(dev, "Unsupported parameters block type %u\n", block->type);
+
+	return -EINVAL;
+}
+
+static int vfe_params_aec_bhist_validate(struct device *dev,
+					 const struct v4l2_isp_block_header *block)
+{
+	const struct camss_params_aec_bhist *bhist =
+		container_of(block, struct camss_params_aec_bhist, header);
+
+	if ((bhist->left | bhist->top | bhist->width | bhist->height) & 1 ||
+	    bhist->width < 2 || bhist->height < 2) {
+		dev_dbg(dev, "Invalid AEC BHIST region %ux%u@%u,%u\n",
+			bhist->width, bhist->height, bhist->left, bhist->top);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/*
+ * Every type up to the last one the IFE accepts has an entry, so that no
+ * block passes validation with a size of zero.
+ */
+static const struct v4l2_isp_params_block_type_info vfe_params_info[] = {
+	[0] = {
+		.size = sizeof(struct v4l2_isp_params_block_header),
+		.block_validate = vfe_params_block_unsupported,
+	},
+	[CAMSS_PARAMS_WB_GAIN] = {
+		.size = sizeof(struct camss_params_wb_gain),
+		.block_validate = vfe_params_block_unsupported,
+	},
+	[CAMSS_PARAMS_CHROMA_ENHAN] = {
+		.size = sizeof(struct camss_params_chroma_enhan),
+		.block_validate = vfe_params_block_unsupported,
+	},
+	[CAMSS_PARAMS_COLOR_CORRECT] = {
+		.size = sizeof(struct camss_params_color_correct),
+		.block_validate = vfe_params_block_unsupported,
+	},
+	[CAMSS_PARAMS_GAMMA] = {
+		.size = sizeof(struct camss_params_gamma),
+		.block_validate = vfe_params_block_unsupported,
+	},
+	[CAMSS_PARAMS_AEC_BHIST] = {
+		.size = sizeof(struct camss_params_aec_bhist),
+		.block_validate = vfe_params_aec_bhist_validate,
+	},
+};
+
+/* Clip the region to the Bayer frame entering the line, then count quads */
+static void vfe_params_aec_bhist(struct vfe_device *vfe, struct vfe_line *line,
+				 const struct camss_params_aec_bhist *bhist)
+{
+	u32 frame_w = line->fmt[MSM_VFE_PAD_SINK].width & ~1u;
+	u32 frame_h = line->fmt[MSM_VFE_PAD_SINK].height & ~1u;
+	u32 left, top, width, height;
+
+	if (frame_w < 2 || frame_h < 2)
+		return;
+
+	left = min_t(u32, bhist->left, frame_w - 2);
+	top = min_t(u32, bhist->top, frame_h - 2);
+	width = min_t(u32, bhist->width, frame_w - left);
+	height = min_t(u32, bhist->height, frame_h - top);
+
+	vfe_880_set_aec_bhist_region(vfe, left / 2, top / 2,
+				     width / 2 - 1, height / 2 - 1);
+}
+
+static void vfe_params_apply(struct vfe_device *vfe, struct vfe_line *line,
+			     const struct v4l2_isp_buffer *params)
+{
+	size_t offset = 0;
+
+	/* validated at prepare: every block fits and has a non-zero size */
+	while (offset < params->data_size) {
+		const struct v4l2_isp_block_header *block =
+			(const struct v4l2_isp_block_header *)&params->data[offset];
+
+		if (block->type == CAMSS_PARAMS_AEC_BHIST &&
+		    !(block->flags & V4L2_ISP_PARAMS_FL_BLOCK_DISABLE))
+			vfe_params_aec_bhist(vfe, line,
+					     container_of(block,
+							  struct camss_params_aec_bhist,
+							  header));
+
+		offset += block->size;
+	}
+}
 static void vfe_subdev_init(struct device *dev, struct vfe_device *vfe)
 {
 	struct vfe_line *pix = &vfe->line[VFE_LINE_PIX];
@@ -336,6 +436,9 @@ const struct vfe_hw_ops vfe_ops_780 = {
 	.vfe_disable = vfe_disable,
 	.vfe_enable = vfe_enable_v2,
 	.vfe_line_prepare = vfe_line_prepare,
+	.params_info = vfe_params_info,
+	.params_num_types = ARRAY_SIZE(vfe_params_info),
+	.vfe_params_apply = vfe_params_apply,
 	.vfe_halt = vfe_halt,
 	.vfe_wm_start = vfe_wm_start,
 	.vfe_wm_stop = vfe_wm_stop,

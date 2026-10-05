@@ -460,6 +460,23 @@ static void vfe_setup_aec_bhist(struct vfe_device *vfe, u32 w, u32 h)
 	writel_relaxed(0x00000000, vfe->base + IFE_STATS_AEC_BHIST_MODULE_LUT_BANK_CFG);
 }
 
+/*
+ * vfe_880_set_aec_bhist_region - Select the region the AEC BHIST counts
+ * @vfe: VFE device
+ * @h_offset: horizontal offset, in 2x2 quads
+ * @v_offset: vertical offset, in 2x2 quads
+ * @h_num: width, in 2x2 quads, minus one
+ * @v_num: height, in 2x2 quads, minus one
+ */
+void vfe_880_set_aec_bhist_region(struct vfe_device *vfe, u32 h_offset,
+				  u32 v_offset, u32 h_num, u32 v_num)
+{
+	writel_relaxed(((v_offset & 0x3fff) << 16) | (h_offset & 0x3fff),
+		       vfe->base + IFE_STATS_AEC_BHIST_RGN_OFFSET_CFG);
+	writel_relaxed(((v_num & 0x1fff) << 16) | (h_num & 0x1fff),
+		       vfe->base + IFE_STATS_AEC_BHIST_RGN_NUM_CFG);
+}
+
 /* Main output round/clamp: round mode 2, clamp 0..255 */
 static void vfe_setup_main_output_round_clamp(struct vfe_device *vfe)
 {
