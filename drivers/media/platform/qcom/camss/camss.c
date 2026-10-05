@@ -5061,14 +5061,14 @@ void camss_reg_update(struct camss *camss, int hw_id, int port_id, bool is_clear
 	}
 }
 
-void camss_buf_done(struct camss *camss, int hw_id, int port_id)
+void camss_buf_done(struct camss *camss, struct camss_buf_done_info *info)
 {
 	struct vfe_device *vfe;
 
-	if (hw_id < camss->res->vfe_num) {
-		vfe = &camss->vfe[hw_id];
+	if (info->hw_id < camss->res->vfe_num) {
+		vfe = &camss->vfe[info->hw_id];
 
-		vfe->res->hw_ops->vfe_buf_done(vfe, port_id);
+		vfe->res->hw_ops->vfe_buf_done(vfe, info->port_id);
 	}
 }
 

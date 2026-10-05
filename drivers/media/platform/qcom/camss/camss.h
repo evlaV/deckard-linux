@@ -142,6 +142,11 @@ struct camss {
 	const struct camss_resources *res;
 };
 
+struct camss_buf_done_info {
+	int hw_id;
+	int port_id;
+};
+
 struct camss_camera_interface {
 	u8 csiphy_id;
 	struct csiphy_csi2_cfg csi2;
@@ -178,7 +183,7 @@ void camss_pm_domain_off(struct camss *camss, int id);
 int camss_vfe_get(struct camss *camss, int id);
 void camss_vfe_put(struct camss *camss, int id);
 void camss_delete(struct camss *camss);
-void camss_buf_done(struct camss *camss, int hw_id, int port_id);
+void camss_buf_done(struct camss *camss, struct camss_buf_done_info *info);
 void camss_reg_update(struct camss *camss, int hw_id,
 		      int port_id, bool is_clear);
 

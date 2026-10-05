@@ -258,6 +258,7 @@ static void csid_subdev_reg_update(struct csid_device *csid, int port_id, bool c
  */
 static irqreturn_t csid_isr(int irq, void *dev)
 {
+	struct camss_buf_done_info info;
 	struct csid_device *csid = dev;
 	u32 val, buf_done_val;
 	u8 reset_done;
@@ -289,7 +290,9 @@ static irqreturn_t csid_isr(int irq, void *dev)
 				 * CSID from VFE. Once CSID received bus done, need notify
 				 * VFE of this event. Trigger VFE to handle bus done process.
 				 */
-				camss_buf_done(csid->camss, csid->id, i);
+				info.hw_id = csid->id;
+				info.port_id = i;
+				camss_buf_done(csid->camss, &info);
 			}
 		}
 

@@ -373,6 +373,7 @@ static void csid_rup_complete(struct csid_device *csid, int rdi)
  */
 static irqreturn_t csid_isr(int irq, void *dev)
 {
+	struct camss_buf_done_info info;
 	struct csid_device *csid = dev;
 	u32 buf_done_val, val, val_top;
 	int i;
@@ -398,8 +399,11 @@ static irqreturn_t csid_isr(int irq, void *dev)
 		if (val & CSID_CSI2_RDIN_RUP_DONE)
 			csid_rup_complete(csid, i);
 
-		if (buf_done_val & BIT(BUF_DONE_IRQ_STATUS_RDI_OFFSET + i))
-			camss_buf_done(csid->camss, csid->id, i);
+		if (buf_done_val & BIT(BUF_DONE_IRQ_STATUS_RDI_OFFSET + i)) {
+			info.hw_id = csid->id;
+			info.port_id = i;
+			camss_buf_done(csid->camss, &info);
+		}
 	}
 
 	/* Issue clear command */
