@@ -301,7 +301,6 @@ static int csid_configure_testgen_pattern(struct csid_device *csid, s32 val)
 	return 0;
 }
 
-#define CSID_780_CUSTOM_PORT_ID_IPP0	0x100 /* TODO: bod don't like this too much */
 
 static void csid_subdev_reg_update(struct csid_device *csid, int port_id, bool clear)
 {

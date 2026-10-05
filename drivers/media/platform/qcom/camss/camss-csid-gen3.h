@@ -22,4 +22,7 @@
 #define PLAIN_FORMAT_PLAIN16	0x1 /* supports DPCM, UNCOMPRESSED_10/16_BIT */
 #define PLAIN_FORMAT_PLAIN32	0x2 /* supports UNCOMPRESSED_20_BIT */
 
+/* port_id passed to camss_reg_update() for the IPP, outside the RDI range */
+#define CSID_780_CUSTOM_PORT_ID_IPP0	0x100
+
 #endif /* __QC_MSM_CAMSS_CSID_GEN3_H__ */
