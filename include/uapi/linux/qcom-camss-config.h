@@ -209,4 +209,37 @@ struct camss_params_gamma {
 	 sizeof(struct camss_params_color_correct)	+\
 	 sizeof(struct camss_params_gamma))
 
+/**
+ * enum camss_stats_block_type - CAMSS ISP statistics block identifiers
+ *
+ * Each value identifies one statistics block in a
+ * V4L2_META_FMT_QCOM_ISP_STATS buffer. The value is placed in the @type field
+ * of &struct v4l2_isp_block_header.
+ *
+ * @CAMSS_STATS_AEC_BHIST: AEC Bayer histogram, &struct camss_stats_bhist
+ */
+enum camss_stats_block_type {
+	CAMSS_STATS_AEC_BHIST = 1,
+};
+
+/* Number of bins in a Bayer histogram. */
+#define CAMSS_STATS_BHIST_BINS	1024
+
+/**
+ * struct camss_stats_bhist - Bayer histogram
+ *
+ * Histogram of the luma of each 2x2 Bayer quad inside the histogram's region,
+ * over CAMSS_STATS_BHIST_BINS equal bins spanning its input range. Quads
+ * whose luma falls outside the input range are not counted.
+ *
+ * @header: block header; @header.type = CAMSS_STATS_AEC_BHIST
+ * @bins:   number of quads per bin
+ */
+struct camss_stats_bhist {
+	struct v4l2_isp_block_header header;
+	__u32 bins[CAMSS_STATS_BHIST_BINS];
+} __attribute__((aligned(8)));
+
+#define CAMSS_STATS_MAX_PAYLOAD		sizeof(struct camss_stats_bhist)
+
 #endif /* _UAPI_LINUX_QCOM_CAMSS_CONFIG_H */
