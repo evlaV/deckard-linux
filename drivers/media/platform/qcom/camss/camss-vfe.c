@@ -630,6 +630,18 @@ out_unlock:
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 }
 
+/*
+ * The first output starts the line. The others run only while their video
+ * node is streaming, and only if they write to memory.
+ */
+static bool vfe_output_wanted(struct vfe_line *line, struct vfe_output *output)
+{
+	if (output == &line->output[0])
+		return true;
+
+	return output->wm_num && vb2_is_streaming(&output->video_out.vb2_q);
+}
+
 static int vfe_enable_one_output(struct vfe_line *line, struct vfe_output *output)
 {
 	struct vfe_device *vfe = to_vfe(line);
@@ -701,6 +713,9 @@ int vfe_enable_output_v2(struct vfe_line *line)
 	ops->reg_update_clear(vfe, line->id);
 
 	for (i = 0; i < line->num_outputs; i++) {
+		if (!vfe_output_wanted(line, &line->output[i]))
+			continue;
+
 		ret = vfe_enable_one_output(line, &line->output[i]);
 		if (ret)
 			break;
@@ -854,15 +869,17 @@ int vfe_reset(struct vfe_device *vfe)
 
 static void vfe_init_outputs(struct vfe_device *vfe)
 {
-	int i;
+	int i, o;
 
 	for (i = 0; i < vfe->res->line_num; i++) {
-		struct vfe_output *output = &vfe->line[i].output[0];
+		for (o = 0; o < MSM_VFE_NUM_OUTPUTS; o++) {
+			struct vfe_output *output = &vfe->line[i].output[o];
 
-		output->state = VFE_OUTPUT_OFF;
-		output->buf[0] = NULL;
-		output->buf[1] = NULL;
-		INIT_LIST_HEAD(&output->pending_bufs);
+			output->state = VFE_OUTPUT_OFF;
+			output->buf[0] = NULL;
+			output->buf[1] = NULL;
+			INIT_LIST_HEAD(&output->pending_bufs);
+		}
 	}
 }
 
@@ -950,7 +967,8 @@ int vfe_put_output(struct vfe_line *line)
 	for (i = 0; i < output->wm_num; i++)
 		vfe_release_wm(vfe, output->wm[i].bus_client);
 
-	output->state = VFE_OUTPUT_OFF;
+	for (i = 0; i < line->num_outputs; i++)
+		line->output[i].state = VFE_OUTPUT_OFF;
 
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 	return 0;
@@ -960,17 +978,24 @@ static void vfe_disable_output(struct vfe_line *line)
 {
 	struct vfe_device *vfe = to_vfe(line);
 	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
-	struct vfe_output *output = &line->output[0];
 	unsigned long flags;
-	unsigned int i;
+	unsigned int i, o;
 
 	spin_lock_irqsave(&vfe->output_lock, flags);
-	for (i = 0; i < output->wm_num; i++)
-		if (ops->vfe_output_stop)
-			ops->vfe_output_stop(vfe, output);
-		else
-			ops->vfe_wm_stop(vfe, output->wm[i].bus_client, line);
-	output->gen2.active_num = 0;
+	for (o = 0; o < line->num_outputs; o++) {
+		struct vfe_output *output = &line->output[o];
+
+		/* the first output is always on; the others only if they streamed */
+		if (o && output->state != VFE_OUTPUT_ON)
+			continue;
+
+		for (i = 0; i < output->wm_num; i++)
+			if (ops->vfe_output_stop)
+				ops->vfe_output_stop(vfe, output);
+			else
+				ops->vfe_wm_stop(vfe, output->wm[i].bus_client, line);
+		output->gen2.active_num = 0;
+	}
 	spin_unlock_irqrestore(&vfe->output_lock, flags);
 }
 
@@ -2154,21 +2179,25 @@ int msm_vfe_subdev_init(struct camss *camss, struct vfe_device *vfe,
 
 	for (i = VFE_LINE_RDI0; i < vfe->res->line_num; i++) {
 		struct vfe_line *l = &vfe->line[i];
+		unsigned int o;
+
+		for (o = 0; o < MSM_VFE_NUM_OUTPUTS; o++) {
+			l->output[o].line = l;
+			l->output[o].video_out.camss = camss;
+			init_completion(&l->output[o].sof);
+			init_completion(&l->output[o].reg_update);
+		}
 
 		l->output[0].video_out.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-		l->output[0].video_out.camss = camss;
 		l->id = i;
 
 		l->num_outputs = 1;
-		l->output[0].line = l;
+		l->output[0].pad = MSM_VFE_PAD_SRC;
 
 		l->output[0].wm_num = 1;
 		l->output[0].wm[0].bus_client = l->id;
 
 		l->num_pads = MSM_VFE_PAD_NUM_RDI;
-
-		init_completion(&l->output[0].sof);
-		init_completion(&l->output[0].reg_update);
 
 
 	}
@@ -2476,6 +2505,7 @@ void vfe_add_output(struct vfe_output *output, u8 pad, u8 comp_group,
 {
 	unsigned int i;
 
+	output->pad = pad;
 	output->comp_group = comp_group;
 	output->wm_num = wm_num;
 	for (i = 0; i < wm_num; i++) {
