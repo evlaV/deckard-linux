@@ -8,3 +8,4 @@ config VIDEO_QCOM_CAMSS
 	select VIDEOBUF2_DMA_SG
 	select VIDEOBUF2_VMALLOC
 	select V4L2_FWNODE
+	select V4L2_ISP

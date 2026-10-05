@@ -20,7 +20,9 @@
 #include <linux/spinlock.h>
 #include <media/media-entity.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-isp.h>
 #include <media/v4l2-subdev.h>
+#include <linux/qcom-camss-config.h>
 
 #include "camss-vfe.h"
 #include "camss.h"
@@ -2367,6 +2369,74 @@ static int vfe_bpl_align_pix(struct vfe_device *vfe)
 }
 
 /*
+ * vfe_register_stats_node - Register the statistics node of a pixel line
+ * @vfe: VFE device
+ * @line: VFE line
+ * @v4l2_dev: V4L2 device
+ *
+ * A line whose descriptor declares a statistics output gets a metadata
+ * capture node, msm_vfeN_stats, linked from its statistics pad.
+ *
+ * Return 0 on success or a negative error code otherwise
+ */
+static int vfe_register_stats_node(struct vfe_device *vfe,
+				   struct vfe_line *line,
+				   struct v4l2_device *v4l2_dev)
+{
+	struct device *dev = vfe->camss->dev;
+	unsigned int o;
+	int ret;
+
+	for (o = 1; o < line->num_outputs; o++) {
+		struct vfe_output *output = &line->output[o];
+		struct camss_video *video = &output->video_out;
+		char name[32];
+
+		if (output->pad != MSM_VFE_PAD_SRC_STATS || !output->wm_num)
+			continue;
+
+		video->type = V4L2_BUF_TYPE_META_CAPTURE;
+		video->active_fmt.fmt.meta.dataformat =
+			V4L2_META_FMT_QCOM_ISP_STATS;
+		video->active_fmt.fmt.meta.buffersize =
+			v4l2_isp_buffer_size(CAMSS_STATS_MAX_PAYLOAD);
+		video->ops = &vfe->video_ops;
+
+		snprintf(name, ARRAY_SIZE(name), "%s%d_%s",
+			 MSM_VFE_NAME, vfe->id, "stats");
+		ret = msm_video_register(video, v4l2_dev, name);
+		if (ret < 0) {
+			dev_err(dev, "Failed to register stats node: %d\n", ret);
+			return ret;
+		}
+
+		ret = media_create_pad_link(&line->subdev.entity, output->pad,
+					    &video->vdev.entity, 0,
+					    MEDIA_LNK_FL_IMMUTABLE |
+					    MEDIA_LNK_FL_ENABLED);
+		if (ret < 0) {
+			dev_err(dev, "Failed to link stats node: %d\n", ret);
+			msm_video_unregister(video);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+static void vfe_unregister_stats_node(struct vfe_line *line)
+{
+	unsigned int o;
+
+	for (o = 1; o < line->num_outputs; o++) {
+		struct camss_video *video = &line->output[o].video_out;
+
+		if (video_is_registered(&video->vdev))
+			msm_video_unregister(video);
+	}
+}
+
+/*
  * msm_vfe_register_entities - Register subdev node for VFE module
  * @vfe: VFE device
  * @v4l2_dev: V4L2 device
@@ -2468,6 +2538,10 @@ int msm_vfe_register_entities(struct vfe_device *vfe,
 				ret);
 			goto error_link;
 		}
+
+		ret = vfe_register_stats_node(vfe, &vfe->line[i], v4l2_dev);
+		if (ret < 0)
+			goto error_link;
 	}
 
 	return 0;
@@ -2486,6 +2560,7 @@ error_init:
 		sd = &vfe->line[i].subdev;
 		video_out = &vfe->line[i].output[0].video_out;
 
+		vfe_unregister_stats_node(&vfe->line[i]);
 		msm_video_unregister(video_out);
 		v4l2_device_unregister_subdev(sd);
 		media_entity_cleanup(&sd->entity);
@@ -2509,6 +2584,7 @@ void msm_vfe_unregister_entities(struct vfe_device *vfe)
 		struct v4l2_subdev *sd = &vfe->line[i].subdev;
 		struct camss_video *video_out = &vfe->line[i].output[0].video_out;
 
+		vfe_unregister_stats_node(&vfe->line[i]);
 		msm_video_unregister(video_out);
 		v4l2_device_unregister_subdev(sd);
 		media_entity_cleanup(&sd->entity);
