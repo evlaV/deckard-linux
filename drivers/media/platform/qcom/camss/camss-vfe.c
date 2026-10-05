@@ -2261,6 +2261,27 @@ static int vfe_bpl_align_rdi(struct vfe_device *vfe)
 	return ret;
 }
 
+/*
+ * vfe_pix_line_based - Select line-based mode for the pixel path's video node
+ * @vfe: VFE device
+ *
+ * A line-based video node caps its buffer at CAMSS_FRAME_MAX_HEIGHT_PIX lines,
+ * counting every plane's lines together. That fits the VFE 4.x and TFE pixel
+ * outputs. The SM8650 IFE writes luma and chroma through separate write
+ * masters, each programmed with its own height, so the cap does not apply.
+ *
+ * Return true if the pixel path's video node is line based
+ */
+static bool vfe_pix_line_based(struct vfe_device *vfe)
+{
+	switch (vfe->camss->res->version) {
+	case CAMSS_8650:
+		return false;
+	default:
+		return true;
+	}
+}
+
 static int vfe_bpl_align_pix(struct vfe_device *vfe)
 {
 	int ret = 16;
@@ -2353,7 +2374,7 @@ int msm_vfe_register_entities(struct vfe_device *vfe,
 		video_out->ops = &vfe->video_ops;
 		if (vfe->line[i].is_pix) {
 			video_out->bpl_alignment = vfe_bpl_align_pix(vfe);
-			video_out->line_based = 1;
+			video_out->line_based = vfe_pix_line_based(vfe);
 		} else {
 			video_out->bpl_alignment = vfe_bpl_align_rdi(vfe);
 			video_out->line_based = 0;
