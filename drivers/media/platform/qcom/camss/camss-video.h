@@ -23,6 +23,9 @@ struct camss_buffer {
 	struct vb2_v4l2_buffer vb;
 	dma_addr_t addr[3];
 	struct list_head queue;
+
+	/* Metadata output nodes: kernel copy of the buffer, validated at prepare */
+	void *meta;
 };
 
 struct camss_video;
@@ -31,6 +34,11 @@ struct camss_video_ops {
 	int (*queue_buffer)(struct camss_video *vid, struct camss_buffer *buf);
 	int (*flush_buffers)(struct camss_video *vid,
 			     enum vb2_buffer_state state);
+	/*
+	 * Optional, metadata output nodes: validate the kernel copy of a
+	 * buffer, buf->meta, when it is prepared
+	 */
+	int (*prepare_buffer)(struct camss_video *vid, struct camss_buffer *buf);
 };
 
 struct camss_video {
