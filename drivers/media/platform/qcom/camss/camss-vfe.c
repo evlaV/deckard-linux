@@ -681,6 +681,99 @@ static void vfe_stats_fill(struct vfe_device *vfe, struct vfe_output *output,
 }
 
 /*
+ * vfe_params_prepare - Validate a parameters buffer when it is prepared
+ * @vid: video node
+ * @buf: buffer, whose kernel copy buf->meta is validated
+ *
+ * Return 0 on success or a negative error code otherwise
+ */
+int vfe_params_prepare(struct camss_video *vid, struct camss_buffer *buf)
+{
+	struct vfe_output *output = container_of(vid, struct vfe_output,
+						 video_out);
+	struct vfe_device *vfe = to_vfe(output->line);
+	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
+	struct vb2_buffer *vb = &buf->vb.vb2_buf;
+	int ret;
+
+	if (vid->type != V4L2_BUF_TYPE_META_OUTPUT)
+		return 0;
+
+	ret = v4l2_isp_params_validate_buffer_size(vfe->camss->dev, vb,
+						   vid->active_fmt.fmt.meta.buffersize);
+	if (ret)
+		return ret;
+
+	return v4l2_isp_params_validate_buffer(vfe->camss->dev, vb, buf->meta,
+					       ops->params_info,
+					       ops->params_num_types);
+}
+
+static struct vfe_output *vfe_params_output(struct vfe_line *line)
+{
+	unsigned int o;
+
+	for (o = 1; o < line->num_outputs; o++)
+		if (line->output[o].pad == MSM_VFE_PAD_SINK_PARAMS)
+			return &line->output[o];
+
+	return NULL;
+}
+
+/*
+ * vfe_params_apply_next - Apply the oldest queued parameters buffer
+ * @vfe: VFE device
+ * @line: VFE line
+ * @sequence: sequence number of the first frame the parameters can affect
+ *
+ * Called with output_lock held.
+ *
+ * Return the applied buffer for the caller to complete once the lock is
+ * dropped, or NULL if none was queued
+ */
+static struct camss_buffer *vfe_params_apply_next(struct vfe_device *vfe,
+						  struct vfe_line *line,
+						  u32 sequence)
+{
+	const struct vfe_hw_ops *ops = vfe->res->hw_ops;
+	struct vfe_output *params = vfe_params_output(line);
+	struct camss_buffer *buf;
+
+	if (!params || !ops->vfe_params_apply)
+		return NULL;
+
+	buf = vfe_buf_get_pending(params);
+	if (!buf)
+		return NULL;
+
+	ops->vfe_params_apply(vfe, line, buf->meta);
+
+	buf->vb.vb2_buf.timestamp = ktime_get_ns();
+	buf->vb.sequence = sequence;
+
+	return buf;
+}
+
+/* Line start: apply every queued parameters buffer, oldest first */
+static void vfe_params_apply_queued(struct vfe_device *vfe,
+				    struct vfe_line *line)
+{
+	struct camss_buffer *buf;
+	unsigned long flags;
+
+	for (;;) {
+		spin_lock_irqsave(&vfe->output_lock, flags);
+		buf = vfe_params_apply_next(vfe, line, 0);
+		spin_unlock_irqrestore(&vfe->output_lock, flags);
+
+		if (!buf)
+			break;
+
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
+	}
+}
+
+/*
  * vfe_output_done - Retire the filled buffer of one output
  * @vfe: VFE device
  * @line: VFE line
@@ -752,6 +845,7 @@ static struct camss_buffer *vfe_output_done(struct vfe_device *vfe,
 void vfe_buf_done(struct vfe_device *vfe, int wm, struct camss_buf_done_info *buf_done_info)
 {
 	struct camss_buffer *ready[MSM_VFE_NUM_OUTPUTS] = { };
+	struct camss_buffer *params = NULL;
 	struct vfe_line *line;
 	unsigned long flags;
 	unsigned int o;
@@ -779,6 +873,14 @@ void vfe_buf_done(struct vfe_device *vfe, int wm, struct camss_buf_done_info *bu
 
 			ready[o] = vfe_output_done(vfe, line, output, ts);
 		}
+
+		/* one parameters buffer per completed image frame */
+		if (ready[0]) {
+			params = vfe_params_apply_next(vfe, line,
+						       line->output[0].sequence);
+			if (params)
+				vfe->res->hw_ops->reg_update(vfe, line->id);
+		}
 	}
 
 out_unlock:
@@ -788,6 +890,9 @@ out_unlock:
 		if (ready[o])
 			vb2_buffer_done(&ready[o]->vb.vb2_buf,
 					VB2_BUF_STATE_DONE);
+
+	if (params)
+		vb2_buffer_done(&params->vb.vb2_buf, VB2_BUF_STATE_DONE);
 }
 
 /*
@@ -949,6 +1054,10 @@ int vfe_enable_v2(struct vfe_line *line)
 
 	if (ops->vfe_line_prepare)
 		ops->vfe_line_prepare(line);
+
+	/* queued parameters override the defaults the line starts with */
+	if (line->is_pix)
+		vfe_params_apply_queued(vfe, line);
 
 	ret = vfe_enable_output_v2(line);
 	if (ret < 0)
@@ -2486,17 +2595,19 @@ static int vfe_bpl_align_pix(struct vfe_device *vfe)
 }
 
 /*
- * vfe_register_stats_node - Register the statistics node of a pixel line
+ * vfe_register_meta_nodes - Register the metadata nodes of a pixel line
  * @vfe: VFE device
  * @line: VFE line
  * @v4l2_dev: V4L2 device
  *
  * A line whose descriptor declares a statistics output gets a metadata
- * capture node, msm_vfeN_stats, linked from its statistics pad.
+ * capture node, msm_vfeN_stats, linked from its statistics pad. One that
+ * declares a parameters output, on a VFE able to apply parameters, gets a
+ * metadata output node, msm_vfeN_params, linked to its parameters pad.
  *
  * Return 0 on success or a negative error code otherwise
  */
-static int vfe_register_stats_node(struct vfe_device *vfe,
+static int vfe_register_meta_nodes(struct vfe_device *vfe,
 				   struct vfe_line *line,
 				   struct v4l2_device *v4l2_dev)
 {
@@ -2507,32 +2618,54 @@ static int vfe_register_stats_node(struct vfe_device *vfe,
 	for (o = 1; o < line->num_outputs; o++) {
 		struct vfe_output *output = &line->output[o];
 		struct camss_video *video = &output->video_out;
+		const char *suffix;
 		char name[32];
 
-		if (output->pad != MSM_VFE_PAD_SRC_STATS || !output->wm_num)
+		if (output->pad == MSM_VFE_PAD_SRC_STATS && output->wm_num) {
+			video->type = V4L2_BUF_TYPE_META_CAPTURE;
+			video->active_fmt.fmt.meta.dataformat =
+				V4L2_META_FMT_QCOM_ISP_STATS;
+			video->active_fmt.fmt.meta.buffersize =
+				v4l2_isp_buffer_size(CAMSS_STATS_MAX_PAYLOAD);
+			suffix = "stats";
+		} else if (output->pad == MSM_VFE_PAD_SINK_PARAMS &&
+			   vfe->res->hw_ops->vfe_params_apply) {
+			video->type = V4L2_BUF_TYPE_META_OUTPUT;
+			video->active_fmt.fmt.meta.dataformat =
+				V4L2_META_FMT_QCOM_ISP_PARAMS;
+			video->active_fmt.fmt.meta.buffersize =
+				v4l2_isp_buffer_size(CAMSS_PARAMS_IFE_MAX_PAYLOAD);
+			suffix = "params";
+		} else {
 			continue;
+		}
 
-		video->type = V4L2_BUF_TYPE_META_CAPTURE;
-		video->active_fmt.fmt.meta.dataformat =
-			V4L2_META_FMT_QCOM_ISP_STATS;
-		video->active_fmt.fmt.meta.buffersize =
-			v4l2_isp_buffer_size(CAMSS_STATS_MAX_PAYLOAD);
 		video->ops = &vfe->video_ops;
 
 		snprintf(name, ARRAY_SIZE(name), "%s%d_%s",
-			 MSM_VFE_NAME, vfe->id, "stats");
+			 MSM_VFE_NAME, vfe->id, suffix);
 		ret = msm_video_register(video, v4l2_dev, name);
 		if (ret < 0) {
-			dev_err(dev, "Failed to register stats node: %d\n", ret);
+			dev_err(dev, "Failed to register %s node: %d\n",
+				suffix, ret);
 			return ret;
 		}
 
-		ret = media_create_pad_link(&line->subdev.entity, output->pad,
-					    &video->vdev.entity, 0,
-					    MEDIA_LNK_FL_IMMUTABLE |
-					    MEDIA_LNK_FL_ENABLED);
+		if (video->type == V4L2_BUF_TYPE_META_OUTPUT)
+			ret = media_create_pad_link(&video->vdev.entity, 0,
+						    &line->subdev.entity,
+						    output->pad,
+						    MEDIA_LNK_FL_IMMUTABLE |
+						    MEDIA_LNK_FL_ENABLED);
+		else
+			ret = media_create_pad_link(&line->subdev.entity,
+						    output->pad,
+						    &video->vdev.entity, 0,
+						    MEDIA_LNK_FL_IMMUTABLE |
+						    MEDIA_LNK_FL_ENABLED);
 		if (ret < 0) {
-			dev_err(dev, "Failed to link stats node: %d\n", ret);
+			dev_err(dev, "Failed to link %s node: %d\n", suffix,
+				ret);
 			msm_video_unregister(video);
 			return ret;
 		}
@@ -2541,7 +2674,7 @@ static int vfe_register_stats_node(struct vfe_device *vfe,
 	return 0;
 }
 
-static void vfe_unregister_stats_node(struct vfe_line *line)
+static void vfe_unregister_meta_nodes(struct vfe_line *line)
 {
 	unsigned int o;
 
@@ -2656,7 +2789,7 @@ int msm_vfe_register_entities(struct vfe_device *vfe,
 			goto error_link;
 		}
 
-		ret = vfe_register_stats_node(vfe, &vfe->line[i], v4l2_dev);
+		ret = vfe_register_meta_nodes(vfe, &vfe->line[i], v4l2_dev);
 		if (ret < 0)
 			goto error_link;
 	}
@@ -2677,7 +2810,7 @@ error_init:
 		sd = &vfe->line[i].subdev;
 		video_out = &vfe->line[i].output[0].video_out;
 
-		vfe_unregister_stats_node(&vfe->line[i]);
+		vfe_unregister_meta_nodes(&vfe->line[i]);
 		msm_video_unregister(video_out);
 		v4l2_device_unregister_subdev(sd);
 		media_entity_cleanup(&sd->entity);
@@ -2701,7 +2834,7 @@ void msm_vfe_unregister_entities(struct vfe_device *vfe)
 		struct v4l2_subdev *sd = &vfe->line[i].subdev;
 		struct camss_video *video_out = &vfe->line[i].output[0].video_out;
 
-		vfe_unregister_stats_node(&vfe->line[i]);
+		vfe_unregister_meta_nodes(&vfe->line[i]);
 		msm_video_unregister(video_out);
 		v4l2_device_unregister_subdev(sd);
 		media_entity_cleanup(&sd->entity);

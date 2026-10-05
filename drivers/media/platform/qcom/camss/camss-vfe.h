@@ -14,6 +14,7 @@
 #include <linux/spinlock_types.h>
 #include <media/media-entity.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-isp.h>
 #include <media/v4l2-subdev.h>
 
 #include "camss-video.h"
@@ -204,6 +205,16 @@ struct vfe_hw_ops {
 	 * reg update that latches it.
 	 */
 	void (*vfe_line_prepare)(struct vfe_line *line);
+
+	/*
+	 * Optional: the parameters blocks the pixel line accepts, indexed by
+	 * block type, and how to apply a validated parameters buffer. Applying
+	 * runs with output_lock held, ahead of a reg update.
+	 */
+	const struct v4l2_isp_params_block_type_info *params_info;
+	unsigned int params_num_types;
+	void (*vfe_params_apply)(struct vfe_device *vfe, struct vfe_line *line,
+				 const struct v4l2_isp_buffer *params);
 
 	/* Output based API - new and shiny */
 	void (*vfe_output_start)(struct vfe_device *vfe, struct vfe_output *output);
@@ -431,6 +442,7 @@ void vfe_add_ds(struct vfe_output *output, u8 pad, u8 bus_client,
 
 void vfe_add_stats(struct vfe_output *output, u8 bus_client, u8 comp_group);
 int vfe_alloc_stats(struct vfe_device *vfe, struct vfe_output *output);
+int vfe_params_prepare(struct camss_video *vid, struct camss_buffer *buf);
 
 void vfe_add_params(struct vfe_output *output, u8 comp_group);
 
