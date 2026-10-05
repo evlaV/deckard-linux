@@ -1134,6 +1134,23 @@ static bool vfe_check_clock_levels(struct camss_clock *clock)
 }
 
 /*
+ * vfe_pix_ppc - Pixels the pixel path consumes per VFE clock
+ * @vfe: VFE device
+ *
+ * The VFE 4.x and TFE pixel paths take one pixel per clock, the SM8650 IFE
+ * pixel path two.
+ */
+static u32 vfe_pix_ppc(struct vfe_device *vfe)
+{
+	switch (vfe->camss->res->version) {
+	case CAMSS_8650:
+		return 2;
+	default:
+		return 1;
+	}
+}
+
+/*
  * vfe_set_clock_rates - Calculate and set clock rates on VFE module
  * @vfe: VFE device
  *
@@ -1165,7 +1182,7 @@ static int vfe_set_clock_rates(struct vfe_device *vfe)
 				u8 bpp;
 
 				if (vfe->line[j].is_pix) {
-					tmp = pixel_clock[j];
+					tmp = div_u64(pixel_clock[j], vfe_pix_ppc(vfe));
 				} else {
 					struct vfe_line *l = &vfe->line[j];
 
@@ -1246,7 +1263,7 @@ static int vfe_check_clock_rates(struct vfe_device *vfe)
 				u8 bpp;
 
 				if (vfe->line[j].is_pix) {
-					tmp = pixel_clock[j];
+					tmp = div_u64(pixel_clock[j], vfe_pix_ppc(vfe));
 				} else {
 					struct vfe_line *l = &vfe->line[j];
 
