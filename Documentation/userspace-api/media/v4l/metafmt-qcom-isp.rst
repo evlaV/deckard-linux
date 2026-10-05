@@ -141,6 +141,56 @@ and a gamma correction block:
 	for (unsigned int i = 0; i < CAMSS_GAMMA_LUT_SIZE; i++)
 		gamma->glut[i] = gamma->blut[i] = gamma->rlut[i] = i;
 
+.. _v4l2-meta-fmt-qcom-isp-stats:
+
+*************************************
+V4L2_META_FMT_QCOM_ISP_STATS ('QCIS')
+*************************************
+
+Statistics
+==========
+
+The ``V4L2_META_FMT_QCOM_ISP_STATS`` format carries the statistics an ISP
+engine of the Qualcomm Camera Subsystem (CAMSS) gathers from a frame. It is
+captured from a metadata capture video node using the
+:c:type:`v4l2_meta_format` interface.
+
+Statistics use the :ref:`v4l2-isp` extensible format. The driver serialises one
+block per statistics engine into the data member of :c:type:`v4l2_isp_buffer`.
+Each block embeds :c:type:`v4l2_isp_block_header` as its first member, with the
+type member set to a value from :c:type:`camss_stats_block_type`. Blocks are
+placed consecutively, and their combined size is reported in the data_size
+member of :c:type:`v4l2_isp_buffer`.
+
+Which blocks a buffer holds depends on the engine producing it and on the
+statistics enabled for the stream. Their order is not defined: userspace walks
+the blocks by the size member of each header and skips types it does not know.
+
+The SM8650 IFE pixel path produces the AEC Bayer histogram,
+:c:type:`camss_stats_bhist`, on its ``msm_vfeN_stats`` metadata capture node.
+
+The following example reads the AEC Bayer histogram from a statistics buffer:
+
+.. code-block:: c
+
+	const struct v4l2_isp_buffer *stats =
+		(const struct v4l2_isp_buffer *)buffer;
+	size_t offset = 0;
+
+	while (offset < stats->data_size) {
+		const struct v4l2_isp_block_header *header =
+			(const struct v4l2_isp_block_header *)&stats->data[offset];
+
+		if (header->type == CAMSS_STATS_AEC_BHIST) {
+			const struct camss_stats_bhist *bhist =
+				(const struct camss_stats_bhist *)header;
+
+			use_histogram(bhist->bins, CAMSS_STATS_BHIST_BINS);
+		}
+
+		offset += header->size;
+	}
+
 Qualcomm CAMSS ISP uAPI data types
 ==================================
 
