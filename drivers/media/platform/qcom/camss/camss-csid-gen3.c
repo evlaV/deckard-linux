@@ -44,6 +44,10 @@
 #define CSID_CSI2_RX_IRQ_MASK		0xA0
 #define CSID_CSI2_RX_IRQ_CLEAR		0xA4
 #define CSID_CSI2_RX_IRQ_SET		0xA8
+#define CSID_CSI2_IPP_IRQ_STATUS	0xAC
+#define CSID_CSI2_IPP_IRQ_CLEAR		0xB4
+#define		CSID_RUP_AUP_IPP	(BIT(0) | BIT(16))
+#define		CSID_RUP_AUP_MUP	BIT(28)
 
 #define IS_CSID_690(csid)	((csid->camss->res->version == CAMSS_8775P) \
 				 || (csid->camss->res->version == CAMSS_8300))
@@ -72,6 +76,18 @@
 #define CSID_CSI2_RX_CFG1		0x204
 #define		CSI2_RX_CFG1_ECC_CORRECTION_EN	BIT(0)
 #define		CSI2_RX_CFG1_VC_MODE		BIT(2)
+
+#define CSID_IPP_CFG0			0x300
+#define		IPP_CFG0_TIMESTAMP_EN		BIT(6)
+#define		IPP_CFG0_DECODE_FORMAT		12
+#define		IPP_CFG0_DT			16
+#define		IPP_CFG0_VC			22
+#define		IPP_CFG0_DT_ID			27
+#define		IPP_CFG0_EN			BIT(31)
+#define CSID_IPP_CTRL			0x304
+#define		IPP_CTRL_START_CMD		BIT(0)
+#define CSID_IPP_CAMIF_FRAME_CFG	0x330
+#define		IPP_CAMIF_PIXEL_PATTERN		24
 
 #define CSID_RDI_CFG0(rdi)	(csid_is_lite(csid) && IS_CSID_690(csid) ?\
 					(0x300 + 0x100 * (rdi)) :\
@@ -157,6 +173,43 @@ static void __csid_configure_wrapper(struct csid_device *csid)
 	writel(val, csid->camss->csid_wrapper_base + CSID_IO_PATH_CFG0(csid->id));
 }
 
+static bool csid_port_is_ipp(struct csid_device *csid, u8 port)
+{
+	if (csid_is_lite(csid))
+		return false;
+
+	return port == VFE_LINE_PIX;
+}
+
+static void __csid_configure_ipp_stream(struct csid_device *csid, u8 enable, u8 port, u8 vc)
+{
+	struct v4l2_mbus_framefmt *input_format = &csid->fmt[MSM_CSID_PAD_FIRST_SRC + port];
+	const struct csid_format_info *format = csid_get_fmt_entry(csid->res->formats->formats,
+								   csid->res->formats->nformats,
+								   input_format->code);
+	u32 val;
+
+	writel(0, csid->base + CSID_IPP_CTRL);
+
+	/* The IPP decodes pixels for the pixel pipe: real decode format */
+	val = IPP_CFG0_TIMESTAMP_EN;
+	val |= format->decode_format << IPP_CFG0_DECODE_FORMAT;
+	val |= format->data_type << IPP_CFG0_DT;
+	val |= vc << IPP_CFG0_VC;
+	val |= 0 << IPP_CFG0_DT_ID;
+	if (enable)
+		val |= IPP_CFG0_EN;
+	writel(val, csid->base + CSID_IPP_CFG0);
+
+	writel(csid_ipp_bayer_pattern(input_format->code) << IPP_CAMIF_PIXEL_PATTERN,
+	       csid->base + CSID_IPP_CAMIF_FRAME_CFG);
+}
+
+static void __csid_ctrl_ipp(struct csid_device *csid, int resume)
+{
+	writel(resume ? IPP_CTRL_START_CMD : 0, csid->base + CSID_IPP_CTRL);
+}
+
 static void __csid_configure_rdi_stream(struct csid_device *csid, u8 enable, u8 port, u8 vc)
 {
 	u32 val;
@@ -219,6 +272,8 @@ static void __csid_configure_rdi_stream(struct csid_device *csid, u8 enable, u8 
 	writel(val, csid->base + CSID_RDI_CFG0(port));
 }
 
+static int csid_reset(struct csid_device *csid);
+
 static void csid_configure_stream(struct csid_device *csid, u8 enable)
 {
 	u8 i;
@@ -228,9 +283,16 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
 	/* Loop through all enabled ports and configure a stream for each */
 	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++)
 		if (csid->phy.en_vc & BIT(i)) {
-			__csid_configure_rdi_stream(csid, enable, i, 0);
-			__csid_configure_rx(csid, &csid->phy, 0);
-			__csid_ctrl_rdi(csid, enable, i);
+			if (csid_port_is_ipp(csid, i)) {
+				/* the VFE has programmed the pixel pipe in its s_stream */
+				__csid_configure_ipp_stream(csid, enable, i, 0);
+				__csid_configure_rx(csid, &csid->phy, 0);
+				__csid_ctrl_ipp(csid, enable);
+			} else {
+				__csid_configure_rdi_stream(csid, enable, i, 0);
+				__csid_configure_rx(csid, &csid->phy, 0);
+				__csid_ctrl_rdi(csid, enable, i);
+			}
 		}
 }
 
@@ -239,12 +301,21 @@ static int csid_configure_testgen_pattern(struct csid_device *csid, s32 val)
 	return 0;
 }
 
+#define CSID_780_CUSTOM_PORT_ID_IPP0	0x100 /* TODO: bod don't like this too much */
+
 static void csid_subdev_reg_update(struct csid_device *csid, int port_id, bool clear)
 {
+	u32 val;
+
+	if (port_id == CSID_780_CUSTOM_PORT_ID_IPP0)
+		val = BIT(0) | BIT(16) | BIT(28);	/* RUP_IPP0 | AUP_IPP0 | MUP */
+	else
+		val = CSID_RUP_AUP_RDI(port_id);
+
 	if (clear) {
-		csid->reg_update &= ~CSID_RUP_AUP_RDI(port_id);
+		csid->reg_update &= ~val;
 	} else {
-		csid->reg_update |= CSID_RUP_AUP_RDI(port_id);
+		csid->reg_update |= val;
 		writel(csid->reg_update, csid->base + CSID_RUP_AUP_CMD);
 	}
 }
@@ -258,7 +329,6 @@ static void csid_subdev_reg_update(struct csid_device *csid, int port_id, bool c
  */
 static irqreturn_t csid_isr(int irq, void *dev)
 {
-	struct camss_buf_done_info info;
 	struct csid_device *csid = dev;
 	u32 val, buf_done_val;
 	u8 reset_done;
@@ -274,27 +344,43 @@ static irqreturn_t csid_isr(int irq, void *dev)
 	buf_done_val = readl(csid->base + CSID_BUF_DONE_IRQ_STATUS);
 	writel(buf_done_val, csid->base + CSID_BUF_DONE_IRQ_CLEAR);
 
-	/* Read and clear IRQ status for each enabled RDI channel */
-	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++)
-		if (csid->phy.en_vc & BIT(i)) {
+	/* Read and clear IRQ status for each enabled port */
+	for (i = 0; i < MSM_CSID_MAX_SRC_STREAMS; i++) {
+		u32 done;
+
+		if (!(csid->phy.en_vc & BIT(i)))
+			continue;
+
+		if (csid_port_is_ipp(csid, i)) {
+			val = readl(csid->base + CSID_CSI2_IPP_IRQ_STATUS);
+			writel(val, csid->base + CSID_CSI2_IPP_IRQ_CLEAR);
+			/* the pixel and statistics completion groups sit below the first RDI bit */
+			done = buf_done_val & (BIT(BUF_DONE_IRQ_STATUS_RDI_OFFSET) - 1);
+		} else {
 			val = readl(csid->base + CSID_CSI2_RDIN_IRQ_STATUS(i));
 			writel(val, csid->base + CSID_CSI2_RDIN_IRQ_CLEAR(i));
-
-			if (val & RUP_DONE_IRQ_STATUS)
-				/* clear the reg update bit */
-				csid_subdev_reg_update(csid, i, true);
-
-			if (buf_done_val & BIT(BUF_DONE_IRQ_STATUS_RDI_OFFSET + i)) {
-				/*
-				 * For Titan Gen3, bus done and RUP IRQ have been moved to
-				 * CSID from VFE. Once CSID received bus done, need notify
-				 * VFE of this event. Trigger VFE to handle bus done process.
-				 */
-				info.hw_id = csid->id;
-				info.port_id = i;
-				camss_buf_done(csid->camss, &info);
-			}
+			done = buf_done_val & BIT(BUF_DONE_IRQ_STATUS_RDI_OFFSET + i);
 		}
+
+		if (val & RUP_DONE_IRQ_STATUS)
+			/* clear the reg update bit */
+			csid_subdev_reg_update(csid, i, true);
+
+		if (done) {
+			struct camss_buf_done_info info = {
+				.hw_id = csid->id,
+				.port_id = i,
+				.status = done,
+			};
+
+			/*
+			 * For Titan Gen3, bus done and RUP IRQ have been moved to
+			 * CSID from VFE. Once CSID received bus done, need notify
+			 * VFE of this event. Trigger VFE to handle bus done process.
+			 */
+			camss_buf_done(csid->camss, &info);
+		}
+	}
 
 	val = IRQ_CMD_CLEAR;
 	writel(val, csid->base + CSID_IRQ_CMD);
@@ -345,6 +431,9 @@ static int csid_reset(struct csid_device *csid)
 		dev_err(csid->camss->dev, "CSID reset timeout\n");
 		return -EIO;
 	}
+
+	writel_relaxed(~0u, csid->base + CSID_TOP_IRQ_MASK);
+	writel_relaxed(~0u, csid->base + CSID_BUF_DONE_IRQ_MASK);
 
 	return 0;
 }
