@@ -14,6 +14,7 @@
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-mc.h>
 #include <media/videobuf2-dma-sg.h>
+#include <media/videobuf2-vmalloc.h>
 
 #include "camss-video.h"
 #include "camss.h"
@@ -352,6 +353,68 @@ static const struct vb2_ops msm_video_vb2_q_ops = {
 };
 
 /* -----------------------------------------------------------------------------
+ * Metadata capture queue operations
+ *
+ * A metadata capture node follows the image node of its line: the line starts
+ * and stops with the image node, and the node only provides buffers. The
+ * kernel fills them by CPU, so they are vmalloc backed.
+ */
+
+static int video_meta_queue_setup(struct vb2_queue *q,
+				  unsigned int *num_buffers,
+				  unsigned int *num_planes, unsigned int sizes[],
+				  struct device *alloc_devs[])
+{
+	struct camss_video *video = vb2_get_drv_priv(q);
+	unsigned int size = video->active_fmt.fmt.meta.buffersize;
+
+	if (*num_planes)
+		return (*num_planes != 1 || sizes[0] < size) ? -EINVAL : 0;
+
+	*num_planes = 1;
+	sizes[0] = size;
+
+	return 0;
+}
+
+static int video_meta_buf_prepare(struct vb2_buffer *vb)
+{
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+	struct camss_video *video = vb2_get_drv_priv(vb->vb2_queue);
+	unsigned int size = video->active_fmt.fmt.meta.buffersize;
+
+	if (vb2_plane_size(vb, 0) < size)
+		return -EINVAL;
+
+	vb2_set_plane_payload(vb, 0, size);
+	vbuf->field = V4L2_FIELD_NONE;
+
+	return 0;
+}
+
+static int video_meta_start_streaming(struct vb2_queue *q, unsigned int count)
+{
+	return 0;
+}
+
+static void video_meta_stop_streaming(struct vb2_queue *q)
+{
+	struct camss_video *video = vb2_get_drv_priv(q);
+
+	video->ops->flush_buffers(video, VB2_BUF_STATE_ERROR);
+}
+
+static const struct vb2_ops msm_video_meta_vb2_q_ops = {
+	.queue_setup     = video_meta_queue_setup,
+	.buf_prepare     = video_meta_buf_prepare,
+	.buf_queue       = video_buf_queue,
+	.prepare_streaming = video_prepare_streaming,
+	.start_streaming = video_meta_start_streaming,
+	.stop_streaming  = video_meta_stop_streaming,
+	.unprepare_streaming = video_unprepare_streaming,
+};
+
+/* -----------------------------------------------------------------------------
  * V4L2 ioctls
  */
 
@@ -613,6 +676,51 @@ static const struct v4l2_ioctl_ops msm_vid_ioctl_ops = {
 	.vidioc_s_input			= video_s_input,
 };
 
+static int video_meta_enum_fmt(struct file *file, void *fh,
+			       struct v4l2_fmtdesc *f)
+{
+	struct camss_video *video = video_drvdata(file);
+
+	if (f->index || f->type != video->type)
+		return -EINVAL;
+
+	f->pixelformat = video->active_fmt.fmt.meta.dataformat;
+
+	return 0;
+}
+
+/* The metadata format is fixed: G, S and TRY all return it */
+static int video_meta_g_fmt(struct file *file, void *fh, struct v4l2_format *f)
+{
+	struct camss_video *video = video_drvdata(file);
+
+	if (f->type != video->type)
+		return -EINVAL;
+
+	memset(&f->fmt.meta, 0, sizeof(f->fmt.meta));
+	f->fmt.meta.dataformat = video->active_fmt.fmt.meta.dataformat;
+	f->fmt.meta.buffersize = video->active_fmt.fmt.meta.buffersize;
+
+	return 0;
+}
+
+static const struct v4l2_ioctl_ops msm_vid_meta_ioctl_ops = {
+	.vidioc_querycap		= video_querycap,
+	.vidioc_enum_fmt_meta_cap	= video_meta_enum_fmt,
+	.vidioc_g_fmt_meta_cap		= video_meta_g_fmt,
+	.vidioc_s_fmt_meta_cap		= video_meta_g_fmt,
+	.vidioc_try_fmt_meta_cap	= video_meta_g_fmt,
+	.vidioc_reqbufs			= vb2_ioctl_reqbufs,
+	.vidioc_querybuf		= vb2_ioctl_querybuf,
+	.vidioc_qbuf			= vb2_ioctl_qbuf,
+	.vidioc_expbuf			= vb2_ioctl_expbuf,
+	.vidioc_dqbuf			= vb2_ioctl_dqbuf,
+	.vidioc_create_bufs		= vb2_ioctl_create_bufs,
+	.vidioc_prepare_buf		= vb2_ioctl_prepare_buf,
+	.vidioc_streamon		= vb2_ioctl_streamon,
+	.vidioc_streamoff		= vb2_ioctl_streamoff,
+};
+
 /* -----------------------------------------------------------------------------
  * V4L2 file operations
  */
@@ -688,6 +796,7 @@ static int msm_video_init_format(struct camss_video *video)
 int msm_video_register(struct camss_video *video, struct v4l2_device *v4l2_dev,
 		       const char *name)
 {
+	bool meta = video->type == V4L2_BUF_TYPE_META_CAPTURE;
 	struct media_pad *pad = &video->pad;
 	struct video_device *vdev;
 	struct vb2_queue *q;
@@ -699,10 +808,12 @@ int msm_video_register(struct camss_video *video, struct v4l2_device *v4l2_dev,
 
 	q = &video->vb2_q;
 	q->drv_priv = video;
-	q->mem_ops = &vb2_dma_sg_memops;
-	q->ops = &msm_video_vb2_q_ops;
-	q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	q->io_modes = VB2_DMABUF | VB2_MMAP | VB2_READ;
+	q->mem_ops = meta ? &vb2_vmalloc_memops : &vb2_dma_sg_memops;
+	q->ops = meta ? &msm_video_meta_vb2_q_ops : &msm_video_vb2_q_ops;
+	q->type = meta ? V4L2_BUF_TYPE_META_CAPTURE :
+			 V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	q->io_modes = meta ? VB2_DMABUF | VB2_MMAP :
+			     VB2_DMABUF | VB2_MMAP | VB2_READ;
 	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 	q->buf_struct_size = sizeof(struct camss_buffer);
 	q->dev = video->camss->dev;
@@ -723,16 +834,29 @@ int msm_video_register(struct camss_video *video, struct v4l2_device *v4l2_dev,
 
 	mutex_init(&video->lock);
 
-	ret = msm_video_init_format(video);
-	if (ret < 0) {
-		dev_err(v4l2_dev->dev, "Failed to init format: %d\n", ret);
-		goto error_video_register;
+	if (meta) {
+		/* dataformat and buffersize are set by the producer */
+		video->active_fmt.type = V4L2_BUF_TYPE_META_CAPTURE;
+	} else {
+		ret = msm_video_init_format(video);
+		if (ret < 0) {
+			dev_err(v4l2_dev->dev, "Failed to init format: %d\n",
+				ret);
+			goto error_video_register;
+		}
 	}
 
 	vdev->fops = &msm_vid_fops;
-	vdev->device_caps = V4L2_CAP_VIDEO_CAPTURE_MPLANE | V4L2_CAP_STREAMING
-			  | V4L2_CAP_READWRITE | V4L2_CAP_IO_MC;
-	vdev->ioctl_ops = &msm_vid_ioctl_ops;
+	if (meta) {
+		vdev->device_caps = V4L2_CAP_META_CAPTURE | V4L2_CAP_STREAMING |
+				    V4L2_CAP_IO_MC;
+		vdev->ioctl_ops = &msm_vid_meta_ioctl_ops;
+	} else {
+		vdev->device_caps = V4L2_CAP_VIDEO_CAPTURE_MPLANE |
+				    V4L2_CAP_STREAMING | V4L2_CAP_READWRITE |
+				    V4L2_CAP_IO_MC;
+		vdev->ioctl_ops = &msm_vid_ioctl_ops;
+	}
 	vdev->release = msm_video_release;
 	vdev->v4l2_dev = v4l2_dev;
 	vdev->vfl_dir = VFL_DIR_RX;
