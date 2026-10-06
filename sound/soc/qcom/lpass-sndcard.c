@@ -188,6 +188,36 @@ static const struct snd_soc_ops i2s_ops = {
 	.hw_free = i2s_hw_free,
 };
 
+static int lpass_card_limit_volumes(struct snd_soc_card *card)
+{
+	struct device_node *np = card->dev->of_node;
+	const char *name;
+	u32 max;
+	int i, n, ret;
+
+	n = of_property_count_strings(np, "volume-limit-names");
+	if (n <= 0)
+		return 0;
+
+	for (i = 0; i < n; i++) {
+		of_property_read_string_index(np, "volume-limit-names", i, &name);
+
+		ret = of_property_read_u32_index(np, "volume-limits", i, &max);
+		if (ret) {
+			dev_err(card->dev, "no volume limit for %s\n", name);
+			return ret;
+		}
+
+		ret = snd_soc_limit_volume(card, name, max);
+		if (ret < 0) {
+			dev_err(card->dev, "failed to limit %s to %u: %d\n", name, max, ret);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 static int lpass_card_late_probe(struct snd_soc_card *card)
 {
 	struct lpass_card_data *data = snd_soc_card_get_drvdata(card);
@@ -239,7 +269,7 @@ static int lpass_card_late_probe(struct snd_soc_card *card)
 		rtd->dai_link->ops = &sdw_ops;
 	}
 
-	return 0;
+	return lpass_card_limit_volumes(card);
 }
 
 static int lpass_snd_platform_probe(struct platform_device *pdev)
