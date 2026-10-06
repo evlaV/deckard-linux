@@ -6,6 +6,11 @@
 		model = "SM8250 LPASS"; // XXX soundsetup.sh looking for "SM8250"..
 		audio-routing = "VA DMIC0", "vdd-micb";
 
+		/* -16.5 dB */
+		volume-limit-names = "Speaker Left Digital Volume",
+				     "Speaker Right Digital Volume";
+		volume-limits = <127 127>;
+
 		pinctrl-0 = <&i2s2_active>;
 		pinctrl-names = "default";
 
