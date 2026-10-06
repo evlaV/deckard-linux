@@ -1507,6 +1507,22 @@ config SND_SOC_MAX98390
 	tristate "Maxim Integrated MAX98390 Speaker Amplifier"
 	depends on I2C
 
+if SND_SOC_MAX98390
+
+config SND_SOC_MAX98390_DSM_VOLUME_MAX
+        int "Maximum DSM digital volume"
+        range 0 184
+        default 184
+        help
+          Set the maximum value exposed by the MAX98390 Digital Volume
+          ALSA control.
+
+          The control starts at -80.00 dB and increases in 0.50 dB
+          steps. The default of 184 preserves the existing behavior.
+          A value of 127 limits the maximum to -16.50 dB.
+
+endif
+
 config SND_SOC_MAX98396
 	tristate "Analog Devices MAX98396 Speaker Amplifier"
 	depends on I2C

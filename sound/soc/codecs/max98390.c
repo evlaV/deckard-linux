@@ -1016,7 +1016,7 @@ static int max98390_dsm_calib_put(struct snd_kcontrol *kcontrol,
 
 static const struct snd_kcontrol_new max98390_snd_controls[] = {
 	SOC_SINGLE_TLV("Digital Volume", DSM_VOL_CTRL,
-		0, 184, 0,
+		0, CONFIG_SND_SOC_MAX98390_DSM_VOLUME_MAX, 0,
 		max98390_digital_tlv),
 	SOC_SINGLE_TLV("Speaker Volume", MAX98390_R203D_SPK_GAIN,
 		0, 6, 0,
