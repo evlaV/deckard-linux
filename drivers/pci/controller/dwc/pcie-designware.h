@@ -522,6 +522,8 @@ struct dw_pcie {
 	struct reset_control_bulk_data	core_rsts[DW_PCIE_NUM_CORE_RSTS];
 	struct gpio_desc		*pe_rst;
 	bool			suspended;
+	/* Link was down and nothing was enumerated when we last suspended */
+	bool			was_link_empty_at_suspend;
 	struct debugfs_info	*debugfs;
 	enum			dw_pcie_device_mode mode;
 	u16			ptm_vsec_offset;
