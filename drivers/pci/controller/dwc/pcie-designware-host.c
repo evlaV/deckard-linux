@@ -1220,14 +1220,33 @@ static int dw_pcie_pme_turn_off(struct dw_pcie *pci)
 	return 0;
 }
 
+static bool dw_pcie_has_enumerated_devices(struct dw_pcie_rp *pp)
+{
+	struct pci_bus *child;
+
+	if (!pp->bridge || !pp->bridge->bus)
+		return false;
+
+	list_for_each_entry(child, &pp->bridge->bus->children, node)
+		if (!list_empty(&child->devices))
+			return true;
+
+	return false;
+}
+
 int dw_pcie_suspend_noirq(struct dw_pcie *pci)
 {
 	bool pme_capable = false;
 	int ret = 0;
 	u32 val;
 
-	if (!dw_pcie_link_up(pci))
+	pci->was_link_empty_at_suspend = false;
+
+	if (!dw_pcie_link_up(pci)) {
+		pci->was_link_empty_at_suspend =
+			!dw_pcie_has_enumerated_devices(&pci->pp);
 		goto stop_link;
+	}
 
 	if (!pci_host_common_d3cold_possible(pci->pp.bridge, &pme_capable))
 		return 0;
@@ -1313,9 +1332,17 @@ int dw_pcie_resume_noirq(struct dw_pcie *pci)
 	if (ret)
 		goto err_deinit;
 
-	ret = dw_pcie_wait_for_link(pci);
-	if (ret == -ETIMEDOUT)
-		goto err_stop_link;
+	/*
+	 * If the link was down and nothing was enumerated at suspend, there is
+	 * no device to bring back (resume does not rescan the bus), so don't
+	 * stall resume for up to PCIE_LINK_WAIT_MAX_RETRIES polling an empty
+	 * slot. The LTSSM is still enabled, as it is at probe.
+	 */
+	if (!pci->was_link_empty_at_suspend) {
+		ret = dw_pcie_wait_for_link(pci);
+		if (ret == -ETIMEDOUT)
+			goto err_stop_link;
+	}
 
 	if (pci->pp.ops->post_init)
 		pci->pp.ops->post_init(&pci->pp);
