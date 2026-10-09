@@ -151,6 +151,8 @@ struct lpm026m648c_ctx {
 	uint16_t vcom90[2];
 
 	lpm026m648c_modes_t current_mode;
+
+	struct delayed_work check_display_power;
 };
 
 static inline struct lpm026m648c_ctx *panel_to_ctx(struct drm_panel *panel)
@@ -548,11 +550,38 @@ static void dsi_write_panel_init_boe(struct drm_panel *panel)
 
 static void dsi_write_panel_on(struct drm_panel *panel)
 {
-    struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
+	struct lpm026m648c_ctx *ctx = panel_to_ctx(panel);
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_EXIT_SLEEP_MODE);
 	msleep(170);
 	lpm026m648c_dsi_write_seq(ctx, MIPI_DCS_SET_DISPLAY_ON);
 	msleep(200);
+}
+
+// verify each panel is in the correct power state
+static void dsi_check_panel_power(struct work_struct *work)
+{
+	unsigned int panel_num, id;
+	uint8_t mode;
+	int ret;
+	struct lpm026m648c_ctx *ctx = container_of((struct delayed_work *)work,struct lpm026m648c_ctx,check_display_power);
+	panel_num = ctx->is_dual_panel ? 2 : 1;
+	for (id = 0; id < panel_num; id++)
+	{
+		mode = 0;
+		ret = mipi_dsi_dcs_get_power_mode(ctx->dsi[id], &mode);
+		if (ret < 0)
+		{
+			DRM_DEV_ERROR(ctx->dev, "failed to read panel %d power status\n", id);
+		}
+		else
+		{
+			if (mode != (MIPI_DSI_DCS_POWER_MODE_DISPLAY | MIPI_DSI_DCS_POWER_MODE_NORMAL
+				 | MIPI_DSI_DCS_POWER_MODE_SLEEP))
+			{
+				DRM_DEV_ERROR(ctx->dev, "Panel %d power on failure ( %x )\n", id, mode);
+			}
+		}
+	}
 }
 
 static int get_panel_info(struct drm_panel *panel)
@@ -943,6 +972,9 @@ static int lpm026m648c_enable(struct drm_panel *panel)
 	// default to 120, but we will change this based on frame rate
 	ctx->backlight->props.pulse_offset_rows = ctx->panel_vendor == VENDOR_SHARP ? GPO1_TES1_120_SHARP : GPO1_TES1_120_BOE;
 	ret = backlight_enable(ctx->backlight);
+
+	INIT_DELAYED_WORK(&ctx->check_display_power, dsi_check_panel_power);
+	schedule_delayed_work(&ctx->check_display_power, HZ);
 
 	ctx->enabled = true;
 
