@@ -193,6 +193,8 @@ struct bcl_channel_cfg {
  * @num_reg_fields: Number of register field definitions for this device variant
  * @data_field_bits_size: data read register bit size
  * @thresh_field_bits_size: lsb bit size those are not included in threshold register
+ * @is_adc_twos_complement: 8-bit ADC data and ADC thresholds are two's complement,
+ *                          so 0x7f is positive full scale and 0x80 and above are negative
  *
  * Contains hardware-specific configuration and scaling parameters for different
  * BCL variants. Each PMIC model may have different register layouts and
@@ -205,6 +207,7 @@ struct bcl_desc {
 	u8 num_reg_fields;
 	u8 data_field_bits_size;
 	u8 thresh_field_bits_size;
+	bool is_adc_twos_complement;
 };
 
 /**
@@ -512,6 +515,7 @@ static const struct bcl_desc pm8550b_data = {
 	.num_reg_fields = ARRAY_SIZE(bcl_pm8550b_reg_fields),
 	.data_field_bits_size = 8,
 	.thresh_field_bits_size = 8,
+	.is_adc_twos_complement = true,
 	.battery_config_field = REG_FIELD(0, 0, 0),
 	/* TODO Should be 2S but 1S/2S detect is missing */
 	.channel_cfg[BCL_BATT_1S][CHANNEL_IN] = {
@@ -709,19 +713,65 @@ static unsigned int bcl_convert_index_to_milliunit(const struct bcl_device *bcl,
 	return cfg->base + val * cfg->step;
 }
 
+/**
+ * bcl_thresh_raw_max - Largest raw value a threshold register field can hold
+ * @bcl: BCL device structure
+ * @field: threshold register field
+ * @thresh_type: representation of the threshold, index or ADC
+ *
+ * Writes larger than this would be silently truncated by the regmap field mask,
+ * or for two's complement ADC thresholds would arm a negative threshold.
+ *
+ * Return: Maximum raw threshold value
+ */
+static u32 bcl_thresh_raw_max(const struct bcl_device *bcl, enum bcl_fields field,
+			      u8 thresh_type)
+{
+	const struct reg_field *rf = &bcl->desc->reg_fields[field];
+	u32 max = GENMASK(rf->msb - rf->lsb, 0);
+
+	if (thresh_type == THRESH_TYPE_ADC && bcl->desc->is_adc_twos_complement)
+		max >>= 1;
+
+	return max;
+}
+
+/**
+ * bcl_thresh_raw_to_signed - Sign extend a raw two's complement ADC threshold
+ * @bcl: BCL device structure
+ * @field: threshold register field
+ * @thresh_type: representation of the threshold, index or ADC
+ * @raw_val: raw register value
+ *
+ * Return: Raw value, sign extended when the threshold is two's complement
+ */
+static s32 bcl_thresh_raw_to_signed(const struct bcl_device *bcl, enum bcl_fields field,
+				    u8 thresh_type, u32 raw_val)
+{
+	const struct reg_field *rf = &bcl->desc->reg_fields[field];
+
+	if (thresh_type == THRESH_TYPE_ADC && bcl->desc->is_adc_twos_complement)
+		return sign_extend32(raw_val, rf->msb - rf->lsb);
+
+	return raw_val;
+}
+
 static int bcl_in_thresh_write(struct bcl_device *bcl, long value, enum bcl_limit_alarm lvl)
 {
 	const struct bcl_desc *desc = bcl->desc;
 	u32 raw_val;
+	u8 thresh_type = desc->channel_cfg[bcl->batt_config][CHANNEL_IN].thresh_type[lvl];
 
 	int thresh = clamp_val(value, desc->channel_cfg[bcl->batt_config][CHANNEL_IN].base,
 			       desc->channel_cfg[bcl->batt_config][CHANNEL_IN].max);
 
-	if (desc->channel_cfg[bcl->batt_config][CHANNEL_IN].thresh_type[lvl] == THRESH_TYPE_ADC)
+	if (thresh_type == THRESH_TYPE_ADC)
 		raw_val = bcl_convert_milliunit_to_raw(bcl, thresh, CHANNEL_IN,
 						       desc->thresh_field_bits_size);
 	else
 		raw_val = bcl_convert_milliunit_to_index(bcl, thresh, CHANNEL_IN);
+
+	raw_val = min(raw_val, bcl_thresh_raw_max(bcl, F_IN_L0_THR + lvl, thresh_type));
 
 	return regmap_field_write(bcl->fields[F_IN_L0_THR + lvl], raw_val);
 }
@@ -730,14 +780,17 @@ static int bcl_curr_thresh_write(struct bcl_device *bcl, long value, enum bcl_li
 {
 	const struct bcl_desc *desc = bcl->desc;
 	u32 raw_val;
+	u8 thresh_type = desc->channel_cfg[bcl->batt_config][CHANNEL_CURR].thresh_type[lvl];
 
 	int thresh = clamp_val(value, 0, desc->channel_cfg[bcl->batt_config][CHANNEL_CURR].max);
 
-	if (desc->channel_cfg[bcl->batt_config][CHANNEL_CURR].thresh_type[lvl] == THRESH_TYPE_ADC)
+	if (thresh_type == THRESH_TYPE_ADC)
 		raw_val = bcl_convert_milliunit_to_raw(bcl, thresh, CHANNEL_CURR,
 						       desc->thresh_field_bits_size);
 	else
 		raw_val = bcl_convert_milliunit_to_index(bcl, thresh, CHANNEL_CURR);
+
+	raw_val = min(raw_val, bcl_thresh_raw_max(bcl, F_CURR_H0_THR + lvl, thresh_type));
 
 	return regmap_field_write(bcl->fields[F_CURR_H0_THR + lvl], raw_val);
 }
@@ -746,14 +799,18 @@ static int bcl_in_thresh_read(struct bcl_device *bcl, enum bcl_limit_alarm lvl, 
 {
 	int ret, thresh;
 	u32 raw_val = 0;
+	s32 raw_signed;
 	const struct bcl_desc *desc = bcl->desc;
+	u8 thresh_type = desc->channel_cfg[bcl->batt_config][CHANNEL_IN].thresh_type[lvl];
 
 	ret = regmap_field_read(bcl->fields[F_IN_L0_THR + lvl], &raw_val);
 	if (ret)
 		return ret;
 
-	if (desc->channel_cfg[bcl->batt_config][CHANNEL_IN].thresh_type[lvl] == THRESH_TYPE_ADC)
-		thresh = bcl_convert_raw_to_milliunit(bcl, raw_val, CHANNEL_IN,
+	raw_signed = bcl_thresh_raw_to_signed(bcl, F_IN_L0_THR + lvl, thresh_type, raw_val);
+
+	if (thresh_type == THRESH_TYPE_ADC)
+		thresh = bcl_convert_raw_to_milliunit(bcl, raw_signed, CHANNEL_IN,
 						      desc->thresh_field_bits_size);
 	else
 		thresh = bcl_convert_index_to_milliunit(bcl, raw_val, CHANNEL_IN);
@@ -767,14 +824,18 @@ static int bcl_curr_thresh_read(struct bcl_device *bcl, enum bcl_limit_alarm lvl
 {
 	int ret, thresh;
 	u32 raw_val = 0;
+	s32 raw_signed;
 	const struct bcl_desc *desc = bcl->desc;
+	u8 thresh_type = desc->channel_cfg[bcl->batt_config][CHANNEL_CURR].thresh_type[lvl];
 
 	ret = regmap_field_read(bcl->fields[F_CURR_H0_THR + lvl], &raw_val);
 	if (ret)
 		return ret;
 
-	if (desc->channel_cfg[bcl->batt_config][CHANNEL_CURR].thresh_type[lvl] == THRESH_TYPE_ADC)
-		thresh = bcl_convert_raw_to_milliunit(bcl, raw_val, CHANNEL_CURR,
+	raw_signed = bcl_thresh_raw_to_signed(bcl, F_CURR_H0_THR + lvl, thresh_type, raw_val);
+
+	if (thresh_type == THRESH_TYPE_ADC)
+		thresh = bcl_convert_raw_to_milliunit(bcl, raw_signed, CHANNEL_CURR,
 						      desc->thresh_field_bits_size);
 	else
 		thresh = bcl_convert_index_to_milliunit(bcl, raw_val, CHANNEL_CURR);
@@ -868,9 +929,13 @@ static int bcl_in_input_read(struct bcl_device *bcl, long *out)
 		if (ret)
 			return ret;
 		raw_val |= FIELD_PREP(GENMASK(15, 8), msb);
-	} else if (raw_val == 127) {
-		*out = bcl->last_in_input;
-		return 0;
+	} else if (desc->is_adc_twos_complement && raw_val >= 0x7f) {
+		/*
+		 * 0x7f is positive full scale: the voltage is above what the
+		 * ADC can measure. Codes above it are negative and equally
+		 * meaningless for a supply voltage, so report no reading.
+		 */
+		return -ENODATA;
 	}
 
 	bcl->last_in_input =
