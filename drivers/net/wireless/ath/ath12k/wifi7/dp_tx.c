@@ -801,7 +801,6 @@ static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
 		if (!arvif || !arvif->ahvif) {
 			ath12k_err(ab,
 			   "dp_tx: arvif lookup failed for peer_id %d\n", ts->peer_id);
-			spin_unlock_bh(&ab->base_lock);
 			ieee80211_free_txskb(ath12k_pdev_dp_to_hw(dp_pdev), msdu);
 			goto exit;
 		}
@@ -813,7 +812,6 @@ static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
 			   "dp_tx: self peer skip worked peer_id %d\n",
 			   ts->peer_id);
 
-			spin_unlock_bh(&ab->base_lock);
 			goto update_and_exit;
 		}
 	}
@@ -827,8 +825,6 @@ static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
 	}
 
 	status.sta = peer->sta;
-	status.info = info;
-	status.skb = msdu;
 	rate = peer->last_txrate;
 
 	status_rate.rate_idx = rate;
@@ -838,6 +834,8 @@ static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
 	status.n_rates = 1;
 
 update_and_exit:
+	status.info = info;
+	status.skb = msdu;
 	ieee80211_tx_status_ext(ath12k_pdev_dp_to_hw(dp_pdev), &status);
 
 exit:
