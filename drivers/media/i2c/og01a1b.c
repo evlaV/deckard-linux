@@ -469,6 +469,10 @@ static const struct cci_reg_sequence og01a1b_strobe_regs[] = {
 	{ CCI_REG8(0x3017), 0xf2 },
 	{ CCI_REG8(0x3920), 0xff },
 	{ CCI_REG8(0x3924), 0x00 },
+	{ CCI_REG8(0x3923), 0x00 },
+	{ CCI_REG8(0x3922), 0x00 },
+	{ CCI_REG8(0x3921), 0x00 },
+	{ CCI_REG8(0x392f), 0x42 },
 };
 
 static const char * const og01a1b_test_pattern_menu[] = {
