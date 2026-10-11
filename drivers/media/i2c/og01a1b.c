@@ -31,6 +31,7 @@
 #define OG01A1B_VTS_120FPS_MIN		0x0498
 #define OG01A1B_VTS_240FPS		0x0281
 #define OG01A1B_VTS_240FPS_MIN		0x0281
+#define OG01A1B_VTS_40FPS		0x0d6a
 #define OG01A1B_VTS_MAX			0x7fff
 
 /* horizontal-timings from sensor */
@@ -419,6 +420,46 @@ static const struct cci_reg_sequence mode_640x512_regs[] = {
 	{ CCI_REG8(0x4509), 0x80 },
 };
 
+/*
+ * 1056x1024 cropped from the center of the pixel array, the window and timing
+ * settings and the other settings below are the ones configured by the vendor
+ * userspace with the og01a1b-a deckard driver.
+ */
+static const struct cci_reg_sequence mode_1056x1024_regs[] = {
+	{ CCI_REG8(0x0106), 0x00 },
+	{ CCI_REG8(0x3107), 0x00 },
+	{ CCI_REG8(0x3501), 0x04 },
+	{ CCI_REG8(0x3502), 0x8a },
+	{ CCI_REG8(0x3506), 0x00 },
+	{ CCI_REG8(0x3507), 0x00 },
+	{ CCI_REG8(0x3800), 0x00 },
+	{ CCI_REG8(0x3801), 0x78 },
+	{ CCI_REG8(0x3802), 0x00 },
+	{ CCI_REG8(0x3803), 0x00 },
+	{ CCI_REG8(0x3804), 0x04 },
+	{ CCI_REG8(0x3805), 0x97 },
+	{ CCI_REG8(0x3806), 0x04 },
+	{ CCI_REG8(0x3807), 0x0f },
+	{ CCI_REG8(0x3808), 0x04 },
+	{ CCI_REG8(0x3809), 0x20 },
+	{ CCI_REG8(0x380a), 0x04 },
+	{ CCI_REG8(0x380b), 0x00 },
+	{ CCI_REG8(0x380c), 0x03 },
+	{ CCI_REG8(0x380d), 0x64 },
+	{ CCI_REG8(0x380e), 0x0d },
+	{ CCI_REG8(0x380f), 0x6a },
+	{ CCI_REG8(0x3810), 0x00 },
+	{ CCI_REG8(0x3811), 0x00 },
+	{ CCI_REG8(0x3812), 0x00 },
+	{ CCI_REG8(0x3813), 0x08 },
+	{ CCI_REG8(0x3814), 0x11 },
+	{ CCI_REG8(0x3815), 0x11 },
+	{ CCI_REG8(0x3820), 0x60 },
+	{ CCI_REG8(0x4003), 0x10 },
+	{ CCI_REG8(0x4011), 0x00 },
+	{ CCI_REG8(0x4509), 0x00 },
+};
+
 static const char * const og01a1b_test_pattern_menu[] = {
 	"Disabled",
 	"Standard Color Bar",
@@ -460,6 +501,18 @@ static const struct og01a1b_mode supported_modes[] = {
 		.reg_list = {
 			.num_of_regs = ARRAY_SIZE(mode_1280x1024_regs),
 			.regs = mode_1280x1024_regs,
+		},
+		.link_freq_index = OG01A1B_LINK_FREQ_1000MBPS,
+	},
+	{
+		.width = 1056,
+		.height = 1024,
+		.hts = 868,
+		.vts_def = OG01A1B_VTS_40FPS,
+		.vts_min = OG01A1B_VTS_120FPS_MIN,
+		.reg_list = {
+			.num_of_regs = ARRAY_SIZE(mode_1056x1024_regs),
+			.regs = mode_1056x1024_regs,
 		},
 		.link_freq_index = OG01A1B_LINK_FREQ_1000MBPS,
 	},
