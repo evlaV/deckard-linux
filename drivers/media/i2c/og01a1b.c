@@ -9,7 +9,9 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/pm_runtime.h>
+#include <linux/property.h>
 #include <linux/regulator/consumer.h>
+#include <linux/workqueue.h>
 #include <media/v4l2-cci.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -553,6 +555,10 @@ static const struct og01a1b_mode supported_modes[] = {
  * shared with the deckard userspace and the ISP.
  */
 
+#ifndef V4L2_CID_SENSOR_SOF_CB_ADDR
+#define V4L2_CID_SENSOR_SOF_CB_ADDR	(V4L2_CID_IMAGE_PROC_CLASS_BASE + 8)
+#endif
+
 struct og01a1b_deckard_register {
 	u16 reg_addr;
 	u32 reg_value;
@@ -562,6 +568,9 @@ struct og01a1b_deckard_register {
 /* Argument: register address in bits [15:0], value in bits [23:16] */
 #define VIDIOC_OG01A1B_PRV_S_REG \
 	_IO('V', BASE_VIDIOC_PRIVATE + 3)
+/* Argument: as above, and group in bits [27:24] */
+#define VIDIOC_OG01A1B_PRV_S_GROUP_REG \
+	_IO('V', BASE_VIDIOC_PRIVATE + 4)
 #define VIDIOC_OG01A1B_PRV_G_DRIVER_VERSION \
 	_IOR('V', BASE_VIDIOC_PRIVATE + 6, u32)
 #define VIDIOC_SENSOR_PRV_G_REGISTER \
@@ -569,15 +578,50 @@ struct og01a1b_deckard_register {
 
 #define OG01A1B_DRIVER_VERSION	((1 << 16) | 1)
 
+#define OG01A1B_NUM_GROUPS	3
+#define OG01A1B_GROUP_MAX_REGS	20
+
+/* Group hold */
+#define OG01A1B_REG_GROUP_ACCESS	CCI_REG8(0x3208)
+#define OG01A1B_GROUP_HOLD_START	0x00
+#define OG01A1B_GROUP_HOLD_END		0x10
+
+struct og01a1b_deckard_register_set {
+	u16 addr[OG01A1B_GROUP_MAX_REGS];
+	u8 val[OG01A1B_GROUP_MAX_REGS];
+	u16 num_regs;
+};
+
+struct og01a1b_deckard_groups {
+	int group_written;
+	u64 pre_group_write_timestamp;
+	u64 post_group_write_timestamp;
+	u64 sof_ts;
+	u64 sof_isr_ts;
+	struct og01a1b_deckard_register_set sets[OG01A1B_NUM_GROUPS];
+};
+
 /* Layouts of the deckard driver on LP64 architectures */
 static_assert(sizeof(struct og01a1b_deckard_register) == 12);
+static_assert(sizeof(struct og01a1b_deckard_register_set) == 62);
+static_assert(sizeof(struct og01a1b_deckard_groups) == 232);
+static_assert(offsetof(struct og01a1b_deckard_groups, sets) == 40);
 
 #define OG01A1B_MAX_PENDING	256
 
 struct og01a1b_deckard {
-	/* Serialises register access */
+	/* Serialises group data and register writes around group holds */
 	struct mutex lock;
+	struct work_struct work;
+
+	u32 queue_index;
 	bool ctrl_setup;
+
+	bool update_group[OG01A1B_NUM_GROUPS];
+	struct og01a1b_deckard_groups active;
+
+	/* Single menu item of the start of frame callback control */
+	s64 sof_cb_address;
 
 	/* Raw register writes done while the sensor isn't powered */
 	struct cci_reg_sequence pending[OG01A1B_MAX_PENDING];
@@ -701,6 +745,146 @@ static void og01a1b_update_ircontrol(struct og01a1b *og01a1b)
 }
 
 #if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+/* Protects the workqueues */
+static DEFINE_MUTEX(og01a1b_deckard_mutex);
+
+/* Shared with the og0ve10-a deckard driver, which queues its work here */
+struct workqueue_struct *sensor_workqueues[2];
+EXPORT_SYMBOL(sensor_workqueues);
+
+static void og01a1b_deckard_mark_groups(struct og01a1b_deckard *v)
+{
+	unsigned int i;
+
+	for (i = 0; i < OG01A1B_NUM_GROUPS; i++)
+		v->update_group[i] = true;
+}
+
+static void og01a1b_deckard_reset_groups(struct og01a1b_deckard *v)
+{
+	memset(v->active.sets, 0, sizeof(v->active.sets));
+}
+
+static int og01a1b_deckard_set_group_reg(struct og01a1b *og01a1b, u32 arg)
+{
+	struct og01a1b_deckard *v = &og01a1b->v;
+	u16 addr = arg & 0xffff;
+	u8 val = (arg >> 16) & 0xff;
+	u8 group = (arg >> 24) & 0xf;
+	struct og01a1b_deckard_register_set *set;
+	unsigned int i;
+
+	if (group >= OG01A1B_NUM_GROUPS)
+		return -EINVAL;
+
+	set = &v->active.sets[group];
+
+	for (i = 0; i < set->num_regs; i++)
+		if (set->addr[i] == addr)
+			break;
+
+	if (i == set->num_regs) {
+		if (set->num_regs >= OG01A1B_GROUP_MAX_REGS) {
+			dev_err(og01a1b->dev,
+				"Group register map exceeded maximum size\n");
+			return -ENOSPC;
+		}
+
+		set->addr[i] = addr;
+		set->num_regs++;
+		v->update_group[group] = true;
+	}
+
+	if (set->val[i] != val) {
+		set->val[i] = val;
+		v->update_group[group] = true;
+	}
+
+	return 0;
+}
+
+/* Write the changed register groups with the group hold function */
+static int og01a1b_deckard_write_groups(struct og01a1b *og01a1b)
+{
+	struct og01a1b_deckard *v = &og01a1b->v;
+	struct regmap *regmap = og01a1b->regmap;
+	unsigned int group, i;
+	int ret;
+
+	for (group = 0; group < OG01A1B_NUM_GROUPS; group++) {
+		const struct og01a1b_deckard_register_set *set =
+			&v->active.sets[group];
+
+		if (!v->update_group[group])
+			continue;
+
+		v->update_group[group] = false;
+
+		ret = cci_write(regmap, OG01A1B_REG_GROUP_ACCESS,
+				OG01A1B_GROUP_HOLD_START | group, NULL);
+		if (ret)
+			return ret;
+
+		for (i = 0; i < set->num_regs; i++) {
+			if (i + 1 < set->num_regs &&
+			    set->addr[i + 1] == set->addr[i] + 1) {
+				/* Write adjacent registers in one transfer */
+				ret = cci_write(regmap, CCI_REG16(set->addr[i]),
+						set->val[i] << 8 | set->val[i + 1],
+						NULL);
+				i++;
+			} else {
+				ret = cci_write(regmap, CCI_REG8(set->addr[i]),
+						set->val[i], NULL);
+			}
+			if (ret)
+				return ret;
+		}
+
+		ret = cci_write(regmap, OG01A1B_REG_GROUP_ACCESS,
+				OG01A1B_GROUP_HOLD_END | group, NULL);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static void og01a1b_deckard_work(struct work_struct *work)
+{
+	struct og01a1b_deckard *v = container_of(work, struct og01a1b_deckard,
+						work);
+	struct og01a1b *og01a1b = container_of(v, struct og01a1b, v);
+	int ret;
+
+	/* The groups can be written only while the sensor is powered */
+	if (pm_runtime_get_if_in_use(og01a1b->dev) <= 0)
+		return;
+
+	mutex_lock(&v->lock);
+
+	ret = og01a1b_deckard_write_groups(og01a1b);
+	if (ret)
+		dev_err_ratelimited(og01a1b->dev,
+				    "failed to write groups: %d\n", ret);
+
+	mutex_unlock(&v->lock);
+
+	pm_runtime_put(og01a1b->dev);
+}
+
+/* Called by the ISP at each start of frame */
+static void og01a1b_deckard_sof(struct v4l2_subdev *sd, u64 sof_timestamp,
+			       u64 sof_isr_timestamp, u8 vc)
+{
+	struct og01a1b_deckard *v = &to_og01a1b(sd)->v;
+	struct workqueue_struct *wq;
+
+	wq = READ_ONCE(sensor_workqueues[v->queue_index]);
+	if (wq)
+		queue_work(wq, &v->work);
+}
+
 static int og01a1b_deckard_s_reg(struct og01a1b *og01a1b, u32 arg)
 {
 	u32 reg = CCI_REG8(arg & 0xffff);
@@ -813,6 +997,12 @@ static long og01a1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 		mutex_unlock(&v->lock);
 		break;
 
+	case VIDIOC_OG01A1B_PRV_S_GROUP_REG:
+		mutex_lock(&v->lock);
+		ret = og01a1b_deckard_set_group_reg(og01a1b, val);
+		mutex_unlock(&v->lock);
+		break;
+
 	case VIDIOC_SENSOR_PRV_G_REGISTER:
 		/* Reads can't be deferred */
 		if (pm_runtime_get_if_in_use(og01a1b->dev) <= 0) {
@@ -840,6 +1030,9 @@ static int og01a1b_deckard_s_ctrl(struct og01a1b *og01a1b,
 	struct og01a1b_deckard *v = &og01a1b->v;
 
 	switch (ctrl->id) {
+	case V4L2_CID_SENSOR_SOF_CB_ADDR:
+		return 0;
+
 	/*
 	 * Legacy controls for register access, they act on user writes only,
 	 * not when the controls are applied at power up.
@@ -852,6 +1045,11 @@ static int og01a1b_deckard_s_ctrl(struct og01a1b *og01a1b,
 		if (v->num_pending)
 			return og01a1b_deckard_queue_reg(og01a1b, ctrl->val);
 		return og01a1b_deckard_s_reg(og01a1b, ctrl->val);
+
+	case V4L2_CID_HUE:
+		if (v->ctrl_setup)
+			return 0;
+		return og01a1b_deckard_set_group_reg(og01a1b, ctrl->val);
 
 	default:
 		return -EINVAL;
@@ -873,6 +1071,11 @@ static int og01a1b_deckard_s_ctrl_unpowered(struct og01a1b *og01a1b,
 			ret = og01a1b_deckard_queue_reg(og01a1b, ctrl->val);
 		break;
 
+	/* The groups are written while streaming */
+	case V4L2_CID_HUE:
+		ret = og01a1b_deckard_set_group_reg(og01a1b, ctrl->val);
+		break;
+
 	default:
 		break;
 	}
@@ -886,19 +1089,129 @@ static void og01a1b_deckard_init_controls(struct og01a1b *og01a1b,
 					 struct v4l2_ctrl_handler *hdl,
 					 const struct v4l2_ctrl_ops *ops)
 {
+	struct og01a1b_deckard *v = &og01a1b->v;
+	struct v4l2_ctrl_config cfg = {
+		.ops = ops,
+		.type = V4L2_CTRL_TYPE_INTEGER_MENU,
+	};
+
 	v4l2_ctrl_new_std(hdl, ops, V4L2_CID_BRIGHTNESS, 0, 0xffffff, 1, 0);
+	v4l2_ctrl_new_std(hdl, ops, V4L2_CID_HUE, S32_MIN, S32_MAX, 1, 0);
+
+	v->sof_cb_address = (s64)(uintptr_t)og01a1b_deckard_sof;
+
+	cfg.id = V4L2_CID_SENSOR_SOF_CB_ADDR;
+	cfg.name = "Start of Frame Callback";
+	cfg.qmenu_int = &v->sof_cb_address;
+	v4l2_ctrl_new_custom(hdl, &cfg, NULL);
 }
 
-static int og01a1b_deckard_probe(struct og01a1b *og01a1b)
+static void og01a1b_deckard_s_stream(struct og01a1b *og01a1b, bool enable)
 {
-	mutex_init(&og01a1b->v.lock);
+	struct og01a1b_deckard *v = &og01a1b->v;
+
+	mutex_lock(&v->lock);
+	/* The groups set by userspace for the next stream start are kept */
+	if (!enable)
+		og01a1b_deckard_reset_groups(v);
+	og01a1b_deckard_mark_groups(v);
+	mutex_unlock(&v->lock);
+}
+
+static void og01a1b_deckard_pin_workqueue(struct device *dev,
+					 struct workqueue_struct *wq,
+					 unsigned int cpu)
+{
+	/* The workqueue attributes API isn't exported to modules */
+#if IS_BUILTIN(CONFIG_VIDEO_OG01A1B)
+	struct workqueue_attrs *attrs;
+
+	if (cpu >= nr_cpu_ids) {
+		dev_warn(dev, "no CPU %u for sensor workqueue\n", cpu);
+		return;
+	}
+
+	attrs = alloc_workqueue_attrs();
+	if (!attrs)
+		return;
+
+	cpumask_clear(attrs->cpumask);
+	cpumask_set_cpu(cpu, attrs->cpumask);
+	if (apply_workqueue_attrs(wq, attrs))
+		dev_warn(dev, "failed to set sensor workqueue affinity\n");
+
+	free_workqueue_attrs(attrs);
+#endif
+}
+
+static int og01a1b_deckard_alloc_workqueues(struct device *dev)
+{
+	struct workqueue_struct *wq;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(sensor_workqueues); i++) {
+		if (sensor_workqueues[i])
+			continue;
+
+		wq = alloc_workqueue("sensor_workqueue%u",
+				     WQ_UNBOUND | WQ_HIGHPRI | WQ_SYSFS, 1, i);
+		if (!wq)
+			return -ENOMEM;
+
+		/* CPUs 2 and 3, as in the deckard driver */
+		og01a1b_deckard_pin_workqueue(dev, wq, i + 2);
+
+		WRITE_ONCE(sensor_workqueues[i], wq);
+	}
 
 	return 0;
 }
 
+static int og01a1b_deckard_probe(struct og01a1b *og01a1b)
+{
+	struct og01a1b_deckard *v = &og01a1b->v;
+	u32 val;
+	int ret;
+
+	mutex_init(&v->lock);
+	INIT_WORK(&v->work, og01a1b_deckard_work);
+
+	if (device_property_read_u32(og01a1b->dev, "sensor-queue-index",
+				     &val) || val >= ARRAY_SIZE(sensor_workqueues))
+		val = 0;
+	v->queue_index = val;
+
+	mutex_lock(&og01a1b_deckard_mutex);
+
+	ret = og01a1b_deckard_alloc_workqueues(og01a1b->dev);
+
+	mutex_unlock(&og01a1b_deckard_mutex);
+
+	if (ret)
+		mutex_destroy(&v->lock);
+
+	return ret;
+}
+
 static void og01a1b_deckard_remove(struct og01a1b *og01a1b)
 {
-	mutex_destroy(&og01a1b->v.lock);
+	struct og01a1b_deckard *v = &og01a1b->v;
+
+	cancel_work_sync(&v->work);
+
+	mutex_destroy(&v->lock);
+}
+
+/* The workqueues may be in use by og0ve10-a until the module is unloaded */
+static void og01a1b_deckard_exit(void)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(sensor_workqueues); i++) {
+		if (sensor_workqueues[i])
+			destroy_workqueue(sensor_workqueues[i]);
+		sensor_workqueues[i] = NULL;
+	}
 }
 #else
 static int og01a1b_deckard_s_ctrl(struct og01a1b *og01a1b,
@@ -921,6 +1234,10 @@ static int og01a1b_deckard_write_pending(struct og01a1b *og01a1b)
 static void og01a1b_deckard_init_controls(struct og01a1b *og01a1b,
 					 struct v4l2_ctrl_handler *hdl,
 					 const struct v4l2_ctrl_ops *ops)
+{
+}
+
+static void og01a1b_deckard_s_stream(struct og01a1b *og01a1b, bool enable)
 {
 }
 
@@ -961,7 +1278,7 @@ static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 	if (!pm_runtime_get_if_in_use(og01a1b->dev))
 		return og01a1b_deckard_s_ctrl_unpowered(og01a1b, ctrl);
 
-	/* Serialise with the register access of the deckard interface */
+	/* Don't interfere with register group writes */
 	og01a1b_deckard_lock(og01a1b);
 
 	switch (ctrl->id) {
@@ -1154,6 +1471,8 @@ static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 	if (ret)
 		goto error;
 
+	og01a1b_deckard_s_stream(og01a1b, true);
+
 	ret = cci_write(og01a1b->regmap, OG01A1B_REG_MODE_SELECT,
 			OG01A1B_MODE_STREAMING, NULL);
 	if (ret) {
@@ -1181,6 +1500,7 @@ static int og01a1b_disable_streams(struct v4l2_subdev *sd,
 	int ret;
 
 	og01a1b->streaming = false;
+	og01a1b_deckard_s_stream(og01a1b, false);
 	og01a1b_update_ircontrol(og01a1b);
 
 	ret = cci_write(og01a1b->regmap, OG01A1B_REG_MODE_SELECT,
@@ -1685,7 +2005,22 @@ static struct i2c_driver og01a1b_i2c_driver = {
 	.remove = og01a1b_remove,
 };
 
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+static int __init og01a1b_init(void)
+{
+	return i2c_add_driver(&og01a1b_i2c_driver);
+}
+module_init(og01a1b_init);
+
+static void __exit og01a1b_exit(void)
+{
+	i2c_del_driver(&og01a1b_i2c_driver);
+	og01a1b_deckard_exit();
+}
+module_exit(og01a1b_exit);
+#else
 module_i2c_driver(og01a1b_i2c_driver);
+#endif
 
 MODULE_AUTHOR("Shawn Tu");
 MODULE_DESCRIPTION("OmniVision OG01A1B sensor driver");

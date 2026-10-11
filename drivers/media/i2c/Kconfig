@@ -392,6 +392,7 @@ config VIDEO_OS05B10
 
 config VIDEO_OG01A1B_A
 	tristate "OmniVision OG01A1B sensor support"
+	depends on VIDEO_OG01A1B=n
 	select VIDEO_DECKARD_API
 	help
 	  This is a Video4Linux2 sensor driver for the OmniVision
@@ -403,7 +404,7 @@ config VIDEO_OG01A1B_A
 config VIDEO_OG0VE10_A
 	tristate "OmniVision OG0VE1B sensor support"
 	depends on VIDEO_DECKARD_API
-	depends on VIDEO_OG01A1B_A
+	depends on VIDEO_OG01A1B || VIDEO_OG01A1B_A
 	help
 	  This is a Video4Linux2 sensor driver for the OmniVision
 	  OG0VE1B camera with advanced features.
