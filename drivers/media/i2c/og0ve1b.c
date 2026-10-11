@@ -149,6 +149,9 @@ struct og0ve1b_deckard_timing_adjustment {
 /* Argument: 1 if the sensors are in sync, 0 otherwise */
 #define VIDIOC_OG0VE1B_PRV_S_IN_SYNC \
 	_IO('V', BASE_VIDIOC_PRIVATE + 9)
+/* Argument: 1 if the streams of two sensors are interleaved, 0 otherwise */
+#define VIDIOC_OG0VE1B_PRV_S_VC_INT \
+	_IO('V', BASE_VIDIOC_PRIVATE + 10)
 /* Argument: 1 to restart streaming on all sensors */
 #define VIDIOC_OG0VE1B_PRV_S_SYNCHRONIZED_RESET \
 	_IO('V', BASE_VIDIOC_PRIVATE + 11)
@@ -171,6 +174,9 @@ struct og0ve1b_deckard_timing_adjustment {
 
 /* Broadcast address of all sensors on the bus */
 #define OG0VE1B_DUAL_I2C_ADDR		0x70
+
+/* Sensor of virtual channel 0 in the interleaved mode */
+#define OG0VE1B_LEFT_SENSOR_ID		"upper_left"
 
 /* Groups 0 and 1 are written alternately in this group mode */
 #define OG0VE1B_GROUP_MODE_2_GROUPS	2
@@ -216,6 +222,7 @@ struct og0ve1b_deckard {
 	u32 queue_index;
 	bool dual_i2c_main;
 	bool dual_i2c_available;
+	bool vc_interleaved;
 	bool ctrl_setup;
 	bool streaming;
 
@@ -461,6 +468,9 @@ static unsigned int og0ve1b_deckard_num_sensors;
 static struct i2c_client *og0ve1b_dual_client;
 static struct regmap *og0ve1b_dual_regmap;
 
+/* Sensors of virtual channels 0 and 1 in the interleaved mode */
+static struct og0ve1b *og0ve1b_deckard_vc_sensor[2];
+
 /* Shared by all sensors, as in the deckard driver */
 static u64 og0ve1b_last_time_in_sync;
 static u64 og0ve1b_last_dual_write_time;
@@ -581,9 +591,14 @@ static int og0ve1b_deckard_write_group(struct og0ve1b *og0ve1b,
 			return ret;
 	}
 
-	/* The frame timing is adjusted on the sensor itself */
+	/*
+	 * The frame timing is adjusted on the sensor itself, in the interleaved
+	 * mode by the main sensor on all sensors
+	 */
 	if (group == og0ve1b->v.timing.group_to_adjust)
-		return og0ve1b_deckard_adjust_timing(og0ve1b, og0ve1b->regmap);
+		return og0ve1b_deckard_adjust_timing(og0ve1b,
+						    og0ve1b->v.vc_interleaved ?
+						    regmap : og0ve1b->regmap);
 
 	return 0;
 }
@@ -595,6 +610,7 @@ static void og0ve1b_deckard_work(struct work_struct *work)
 	struct og0ve1b *og0ve1b = container_of(v, struct og0ve1b, v);
 	u64 pre_write_ts, post_write_ts, in_sync;
 	unsigned long flags;
+	bool vc_interleaved;
 	int ret = 0;
 
 	mutex_lock(&v->lock);
@@ -609,7 +625,8 @@ static void og0ve1b_deckard_work(struct work_struct *work)
 	/* The groups are written at every start of frame, changed or not */
 	if (v->streaming) {
 		in_sync = READ_ONCE(og0ve1b_last_time_in_sync);
-		if (!in_sync) {
+		vc_interleaved = READ_ONCE(v->vc_interleaved);
+		if (!in_sync && !vc_interleaved) {
 			/* Not in sync, each sensor writes its own groups */
 			ret = og0ve1b_deckard_write_group(og0ve1b, v->last_group,
 							 og0ve1b->regmap);
@@ -622,7 +639,8 @@ static void og0ve1b_deckard_work(struct work_struct *work)
 			      -ENODEV;
 			WRITE_ONCE(og0ve1b_last_dual_write_time,
 				   ktime_get_raw_ns());
-		} else if (READ_ONCE(og0ve1b_last_dual_write_time) < in_sync) {
+		} else if (!vc_interleaved &&
+			   READ_ONCE(og0ve1b_last_dual_write_time) < in_sync) {
 			/* No write by the main sensor since getting in sync */
 			ret = og0ve1b_deckard_write_group(og0ve1b, v->last_group,
 							 og0ve1b->regmap);
@@ -654,11 +672,34 @@ static void og0ve1b_deckard_work(struct work_struct *work)
 	mutex_unlock(&v->lock);
 }
 
+/*
+ * In the interleaved mode, the receiver driver callbacks of a sensor are for
+ * the sensor of the virtual channel.
+ */
+static struct og0ve1b *og0ve1b_deckard_vc_target(struct v4l2_subdev *sd, u8 vc)
+{
+	struct og0ve1b *og0ve1b = to_og0ve1b(sd);
+
+	if (!READ_ONCE(og0ve1b->v.vc_interleaved))
+		return og0ve1b;
+
+	if (vc >= ARRAY_SIZE(og0ve1b_deckard_vc_sensor))
+		return NULL;
+
+	return READ_ONCE(og0ve1b_deckard_vc_sensor[vc]);
+}
+
 /* Called by the ISP for each frame */
 static void *og0ve1b_deckard_get_metadata(struct v4l2_subdev *sd, u8 vc)
 {
-	struct og0ve1b_deckard *v = &to_og0ve1b(sd)->v;
+	struct og0ve1b *og0ve1b = og0ve1b_deckard_vc_target(sd, vc);
+	struct og0ve1b_deckard *v;
 	unsigned long flags;
+
+	if (!og0ve1b)
+		return NULL;
+
+	v = &og0ve1b->v;
 
 	spin_lock_irqsave(&v->metadata_lock, flags);
 	memcpy(v->metadata + OG0VE1B_METADATA_HISTORY_OFFSET, v->history,
@@ -672,8 +713,14 @@ static void *og0ve1b_deckard_get_metadata(struct v4l2_subdev *sd, u8 vc)
 static void og0ve1b_deckard_sof(struct v4l2_subdev *sd, u64 sof_timestamp,
 			       u64 sof_isr_timestamp, u8 vc)
 {
-	struct og0ve1b_deckard *v = &to_og0ve1b(sd)->v;
+	struct og0ve1b *og0ve1b = og0ve1b_deckard_vc_target(sd, vc);
 	struct workqueue_struct *wq;
+	struct og0ve1b_deckard *v;
+
+	if (!og0ve1b)
+		return;
+
+	v = &og0ve1b->v;
 
 	v->last_sof_ts = sof_timestamp;
 	v->last_sof_isr_ts = sof_isr_timestamp;
@@ -866,6 +913,10 @@ static long og0ve1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 		og0ve1b_deckard_set_in_sync(val);
 		break;
 
+	case VIDIOC_OG0VE1B_PRV_S_VC_INT:
+		WRITE_ONCE(v->vc_interleaved, val);
+		break;
+
 	case VIDIOC_OG0VE1B_PRV_S_SYNCHRONIZED_RESET:
 		ret = og0ve1b_deckard_synchronized_reset(og0ve1b, val);
 		break;
@@ -981,6 +1032,15 @@ static void og0ve1b_deckard_init_controls(struct og0ve1b *og0ve1b,
 	v4l2_ctrl_new_custom(hdl, &cfg, NULL);
 }
 
+/* In the interleaved mode, streaming is started and stopped on all sensors */
+static struct regmap *og0ve1b_deckard_stream_regmap(struct og0ve1b *og0ve1b)
+{
+	if (READ_ONCE(og0ve1b->v.vc_interleaved) && og0ve1b_dual_regmap)
+		return og0ve1b_dual_regmap;
+
+	return og0ve1b->regmap;
+}
+
 /* Called with the state lock held */
 static void og0ve1b_deckard_s_stream(struct og0ve1b *og0ve1b, bool enable)
 {
@@ -1028,6 +1088,7 @@ static int og0ve1b_deckard_probe(struct og0ve1b *og0ve1b,
 				struct i2c_client *client)
 {
 	struct og0ve1b_deckard *v = &og0ve1b->v;
+	const char *id;
 	u32 val;
 
 	mutex_init(&v->lock);
@@ -1054,6 +1115,13 @@ static int og0ve1b_deckard_probe(struct og0ve1b *og0ve1b,
 
 	og0ve1b_deckard_num_sensors++;
 
+	/* The left sensor has virtual channel 0, the other one 1 */
+	if (!device_property_read_string(og0ve1b->dev, "id", &id) &&
+	    !strcmp(id, OG0VE1B_LEFT_SENSOR_ID))
+		WRITE_ONCE(og0ve1b_deckard_vc_sensor[0], og0ve1b);
+	else
+		WRITE_ONCE(og0ve1b_deckard_vc_sensor[1], og0ve1b);
+
 	mutex_unlock(&og0ve1b_deckard_mutex);
 
 	return 0;
@@ -1062,7 +1130,17 @@ static int og0ve1b_deckard_probe(struct og0ve1b *og0ve1b,
 static void og0ve1b_deckard_remove(struct og0ve1b *og0ve1b)
 {
 	struct og0ve1b_deckard *v = &og0ve1b->v;
+	unsigned int i;
 
+	mutex_lock(&og0ve1b_deckard_mutex);
+
+	for (i = 0; i < ARRAY_SIZE(og0ve1b_deckard_vc_sensor); i++)
+		if (og0ve1b_deckard_vc_sensor[i] == og0ve1b)
+			WRITE_ONCE(og0ve1b_deckard_vc_sensor[i], NULL);
+
+	mutex_unlock(&og0ve1b_deckard_mutex);
+
+	/* Callbacks of the other sensor may still queue the work */
 	cancel_work_sync(&v->work);
 
 	mutex_lock(&og0ve1b_deckard_mutex);
@@ -1116,6 +1194,11 @@ static void og0ve1b_deckard_init_controls(struct og0ve1b *og0ve1b,
 
 static void og0ve1b_deckard_s_stream(struct og0ve1b *og0ve1b, bool enable)
 {
+}
+
+static struct regmap *og0ve1b_deckard_stream_regmap(struct og0ve1b *og0ve1b)
+{
+	return og0ve1b->regmap;
 }
 
 static int og0ve1b_deckard_probe(struct og0ve1b *og0ve1b,
@@ -1319,8 +1402,8 @@ static int og0ve1b_enable_streams(struct v4l2_subdev *sd,
 
 	og0ve1b_deckard_s_stream(og0ve1b, true);
 
-	ret = cci_write(og0ve1b->regmap, OG0VE1B_REG_MODE_SELECT,
-			OG0VE1B_MODE_STREAMING, NULL);
+	ret = cci_write(og0ve1b_deckard_stream_regmap(og0ve1b),
+			OG0VE1B_REG_MODE_SELECT, OG0VE1B_MODE_STREAMING, NULL);
 	if (ret) {
 		dev_err(og0ve1b->dev, "failed to start streaming: %d\n", ret);
 		goto error;
@@ -1344,8 +1427,8 @@ static int og0ve1b_disable_streams(struct v4l2_subdev *sd,
 
 	og0ve1b_deckard_s_stream(og0ve1b, false);
 
-	ret = cci_write(og0ve1b->regmap, OG0VE1B_REG_MODE_SELECT,
-			OG0VE1B_MODE_STANDBY, NULL);
+	ret = cci_write(og0ve1b_deckard_stream_regmap(og0ve1b),
+			OG0VE1B_REG_MODE_SELECT, OG0VE1B_MODE_STANDBY, NULL);
 	if (ret)
 		dev_err(og0ve1b->dev, "failed to stop streaming: %d\n", ret);
 
