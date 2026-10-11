@@ -1137,7 +1137,7 @@ static int og01a1b_last_set_group;
 static u64 og01a1b_last_time_in_sync;
 static u64 og01a1b_last_dual_write_time;
 
-/* Shared with the og0ve10-a deckard driver, which queues its work here */
+/* Shared with og0ve1b and the og0ve10-a deckard driver */
 struct workqueue_struct *sensor_workqueues[2];
 EXPORT_SYMBOL(sensor_workqueues);
 

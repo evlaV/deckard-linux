@@ -372,6 +372,7 @@ config VIDEO_DECKARD_API
 
 config VIDEO_OG0VE1B
 	tristate "OmniVision OG0VE1B sensor support"
+	depends on !VIDEO_DECKARD_API || VIDEO_OG01A1B || VIDEO_OG01A1B_A
 	select V4L2_CCI_I2C
 	help
 	  This is a Video4Linux2 sensor driver for the OmniVision
