@@ -574,6 +574,15 @@ struct og01a1b_deckard_register {
 	u8 len;
 };
 
+struct og01a1b_deckard_timing_adjustment {
+	__u16 new_rows;
+	__u16 rows_to_restore;
+	__u16 new_global_row;
+	__u16 global_row_to_restore;
+	__u8 group_to_adjust;
+	__u8 number_of_frames_to_hold_adjustment;
+};
+
 #define VIDIOC_OG01A1B_PRV_G_METADATA_VERSION \
 	_IOR('V', BASE_VIDIOC_PRIVATE + 1, u32)
 #define VIDIOC_OG01A1B_PRV_S_IR_EMITTER_MODE \
@@ -589,6 +598,9 @@ struct og01a1b_deckard_register {
 	_IO('V', BASE_VIDIOC_PRIVATE + 5)
 #define VIDIOC_OG01A1B_PRV_G_DRIVER_VERSION \
 	_IOR('V', BASE_VIDIOC_PRIVATE + 6, u32)
+#define VIDIOC_SENSOR_PRV_S_TIMING_ADJUSTMENT \
+	_IOW('V', BASE_VIDIOC_PRIVATE + 7, \
+	     struct og01a1b_deckard_timing_adjustment)
 #define VIDIOC_SENSOR_PRV_G_REGISTER \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct og01a1b_deckard_register)
 /* Argument: 1 if the sensors are in sync, 0 otherwise */
@@ -618,6 +630,8 @@ struct og01a1b_deckard_register {
 #define OG01A1B_STROBE_ON		0xff
 #define OG01A1B_STROBE_OFF		0x00
 
+#define OG01A1B_REG_GLOBAL_ROW		CCI_REG16(0x382c)
+
 /* Broadcast address of all sensors on the bus */
 #define OG01A1B_DUAL_I2C_ADDR		0x70
 
@@ -640,6 +654,7 @@ struct og01a1b_deckard_groups {
 
 /* Layouts of the deckard driver on LP64 architectures */
 static_assert(sizeof(struct og01a1b_deckard_register) == 12);
+static_assert(sizeof(struct og01a1b_deckard_timing_adjustment) == 10);
 static_assert(sizeof(struct og01a1b_deckard_register_set) == 62);
 static_assert(sizeof(struct og01a1b_deckard_groups) == 232);
 static_assert(offsetof(struct og01a1b_deckard_groups, sets) == 40);
@@ -652,6 +667,14 @@ enum og01a1b_deckard_ir_mode {
 	OG01A1B_IR_MODE_GROUP_1_ONLY = 1,
 	OG01A1B_IR_MODE_GROUP_0_AND_2_ONLY = 2,
 	OG01A1B_IR_MODE_ALL_FRAMES = 3,
+};
+
+enum og01a1b_deckard_timing_state {
+	OG01A1B_TIMING_NOT_IN_PROGRESS = 0,
+	OG01A1B_TIMING_READY_FOR_GROUP_RESTORE = 1,
+	OG01A1B_TIMING_IN_PROGRESS = 2,
+	OG01A1B_TIMING_READY_FOR_INITIAL_GROUP_WRITE = 3,
+	OG01A1B_TIMING_REQUESTED = 4,
 };
 
 #define OG01A1B_MAX_PENDING	256
@@ -672,6 +695,9 @@ struct og01a1b_deckard {
 	u32 group_mode;
 	bool update_group[OG01A1B_NUM_GROUPS];
 	struct og01a1b_deckard_groups active;
+
+	struct og01a1b_deckard_timing_adjustment timing;
+	enum og01a1b_deckard_timing_state timing_state;
 
 	u64 last_sof_ts;
 	u64 last_sof_isr_ts;
@@ -945,8 +971,13 @@ static int og01a1b_deckard_write_groups(struct og01a1b *og01a1b, bool use_dual)
 	for (group = 0; group < OG01A1B_NUM_GROUPS; group++) {
 		const struct og01a1b_deckard_register_set *set =
 			&v->active.sets[group];
+		bool adjust = group == v->timing.group_to_adjust &&
+			(v->timing_state ==
+			 OG01A1B_TIMING_READY_FOR_INITIAL_GROUP_WRITE ||
+			 v->timing_state ==
+			 OG01A1B_TIMING_READY_FOR_GROUP_RESTORE);
 
-		if (!v->update_group[group])
+		if (!v->update_group[group] && !adjust)
 			continue;
 
 		v->update_group[group] = false;
@@ -978,11 +1009,32 @@ static int og01a1b_deckard_write_groups(struct og01a1b *og01a1b, bool use_dual)
 		if (ret)
 			return ret;
 
+		if (group == v->timing.group_to_adjust &&
+		    v->timing_state ==
+		    OG01A1B_TIMING_READY_FOR_INITIAL_GROUP_WRITE) {
+			cci_write(regmap, OG01A1B_REG_VTS, v->timing.new_rows,
+				  &ret);
+			cci_write(regmap, OG01A1B_REG_GLOBAL_ROW,
+				  v->timing.new_global_row, &ret);
+			if (ret)
+				return ret;
+
+			v->timing_state = OG01A1B_TIMING_IN_PROGRESS;
+		}
+
+		/* The values to restore are expected in the group registers */
+		if (group == v->timing.group_to_adjust &&
+		    v->timing_state == OG01A1B_TIMING_READY_FOR_GROUP_RESTORE)
+			v->timing_state = OG01A1B_TIMING_NOT_IN_PROGRESS;
+
 		ret = cci_write(regmap, OG01A1B_REG_GROUP_ACCESS,
 				OG01A1B_GROUP_HOLD_END | group, NULL);
 		if (ret)
 			return ret;
 	}
+
+	if (v->timing.number_of_frames_to_hold_adjustment)
+		v->timing.number_of_frames_to_hold_adjustment--;
 
 	return 0;
 }
@@ -1075,6 +1127,12 @@ static void og01a1b_deckard_sof(struct v4l2_subdev *sd, u64 sof_timestamp,
 
 	v->last_sof_ts = sof_timestamp;
 	v->last_sof_isr_ts = sof_isr_timestamp;
+
+	if (v->timing_state == OG01A1B_TIMING_REQUESTED)
+		v->timing_state = OG01A1B_TIMING_READY_FOR_INITIAL_GROUP_WRITE;
+	else if (v->timing_state == OG01A1B_TIMING_IN_PROGRESS &&
+		 !v->timing.number_of_frames_to_hold_adjustment)
+		v->timing_state = OG01A1B_TIMING_READY_FOR_GROUP_RESTORE;
 
 	v->last_vc = vc;
 
@@ -1256,6 +1314,13 @@ static long og01a1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 
 	case VIDIOC_OG01A1B_PRV_S_GROUP_MODE:
 		WRITE_ONCE(v->group_mode, val);
+		break;
+
+	case VIDIOC_SENSOR_PRV_S_TIMING_ADJUSTMENT:
+		mutex_lock(&v->lock);
+		v->timing = *(struct og01a1b_deckard_timing_adjustment *)arg;
+		v->timing_state = OG01A1B_TIMING_REQUESTED;
+		mutex_unlock(&v->lock);
 		break;
 
 	case VIDIOC_SENSOR_PRV_G_REGISTER:
