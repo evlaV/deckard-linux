@@ -6,11 +6,13 @@
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
+#include <linux/ktime.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/pm_runtime.h>
 #include <linux/property.h>
 #include <linux/regulator/consumer.h>
+#include <linux/spinlock.h>
 #include <linux/workqueue.h>
 #include <media/v4l2-cci.h>
 #include <media/v4l2-ctrls.h>
@@ -555,6 +557,12 @@ static const struct og01a1b_mode supported_modes[] = {
  * shared with the deckard userspace and the ISP.
  */
 
+#ifndef V4L2_CID_METADATA_CB_ADDR
+#define V4L2_CID_METADATA_CB_ADDR	(V4L2_CID_IMAGE_PROC_CLASS_BASE + 6)
+#endif
+#ifndef V4L2_CID_METADATA_SIZE
+#define V4L2_CID_METADATA_SIZE		(V4L2_CID_IMAGE_PROC_CLASS_BASE + 7)
+#endif
 #ifndef V4L2_CID_SENSOR_SOF_CB_ADDR
 #define V4L2_CID_SENSOR_SOF_CB_ADDR	(V4L2_CID_IMAGE_PROC_CLASS_BASE + 8)
 #endif
@@ -565,21 +573,35 @@ struct og01a1b_deckard_register {
 	u8 len;
 };
 
+#define VIDIOC_OG01A1B_PRV_G_METADATA_VERSION \
+	_IOR('V', BASE_VIDIOC_PRIVATE + 1, u32)
 /* Argument: register address in bits [15:0], value in bits [23:16] */
 #define VIDIOC_OG01A1B_PRV_S_REG \
 	_IO('V', BASE_VIDIOC_PRIVATE + 3)
 /* Argument: as above, and group in bits [27:24] */
 #define VIDIOC_OG01A1B_PRV_S_GROUP_REG \
 	_IO('V', BASE_VIDIOC_PRIVATE + 4)
+/* Argument: group mode */
+#define VIDIOC_OG01A1B_PRV_S_GROUP_MODE \
+	_IO('V', BASE_VIDIOC_PRIVATE + 5)
 #define VIDIOC_OG01A1B_PRV_G_DRIVER_VERSION \
 	_IOR('V', BASE_VIDIOC_PRIVATE + 6, u32)
 #define VIDIOC_SENSOR_PRV_G_REGISTER \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct og01a1b_deckard_register)
 
+#define OG01A1B_METADATA_VERSION	((3 << 16) | 1)
 #define OG01A1B_DRIVER_VERSION	((1 << 16) | 1)
 
 #define OG01A1B_NUM_GROUPS	3
 #define OG01A1B_GROUP_MAX_REGS	20
+#define OG01A1B_HISTORY		5
+
+/*
+ * Frame metadata buffer of the deckard driver. Only the history of the
+ * register group updates is filled in, the rest of the buffer is zero.
+ */
+#define OG01A1B_METADATA_SIZE		1208
+#define OG01A1B_METADATA_HISTORY_OFFSET	24
 
 /* Group hold */
 #define OG01A1B_REG_GROUP_ACCESS	CCI_REG8(0x3208)
@@ -606,6 +628,9 @@ static_assert(sizeof(struct og01a1b_deckard_register) == 12);
 static_assert(sizeof(struct og01a1b_deckard_register_set) == 62);
 static_assert(sizeof(struct og01a1b_deckard_groups) == 232);
 static_assert(offsetof(struct og01a1b_deckard_groups, sets) == 40);
+static_assert(OG01A1B_METADATA_HISTORY_OFFSET +
+	      OG01A1B_HISTORY * sizeof(struct og01a1b_deckard_groups) <=
+	      OG01A1B_METADATA_SIZE);
 
 #define OG01A1B_MAX_PENDING	256
 
@@ -617,10 +642,22 @@ struct og01a1b_deckard {
 	u32 queue_index;
 	bool ctrl_setup;
 
+	u32 group_mode;
 	bool update_group[OG01A1B_NUM_GROUPS];
 	struct og01a1b_deckard_groups active;
 
-	/* Single menu item of the start of frame callback control */
+	u64 last_sof_ts;
+	u64 last_sof_isr_ts;
+	int last_vc;
+
+	/* Protects metadata against the receiver driver callbacks */
+	spinlock_t metadata_lock;
+	struct og01a1b_deckard_groups history[OG01A1B_HISTORY];
+	u8 metadata[OG01A1B_METADATA_SIZE] __aligned(8);
+
+	/* Single menu items of the callback and metadata size controls */
+	s64 metadata_cb_address;
+	s64 metadata_size;
 	s64 sof_cb_address;
 
 	/* Raw register writes done while the sensor isn't powered */
@@ -748,6 +785,10 @@ static void og01a1b_update_ircontrol(struct og01a1b *og01a1b)
 /* Protects the workqueues */
 static DEFINE_MUTEX(og01a1b_deckard_mutex);
 
+/* Shared by all sensors, as in the deckard driver */
+static DEFINE_SPINLOCK(og01a1b_last_set_group_lock);
+static int og01a1b_last_set_group;
+
 /* Shared with the og0ve10-a deckard driver, which queues its work here */
 struct workqueue_struct *sensor_workqueues[2];
 EXPORT_SYMBOL(sensor_workqueues);
@@ -762,7 +803,17 @@ static void og01a1b_deckard_mark_groups(struct og01a1b_deckard *v)
 
 static void og01a1b_deckard_reset_groups(struct og01a1b_deckard *v)
 {
+	unsigned long flags;
+	unsigned int i;
+
+	v->active.pre_group_write_timestamp = 0;
+	v->active.post_group_write_timestamp = 0;
 	memset(v->active.sets, 0, sizeof(v->active.sets));
+
+	spin_lock_irqsave(&v->metadata_lock, flags);
+	for (i = 0; i < OG01A1B_HISTORY; i++)
+		v->history[i] = v->active;
+	spin_unlock_irqrestore(&v->metadata_lock, flags);
 }
 
 static int og01a1b_deckard_set_group_reg(struct og01a1b *og01a1b, u32 arg)
@@ -855,22 +906,66 @@ static void og01a1b_deckard_work(struct work_struct *work)
 	struct og01a1b_deckard *v = container_of(work, struct og01a1b_deckard,
 						work);
 	struct og01a1b *og01a1b = container_of(v, struct og01a1b, v);
-	int ret;
+	u64 pre_write_ts, post_write_ts;
+	unsigned long flags;
+	bool powered;
+	int group, ret = 0;
 
-	/* The groups can be written only while the sensor is powered */
-	if (pm_runtime_get_if_in_use(og01a1b->dev) <= 0)
-		return;
+	powered = pm_runtime_get_if_in_use(og01a1b->dev) > 0;
 
 	mutex_lock(&v->lock);
 
-	ret = og01a1b_deckard_write_groups(og01a1b);
-	if (ret)
-		dev_err_ratelimited(og01a1b->dev,
-				    "failed to write groups: %d\n", ret);
+	pre_write_ts = ktime_get_raw_ns();
+
+	if (powered) {
+		ret = og01a1b_deckard_write_groups(og01a1b);
+		if (ret)
+			dev_err_ratelimited(og01a1b->dev,
+					    "failed to write groups: %d\n", ret);
+	}
+
+	spin_lock(&og01a1b_last_set_group_lock);
+	group = 0;
+	if (v->group_mode)
+		group = (og01a1b_last_set_group + 1) % v->group_mode;
+	/* Resynchronise with the virtual channel of the last frame */
+	if (v->last_vc == 1)
+		group = 1;
+	og01a1b_last_set_group = group;
+	spin_unlock(&og01a1b_last_set_group_lock);
+
+	post_write_ts = ktime_get_raw_ns();
+
+	v->active.group_written = group;
+	v->active.pre_group_write_timestamp = pre_write_ts;
+	v->active.sof_ts = v->last_sof_ts;
+	v->active.sof_isr_ts = v->last_sof_isr_ts;
+	v->active.post_group_write_timestamp = post_write_ts;
+
+	spin_lock_irqsave(&v->metadata_lock, flags);
+	memmove(&v->history[1], &v->history[0],
+		(OG01A1B_HISTORY - 1) * sizeof(v->history[0]));
+	v->history[0] = v->active;
+	spin_unlock_irqrestore(&v->metadata_lock, flags);
 
 	mutex_unlock(&v->lock);
 
-	pm_runtime_put(og01a1b->dev);
+	if (powered)
+		pm_runtime_put(og01a1b->dev);
+}
+
+/* Called by the ISP for each frame */
+static void *og01a1b_deckard_get_metadata(struct v4l2_subdev *sd, u8 vc)
+{
+	struct og01a1b_deckard *v = &to_og01a1b(sd)->v;
+	unsigned long flags;
+
+	spin_lock_irqsave(&v->metadata_lock, flags);
+	memcpy(v->metadata + OG01A1B_METADATA_HISTORY_OFFSET, v->history,
+	       sizeof(v->history));
+	spin_unlock_irqrestore(&v->metadata_lock, flags);
+
+	return v->metadata;
 }
 
 /* Called by the ISP at each start of frame */
@@ -879,6 +974,11 @@ static void og01a1b_deckard_sof(struct v4l2_subdev *sd, u64 sof_timestamp,
 {
 	struct og01a1b_deckard *v = &to_og01a1b(sd)->v;
 	struct workqueue_struct *wq;
+
+	v->last_sof_ts = sof_timestamp;
+	v->last_sof_isr_ts = sof_isr_timestamp;
+
+	v->last_vc = vc;
 
 	wq = READ_ONCE(sensor_workqueues[v->queue_index]);
 	if (wq)
@@ -987,6 +1087,10 @@ static long og01a1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 	long ret = 0;
 
 	switch (cmd) {
+	case VIDIOC_OG01A1B_PRV_G_METADATA_VERSION:
+		*(u32 *)arg = OG01A1B_METADATA_VERSION;
+		break;
+
 	case VIDIOC_OG01A1B_PRV_G_DRIVER_VERSION:
 		*(u32 *)arg = OG01A1B_DRIVER_VERSION;
 		break;
@@ -1001,6 +1105,10 @@ static long og01a1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 		mutex_lock(&v->lock);
 		ret = og01a1b_deckard_set_group_reg(og01a1b, val);
 		mutex_unlock(&v->lock);
+		break;
+
+	case VIDIOC_OG01A1B_PRV_S_GROUP_MODE:
+		WRITE_ONCE(v->group_mode, val);
 		break;
 
 	case VIDIOC_SENSOR_PRV_G_REGISTER:
@@ -1030,6 +1138,7 @@ static int og01a1b_deckard_s_ctrl(struct og01a1b *og01a1b,
 	struct og01a1b_deckard *v = &og01a1b->v;
 
 	switch (ctrl->id) {
+	case V4L2_CID_METADATA_CB_ADDR:
 	case V4L2_CID_SENSOR_SOF_CB_ADDR:
 		return 0;
 
@@ -1050,6 +1159,11 @@ static int og01a1b_deckard_s_ctrl(struct og01a1b *og01a1b,
 		if (v->ctrl_setup)
 			return 0;
 		return og01a1b_deckard_set_group_reg(og01a1b, ctrl->val);
+
+	case V4L2_CID_SATURATION:
+		if (!v->ctrl_setup)
+			WRITE_ONCE(v->group_mode, ctrl->val);
+		return 0;
 
 	default:
 		return -EINVAL;
@@ -1076,6 +1190,10 @@ static int og01a1b_deckard_s_ctrl_unpowered(struct og01a1b *og01a1b,
 		ret = og01a1b_deckard_set_group_reg(og01a1b, ctrl->val);
 		break;
 
+	case V4L2_CID_SATURATION:
+		WRITE_ONCE(v->group_mode, ctrl->val);
+		break;
+
 	default:
 		break;
 	}
@@ -1097,12 +1215,27 @@ static void og01a1b_deckard_init_controls(struct og01a1b *og01a1b,
 
 	v4l2_ctrl_new_std(hdl, ops, V4L2_CID_BRIGHTNESS, 0, 0xffffff, 1, 0);
 	v4l2_ctrl_new_std(hdl, ops, V4L2_CID_HUE, S32_MIN, S32_MAX, 1, 0);
+	v4l2_ctrl_new_std(hdl, ops, V4L2_CID_SATURATION, 0, 2, 1, 0);
 
+	v->metadata_cb_address = (s64)(uintptr_t)og01a1b_deckard_get_metadata;
+	v->metadata_size = OG01A1B_METADATA_SIZE;
 	v->sof_cb_address = (s64)(uintptr_t)og01a1b_deckard_sof;
+
+	cfg.id = V4L2_CID_METADATA_CB_ADDR;
+	cfg.name = "Metadata Callback";
+	cfg.qmenu_int = &v->metadata_cb_address;
+	v4l2_ctrl_new_custom(hdl, &cfg, NULL);
+
+	cfg.id = V4L2_CID_METADATA_SIZE;
+	cfg.name = "Metadata Size";
+	cfg.qmenu_int = &v->metadata_size;
+	cfg.flags = V4L2_CTRL_FLAG_READ_ONLY;
+	v4l2_ctrl_new_custom(hdl, &cfg, NULL);
 
 	cfg.id = V4L2_CID_SENSOR_SOF_CB_ADDR;
 	cfg.name = "Start of Frame Callback";
 	cfg.qmenu_int = &v->sof_cb_address;
+	cfg.flags = 0;
 	v4l2_ctrl_new_custom(hdl, &cfg, NULL);
 }
 
@@ -1174,6 +1307,7 @@ static int og01a1b_deckard_probe(struct og01a1b *og01a1b)
 	int ret;
 
 	mutex_init(&v->lock);
+	spin_lock_init(&v->metadata_lock);
 	INIT_WORK(&v->work, og01a1b_deckard_work);
 
 	if (device_property_read_u32(og01a1b->dev, "sensor-queue-index",
