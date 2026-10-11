@@ -61,6 +61,10 @@
 #define OG01A1B_TEST_PATTERN_ENABLE	BIT(7)
 #define OG01A1B_TEST_PATTERN_BAR_SHIFT	2
 
+/* Strobe output */
+#define OG01A1B_REG_OUTPUT_ENABLE	CCI_REG8(0x3009)
+#define OG01A1B_OUTPUT_ENABLE_STROBE	BIT(3)
+
 #define to_og01a1b(_sd)			container_of(_sd, struct og01a1b, sd)
 
 enum {
@@ -460,6 +464,13 @@ static const struct cci_reg_sequence mode_1056x1024_regs[] = {
 	{ CCI_REG8(0x4509), 0x00 },
 };
 
+/* Strobe pulse configuration for driving an IR illuminator */
+static const struct cci_reg_sequence og01a1b_strobe_regs[] = {
+	{ CCI_REG8(0x3017), 0xf2 },
+	{ CCI_REG8(0x3920), 0xff },
+	{ CCI_REG8(0x3924), 0x00 },
+};
+
 static const char * const og01a1b_test_pattern_menu[] = {
 	"Disabled",
 	"Standard Color Bar",
@@ -536,6 +547,7 @@ struct og01a1b {
 	struct clk *xvclk;
 	const struct og01a1b_mclk_config *mclk_cfg;
 	struct gpio_desc *reset_gpio;
+	struct gpio_desc *ircontrol_gpio;
 	struct regulator *avdd;
 	struct regulator *dovdd;
 	struct regulator *dvdd;
@@ -586,6 +598,25 @@ static int og01a1b_test_pattern(struct og01a1b *og01a1b, u32 pattern)
 			 pattern, NULL);
 }
 
+static int og01a1b_set_strobe(struct og01a1b *og01a1b, bool enable)
+{
+	int ret = 0;
+
+	if (enable)
+		cci_multi_reg_write(og01a1b->regmap, og01a1b_strobe_regs,
+				    ARRAY_SIZE(og01a1b_strobe_regs), &ret);
+
+	cci_update_bits(og01a1b->regmap, OG01A1B_REG_OUTPUT_ENABLE,
+			OG01A1B_OUTPUT_ENABLE_STROBE,
+			enable ? OG01A1B_OUTPUT_ENABLE_STROBE : 0, &ret);
+	if (ret)
+		return ret;
+
+	gpiod_set_value_cansleep(og01a1b->ircontrol_gpio, enable);
+
+	return 0;
+}
+
 static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct og01a1b *og01a1b = container_of(ctrl->handler,
@@ -633,6 +664,10 @@ static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 		ret = og01a1b_test_pattern(og01a1b, ctrl->val);
 		break;
 
+	case V4L2_CID_FLASH_STROBE_OE:
+		ret = og01a1b_set_strobe(og01a1b, ctrl->val);
+		break;
+
 	default:
 		ret = -EINVAL;
 		break;
@@ -655,7 +690,7 @@ static int og01a1b_init_controls(struct og01a1b *og01a1b)
 	int ret;
 
 	ctrl_hdlr = &og01a1b->ctrl_handler;
-	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 8);
+	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 9);
 	if (ret)
 		return ret;
 
@@ -709,6 +744,8 @@ static int og01a1b_init_controls(struct og01a1b *og01a1b)
 				     V4L2_CID_TEST_PATTERN,
 				     ARRAY_SIZE(og01a1b_test_pattern_menu) - 1,
 				     0, 0, og01a1b_test_pattern_menu);
+	v4l2_ctrl_new_std(ctrl_hdlr, &og01a1b_ctrl_ops,
+			  V4L2_CID_FLASH_STROBE_OE, 0, 1, 1, 0);
 
 	if (ctrl_hdlr->error)
 		return ctrl_hdlr->error;
@@ -784,6 +821,7 @@ static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 	return 0;
 
 error:
+	gpiod_set_value_cansleep(og01a1b->ircontrol_gpio, 0);
 	pm_runtime_put_autosuspend(og01a1b->dev);
 
 	return ret;
@@ -795,6 +833,8 @@ static int og01a1b_disable_streams(struct v4l2_subdev *sd,
 {
 	struct og01a1b *og01a1b = to_og01a1b(sd);
 	int ret;
+
+	gpiod_set_value_cansleep(og01a1b->ircontrol_gpio, 0);
 
 	ret = cci_write(og01a1b->regmap, OG01A1B_REG_MODE_SELECT,
 			OG01A1B_MODE_STANDBY, NULL);
@@ -1140,6 +1180,14 @@ static int og01a1b_probe(struct i2c_client *client)
 		dev_err(og01a1b->dev, "cannot get reset GPIO\n");
 		return PTR_ERR(og01a1b->reset_gpio);
 	}
+
+	og01a1b->ircontrol_gpio = devm_gpiod_get_optional(og01a1b->dev,
+							  "ircontrol",
+							  GPIOD_OUT_LOW);
+	if (IS_ERR(og01a1b->ircontrol_gpio))
+		return dev_err_probe(og01a1b->dev,
+				     PTR_ERR(og01a1b->ircontrol_gpio),
+				     "cannot get IR control GPIO\n");
 
 	og01a1b->avdd = devm_regulator_get_optional(og01a1b->dev, "avdd");
 	if (IS_ERR(og01a1b->avdd)) {
