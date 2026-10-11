@@ -575,6 +575,8 @@ struct og01a1b_deckard_register {
 
 #define VIDIOC_OG01A1B_PRV_G_METADATA_VERSION \
 	_IOR('V', BASE_VIDIOC_PRIVATE + 1, u32)
+#define VIDIOC_OG01A1B_PRV_S_IR_EMITTER_MODE \
+	_IOW('V', BASE_VIDIOC_PRIVATE + 2, u32)
 /* Argument: register address in bits [15:0], value in bits [23:16] */
 #define VIDIOC_OG01A1B_PRV_S_REG \
 	_IO('V', BASE_VIDIOC_PRIVATE + 3)
@@ -608,6 +610,12 @@ struct og01a1b_deckard_register {
 #define OG01A1B_GROUP_HOLD_START	0x00
 #define OG01A1B_GROUP_HOLD_END		0x10
 
+#define OG01A1B_REG_STROBE		CCI_REG8(0x3920)
+#define OG01A1B_STROBE_ON		0xff
+#define OG01A1B_STROBE_OFF		0x00
+
+#define OG01A1B_SYNC_SENSOR_ID		"slam_left"
+
 struct og01a1b_deckard_register_set {
 	u16 addr[OG01A1B_GROUP_MAX_REGS];
 	u8 val[OG01A1B_GROUP_MAX_REGS];
@@ -632,6 +640,13 @@ static_assert(OG01A1B_METADATA_HISTORY_OFFSET +
 	      OG01A1B_HISTORY * sizeof(struct og01a1b_deckard_groups) <=
 	      OG01A1B_METADATA_SIZE);
 
+enum og01a1b_deckard_ir_mode {
+	OG01A1B_IR_MODE_OFF = 0,
+	OG01A1B_IR_MODE_GROUP_1_ONLY = 1,
+	OG01A1B_IR_MODE_GROUP_0_AND_2_ONLY = 2,
+	OG01A1B_IR_MODE_ALL_FRAMES = 3,
+};
+
 #define OG01A1B_MAX_PENDING	256
 
 struct og01a1b_deckard {
@@ -639,8 +654,12 @@ struct og01a1b_deckard {
 	struct mutex lock;
 	struct work_struct work;
 
+	bool is_sync_sensor;
 	u32 queue_index;
 	bool ctrl_setup;
+
+	u32 ir_mode;
+	bool ir_gpio_requested;
 
 	u32 group_mode;
 	bool update_group[OG01A1B_NUM_GROUPS];
@@ -702,6 +721,16 @@ struct og01a1b {
 };
 
 #if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+static bool og01a1b_deckard_ir_enabled(struct og01a1b *og01a1b)
+{
+	return READ_ONCE(og01a1b->v.ir_mode) != OG01A1B_IR_MODE_OFF;
+}
+
+static bool og01a1b_deckard_ir_gpio_requested(struct og01a1b *og01a1b)
+{
+	return READ_ONCE(og01a1b->v.ir_gpio_requested);
+}
+
 static void og01a1b_deckard_lock(struct og01a1b *og01a1b)
 {
 	mutex_lock(&og01a1b->v.lock);
@@ -717,6 +746,16 @@ static void og01a1b_deckard_ctrl_setup(struct og01a1b *og01a1b, bool setup)
 	og01a1b->v.ctrl_setup = setup;
 }
 #else
+static bool og01a1b_deckard_ir_enabled(struct og01a1b *og01a1b)
+{
+	return false;
+}
+
+static bool og01a1b_deckard_ir_gpio_requested(struct og01a1b *og01a1b)
+{
+	return false;
+}
+
 static void og01a1b_deckard_lock(struct og01a1b *og01a1b)
 {
 }
@@ -760,7 +799,7 @@ static int og01a1b_test_pattern(struct og01a1b *og01a1b, u32 pattern)
 
 static int og01a1b_update_strobe(struct og01a1b *og01a1b)
 {
-	bool enable = og01a1b->strobe_oe;
+	bool enable = og01a1b->strobe_oe || og01a1b_deckard_ir_enabled(og01a1b);
 	int ret = 0;
 
 	if (enable)
@@ -776,7 +815,8 @@ static int og01a1b_update_strobe(struct og01a1b *og01a1b)
 
 static void og01a1b_update_ircontrol(struct og01a1b *og01a1b)
 {
-	bool enable = og01a1b->strobe_oe && og01a1b->streaming;
+	bool enable = (og01a1b->strobe_oe && og01a1b->streaming) ||
+		      og01a1b_deckard_ir_gpio_requested(og01a1b);
 
 	gpiod_set_value_cansleep(og01a1b->ircontrol_gpio, enable);
 }
@@ -854,6 +894,21 @@ static int og01a1b_deckard_set_group_reg(struct og01a1b *og01a1b, u32 arg)
 	return 0;
 }
 
+static bool og01a1b_deckard_group_strobe(struct og01a1b_deckard *v,
+					unsigned int group)
+{
+	switch (READ_ONCE(v->ir_mode)) {
+	case OG01A1B_IR_MODE_ALL_FRAMES:
+		return true;
+	case OG01A1B_IR_MODE_GROUP_1_ONLY:
+		return group == 1;
+	case OG01A1B_IR_MODE_GROUP_0_AND_2_ONLY:
+		return group == 0 || group == 2;
+	default:
+		return false;
+	}
+}
+
 /* Write the changed register groups with the group hold function */
 static int og01a1b_deckard_write_groups(struct og01a1b *og01a1b)
 {
@@ -891,6 +946,12 @@ static int og01a1b_deckard_write_groups(struct og01a1b *og01a1b)
 			if (ret)
 				return ret;
 		}
+
+		ret = cci_write(regmap, OG01A1B_REG_STROBE,
+				og01a1b_deckard_group_strobe(v, group) ?
+				OG01A1B_STROBE_ON : OG01A1B_STROBE_OFF, NULL);
+		if (ret)
+			return ret;
 
 		ret = cci_write(regmap, OG01A1B_REG_GROUP_ACCESS,
 				OG01A1B_GROUP_HOLD_END | group, NULL);
@@ -1078,6 +1139,31 @@ static int og01a1b_deckard_g_reg(struct og01a1b *og01a1b,
 	return ret;
 }
 
+static int og01a1b_deckard_set_ir_mode(struct og01a1b *og01a1b, u32 mode)
+{
+	struct og01a1b_deckard *v = &og01a1b->v;
+	int ret = 0;
+
+	mutex_lock(&v->lock);
+
+	WRITE_ONCE(v->ir_mode, mode);
+	WRITE_ONCE(v->ir_gpio_requested, mode != OG01A1B_IR_MODE_OFF);
+
+	/* The strobe is set in the register groups, rewrite all of them */
+	og01a1b_deckard_mark_groups(v);
+
+	og01a1b_update_ircontrol(og01a1b);
+
+	if (pm_runtime_get_if_in_use(og01a1b->dev) > 0) {
+		ret = og01a1b_update_strobe(og01a1b);
+		pm_runtime_put(og01a1b->dev);
+	}
+
+	mutex_unlock(&v->lock);
+
+	return ret;
+}
+
 static long og01a1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 				 void *arg)
 {
@@ -1093,6 +1179,10 @@ static long og01a1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 
 	case VIDIOC_OG01A1B_PRV_G_DRIVER_VERSION:
 		*(u32 *)arg = OG01A1B_DRIVER_VERSION;
+		break;
+
+	case VIDIOC_OG01A1B_PRV_S_IR_EMITTER_MODE:
+		ret = og01a1b_deckard_set_ir_mode(og01a1b, *(u32 *)arg);
 		break;
 
 	case VIDIOC_OG01A1B_PRV_S_REG:
@@ -1244,10 +1334,18 @@ static void og01a1b_deckard_s_stream(struct og01a1b *og01a1b, bool enable)
 	struct og01a1b_deckard *v = &og01a1b->v;
 
 	mutex_lock(&v->lock);
-	/* The groups set by userspace for the next stream start are kept */
-	if (!enable)
+	/*
+	 * The groups and the IR emitter mode set by userspace for the next
+	 * stream start are kept.
+	 */
+	if (!enable) {
 		og01a1b_deckard_reset_groups(v);
+		if (v->is_sync_sensor)
+			WRITE_ONCE(v->ir_mode, OG01A1B_IR_MODE_OFF);
+	}
 	og01a1b_deckard_mark_groups(v);
+	if (!enable)
+		WRITE_ONCE(v->ir_gpio_requested, false);
 	mutex_unlock(&v->lock);
 }
 
@@ -1303,12 +1401,17 @@ static int og01a1b_deckard_alloc_workqueues(struct device *dev)
 static int og01a1b_deckard_probe(struct og01a1b *og01a1b)
 {
 	struct og01a1b_deckard *v = &og01a1b->v;
+	const char *id;
 	u32 val;
 	int ret;
 
 	mutex_init(&v->lock);
 	spin_lock_init(&v->metadata_lock);
 	INIT_WORK(&v->work, og01a1b_deckard_work);
+
+	v->is_sync_sensor =
+		!device_property_read_string(og01a1b->dev, "id", &id) &&
+		!strcmp(id, OG01A1B_SYNC_SENSOR_ID);
 
 	if (device_property_read_u32(og01a1b->dev, "sensor-queue-index",
 				     &val) || val >= ARRAY_SIZE(sensor_workqueues))
