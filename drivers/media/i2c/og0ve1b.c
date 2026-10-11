@@ -10,6 +10,7 @@
 #include <linux/mutex.h>
 #include <linux/pm_runtime.h>
 #include <linux/property.h>
+#include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <linux/spinlock.h>
 #include <linux/units.h>
@@ -133,6 +134,12 @@ struct og0ve1b_deckard_register {
 	_IOR('V', BASE_VIDIOC_PRIVATE + 6, u32)
 #define VIDIOC_OG0VE1B_PRV_G_REGISTER \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct og0ve1b_deckard_register)
+/* Argument: 1 if the sensors are in sync, 0 otherwise */
+#define VIDIOC_OG0VE1B_PRV_S_IN_SYNC \
+	_IO('V', BASE_VIDIOC_PRIVATE + 9)
+/* Argument: 1 to restart streaming on all sensors */
+#define VIDIOC_OG0VE1B_PRV_S_SYNCHRONIZED_RESET \
+	_IO('V', BASE_VIDIOC_PRIVATE + 11)
 
 #define OG0VE1B_METADATA_VERSION	((3 << 16) | 1)
 #define OG0VE1B_DRIVER_VERSION	((1 << 16) | 1)
@@ -147,6 +154,9 @@ struct og0ve1b_deckard_register {
  */
 #define OG0VE1B_METADATA_SIZE		1208
 #define OG0VE1B_METADATA_HISTORY_OFFSET	24
+
+/* Broadcast address of all sensors on the bus */
+#define OG0VE1B_DUAL_I2C_ADDR		0x70
 
 /* Groups 0 and 1 are written alternately in this group mode */
 #define OG0VE1B_GROUP_MODE_2_GROUPS	2
@@ -183,6 +193,8 @@ struct og0ve1b_deckard {
 	struct work_struct work;
 
 	u32 queue_index;
+	bool dual_i2c_main;
+	bool dual_i2c_available;
 	bool ctrl_setup;
 	bool streaming;
 
@@ -419,6 +431,22 @@ static void og0ve1b_deckard_ctrl_setup(struct og0ve1b *og0ve1b, bool setup)
 	og0ve1b->v.ctrl_setup = setup;
 }
 
+/* Protects the sensor count and the dual client */
+static DEFINE_MUTEX(og0ve1b_deckard_mutex);
+static unsigned int og0ve1b_deckard_num_sensors;
+static struct i2c_client *og0ve1b_dual_client;
+static struct regmap *og0ve1b_dual_regmap;
+
+/* Shared by all sensors, as in the deckard driver */
+static u64 og0ve1b_last_time_in_sync;
+static u64 og0ve1b_last_dual_write_time;
+
+static const struct regmap_config og0ve1b_dual_regmap_config = {
+	.name = "og0ve1b-dual",
+	.reg_bits = 16,
+	.val_bits = 8,
+};
+
 static void og0ve1b_deckard_reset_groups(struct og0ve1b_deckard *v)
 {
 	unsigned long flags;
@@ -502,9 +530,9 @@ static void og0ve1b_deckard_work(struct work_struct *work)
 	struct og0ve1b_deckard *v = container_of(work, struct og0ve1b_deckard,
 						work);
 	struct og0ve1b *og0ve1b = container_of(v, struct og0ve1b, v);
-	u64 pre_write_ts, post_write_ts;
+	u64 pre_write_ts, post_write_ts, in_sync;
 	unsigned long flags;
-	int ret;
+	int ret = 0;
 
 	mutex_lock(&v->lock);
 
@@ -517,8 +545,25 @@ static void og0ve1b_deckard_work(struct work_struct *work)
 
 	/* The groups are written at every start of frame, changed or not */
 	if (v->streaming) {
-		ret = og0ve1b_deckard_write_group(og0ve1b, v->last_group,
-						 og0ve1b->regmap);
+		in_sync = READ_ONCE(og0ve1b_last_time_in_sync);
+		if (!in_sync) {
+			/* Not in sync, each sensor writes its own groups */
+			ret = og0ve1b_deckard_write_group(og0ve1b, v->last_group,
+							 og0ve1b->regmap);
+		} else if (v->dual_i2c_main) {
+			/* The main sensor writes its groups to all sensors */
+			ret = og0ve1b_dual_regmap ?
+			      og0ve1b_deckard_write_group(og0ve1b,
+							 v->last_group,
+							 og0ve1b_dual_regmap) :
+			      -ENODEV;
+			WRITE_ONCE(og0ve1b_last_dual_write_time,
+				   ktime_get_raw_ns());
+		} else if (READ_ONCE(og0ve1b_last_dual_write_time) < in_sync) {
+			/* No write by the main sensor since getting in sync */
+			ret = og0ve1b_deckard_write_group(og0ve1b, v->last_group,
+							 og0ve1b->regmap);
+		}
 		if (ret)
 			dev_err_ratelimited(og0ve1b->dev,
 					    "failed to write groups: %d\n", ret);
@@ -665,6 +710,43 @@ static int og0ve1b_deckard_g_reg(struct og0ve1b *og0ve1b,
 	return ret;
 }
 
+static void og0ve1b_deckard_set_in_sync(u32 in_sync)
+{
+	u64 now = ktime_get_raw_ns();
+	u64 last = READ_ONCE(og0ve1b_last_time_in_sync);
+
+	if (in_sync != 1)
+		WRITE_ONCE(og0ve1b_last_time_in_sync, 0);
+	else
+		WRITE_ONCE(og0ve1b_last_time_in_sync,
+			   last ? min(last, now) : now);
+}
+
+/* Restart streaming on all sensors at once through the broadcast address */
+static int og0ve1b_deckard_synchronized_reset(struct og0ve1b *og0ve1b,
+					     u32 reset)
+{
+	int ret = 0;
+
+	if (reset != 1)
+		return 0;
+
+	if (!og0ve1b->v.dual_i2c_available)
+		return -EINVAL;
+
+	if (!og0ve1b_dual_regmap)
+		return -ENODEV;
+
+	cci_write(og0ve1b_dual_regmap, OG0VE1B_REG_MODE_SELECT,
+		  OG0VE1B_MODE_STANDBY, &ret);
+	/* Let streaming stop completely */
+	fsleep(4000);
+	cci_write(og0ve1b_dual_regmap, OG0VE1B_REG_MODE_SELECT,
+		  OG0VE1B_MODE_STREAMING, &ret);
+
+	return ret;
+}
+
 static long og0ve1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 				 void *arg)
 {
@@ -708,6 +790,14 @@ static long og0ve1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 		ret = og0ve1b_deckard_g_reg(og0ve1b, arg);
 		mutex_unlock(&v->lock);
 		pm_runtime_put(og0ve1b->dev);
+		break;
+
+	case VIDIOC_OG0VE1B_PRV_S_IN_SYNC:
+		og0ve1b_deckard_set_in_sync(val);
+		break;
+
+	case VIDIOC_OG0VE1B_PRV_S_SYNCHRONIZED_RESET:
+		ret = og0ve1b_deckard_synchronized_reset(og0ve1b, val);
 		break;
 
 	default:
@@ -826,12 +916,42 @@ static void og0ve1b_deckard_s_stream(struct og0ve1b *og0ve1b, bool enable)
 {
 	struct og0ve1b_deckard *v = &og0ve1b->v;
 
+	WRITE_ONCE(og0ve1b_last_time_in_sync, 0);
+
 	mutex_lock(&v->lock);
 	v->streaming = enable;
 	/* The groups set by userspace for the next stream start are kept */
 	if (!enable)
 		og0ve1b_deckard_reset_groups(v);
 	mutex_unlock(&v->lock);
+}
+
+static void og0ve1b_deckard_create_dual_client(struct og0ve1b *og0ve1b,
+					      struct i2c_client *client)
+{
+	struct i2c_board_info info = {
+		I2C_BOARD_INFO("og0ve1b-dual", OG0VE1B_DUAL_I2C_ADDR),
+	};
+	struct i2c_client *dual;
+	struct regmap *regmap;
+
+	dual = i2c_new_client_device(client->adapter, &info);
+	if (IS_ERR(dual)) {
+		dev_err(og0ve1b->dev, "failed to create dual i2c client: %pe\n",
+			dual);
+		return;
+	}
+
+	regmap = regmap_init_i2c(dual, &og0ve1b_dual_regmap_config);
+	if (IS_ERR(regmap)) {
+		dev_err(og0ve1b->dev, "failed to init dual i2c regmap: %pe\n",
+			regmap);
+		i2c_unregister_device(dual);
+		return;
+	}
+
+	og0ve1b_dual_client = dual;
+	og0ve1b_dual_regmap = regmap;
 }
 
 static int og0ve1b_deckard_probe(struct og0ve1b *og0ve1b,
@@ -849,6 +969,23 @@ static int og0ve1b_deckard_probe(struct og0ve1b *og0ve1b,
 		val = 0;
 	v->queue_index = val;
 
+	v->dual_i2c_main =
+		!device_property_read_u32(og0ve1b->dev, "dual-i2c-main", &val) &&
+		val;
+	v->dual_i2c_available =
+		!device_property_read_u32(og0ve1b->dev, "dual-i2c-available",
+					  &val) && val;
+
+	mutex_lock(&og0ve1b_deckard_mutex);
+
+	/* The dual client is not needed for the sensor to work */
+	if (!og0ve1b_dual_client)
+		og0ve1b_deckard_create_dual_client(og0ve1b, client);
+
+	og0ve1b_deckard_num_sensors++;
+
+	mutex_unlock(&og0ve1b_deckard_mutex);
+
 	return 0;
 }
 
@@ -857,6 +994,18 @@ static void og0ve1b_deckard_remove(struct og0ve1b *og0ve1b)
 	struct og0ve1b_deckard *v = &og0ve1b->v;
 
 	cancel_work_sync(&v->work);
+
+	mutex_lock(&og0ve1b_deckard_mutex);
+
+	if (!--og0ve1b_deckard_num_sensors && og0ve1b_dual_client) {
+		regmap_exit(og0ve1b_dual_regmap);
+		i2c_unregister_device(og0ve1b_dual_client);
+		og0ve1b_dual_regmap = NULL;
+		og0ve1b_dual_client = NULL;
+	}
+
+	mutex_unlock(&og0ve1b_deckard_mutex);
+
 	mutex_destroy(&v->lock);
 }
 #else
