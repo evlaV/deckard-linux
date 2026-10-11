@@ -778,24 +778,17 @@ static void og01a1b_update_pad_format(const struct og01a1b_mode *mode,
 	fmt->field = V4L2_FIELD_NONE;
 }
 
-static int og01a1b_enable_streams(struct v4l2_subdev *sd,
-				  struct v4l2_subdev_state *state, u32 pad,
-				  u64 streams_mask)
+static int og01a1b_load_regs(struct og01a1b *og01a1b)
 {
-	struct og01a1b *og01a1b = to_og01a1b(sd);
 	const struct og01a1b_reg_list *reg_list;
 	int ret;
-
-	ret = pm_runtime_resume_and_get(og01a1b->dev);
-	if (ret)
-		return ret;
 
 	reg_list = &og01a1b->mclk_cfg->reg_list;
 	ret = cci_multi_reg_write(og01a1b->regmap, reg_list->regs,
 				  reg_list->num_of_regs, NULL);
 	if (ret) {
 		dev_err(og01a1b->dev, "failed to set plls: %d\n", ret);
-		goto error;
+		return ret;
 	}
 
 	ret = cci_multi_reg_write(og01a1b->regmap, og01a1b_common_regs,
@@ -803,7 +796,7 @@ static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 	if (ret) {
 		dev_err(og01a1b->dev, "failed to set common registers: %d\n",
 			ret);
-		goto error;
+		return ret;
 	}
 
 	reg_list = &og01a1b->cur_mode->reg_list;
@@ -811,16 +804,32 @@ static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 				  reg_list->num_of_regs, NULL);
 	if (ret) {
 		dev_err(og01a1b->dev, "failed to set mode: %d\n", ret);
-		goto error;
+		return ret;
 	}
 
 	ret = cci_write(og01a1b->regmap, CCI_REG8(0x3662),
 			(og01a1b->code == MEDIA_BUS_FMT_Y10_1X10 ? 0x4 : 0x6),
 			NULL);
-	if (ret) {
+	if (ret)
 		dev_err(og01a1b->dev, "failed to set output format: %d\n", ret);
+
+	return ret;
+}
+
+static int og01a1b_enable_streams(struct v4l2_subdev *sd,
+				  struct v4l2_subdev_state *state, u32 pad,
+				  u64 streams_mask)
+{
+	struct og01a1b *og01a1b = to_og01a1b(sd);
+	int ret;
+
+	ret = pm_runtime_resume_and_get(og01a1b->dev);
+	if (ret)
+		return ret;
+
+	ret = og01a1b_load_regs(og01a1b);
+	if (ret)
 		goto error;
-	}
 
 	ret = __v4l2_ctrl_handler_setup(og01a1b->sd.ctrl_handler);
 	if (ret)
