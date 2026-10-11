@@ -683,6 +683,265 @@ enum og01a1b_deckard_timing_state {
 	OG01A1B_TIMING_REQUESTED = 4,
 };
 
+/*
+ * Register settings of the og01a1b-a deckard driver for a 24 MHz clock, in the
+ * order of the deckard driver. They set up the 1280x1024 size, the additional
+ * 640x512 settings the 640x512 size.
+ */
+static const struct cci_reg_sequence og01a1b_deckard_regs[] = {
+	{ CCI_REG8(0x0103), 0x01 },
+	{ CCI_REG8(0x0100), 0x00 },
+	{ CCI_REG8(0x0300), 0x0a },
+	{ CCI_REG8(0x0301), 0x29 },
+	{ CCI_REG8(0x0302), 0x31 },
+	{ CCI_REG8(0x0303), 0x04 },
+	{ CCI_REG8(0x0304), 0x00 },
+	{ CCI_REG8(0x0305), 0xfa },
+	{ CCI_REG8(0x0306), 0x00 },
+	{ CCI_REG8(0x0307), 0x01 },
+	{ CCI_REG8(0x0308), 0x02 },
+	{ CCI_REG8(0x0309), 0x00 },
+	{ CCI_REG8(0x0310), 0x00 },
+	{ CCI_REG8(0x0311), 0x00 },
+	{ CCI_REG8(0x0312), 0x07 },
+	{ CCI_REG8(0x0313), 0x00 },
+	{ CCI_REG8(0x0314), 0x00 },
+	{ CCI_REG8(0x0315), 0x00 },
+	{ CCI_REG8(0x0320), 0x02 },
+	{ CCI_REG8(0x0321), 0x01 },
+	{ CCI_REG8(0x0322), 0x01 },
+	{ CCI_REG8(0x0323), 0x04 },
+	{ CCI_REG8(0x0324), 0x01 },
+	{ CCI_REG8(0x0325), 0xc2 },
+	{ CCI_REG8(0x0326), 0xce },
+	{ CCI_REG8(0x0327), 0x04 },
+	{ CCI_REG8(0x0329), 0x02 },
+	{ CCI_REG8(0x032a), 0x04 },
+	{ CCI_REG8(0x032b), 0x04 },
+	{ CCI_REG8(0x032c), 0x02 },
+	{ CCI_REG8(0x032d), 0x01 },
+	{ CCI_REG8(0x032e), 0x00 },
+	{ CCI_REG8(0x300d), 0x02 },
+	{ CCI_REG8(0x300e), 0x04 },
+	{ CCI_REG8(0x3021), 0x08 },
+	{ CCI_REG8(0x301e), 0x03 },
+	{ CCI_REG8(0x3103), 0x00 },
+	{ CCI_REG8(0x3106), 0x08 },
+	{ CCI_REG8(0x3107), 0x40 },
+	{ CCI_REG8(0x3216), 0x01 },
+	{ CCI_REG8(0x3217), 0x00 },
+	{ CCI_REG8(0x3218), 0xc0 },
+	{ CCI_REG8(0x3219), 0x55 },
+	{ CCI_REG8(0x3500), 0x00 },
+	{ CCI_REG8(0x3501), 0x04 },
+	{ CCI_REG8(0x3502), 0x8a },
+	{ CCI_REG8(0x3506), 0x01 },
+	{ CCI_REG8(0x3507), 0x72 },
+	{ CCI_REG8(0x3508), 0x01 },
+	{ CCI_REG8(0x3509), 0x00 },
+	{ CCI_REG8(0x350a), 0x01 },
+	{ CCI_REG8(0x350b), 0x00 },
+	{ CCI_REG8(0x350c), 0x00 },
+	{ CCI_REG8(0x3541), 0x00 },
+	{ CCI_REG8(0x3542), 0x40 },
+	{ CCI_REG8(0x3605), 0xe0 },
+	{ CCI_REG8(0x3606), 0x41 },
+	{ CCI_REG8(0x3614), 0x20 },
+	{ CCI_REG8(0x3620), 0x0b },
+	{ CCI_REG8(0x3630), 0x07 },
+	{ CCI_REG8(0x3636), 0xa0 },
+	{ CCI_REG8(0x3637), 0xf9 },
+	{ CCI_REG8(0x3638), 0x09 },
+	{ CCI_REG8(0x3639), 0x38 },
+	{ CCI_REG8(0x363f), 0x09 },
+	{ CCI_REG8(0x3640), 0x17 },
+	{ CCI_REG8(0x3662), 0x06 },
+	{ CCI_REG8(0x3665), 0x80 },
+	{ CCI_REG8(0x3670), 0x68 },
+	{ CCI_REG8(0x3674), 0x00 },
+	{ CCI_REG8(0x3677), 0x3f },
+	{ CCI_REG8(0x3679), 0x00 },
+	{ CCI_REG8(0x369f), 0x19 },
+	{ CCI_REG8(0x36a0), 0x03 },
+	{ CCI_REG8(0x36a2), 0x19 },
+	{ CCI_REG8(0x36a3), 0x03 },
+	{ CCI_REG8(0x370d), 0x66 },
+	{ CCI_REG8(0x370f), 0x00 },
+	{ CCI_REG8(0x3710), 0x03 },
+	{ CCI_REG8(0x3715), 0x03 },
+	{ CCI_REG8(0x3716), 0x03 },
+	{ CCI_REG8(0x3717), 0x06 },
+	{ CCI_REG8(0x3733), 0x00 },
+	{ CCI_REG8(0x3778), 0x00 },
+	{ CCI_REG8(0x37a8), 0x0f },
+	{ CCI_REG8(0x37a9), 0x01 },
+	{ CCI_REG8(0x37aa), 0x07 },
+	{ CCI_REG8(0x37bd), 0x1c },
+	{ CCI_REG8(0x37c1), 0x2f },
+	{ CCI_REG8(0x37c3), 0x09 },
+	{ CCI_REG8(0x37c8), 0x1d },
+	{ CCI_REG8(0x37ca), 0x30 },
+	{ CCI_REG8(0x37df), 0x00 },
+	{ CCI_REG8(0x3800), 0x00 },
+	{ CCI_REG8(0x3801), 0x00 },
+	{ CCI_REG8(0x3802), 0x00 },
+	{ CCI_REG8(0x3803), 0x00 },
+	{ CCI_REG8(0x3804), 0x05 },
+	{ CCI_REG8(0x3805), 0x0f },
+	{ CCI_REG8(0x3806), 0x04 },
+	{ CCI_REG8(0x3807), 0x0f },
+	{ CCI_REG8(0x3808), 0x05 },
+	{ CCI_REG8(0x3809), 0x00 },
+	{ CCI_REG8(0x380a), 0x04 },
+	{ CCI_REG8(0x380b), 0x00 },
+	{ CCI_REG8(0x380c), 0x03 },
+	{ CCI_REG8(0x380d), 0x50 },
+	{ CCI_REG8(0x380e), 0x04 },
+	{ CCI_REG8(0x380f), 0x98 },
+	{ CCI_REG8(0x3810), 0x00 },
+	{ CCI_REG8(0x3811), 0x08 },
+	{ CCI_REG8(0x3812), 0x00 },
+	{ CCI_REG8(0x3813), 0x08 },
+	{ CCI_REG8(0x3814), 0x11 },
+	{ CCI_REG8(0x3815), 0x11 },
+	{ CCI_REG8(0x3820), 0x40 },
+	{ CCI_REG8(0x3821), 0x04 },
+	{ CCI_REG8(0x3826), 0x00 },
+	{ CCI_REG8(0x3827), 0x00 },
+	{ CCI_REG8(0x382a), 0x08 },
+	{ CCI_REG8(0x382b), 0x52 },
+	{ CCI_REG8(0x382d), 0xba },
+	{ CCI_REG8(0x383d), 0x14 },
+	{ CCI_REG8(0x384a), 0xa2 },
+	{ CCI_REG8(0x3866), 0x0e },
+	{ CCI_REG8(0x3867), 0x07 },
+	{ CCI_REG8(0x3884), 0x00 },
+	{ CCI_REG8(0x3885), 0x08 },
+	{ CCI_REG8(0x3893), 0x68 },
+	{ CCI_REG8(0x3894), 0x2a },
+	{ CCI_REG8(0x3898), 0x00 },
+	{ CCI_REG8(0x3899), 0x31 },
+	{ CCI_REG8(0x389a), 0x04 },
+	{ CCI_REG8(0x389b), 0x00 },
+	{ CCI_REG8(0x389c), 0x0b },
+	{ CCI_REG8(0x389d), 0xad },
+	{ CCI_REG8(0x389f), 0x08 },
+	{ CCI_REG8(0x38a0), 0x00 },
+	{ CCI_REG8(0x38a1), 0x00 },
+	{ CCI_REG8(0x38a8), 0x70 },
+	{ CCI_REG8(0x38ac), 0xea },
+	{ CCI_REG8(0x38b2), 0x00 },
+	{ CCI_REG8(0x38b3), 0x08 },
+	{ CCI_REG8(0x38bc), 0x20 },
+	{ CCI_REG8(0x38c4), 0x0c },
+	{ CCI_REG8(0x38c5), 0x3a },
+	{ CCI_REG8(0x38c7), 0x3a },
+	{ CCI_REG8(0x38e1), 0xc0 },
+	{ CCI_REG8(0x38ec), 0x3c },
+	{ CCI_REG8(0x38f0), 0x09 },
+	{ CCI_REG8(0x38f1), 0x6f },
+	{ CCI_REG8(0x38fe), 0x3c },
+	{ CCI_REG8(0x391e), 0x00 },
+	{ CCI_REG8(0x391f), 0x00 },
+	{ CCI_REG8(0x3920), 0xa5 },
+	{ CCI_REG8(0x3921), 0x00 },
+	{ CCI_REG8(0x3922), 0x00 },
+	{ CCI_REG8(0x3923), 0x00 },
+	{ CCI_REG8(0x3924), 0x05 },
+	{ CCI_REG8(0x3925), 0x00 },
+	{ CCI_REG8(0x3926), 0x00 },
+	{ CCI_REG8(0x3927), 0x00 },
+	{ CCI_REG8(0x3928), 0x1a },
+	{ CCI_REG8(0x3929), 0x01 },
+	{ CCI_REG8(0x392a), 0xb4 },
+	{ CCI_REG8(0x392b), 0x00 },
+	{ CCI_REG8(0x392c), 0x10 },
+	{ CCI_REG8(0x392f), 0x40 },
+	{ CCI_REG8(0x4000), 0xcf },
+	{ CCI_REG8(0x4003), 0x40 },
+	{ CCI_REG8(0x4008), 0x00 },
+	{ CCI_REG8(0x4009), 0x07 },
+	{ CCI_REG8(0x400a), 0x02 },
+	{ CCI_REG8(0x400b), 0x54 },
+	{ CCI_REG8(0x400c), 0x00 },
+	{ CCI_REG8(0x400d), 0x07 },
+	{ CCI_REG8(0x4010), 0xc0 },
+	{ CCI_REG8(0x4012), 0x02 },
+	{ CCI_REG8(0x4014), 0x04 },
+	{ CCI_REG8(0x4015), 0x04 },
+	{ CCI_REG8(0x4017), 0x02 },
+	{ CCI_REG8(0x4042), 0x01 },
+	{ CCI_REG8(0x4306), 0x04 },
+	{ CCI_REG8(0x4307), 0x12 },
+	{ CCI_REG8(0x4509), 0x00 },
+	{ CCI_REG8(0x450b), 0x83 },
+	{ CCI_REG8(0x4604), 0x68 },
+	{ CCI_REG8(0x4608), 0x0a },
+	{ CCI_REG8(0x4700), 0x06 },
+	{ CCI_REG8(0x4800), 0x64 },
+	{ CCI_REG8(0x481b), 0x3c },
+	{ CCI_REG8(0x4825), 0x32 },
+	{ CCI_REG8(0x4833), 0x18 },
+	{ CCI_REG8(0x4837), 0x10 },
+	{ CCI_REG8(0x4850), 0x40 },
+	{ CCI_REG8(0x4860), 0x00 },
+	{ CCI_REG8(0x4861), 0xec },
+	{ CCI_REG8(0x4864), 0x00 },
+	{ CCI_REG8(0x4883), 0x00 },
+	{ CCI_REG8(0x4888), 0x90 },
+	{ CCI_REG8(0x4889), 0x05 },
+	{ CCI_REG8(0x488b), 0x04 },
+	{ CCI_REG8(0x4f00), 0x04 },
+	{ CCI_REG8(0x4f10), 0x04 },
+	{ CCI_REG8(0x4f21), 0x01 },
+	{ CCI_REG8(0x4f22), 0x40 },
+	{ CCI_REG8(0x4f23), 0x44 },
+	{ CCI_REG8(0x4f24), 0x51 },
+	{ CCI_REG8(0x4f25), 0x41 },
+	{ CCI_REG8(0x5000), 0x1f },
+	{ CCI_REG8(0x500a), 0x00 },
+	{ CCI_REG8(0x5100), 0x00 },
+	{ CCI_REG8(0x5111), 0x20 },
+	{ CCI_REG8(0x3009), 0x08 },
+	{ CCI_REG8(0x3017), 0xf2 },
+	{ CCI_REG8(0x3920), 0xff },
+	{ CCI_REG8(0x3924), 0x00 },
+	{ CCI_REG8(0x3667), 0x80 },
+	{ CCI_REG8(0x4d00), 0x4a },
+	{ CCI_REG8(0x4d01), 0x18 },
+	{ CCI_REG8(0x4d02), 0xbb },
+	{ CCI_REG8(0x4d03), 0xde },
+	{ CCI_REG8(0x4d04), 0x93 },
+	{ CCI_REG8(0x4d05), 0xff },
+	{ CCI_REG8(0x4d09), 0x0a },
+};
+
+static const struct cci_reg_sequence og01a1b_deckard_regs_640x512[] = {
+	{ CCI_REG8(0x3501), 0x02 },
+	{ CCI_REG8(0x3502), 0x73 },
+	{ CCI_REG8(0x3778), 0x00 },
+	{ CCI_REG8(0x3803), 0x00 },
+	{ CCI_REG8(0x3806), 0x04 },
+	{ CCI_REG8(0x3807), 0x0f },
+	{ CCI_REG8(0x3808), 0x02 },
+	{ CCI_REG8(0x3809), 0x80 },
+	{ CCI_REG8(0x380a), 0x02 },
+	{ CCI_REG8(0x380b), 0x00 },
+	{ CCI_REG8(0x380c), 0x03 },
+	{ CCI_REG8(0x380d), 0x0c },
+	{ CCI_REG8(0x380e), 0x02 },
+	{ CCI_REG8(0x380f), 0x81 },
+	{ CCI_REG8(0x3810), 0x00 },
+	{ CCI_REG8(0x3811), 0x04 },
+	{ CCI_REG8(0x3812), 0x00 },
+	{ CCI_REG8(0x3813), 0x04 },
+	{ CCI_REG8(0x3814), 0x22 },
+	{ CCI_REG8(0x3815), 0x22 },
+	{ CCI_REG8(0x3820), 0x40 },
+	{ CCI_REG8(0x3821), 0x04 },
+	{ CCI_REG8(0x4509), 0x80 },
+};
+
 #define OG01A1B_MAX_PENDING	256
 
 struct og01a1b_deckard {
@@ -1576,6 +1835,10 @@ static int og01a1b_deckard_probe(struct og01a1b *og01a1b,
 	spin_lock_init(&v->metadata_lock);
 	INIT_WORK(&v->work, og01a1b_deckard_work);
 
+	if (og01a1b->mclk_cfg->mclk != 24000000)
+		dev_warn(og01a1b->dev,
+			 "vendor register settings need a 24 MHz clock, using mainline settings\n");
+
 	v->is_sync_sensor =
 		!device_property_read_string(og01a1b->dev, "id", &id) &&
 		!strcmp(id, OG01A1B_SYNC_SENSOR_ID);
@@ -1897,6 +2160,46 @@ static int og01a1b_load_regs(struct og01a1b *og01a1b)
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+/*
+ * Write the register settings of the deckard driver instead of the mainline
+ * ones. The deckard userspace sets up other sizes than 1280x1024 and 640x512
+ * with raw register writes, the mode settings of these sizes are written
+ * after the deckard settings, so that the size is set up without them too.
+ */
+static int og01a1b_deckard_load_regs(struct og01a1b *og01a1b)
+{
+	const struct og01a1b_mode *mode = og01a1b->cur_mode;
+	int ret = 0;
+
+	if (og01a1b->mclk_cfg->mclk != 24000000)
+		return og01a1b_load_regs(og01a1b);
+
+	cci_multi_reg_write(og01a1b->regmap, og01a1b_deckard_regs,
+			    ARRAY_SIZE(og01a1b_deckard_regs), &ret);
+	if (mode->width == 640 && mode->height == 512)
+		cci_multi_reg_write(og01a1b->regmap, og01a1b_deckard_regs_640x512,
+				    ARRAY_SIZE(og01a1b_deckard_regs_640x512),
+				    &ret);
+	else if (mode->width != 1280 || mode->height != 1024)
+		cci_multi_reg_write(og01a1b->regmap, mode->reg_list.regs,
+				    mode->reg_list.num_of_regs, &ret);
+	/* The deckard driver supports 8-bit output only */
+	if (og01a1b->code == MEDIA_BUS_FMT_Y10_1X10)
+		cci_write(og01a1b->regmap, CCI_REG8(0x3662), 0x04, &ret);
+
+	if (ret)
+		dev_err(og01a1b->dev, "failed to set registers: %d\n", ret);
+
+	return ret;
+}
+#else
+static int og01a1b_deckard_load_regs(struct og01a1b *og01a1b)
+{
+	return og01a1b_load_regs(og01a1b);
+}
+#endif
+
 static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 				  struct v4l2_subdev_state *state, u32 pad,
 				  u64 streams_mask)
@@ -1910,7 +2213,7 @@ static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 
 	og01a1b_deckard_otp_preload(og01a1b);
 
-	ret = og01a1b_load_regs(og01a1b);
+	ret = og01a1b_deckard_load_regs(og01a1b);
 	if (ret)
 		goto error;
 
@@ -2147,6 +2450,13 @@ static int og01a1b_otp_load(struct og01a1b *og01a1b)
 			 &val, &ret);
 		og01a1b->otp[i] = val;
 	}
+
+	/*
+	 * The deckard driver leaves the sensor streaming, the register settings
+	 * loaded next or the power off reset it.
+	 */
+	if (IS_ENABLED(CONFIG_VIDEO_DECKARD_API))
+		return ret;
 
 	err = cci_write(og01a1b->regmap, OG01A1B_REG_MODE_SELECT,
 			OG01A1B_MODE_STANDBY, NULL);
