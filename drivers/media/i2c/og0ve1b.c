@@ -119,6 +119,15 @@ struct og0ve1b_deckard_register {
 	u8 len;
 };
 
+struct og0ve1b_deckard_timing_adjustment {
+	__u16 new_rows;
+	__u16 rows_to_restore;
+	__u16 new_global_row;
+	__u16 global_row_to_restore;
+	__u8 group_to_adjust;
+	__u8 number_of_frames_to_hold_adjustment;
+};
+
 #define VIDIOC_OG0VE1B_PRV_G_METADATA_VERSION \
 	_IOR('V', BASE_VIDIOC_PRIVATE + 1, u32)
 /* Argument: register address in bits [15:0], value in bits [23:16] */
@@ -132,6 +141,9 @@ struct og0ve1b_deckard_register {
 	_IO('V', BASE_VIDIOC_PRIVATE + 5)
 #define VIDIOC_OG0VE1B_PRV_G_DRIVER_VERSION \
 	_IOR('V', BASE_VIDIOC_PRIVATE + 6, u32)
+#define VIDIOC_OG0VE1B_PRV_S_TIMING_ADJUSTMENT \
+	_IOW('V', BASE_VIDIOC_PRIVATE + 7, \
+	     struct og0ve1b_deckard_timing_adjustment)
 #define VIDIOC_OG0VE1B_PRV_G_REGISTER \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct og0ve1b_deckard_register)
 /* Argument: 1 if the sensors are in sync, 0 otherwise */
@@ -155,6 +167,8 @@ struct og0ve1b_deckard_register {
 #define OG0VE1B_METADATA_SIZE		1208
 #define OG0VE1B_METADATA_HISTORY_OFFSET	24
 
+#define OG0VE1B_REG_GLOBAL_ROW		CCI_REG16(0x382c)
+
 /* Broadcast address of all sensors on the bus */
 #define OG0VE1B_DUAL_I2C_ADDR		0x70
 
@@ -176,8 +190,15 @@ struct og0ve1b_deckard_groups {
 	struct og0ve1b_deckard_register_set sets[OG0VE1B_NUM_GROUPS];
 };
 
+enum og0ve1b_deckard_timing_state {
+	OG0VE1B_TIMING_NOT_IN_PROGRESS = 0,
+	OG0VE1B_TIMING_READY_FOR_GROUP_RESTORE = 1,
+	OG0VE1B_TIMING_REQUESTED = 4,
+};
+
 /* Layouts of the deckard driver on LP64 architectures */
 static_assert(sizeof(struct og0ve1b_deckard_register) == 12);
+static_assert(sizeof(struct og0ve1b_deckard_timing_adjustment) == 10);
 static_assert(sizeof(struct og0ve1b_deckard_register_set) == 62);
 static_assert(sizeof(struct og0ve1b_deckard_groups) == 232);
 static_assert(offsetof(struct og0ve1b_deckard_groups, sets) == 40);
@@ -201,6 +222,9 @@ struct og0ve1b_deckard {
 	u32 group_mode;
 	unsigned int last_group;
 	struct og0ve1b_deckard_groups active;
+
+	struct og0ve1b_deckard_timing_adjustment timing;
+	enum og0ve1b_deckard_timing_state timing_state;
 
 	u64 last_sof_ts;
 	u64 last_sof_isr_ts;
@@ -497,6 +521,41 @@ static int og0ve1b_deckard_set_group_reg(struct og0ve1b *og0ve1b, u32 arg)
 }
 
 /*
+ * As the deckard driver, set the requested frame timing with the next write
+ * of the group to adjust, and restore it with the following one.
+ */
+static int og0ve1b_deckard_adjust_timing(struct og0ve1b *og0ve1b,
+					struct regmap *regmap)
+{
+	struct og0ve1b_deckard *v = &og0ve1b->v;
+	int ret = 0;
+
+	switch (v->timing_state) {
+	case OG0VE1B_TIMING_REQUESTED:
+		cci_write(regmap, OG0VE1B_REG_VTS, v->timing.new_rows, &ret);
+		cci_write(regmap, OG0VE1B_REG_GLOBAL_ROW,
+			  v->timing.new_global_row, &ret);
+		if (!ret)
+			v->timing_state = OG0VE1B_TIMING_READY_FOR_GROUP_RESTORE;
+		break;
+
+	case OG0VE1B_TIMING_READY_FOR_GROUP_RESTORE:
+		cci_write(regmap, OG0VE1B_REG_VTS, v->timing.rows_to_restore,
+			  &ret);
+		cci_write(regmap, OG0VE1B_REG_GLOBAL_ROW,
+			  v->timing.global_row_to_restore, &ret);
+		if (!ret)
+			v->timing_state = OG0VE1B_TIMING_NOT_IN_PROGRESS;
+		break;
+
+	default:
+		break;
+	}
+
+	return ret;
+}
+
+/*
  * Write a register group, as the deckard driver without the group hold
  * function, adjacent registers in one transfer.
  */
@@ -521,6 +580,10 @@ static int og0ve1b_deckard_write_group(struct og0ve1b *og0ve1b,
 		if (ret)
 			return ret;
 	}
+
+	/* The frame timing is adjusted on the sensor itself */
+	if (group == og0ve1b->v.timing.group_to_adjust)
+		return og0ve1b_deckard_adjust_timing(og0ve1b, og0ve1b->regmap);
 
 	return 0;
 }
@@ -778,6 +841,13 @@ static long og0ve1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 
 	case VIDIOC_OG0VE1B_PRV_S_GROUP_MODE:
 		WRITE_ONCE(v->group_mode, val);
+		break;
+
+	case VIDIOC_OG0VE1B_PRV_S_TIMING_ADJUSTMENT:
+		mutex_lock(&v->lock);
+		v->timing = *(struct og0ve1b_deckard_timing_adjustment *)arg;
+		v->timing_state = OG0VE1B_TIMING_REQUESTED;
+		mutex_unlock(&v->lock);
 		break;
 
 	case VIDIOC_OG0VE1B_PRV_G_REGISTER:
