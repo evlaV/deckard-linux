@@ -16,7 +16,6 @@
 
 #define OG01A1B_LINK_FREQ_500MHZ	500000000ULL
 #define OG01A1B_SCLK			120000000LL
-#define OG01A1B_MCLK			19200000
 #define OG01A1B_DATA_LANES		2
 
 #define OG01A1B_REG_CHIP_ID		CCI_REG24(0x300a)
@@ -72,7 +71,11 @@ struct og01a1b_reg_list {
 	u32 num_of_regs;
 };
 
-struct og01a1b_link_freq_config {
+struct og01a1b_mclk_config {
+	/* External clock frequency in Hz */
+	unsigned long mclk;
+
+	/* PLL and MIPI timing settings for the 1000 Mbps data rate */
 	const struct og01a1b_reg_list reg_list;
 };
 
@@ -104,7 +107,7 @@ static const u32 og01a1b_mbus_formats[] = {
 	MEDIA_BUS_FMT_Y8_1X8,
 };
 
-static const struct cci_reg_sequence mipi_data_rate_1000mbps[] = {
+static const struct cci_reg_sequence mipi_data_rate_1000mbps_mclk_19_2mhz[] = {
 	{ CCI_REG8(0x0103), 0x01 },
 	{ CCI_REG8(0x0303), 0x02 },
 	{ CCI_REG8(0x0304), 0x00 },
@@ -112,15 +115,24 @@ static const struct cci_reg_sequence mipi_data_rate_1000mbps[] = {
 	{ CCI_REG8(0x0323), 0x02 },
 	{ CCI_REG8(0x0324), 0x01 },
 	{ CCI_REG8(0x0325), 0x77 },
+	{ CCI_REG8(0x4837), 0x0f },
+};
+
+static const struct cci_reg_sequence mipi_data_rate_1000mbps_mclk_24mhz[] = {
+	{ CCI_REG8(0x0103), 0x01 },
+	{ CCI_REG8(0x0303), 0x04 },
+	{ CCI_REG8(0x0304), 0x00 },
+	{ CCI_REG8(0x0305), 0xfa },
+	{ CCI_REG8(0x0323), 0x04 },
+	{ CCI_REG8(0x0324), 0x01 },
+	{ CCI_REG8(0x0325), 0xc2 },
+	{ CCI_REG8(0x4837), 0x10 },
 };
 
 static const struct cci_reg_sequence og01a1b_common_regs[] = {
 	{ CCI_REG8(0x0300), 0x0a },
 	{ CCI_REG8(0x0301), 0x29 },
 	{ CCI_REG8(0x0302), 0x31 },
-	{ CCI_REG8(0x0303), 0x02 },
-	{ CCI_REG8(0x0304), 0x00 },
-	{ CCI_REG8(0x0305), 0xd2 },
 	{ CCI_REG8(0x0306), 0x00 },
 	{ CCI_REG8(0x0307), 0x01 },
 	{ CCI_REG8(0x0308), 0x02 },
@@ -134,9 +146,6 @@ static const struct cci_reg_sequence og01a1b_common_regs[] = {
 	{ CCI_REG8(0x0320), 0x02 },
 	{ CCI_REG8(0x0321), 0x01 },
 	{ CCI_REG8(0x0322), 0x01 },
-	{ CCI_REG8(0x0323), 0x02 },
-	{ CCI_REG8(0x0324), 0x01 },
-	{ CCI_REG8(0x0325), 0x77 },
 	{ CCI_REG8(0x0326), 0xce },
 	{ CCI_REG8(0x0327), 0x04 },
 	{ CCI_REG8(0x0329), 0x02 },
@@ -305,7 +314,6 @@ static const struct cci_reg_sequence og01a1b_common_regs[] = {
 	{ CCI_REG8(0x481b), 0x3c },
 	{ CCI_REG8(0x4825), 0x32 },
 	{ CCI_REG8(0x4833), 0x18 },
-	{ CCI_REG8(0x4837), 0x0f },
 	{ CCI_REG8(0x4850), 0x40 },
 	{ CCI_REG8(0x4860), 0x00 },
 	{ CCI_REG8(0x4861), 0xec },
@@ -423,13 +431,23 @@ static const s64 link_freq_menu_items[] = {
 	OG01A1B_LINK_FREQ_500MHZ,
 };
 
-static const struct og01a1b_link_freq_config link_freq_configs[] = {
-	[OG01A1B_LINK_FREQ_1000MBPS] = {
+static const struct og01a1b_mclk_config mclk_configs[] = {
+	{
+		.mclk = 19200000,
 		.reg_list = {
-			.num_of_regs = ARRAY_SIZE(mipi_data_rate_1000mbps),
-			.regs = mipi_data_rate_1000mbps,
-		}
-	}
+			.num_of_regs =
+				ARRAY_SIZE(mipi_data_rate_1000mbps_mclk_19_2mhz),
+			.regs = mipi_data_rate_1000mbps_mclk_19_2mhz,
+		},
+	},
+	{
+		.mclk = 24000000,
+		.reg_list = {
+			.num_of_regs =
+				ARRAY_SIZE(mipi_data_rate_1000mbps_mclk_24mhz),
+			.regs = mipi_data_rate_1000mbps_mclk_24mhz,
+		},
+	},
 };
 
 static const struct og01a1b_mode supported_modes[] = {
@@ -463,6 +481,7 @@ struct og01a1b {
 	struct device *dev;
 	struct regmap *regmap;
 	struct clk *xvclk;
+	const struct og01a1b_mclk_config *mclk_cfg;
 	struct gpio_desc *reset_gpio;
 	struct regulator *avdd;
 	struct regulator *dovdd;
@@ -659,7 +678,6 @@ static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 				  u64 streams_mask)
 {
 	struct og01a1b *og01a1b = to_og01a1b(sd);
-	unsigned int link_freq_index = og01a1b->cur_mode->link_freq_index;
 	const struct og01a1b_reg_list *reg_list;
 	int ret;
 
@@ -667,7 +685,7 @@ static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 	if (ret)
 		return ret;
 
-	reg_list = &link_freq_configs[link_freq_index].reg_list;
+	reg_list = &og01a1b->mclk_cfg->reg_list;
 	ret = cci_multi_reg_write(og01a1b->regmap, reg_list->regs,
 				  reg_list->num_of_regs, NULL);
 	if (ret) {
@@ -931,9 +949,10 @@ check_hwcfg_error:
 /* Power/clock management functions */
 static int og01a1b_power_on(struct device *dev)
 {
-	unsigned long delay = DIV_ROUND_UP(8192UL * USEC_PER_SEC, OG01A1B_MCLK);
 	struct v4l2_subdev *sd = dev_get_drvdata(dev);
 	struct og01a1b *og01a1b = to_og01a1b(sd);
+	unsigned long delay = DIV_ROUND_UP(8192UL * USEC_PER_SEC,
+					   og01a1b->mclk_cfg->mclk);
 	int ret;
 
 	if (og01a1b->avdd) {
@@ -982,9 +1001,10 @@ avdd_disable:
 
 static int og01a1b_power_off(struct device *dev)
 {
-	unsigned long delay = DIV_ROUND_UP(512 * USEC_PER_SEC, OG01A1B_MCLK);
 	struct v4l2_subdev *sd = dev_get_drvdata(dev);
 	struct og01a1b *og01a1b = to_og01a1b(sd);
+	unsigned long delay = DIV_ROUND_UP(512 * USEC_PER_SEC,
+					   og01a1b->mclk_cfg->mclk);
 
 	if (og01a1b->xvclk)
 		usleep_range(delay, 2 * delay);
@@ -1021,6 +1041,7 @@ static int og01a1b_probe(struct i2c_client *client)
 {
 	struct og01a1b *og01a1b;
 	unsigned long freq;
+	unsigned int i;
 	int ret;
 
 	og01a1b = devm_kzalloc(&client->dev, sizeof(*og01a1b), GFP_KERNEL);
@@ -1042,7 +1063,13 @@ static int og01a1b_probe(struct i2c_client *client)
 				     "failed to get xvclk clock\n");
 
 	freq = clk_get_rate(og01a1b->xvclk);
-	if (freq != OG01A1B_MCLK)
+	for (i = 0; i < ARRAY_SIZE(mclk_configs); i++) {
+		if (freq == mclk_configs[i].mclk) {
+			og01a1b->mclk_cfg = &mclk_configs[i];
+			break;
+		}
+	}
+	if (!og01a1b->mclk_cfg)
 		return dev_err_probe(og01a1b->dev, -EINVAL,
 				     "external clock %lu is not supported",
 				     freq);
