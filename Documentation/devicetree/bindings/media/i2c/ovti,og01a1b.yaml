@@ -37,6 +37,13 @@ properties:
     description: Input GPIO connected to strobe pad of the sensor.
     maxItems: 1
 
+  ircontrol-gpios:
+    description:
+      Output GPIO enabling an external infrared illuminator, which is driven
+      by the strobe pad of the sensor. The GPIO is asserted while the sensor
+      strobe output is enabled and the sensor is streaming.
+    maxItems: 1
+
   avdd-supply:
     description: Analogue circuit voltage supply.
 
