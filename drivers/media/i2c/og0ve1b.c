@@ -170,6 +170,12 @@ struct og0ve1b_deckard_timing_adjustment {
 #define OG0VE1B_METADATA_SIZE		1208
 #define OG0VE1B_METADATA_HISTORY_OFFSET	24
 
+/* OTP memory */
+#define OG0VE1B_REG_OTP_LOAD		CCI_REG8(0x3d81)
+#define OG0VE1B_OTP_LOAD_START		BIT(0)
+#define OG0VE1B_OTP_BUFFER		0x3d00
+#define OG0VE1B_OTP_SIZE		32
+
 #define OG0VE1B_REG_GLOBAL_ROW		CCI_REG16(0x382c)
 
 /* Broadcast address of all sensors on the bus */
@@ -271,6 +277,10 @@ struct og0ve1b {
 
 #if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
 	struct og0ve1b_deckard v;
+
+	/* OTP memory, cached on first read */
+	u8 otp[OG0VE1B_OTP_SIZE];
+	bool otp_valid;
 #endif
 };
 
@@ -1363,6 +1373,30 @@ static void og0ve1b_update_pad_format(const struct og0ve1b_mode *mode,
 	fmt->xfer_func = V4L2_XFER_FUNC_NONE;
 }
 
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+static int og0ve1b_otp_load(struct og0ve1b *og0ve1b);
+
+/*
+ * As the deckard driver, read the OTP at the first power up, before the
+ * register settings are loaded, so that it can be read later while streaming.
+ * Called with the state lock held, while the sensor is powered.
+ */
+static void og0ve1b_deckard_otp_preload(struct og0ve1b *og0ve1b)
+{
+	if (og0ve1b->otp_valid)
+		return;
+
+	if (og0ve1b_otp_load(og0ve1b))
+		dev_warn(og0ve1b->dev, "failed to read OTP\n");
+	else
+		og0ve1b->otp_valid = true;
+}
+#else
+static void og0ve1b_deckard_otp_preload(struct og0ve1b *og0ve1b)
+{
+}
+#endif
+
 static int og0ve1b_enable_streams(struct v4l2_subdev *sd,
 				  struct v4l2_subdev_state *state, u32 pad,
 				  u64 streams_mask)
@@ -1374,6 +1408,8 @@ static int og0ve1b_enable_streams(struct v4l2_subdev *sd,
 	ret = pm_runtime_resume_and_get(og0ve1b->dev);
 	if (ret)
 		return ret;
+
+	og0ve1b_deckard_otp_preload(og0ve1b);
 
 	/* Skip a step of explicit entering into the standby mode */
 	ret = cci_write(og0ve1b->regmap, OG0VE1B_REG_SOFTWARE_RST,
@@ -1599,6 +1635,153 @@ static int og0ve1b_check_hwcfg(struct og0ve1b *og0ve1b)
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+/*
+ * OTP memory, loaded into the register space at 0x3d00-0x3d1f by an OTP load
+ * request while the sensor is streaming, as in the deckard driver.
+ */
+static int og0ve1b_otp_load(struct og0ve1b *og0ve1b)
+{
+	unsigned int i;
+	u64 val = 0;
+	int ret;
+
+	/* The OTP is loaded into the buffer only while streaming */
+	ret = cci_write(og0ve1b->regmap, OG0VE1B_REG_MODE_SELECT,
+			OG0VE1B_MODE_STREAMING, NULL);
+	if (ret)
+		return ret;
+
+	fsleep(5000);
+
+	for (i = 0; i < OG0VE1B_OTP_SIZE; i++)
+		cci_write(og0ve1b->regmap, CCI_REG8(OG0VE1B_OTP_BUFFER + i), 0,
+			  &ret);
+
+	cci_write(og0ve1b->regmap, OG0VE1B_REG_OTP_LOAD,
+		  OG0VE1B_OTP_LOAD_START, &ret);
+	if (!ret)
+		fsleep(15000);
+
+	for (i = 0; i < OG0VE1B_OTP_SIZE; i++) {
+		cci_read(og0ve1b->regmap, CCI_REG8(OG0VE1B_OTP_BUFFER + i),
+			 &val, &ret);
+		og0ve1b->otp[i] = val;
+	}
+
+	/*
+	 * The deckard driver leaves the sensor streaming, the register settings
+	 * loaded next or the power off reset it.
+	 */
+	return ret;
+}
+
+static int og0ve1b_otp_read(struct og0ve1b *og0ve1b, unsigned int off,
+			    void *val, size_t count)
+{
+	struct v4l2_subdev_state *state;
+	int ret = 0;
+
+	/* Serialise against streaming and control updates */
+	state = v4l2_subdev_lock_and_get_active_state(&og0ve1b->sd);
+
+	if (!og0ve1b->otp_valid) {
+		/*
+		 * The OTP load toggles streaming, it can't be done while the
+		 * sensor is in use.
+		 */
+		ret = pm_runtime_get_if_in_use(og0ve1b->dev);
+		if (ret > 0) {
+			pm_runtime_put(og0ve1b->dev);
+			ret = -EBUSY;
+		}
+		if (ret)
+			goto unlock;
+
+		ret = pm_runtime_resume_and_get(og0ve1b->dev);
+		if (ret)
+			goto unlock;
+
+		ret = og0ve1b_otp_load(og0ve1b);
+		pm_runtime_put(og0ve1b->dev);
+		if (ret) {
+			dev_err(og0ve1b->dev, "failed to read OTP: %d\n", ret);
+			goto unlock;
+		}
+
+		og0ve1b->otp_valid = true;
+	}
+
+	memcpy(val, og0ve1b->otp + off, count);
+
+unlock:
+	v4l2_subdev_unlock_state(state);
+
+	return ret;
+}
+
+/* OTP sysfs attributes of the og0ve10-a deckard driver */
+static ssize_t otp_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct og0ve1b *og0ve1b = to_og0ve1b(dev_get_drvdata(dev));
+	int ret;
+
+	ret = og0ve1b_otp_read(og0ve1b, 0, buf, OG0VE1B_OTP_SIZE);
+
+	return ret ? ret : OG0VE1B_OTP_SIZE;
+}
+
+static ssize_t otp_valid_show(struct device *dev,
+			      struct device_attribute *attr, char *buf)
+{
+	struct og0ve1b *og0ve1b = to_og0ve1b(dev_get_drvdata(dev));
+	struct v4l2_subdev_state *state;
+	bool valid;
+
+	state = v4l2_subdev_lock_and_get_active_state(&og0ve1b->sd);
+	valid = og0ve1b->otp_valid;
+	v4l2_subdev_unlock_state(state);
+
+	return sysfs_emit(buf, "%d\n", valid);
+}
+
+/* Writing 0 invalidates the cached OTP data */
+static ssize_t otp_valid_store(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t count)
+{
+	struct og0ve1b *og0ve1b = to_og0ve1b(dev_get_drvdata(dev));
+	struct v4l2_subdev_state *state;
+	unsigned int val;
+	int ret;
+
+	ret = kstrtouint(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val)
+		return -EINVAL;
+
+	state = v4l2_subdev_lock_and_get_active_state(&og0ve1b->sd);
+	og0ve1b->otp_valid = false;
+	memset(og0ve1b->otp, 0, sizeof(og0ve1b->otp));
+	v4l2_subdev_unlock_state(state);
+
+	return count;
+}
+
+static DEVICE_ATTR_RO(otp);
+static DEVICE_ATTR_RW(otp_valid);
+
+static struct attribute *og0ve1b_deckard_attrs[] = {
+	&dev_attr_otp.attr,
+	&dev_attr_otp_valid.attr,
+	NULL
+};
+ATTRIBUTE_GROUPS(og0ve1b_deckard);
+#endif
+
 static int og0ve1b_power_on(struct device *dev)
 {
 	struct v4l2_subdev *sd = dev_get_drvdata(dev);
@@ -1803,6 +1986,9 @@ static struct i2c_driver og0ve1b_i2c_driver = {
 		.name = "og0ve1b",
 		.pm = &og0ve1b_pm_ops,
 		.of_match_table = og0ve1b_of_match,
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+		.dev_groups = og0ve1b_deckard_groups,
+#endif
 	},
 	.probe = og0ve1b_probe,
 	.remove = og0ve1b_remove,
