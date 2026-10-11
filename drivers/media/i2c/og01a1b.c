@@ -7,6 +7,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 #include <media/v4l2-cci.h>
@@ -545,6 +546,45 @@ static const struct og01a1b_mode supported_modes[] = {
 	},
 };
 
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+/*
+ * Vendor interface, compatible with the og01a1b-a deckard driver.
+ * The ioctl numbers, the structure layouts and the control IDs are an ABI
+ * shared with the deckard userspace and the ISP.
+ */
+
+struct og01a1b_deckard_register {
+	u16 reg_addr;
+	u32 reg_value;
+	u8 len;
+};
+
+/* Argument: register address in bits [15:0], value in bits [23:16] */
+#define VIDIOC_OG01A1B_PRV_S_REG \
+	_IO('V', BASE_VIDIOC_PRIVATE + 3)
+#define VIDIOC_OG01A1B_PRV_G_DRIVER_VERSION \
+	_IOR('V', BASE_VIDIOC_PRIVATE + 6, u32)
+#define VIDIOC_SENSOR_PRV_G_REGISTER \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct og01a1b_deckard_register)
+
+#define OG01A1B_DRIVER_VERSION	((1 << 16) | 1)
+
+/* Layouts of the deckard driver on LP64 architectures */
+static_assert(sizeof(struct og01a1b_deckard_register) == 12);
+
+#define OG01A1B_MAX_PENDING	256
+
+struct og01a1b_deckard {
+	/* Serialises register access */
+	struct mutex lock;
+	bool ctrl_setup;
+
+	/* Raw register writes done while the sensor isn't powered */
+	struct cci_reg_sequence pending[OG01A1B_MAX_PENDING];
+	unsigned int num_pending;
+};
+#endif
+
 struct og01a1b {
 	struct device *dev;
 	struct regmap *regmap;
@@ -574,7 +614,40 @@ struct og01a1b {
 
 	/* Selected media bus format output */
 	u32 code;
+
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+	struct og01a1b_deckard v;
+#endif
 };
+
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+static void og01a1b_deckard_lock(struct og01a1b *og01a1b)
+{
+	mutex_lock(&og01a1b->v.lock);
+}
+
+static void og01a1b_deckard_unlock(struct og01a1b *og01a1b)
+{
+	mutex_unlock(&og01a1b->v.lock);
+}
+
+static void og01a1b_deckard_ctrl_setup(struct og01a1b *og01a1b, bool setup)
+{
+	og01a1b->v.ctrl_setup = setup;
+}
+#else
+static void og01a1b_deckard_lock(struct og01a1b *og01a1b)
+{
+}
+
+static void og01a1b_deckard_unlock(struct og01a1b *og01a1b)
+{
+}
+
+static void og01a1b_deckard_ctrl_setup(struct og01a1b *og01a1b, bool setup)
+{
+}
+#endif
 
 static u64 to_pixel_rate(u32 f_index, u32 bpp)
 {
@@ -627,6 +700,240 @@ static void og01a1b_update_ircontrol(struct og01a1b *og01a1b)
 	gpiod_set_value_cansleep(og01a1b->ircontrol_gpio, enable);
 }
 
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+static int og01a1b_deckard_s_reg(struct og01a1b *og01a1b, u32 arg)
+{
+	u32 reg = CCI_REG8(arg & 0xffff);
+	u8 val = (arg >> 16) & 0xff;
+
+	return cci_write(og01a1b->regmap, reg, val, NULL);
+}
+
+/*
+ * The deckard userspace configures the sensor with raw register writes before
+ * stream start, the deckard driver keeps the sensor powered for them with
+ * .s_power. Here the writes done while the sensor isn't powered are queued,
+ * and written in order at stream start, after the register settings and the
+ * controls. Called with the deckard lock held.
+ */
+static int og01a1b_deckard_queue_reg(struct og01a1b *og01a1b, u32 arg)
+{
+	struct og01a1b_deckard *v = &og01a1b->v;
+	u32 reg = CCI_REG8(arg & 0xffff);
+
+	/* Streaming can't be started or stopped while the sensor is off */
+	if (reg == OG01A1B_REG_MODE_SELECT)
+		return -EAGAIN;
+
+	if (v->num_pending >= ARRAY_SIZE(v->pending))
+		return -ENOSPC;
+
+	v->pending[v->num_pending].reg = reg;
+	v->pending[v->num_pending].val = (arg >> 16) & 0xff;
+	v->num_pending++;
+
+	return 0;
+}
+
+/* Called with the deckard lock held */
+static int og01a1b_deckard_write_reg(struct og01a1b *og01a1b, u32 arg)
+{
+	int ret;
+
+	/* Keep the order of the queued writes */
+	if (og01a1b->v.num_pending ||
+	    pm_runtime_get_if_in_use(og01a1b->dev) <= 0)
+		return og01a1b_deckard_queue_reg(og01a1b, arg);
+
+	ret = og01a1b_deckard_s_reg(og01a1b, arg);
+	pm_runtime_put(og01a1b->dev);
+
+	return ret;
+}
+
+/* Called at stream start, while the sensor is powered */
+static int og01a1b_deckard_write_pending(struct og01a1b *og01a1b)
+{
+	struct og01a1b_deckard *v = &og01a1b->v;
+	int ret = 0;
+
+	mutex_lock(&v->lock);
+	cci_multi_reg_write(og01a1b->regmap, v->pending, v->num_pending, &ret);
+	v->num_pending = 0;
+	mutex_unlock(&v->lock);
+
+	if (ret)
+		dev_err(og01a1b->dev, "failed to write queued registers: %d\n",
+			ret);
+
+	return ret;
+}
+
+static int og01a1b_deckard_g_reg(struct og01a1b *og01a1b,
+				struct og01a1b_deckard_register *reg)
+{
+	static const u32 width[] = {
+		CCI_REG8(0), CCI_REG16(0), CCI_REG24(0), CCI_REG32(0),
+	};
+	u64 val = 0;
+	int ret;
+
+	if (!reg->len || reg->len > ARRAY_SIZE(width)) {
+		ret = -EINVAL;
+	} else {
+		ret = cci_read(og01a1b->regmap, width[reg->len - 1] |
+			       reg->reg_addr, &val, NULL);
+		if (ret)
+			dev_err(og01a1b->dev,
+				"Failed to read register 0x%04x: %d\n",
+				reg->reg_addr, ret);
+	}
+
+	reg->reg_value = val;
+
+	return ret;
+}
+
+static long og01a1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
+				 void *arg)
+{
+	struct og01a1b *og01a1b = to_og01a1b(sd);
+	struct og01a1b_deckard *v = &og01a1b->v;
+	u32 val = (uintptr_t)arg;
+	long ret = 0;
+
+	switch (cmd) {
+	case VIDIOC_OG01A1B_PRV_G_DRIVER_VERSION:
+		*(u32 *)arg = OG01A1B_DRIVER_VERSION;
+		break;
+
+	case VIDIOC_OG01A1B_PRV_S_REG:
+		mutex_lock(&v->lock);
+		ret = og01a1b_deckard_write_reg(og01a1b, val);
+		mutex_unlock(&v->lock);
+		break;
+
+	case VIDIOC_SENSOR_PRV_G_REGISTER:
+		/* Reads can't be deferred */
+		if (pm_runtime_get_if_in_use(og01a1b->dev) <= 0) {
+			ret = -EAGAIN;
+			break;
+		}
+		mutex_lock(&v->lock);
+		ret = og01a1b_deckard_g_reg(og01a1b, arg);
+		mutex_unlock(&v->lock);
+		pm_runtime_put(og01a1b->dev);
+		break;
+
+	default:
+		ret = -ENOIOCTLCMD;
+		break;
+	}
+
+	return ret;
+}
+
+/* Called with the deckard lock held, while the sensor is powered */
+static int og01a1b_deckard_s_ctrl(struct og01a1b *og01a1b,
+				 struct v4l2_ctrl *ctrl)
+{
+	struct og01a1b_deckard *v = &og01a1b->v;
+
+	switch (ctrl->id) {
+	/*
+	 * Legacy controls for register access, they act on user writes only,
+	 * not when the controls are applied at power up.
+	 */
+	case V4L2_CID_BRIGHTNESS:
+		/* Addresses 0 and 1 set a read address, which is unused */
+		if (v->ctrl_setup || (ctrl->val & 0xffff) <= 1)
+			return 0;
+		/* Keep the order of the queued writes */
+		if (v->num_pending)
+			return og01a1b_deckard_queue_reg(og01a1b, ctrl->val);
+		return og01a1b_deckard_s_reg(og01a1b, ctrl->val);
+
+	default:
+		return -EINVAL;
+	}
+}
+
+/* Legacy controls set by userspace while the sensor isn't powered */
+static int og01a1b_deckard_s_ctrl_unpowered(struct og01a1b *og01a1b,
+					   struct v4l2_ctrl *ctrl)
+{
+	struct og01a1b_deckard *v = &og01a1b->v;
+	int ret = 0;
+
+	mutex_lock(&v->lock);
+
+	switch (ctrl->id) {
+	case V4L2_CID_BRIGHTNESS:
+		if ((ctrl->val & 0xffff) > 1)
+			ret = og01a1b_deckard_queue_reg(og01a1b, ctrl->val);
+		break;
+
+	default:
+		break;
+	}
+
+	mutex_unlock(&v->lock);
+
+	return ret;
+}
+
+static void og01a1b_deckard_init_controls(struct og01a1b *og01a1b,
+					 struct v4l2_ctrl_handler *hdl,
+					 const struct v4l2_ctrl_ops *ops)
+{
+	v4l2_ctrl_new_std(hdl, ops, V4L2_CID_BRIGHTNESS, 0, 0xffffff, 1, 0);
+}
+
+static int og01a1b_deckard_probe(struct og01a1b *og01a1b)
+{
+	mutex_init(&og01a1b->v.lock);
+
+	return 0;
+}
+
+static void og01a1b_deckard_remove(struct og01a1b *og01a1b)
+{
+	mutex_destroy(&og01a1b->v.lock);
+}
+#else
+static int og01a1b_deckard_s_ctrl(struct og01a1b *og01a1b,
+				 struct v4l2_ctrl *ctrl)
+{
+	return -EINVAL;
+}
+
+static int og01a1b_deckard_s_ctrl_unpowered(struct og01a1b *og01a1b,
+					   struct v4l2_ctrl *ctrl)
+{
+	return 0;
+}
+
+static int og01a1b_deckard_write_pending(struct og01a1b *og01a1b)
+{
+	return 0;
+}
+
+static void og01a1b_deckard_init_controls(struct og01a1b *og01a1b,
+					 struct v4l2_ctrl_handler *hdl,
+					 const struct v4l2_ctrl_ops *ops)
+{
+}
+
+static int og01a1b_deckard_probe(struct og01a1b *og01a1b)
+{
+	return 0;
+}
+
+static void og01a1b_deckard_remove(struct og01a1b *og01a1b)
+{
+}
+#endif
+
 static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct og01a1b *og01a1b = container_of(ctrl->handler,
@@ -652,7 +959,10 @@ static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 
 	/* V4L2 controls values will be applied only when power is already up */
 	if (!pm_runtime_get_if_in_use(og01a1b->dev))
-		return 0;
+		return og01a1b_deckard_s_ctrl_unpowered(og01a1b, ctrl);
+
+	/* Serialise with the register access of the deckard interface */
+	og01a1b_deckard_lock(og01a1b);
 
 	switch (ctrl->id) {
 	case V4L2_CID_ANALOGUE_GAIN:
@@ -684,9 +994,11 @@ static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 
 	default:
-		ret = -EINVAL;
+		ret = og01a1b_deckard_s_ctrl(og01a1b, ctrl);
 		break;
 	}
+
+	og01a1b_deckard_unlock(og01a1b);
 
 	pm_runtime_put(og01a1b->dev);
 
@@ -705,7 +1017,7 @@ static int og01a1b_init_controls(struct og01a1b *og01a1b)
 	int ret;
 
 	ctrl_hdlr = &og01a1b->ctrl_handler;
-	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 9);
+	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 15);
 	if (ret)
 		return ret;
 
@@ -761,6 +1073,7 @@ static int og01a1b_init_controls(struct og01a1b *og01a1b)
 				     0, 0, og01a1b_test_pattern_menu);
 	v4l2_ctrl_new_std(ctrl_hdlr, &og01a1b_ctrl_ops,
 			  V4L2_CID_FLASH_STROBE_OE, 0, 1, 1, 0);
+	og01a1b_deckard_init_controls(og01a1b, ctrl_hdlr, &og01a1b_ctrl_ops);
 
 	if (ctrl_hdlr->error)
 		return ctrl_hdlr->error;
@@ -831,7 +1144,13 @@ static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 	if (ret)
 		goto error;
 
+	og01a1b_deckard_ctrl_setup(og01a1b, true);
 	ret = __v4l2_ctrl_handler_setup(og01a1b->sd.ctrl_handler);
+	og01a1b_deckard_ctrl_setup(og01a1b, false);
+	if (ret)
+		goto error;
+
+	ret = og01a1b_deckard_write_pending(og01a1b);
 	if (ret)
 		goto error;
 
@@ -873,6 +1192,12 @@ static int og01a1b_disable_streams(struct v4l2_subdev *sd,
 
 	return ret;
 }
+
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+static const struct v4l2_subdev_core_ops og01a1b_core_ops = {
+	.ioctl = og01a1b_deckard_ioctl,
+};
+#endif
 
 static int og01a1b_set_format(struct v4l2_subdev *sd,
 			      struct v4l2_subdev_state *sd_state,
@@ -980,6 +1305,9 @@ static const struct v4l2_subdev_pad_ops og01a1b_pad_ops = {
 };
 
 static const struct v4l2_subdev_ops og01a1b_subdev_ops = {
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+	.core = &og01a1b_core_ops,
+#endif
 	.video = &og01a1b_video_ops,
 	.pad = &og01a1b_pad_ops,
 };
@@ -1152,6 +1480,7 @@ static void og01a1b_remove(struct i2c_client *client)
 	struct og01a1b *og01a1b = to_og01a1b(sd);
 
 	v4l2_async_unregister_subdev(sd);
+	og01a1b_deckard_remove(og01a1b);
 	v4l2_subdev_cleanup(&og01a1b->sd);
 	media_entity_cleanup(&sd->entity);
 	v4l2_ctrl_handler_free(sd->ctrl_handler);
@@ -1266,6 +1595,11 @@ static int og01a1b_probe(struct i2c_client *client)
 
 	og01a1b->cur_mode = &supported_modes[0];
 	og01a1b->code = og01a1b_mbus_formats[0];
+
+	ret = og01a1b_deckard_probe(og01a1b);
+	if (ret)
+		goto power_off;
+
 	ret = og01a1b_init_controls(og01a1b);
 	if (ret) {
 		dev_err(og01a1b->dev, "failed to init controls: %d", ret);
@@ -1313,6 +1647,7 @@ probe_error_media_entity_cleanup:
 
 probe_error_v4l2_ctrl_handler_free:
 	v4l2_ctrl_handler_free(og01a1b->sd.ctrl_handler);
+	og01a1b_deckard_remove(og01a1b);
 
 power_off:
 	og01a1b_power_off(og01a1b->dev);
