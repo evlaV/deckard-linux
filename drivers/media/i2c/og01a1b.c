@@ -552,6 +552,8 @@ struct og01a1b {
 	const struct og01a1b_mclk_config *mclk_cfg;
 	struct gpio_desc *reset_gpio;
 	struct gpio_desc *ircontrol_gpio;
+	bool strobe_oe;
+	bool streaming;
 	struct regulator *avdd;
 	struct regulator *dovdd;
 	struct regulator *dvdd;
@@ -602,8 +604,9 @@ static int og01a1b_test_pattern(struct og01a1b *og01a1b, u32 pattern)
 			 pattern, NULL);
 }
 
-static int og01a1b_set_strobe(struct og01a1b *og01a1b, bool enable)
+static int og01a1b_update_strobe(struct og01a1b *og01a1b)
 {
+	bool enable = og01a1b->strobe_oe;
 	int ret = 0;
 
 	if (enable)
@@ -613,12 +616,15 @@ static int og01a1b_set_strobe(struct og01a1b *og01a1b, bool enable)
 	cci_update_bits(og01a1b->regmap, OG01A1B_REG_OUTPUT_ENABLE,
 			OG01A1B_OUTPUT_ENABLE_STROBE,
 			enable ? OG01A1B_OUTPUT_ENABLE_STROBE : 0, &ret);
-	if (ret)
-		return ret;
+
+	return ret;
+}
+
+static void og01a1b_update_ircontrol(struct og01a1b *og01a1b)
+{
+	bool enable = og01a1b->strobe_oe && og01a1b->streaming;
 
 	gpiod_set_value_cansleep(og01a1b->ircontrol_gpio, enable);
-
-	return 0;
 }
 
 static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
@@ -637,6 +643,11 @@ static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 					 og01a1b->exposure->minimum,
 					 exposure_max, og01a1b->exposure->step,
 					 exposure_max);
+	}
+
+	if (ctrl->id == V4L2_CID_FLASH_STROBE_OE) {
+		og01a1b->strobe_oe = ctrl->val;
+		og01a1b_update_ircontrol(og01a1b);
 	}
 
 	/* V4L2 controls values will be applied only when power is already up */
@@ -669,7 +680,7 @@ static int og01a1b_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 
 	case V4L2_CID_FLASH_STROBE_OE:
-		ret = og01a1b_set_strobe(og01a1b, ctrl->val);
+		ret = og01a1b_update_strobe(og01a1b);
 		break;
 
 	default:
@@ -822,10 +833,13 @@ static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 		goto error;
 	}
 
+	og01a1b->streaming = true;
+	og01a1b_update_ircontrol(og01a1b);
+
 	return 0;
 
 error:
-	gpiod_set_value_cansleep(og01a1b->ircontrol_gpio, 0);
+	og01a1b_update_ircontrol(og01a1b);
 	pm_runtime_put_autosuspend(og01a1b->dev);
 
 	return ret;
@@ -838,7 +852,8 @@ static int og01a1b_disable_streams(struct v4l2_subdev *sd,
 	struct og01a1b *og01a1b = to_og01a1b(sd);
 	int ret;
 
-	gpiod_set_value_cansleep(og01a1b->ircontrol_gpio, 0);
+	og01a1b->streaming = false;
+	og01a1b_update_ircontrol(og01a1b);
 
 	ret = cci_write(og01a1b->regmap, OG01A1B_REG_MODE_SELECT,
 			OG01A1B_MODE_STANDBY, NULL);
