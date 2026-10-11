@@ -6,6 +6,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 #include <linux/units.h>
@@ -83,6 +84,47 @@ static const char * const og0ve1b_supply_names[] = {
 
 #define OG0VE1B_NUM_SUPPLIES	ARRAY_SIZE(og0ve1b_supply_names)
 
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+/*
+ * Vendor interface, compatible with the out-of-tree og0ve10-a deckard driver.
+ * The ioctl numbers, the structure layouts and the control IDs are an ABI
+ * shared with the deckard userspace and the ISP, they
+ * are the same as the ones of the og01a1b deckard interface.
+ */
+
+struct og0ve1b_deckard_register {
+	u16 reg_addr;
+	u32 reg_value;
+	u8 len;
+};
+
+/* Argument: register address in bits [15:0], value in bits [23:16] */
+#define VIDIOC_OG0VE1B_PRV_S_REG \
+	_IO('V', BASE_VIDIOC_PRIVATE + 3)
+#define VIDIOC_OG0VE1B_PRV_G_DRIVER_VERSION \
+	_IOR('V', BASE_VIDIOC_PRIVATE + 6, u32)
+#define VIDIOC_OG0VE1B_PRV_G_REGISTER \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct og0ve1b_deckard_register)
+
+#define OG0VE1B_DRIVER_VERSION	((1 << 16) | 1)
+
+/* Layouts of the deckard driver on LP64 architectures */
+static_assert(sizeof(struct og0ve1b_deckard_register) == 12);
+
+#define OG0VE1B_MAX_PENDING	256
+
+struct og0ve1b_deckard {
+	/* Serialises register access */
+	struct mutex lock;
+	bool ctrl_setup;
+	bool streaming;
+
+	/* Raw register writes done before stream start */
+	struct cci_reg_sequence pending[OG0VE1B_MAX_PENDING];
+	unsigned int num_pending;
+};
+#endif
+
 struct og0ve1b {
 	struct device *dev;
 	struct regmap *regmap;
@@ -99,6 +141,10 @@ struct og0ve1b {
 
 	/* Saved register value */
 	u64 pre_isp;
+
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+	struct og0ve1b_deckard v;
+#endif
 };
 
 static const struct cci_reg_sequence og0ve1b_640x480_120fps_mode[] = {
@@ -273,6 +319,275 @@ static int og0ve1b_enable_test_pattern(struct og0ve1b *og0ve1b, u32 pattern)
 	return cci_write(og0ve1b->regmap, OG0VE1B_REG_PRE_ISP, val, NULL);
 }
 
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+static void og0ve1b_deckard_lock(struct og0ve1b *og0ve1b)
+{
+	mutex_lock(&og0ve1b->v.lock);
+}
+
+static void og0ve1b_deckard_unlock(struct og0ve1b *og0ve1b)
+{
+	mutex_unlock(&og0ve1b->v.lock);
+}
+
+static void og0ve1b_deckard_ctrl_setup(struct og0ve1b *og0ve1b, bool setup)
+{
+	og0ve1b->v.ctrl_setup = setup;
+}
+
+static int og0ve1b_deckard_s_reg(struct og0ve1b *og0ve1b, u32 arg)
+{
+	return cci_write(og0ve1b->regmap, CCI_REG8(arg & 0xffff),
+			 (arg >> 16) & 0xff, NULL);
+}
+
+/*
+ * The deckard userspace configures the sensor with raw register writes before
+ * stream start, the deckard driver keeps the sensor powered for them with
+ * .s_power. Here the writes done before stream start are queued, and written
+ * in order at stream start, after the register settings and the controls.
+ * Called with the deckard lock held.
+ */
+static int og0ve1b_deckard_queue_reg(struct og0ve1b *og0ve1b, u32 arg)
+{
+	struct og0ve1b_deckard *v = &og0ve1b->v;
+	u32 reg = CCI_REG8(arg & 0xffff);
+
+	/* Streaming can't be started or stopped before stream start */
+	if (reg == OG0VE1B_REG_MODE_SELECT)
+		return -EAGAIN;
+
+	if (v->num_pending >= ARRAY_SIZE(v->pending))
+		return -ENOSPC;
+
+	v->pending[v->num_pending].reg = reg;
+	v->pending[v->num_pending].val = (arg >> 16) & 0xff;
+	v->num_pending++;
+
+	return 0;
+}
+
+/*
+ * Called with the deckard lock held. While streaming, the sensor is powered
+ * and disabling the stream waits for the deckard lock.
+ */
+static int og0ve1b_deckard_write_reg(struct og0ve1b *og0ve1b, u32 arg)
+{
+	struct og0ve1b_deckard *v = &og0ve1b->v;
+
+	/* Keep the order of the queued writes */
+	if (!v->streaming || v->num_pending)
+		return og0ve1b_deckard_queue_reg(og0ve1b, arg);
+
+	return og0ve1b_deckard_s_reg(og0ve1b, arg);
+}
+
+/* Called at stream start, while the sensor is powered */
+static int og0ve1b_deckard_write_pending(struct og0ve1b *og0ve1b)
+{
+	struct og0ve1b_deckard *v = &og0ve1b->v;
+	int ret = 0;
+
+	mutex_lock(&v->lock);
+	cci_multi_reg_write(og0ve1b->regmap, v->pending, v->num_pending, &ret);
+	v->num_pending = 0;
+	mutex_unlock(&v->lock);
+
+	if (ret)
+		dev_err(og0ve1b->dev, "failed to write queued registers: %d\n",
+			ret);
+
+	return ret;
+}
+
+static int og0ve1b_deckard_g_reg(struct og0ve1b *og0ve1b,
+				struct og0ve1b_deckard_register *reg)
+{
+	static const u32 width[] = {
+		CCI_REG8(0), CCI_REG16(0), CCI_REG24(0), CCI_REG32(0),
+	};
+	u64 val = 0;
+	int ret;
+
+	if (!reg->len || reg->len > ARRAY_SIZE(width)) {
+		ret = -EINVAL;
+	} else {
+		ret = cci_read(og0ve1b->regmap, width[reg->len - 1] |
+			       reg->reg_addr, &val, NULL);
+		if (ret)
+			dev_err(og0ve1b->dev,
+				"Failed to read register 0x%04x: %d\n",
+				reg->reg_addr, ret);
+	}
+
+	reg->reg_value = val;
+
+	return ret;
+}
+
+static long og0ve1b_deckard_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
+				 void *arg)
+{
+	struct og0ve1b *og0ve1b = to_og0ve1b(sd);
+	struct og0ve1b_deckard *v = &og0ve1b->v;
+	u32 val = (uintptr_t)arg;
+	long ret = 0;
+
+	switch (cmd) {
+	case VIDIOC_OG0VE1B_PRV_G_DRIVER_VERSION:
+		*(u32 *)arg = OG0VE1B_DRIVER_VERSION;
+		break;
+
+	case VIDIOC_OG0VE1B_PRV_S_REG:
+		mutex_lock(&v->lock);
+		ret = og0ve1b_deckard_write_reg(og0ve1b, val);
+		mutex_unlock(&v->lock);
+		break;
+
+	case VIDIOC_OG0VE1B_PRV_G_REGISTER:
+		/* Reads can't be deferred */
+		if (pm_runtime_get_if_active(og0ve1b->dev) <= 0) {
+			ret = -EAGAIN;
+			break;
+		}
+		mutex_lock(&v->lock);
+		ret = og0ve1b_deckard_g_reg(og0ve1b, arg);
+		mutex_unlock(&v->lock);
+		pm_runtime_put(og0ve1b->dev);
+		break;
+
+	default:
+		ret = -ENOIOCTLCMD;
+		break;
+	}
+
+	return ret;
+}
+
+/* Called with the deckard lock held, while the sensor is powered */
+static int og0ve1b_deckard_s_ctrl(struct og0ve1b *og0ve1b,
+				 struct v4l2_ctrl *ctrl)
+{
+	struct og0ve1b_deckard *v = &og0ve1b->v;
+
+	switch (ctrl->id) {
+	/*
+	 * Legacy controls for register access, they act on user writes only,
+	 * not when the controls are applied at stream start.
+	 */
+	case V4L2_CID_BRIGHTNESS:
+		if (v->ctrl_setup)
+			return 0;
+		return og0ve1b_deckard_write_reg(og0ve1b, ctrl->val);
+
+	default:
+		return -EINVAL;
+	}
+}
+
+/* Legacy controls set by userspace while the sensor isn't powered */
+static int og0ve1b_deckard_s_ctrl_unpowered(struct og0ve1b *og0ve1b,
+					   struct v4l2_ctrl *ctrl)
+{
+	struct og0ve1b_deckard *v = &og0ve1b->v;
+	int ret = 0;
+
+	mutex_lock(&v->lock);
+
+	switch (ctrl->id) {
+	case V4L2_CID_BRIGHTNESS:
+		ret = og0ve1b_deckard_queue_reg(og0ve1b, ctrl->val);
+		break;
+
+	default:
+		break;
+	}
+
+	mutex_unlock(&v->lock);
+
+	return ret;
+}
+
+static void og0ve1b_deckard_init_controls(struct og0ve1b *og0ve1b,
+					 struct v4l2_ctrl_handler *hdl,
+					 const struct v4l2_ctrl_ops *ops)
+{
+	v4l2_ctrl_new_std(hdl, ops, V4L2_CID_BRIGHTNESS, 0, 0xffffff, 1, 0);
+}
+
+/* Called with the state lock held */
+static void og0ve1b_deckard_s_stream(struct og0ve1b *og0ve1b, bool enable)
+{
+	struct og0ve1b_deckard *v = &og0ve1b->v;
+
+	mutex_lock(&v->lock);
+	v->streaming = enable;
+	mutex_unlock(&v->lock);
+}
+
+static int og0ve1b_deckard_probe(struct og0ve1b *og0ve1b,
+				struct i2c_client *client)
+{
+	mutex_init(&og0ve1b->v.lock);
+
+	return 0;
+}
+
+static void og0ve1b_deckard_remove(struct og0ve1b *og0ve1b)
+{
+	mutex_destroy(&og0ve1b->v.lock);
+}
+#else
+static void og0ve1b_deckard_lock(struct og0ve1b *og0ve1b)
+{
+}
+
+static void og0ve1b_deckard_unlock(struct og0ve1b *og0ve1b)
+{
+}
+
+static void og0ve1b_deckard_ctrl_setup(struct og0ve1b *og0ve1b, bool setup)
+{
+}
+
+static int og0ve1b_deckard_write_pending(struct og0ve1b *og0ve1b)
+{
+	return 0;
+}
+
+static int og0ve1b_deckard_s_ctrl(struct og0ve1b *og0ve1b,
+				 struct v4l2_ctrl *ctrl)
+{
+	return -EINVAL;
+}
+
+static int og0ve1b_deckard_s_ctrl_unpowered(struct og0ve1b *og0ve1b,
+					   struct v4l2_ctrl *ctrl)
+{
+	return 0;
+}
+
+static void og0ve1b_deckard_init_controls(struct og0ve1b *og0ve1b,
+					 struct v4l2_ctrl_handler *hdl,
+					 const struct v4l2_ctrl_ops *ops)
+{
+}
+
+static void og0ve1b_deckard_s_stream(struct og0ve1b *og0ve1b, bool enable)
+{
+}
+
+static int og0ve1b_deckard_probe(struct og0ve1b *og0ve1b,
+				struct i2c_client *client)
+{
+	return 0;
+}
+
+static void og0ve1b_deckard_remove(struct og0ve1b *og0ve1b)
+{
+}
+#endif
+
 static int og0ve1b_set_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct og0ve1b *og0ve1b = container_of(ctrl->handler, struct og0ve1b,
@@ -298,7 +613,10 @@ static int og0ve1b_set_ctrl(struct v4l2_ctrl *ctrl)
 
 	/* V4L2 controls are applied, when sensor is powered up for streaming */
 	if (!pm_runtime_get_if_active(og0ve1b->dev))
-		return 0;
+		return og0ve1b_deckard_s_ctrl_unpowered(og0ve1b, ctrl);
+
+	/* Serialise with the register access of the deckard interface */
+	og0ve1b_deckard_lock(og0ve1b);
 
 	switch (ctrl->id) {
 	case V4L2_CID_ANALOGUE_GAIN:
@@ -317,9 +635,11 @@ static int og0ve1b_set_ctrl(struct v4l2_ctrl *ctrl)
 		ret = og0ve1b_enable_test_pattern(og0ve1b, ctrl->val);
 		break;
 	default:
-		ret = -EINVAL;
+		ret = og0ve1b_deckard_s_ctrl(og0ve1b, ctrl);
 		break;
 	}
+
+	og0ve1b_deckard_unlock(og0ve1b);
 
 	pm_runtime_put(og0ve1b->dev);
 
@@ -339,7 +659,7 @@ static int og0ve1b_init_controls(struct og0ve1b *og0ve1b)
 	struct v4l2_ctrl *ctrl;
 	int ret;
 
-	v4l2_ctrl_handler_init(ctrl_hdlr, 9);
+	v4l2_ctrl_handler_init(ctrl_hdlr, 14);
 
 	ctrl = v4l2_ctrl_new_int_menu(ctrl_hdlr, &og0ve1b_ctrl_ops,
 				      V4L2_CID_LINK_FREQ,
@@ -381,6 +701,8 @@ static int og0ve1b_init_controls(struct og0ve1b *og0ve1b)
 				     V4L2_CID_TEST_PATTERN,
 				     ARRAY_SIZE(og0ve1b_test_pattern_menu) - 1,
 				     0, 0, og0ve1b_test_pattern_menu);
+
+	og0ve1b_deckard_init_controls(og0ve1b, ctrl_hdlr, &og0ve1b_ctrl_ops);
 
 	if (ctrl_hdlr->error)
 		return ctrl_hdlr->error;
@@ -444,9 +766,17 @@ static int og0ve1b_enable_streams(struct v4l2_subdev *sd,
 		goto error;
 	}
 
+	og0ve1b_deckard_ctrl_setup(og0ve1b, true);
 	ret = __v4l2_ctrl_handler_setup(og0ve1b->sd.ctrl_handler);
+	og0ve1b_deckard_ctrl_setup(og0ve1b, false);
 	if (ret)
 		goto error;
+
+	ret = og0ve1b_deckard_write_pending(og0ve1b);
+	if (ret)
+		goto error;
+
+	og0ve1b_deckard_s_stream(og0ve1b, true);
 
 	ret = cci_write(og0ve1b->regmap, OG0VE1B_REG_MODE_SELECT,
 			OG0VE1B_MODE_STREAMING, NULL);
@@ -458,6 +788,7 @@ static int og0ve1b_enable_streams(struct v4l2_subdev *sd,
 	return 0;
 
 error:
+	og0ve1b_deckard_s_stream(og0ve1b, false);
 	pm_runtime_put_autosuspend(og0ve1b->dev);
 
 	return ret;
@@ -469,6 +800,8 @@ static int og0ve1b_disable_streams(struct v4l2_subdev *sd,
 {
 	struct og0ve1b *og0ve1b = to_og0ve1b(sd);
 	int ret;
+
+	og0ve1b_deckard_s_stream(og0ve1b, false);
 
 	ret = cci_write(og0ve1b->regmap, OG0VE1B_REG_MODE_SELECT,
 			OG0VE1B_MODE_STANDBY, NULL);
@@ -562,7 +895,16 @@ static const struct v4l2_subdev_pad_ops og0ve1b_pad_ops = {
 	.disable_streams = og0ve1b_disable_streams,
 };
 
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+static const struct v4l2_subdev_core_ops og0ve1b_core_ops = {
+	.ioctl = og0ve1b_deckard_ioctl,
+};
+#endif
+
 static const struct v4l2_subdev_ops og0ve1b_subdev_ops = {
+#if IS_ENABLED(CONFIG_VIDEO_DECKARD_API)
+	.core = &og0ve1b_core_ops,
+#endif
 	.video = &og0ve1b_video_ops,
 	.pad = &og0ve1b_pad_ops,
 };
@@ -736,10 +1078,14 @@ static int og0ve1b_probe(struct i2c_client *client)
 		goto power_off;
 	}
 
+	ret = og0ve1b_deckard_probe(og0ve1b, client);
+	if (ret)
+		goto power_off;
+
 	ret = og0ve1b_init_controls(og0ve1b);
 	if (ret) {
 		dev_err_probe(og0ve1b->dev, ret, "failed to init controls\n");
-		goto power_off;
+		goto vendor_remove;
 	}
 
 	og0ve1b->sd.state_lock = og0ve1b->ctrl_handler.lock;
@@ -791,6 +1137,9 @@ media_entity_cleanup:
 v4l2_ctrl_handler_free:
 	v4l2_ctrl_handler_free(og0ve1b->sd.ctrl_handler);
 
+vendor_remove:
+	og0ve1b_deckard_remove(og0ve1b);
+
 power_off:
 	og0ve1b_power_off(og0ve1b->dev);
 
@@ -806,6 +1155,7 @@ static void og0ve1b_remove(struct i2c_client *client)
 	v4l2_subdev_cleanup(sd);
 	media_entity_cleanup(&sd->entity);
 	v4l2_ctrl_handler_free(sd->ctrl_handler);
+	og0ve1b_deckard_remove(og0ve1b);
 	pm_runtime_disable(og0ve1b->dev);
 
 	if (!pm_runtime_status_suspended(og0ve1b->dev)) {
