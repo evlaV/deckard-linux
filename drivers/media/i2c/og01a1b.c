@@ -30,6 +30,8 @@
 #define OG01A1B_REG_VTS			CCI_REG16(0x380e)
 #define OG01A1B_VTS_120FPS		0x0498
 #define OG01A1B_VTS_120FPS_MIN		0x0498
+#define OG01A1B_VTS_240FPS		0x0281
+#define OG01A1B_VTS_240FPS_MIN		0x0281
 #define OG01A1B_VTS_MAX			0x7fff
 
 /* horizontal-timings from sensor */
@@ -112,7 +114,7 @@ static const struct cci_reg_sequence mipi_data_rate_1000mbps[] = {
 	{ CCI_REG8(0x0325), 0x77 },
 };
 
-static const struct cci_reg_sequence mode_1280x1024_regs[] = {
+static const struct cci_reg_sequence og01a1b_common_regs[] = {
 	{ CCI_REG8(0x0300), 0x0a },
 	{ CCI_REG8(0x0301), 0x29 },
 	{ CCI_REG8(0x0302), 0x31 },
@@ -372,6 +374,43 @@ static const struct cci_reg_sequence mode_1280x1024_regs[] = {
 	{ CCI_REG8(0x4f22), 0x00 },
 };
 
+static const struct cci_reg_sequence mode_1280x1024_regs[] = {
+	{ CCI_REG8(0x3501), 0x04 },
+	{ CCI_REG8(0x3502), 0x8a },
+	{ CCI_REG8(0x3808), 0x05 },
+	{ CCI_REG8(0x3809), 0x00 },
+	{ CCI_REG8(0x380a), 0x04 },
+	{ CCI_REG8(0x380b), 0x00 },
+	{ CCI_REG8(0x380c), 0x03 },
+	{ CCI_REG8(0x380d), 0x50 },
+	{ CCI_REG8(0x380e), 0x04 },
+	{ CCI_REG8(0x380f), 0x98 },
+	{ CCI_REG8(0x3811), 0x08 },
+	{ CCI_REG8(0x3813), 0x08 },
+	{ CCI_REG8(0x3814), 0x11 },
+	{ CCI_REG8(0x3815), 0x11 },
+	{ CCI_REG8(0x4509), 0x00 },
+};
+
+/* 2x2 binning */
+static const struct cci_reg_sequence mode_640x512_regs[] = {
+	{ CCI_REG8(0x3501), 0x02 },
+	{ CCI_REG8(0x3502), 0x73 },
+	{ CCI_REG8(0x3808), 0x02 },
+	{ CCI_REG8(0x3809), 0x80 },
+	{ CCI_REG8(0x380a), 0x02 },
+	{ CCI_REG8(0x380b), 0x00 },
+	{ CCI_REG8(0x380c), 0x03 },
+	{ CCI_REG8(0x380d), 0x0c },
+	{ CCI_REG8(0x380e), 0x02 },
+	{ CCI_REG8(0x380f), 0x81 },
+	{ CCI_REG8(0x3811), 0x04 },
+	{ CCI_REG8(0x3813), 0x04 },
+	{ CCI_REG8(0x3814), 0x22 },
+	{ CCI_REG8(0x3815), 0x22 },
+	{ CCI_REG8(0x4509), 0x80 },
+};
+
 static const char * const og01a1b_test_pattern_menu[] = {
 	"Disabled",
 	"Standard Color Bar",
@@ -403,6 +442,18 @@ static const struct og01a1b_mode supported_modes[] = {
 		.reg_list = {
 			.num_of_regs = ARRAY_SIZE(mode_1280x1024_regs),
 			.regs = mode_1280x1024_regs,
+		},
+		.link_freq_index = OG01A1B_LINK_FREQ_1000MBPS,
+	},
+	{
+		.width = 640,
+		.height = 512,
+		.hts = 780,
+		.vts_def = OG01A1B_VTS_240FPS,
+		.vts_min = OG01A1B_VTS_240FPS_MIN,
+		.reg_list = {
+			.num_of_regs = ARRAY_SIZE(mode_640x512_regs),
+			.regs = mode_640x512_regs,
 		},
 		.link_freq_index = OG01A1B_LINK_FREQ_1000MBPS,
 	},
@@ -621,6 +672,14 @@ static int og01a1b_enable_streams(struct v4l2_subdev *sd,
 				  reg_list->num_of_regs, NULL);
 	if (ret) {
 		dev_err(og01a1b->dev, "failed to set plls: %d\n", ret);
+		goto error;
+	}
+
+	ret = cci_multi_reg_write(og01a1b->regmap, og01a1b_common_regs,
+				  ARRAY_SIZE(og01a1b_common_regs), NULL);
+	if (ret) {
+		dev_err(og01a1b->dev, "failed to set common registers: %d\n",
+			ret);
 		goto error;
 	}
 
