@@ -1191,22 +1191,22 @@
 
 &cci2_i2c0 {
 	sensor@60 {
-		compatible = "ovti,og01a1bx";
+		compatible = "ovti,og01a1b";
 		reg = <0x60>;
 		clocks = <&camcc CAM_CC_MCLK1_CLK>;
-		clock-names = "xclk";
+		assigned-clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		assigned-clock-rates = <24000000>;
 		reset-gpios = <&pm8550vs_e_gpios 6 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 123 GPIO_ACTIVE_HIGH>;
 		sensor-queue-index = <0>;
 		ircontrol-gpios = <&tlmm 200 GPIO_ACTIVE_HIGH>;
 		pinctrl-0 = <&cam1_default>;
 		pinctrl-names = "default";
-		AVDD-supply = <&vreg_l3n_2p8>;
-		DOVDD-supply = <&vreg_6dof_1p8_l>;
-		DVDD-supply = <&vreg_6dof_1p2_l>;
+		avdd-supply = <&vreg_l3n_2p8>;
+		dovdd-supply = <&vreg_6dof_1p8_l>;
+		dvdd-supply = <&vreg_6dof_1p2_l>;
 		id = "slam_left";
 
-		dual-i2c-available = <1>;
 		dual-i2c-main = <1>;
 		
 		port {
@@ -1220,21 +1220,21 @@
 	};
 
 	sensor@36 {
-		compatible = "ovti,og01a1bx";
+		compatible = "ovti,og01a1b";
 		reg = <0x36>;
 		clocks = <&camcc CAM_CC_MCLK0_CLK>;
-		clock-names = "xclk";
+		assigned-clocks = <&camcc CAM_CC_MCLK0_CLK>;
+		assigned-clock-rates = <24000000>;
 		reset-gpios = <&pm8550vs_e_gpios 4 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 121 GPIO_ACTIVE_HIGH>;
 		pinctrl-0 = <&cam0_default>;
 		pinctrl-names = "default";
-		AVDD-supply = <&vreg_l3m_2p8>;
-		DOVDD-supply = <&vreg_6dof_1p8_r>;
-		DVDD-supply = <&vreg_6dof_1p2_r>;
+		avdd-supply = <&vreg_l3m_2p8>;
+		dovdd-supply = <&vreg_6dof_1p8_r>;
+		dvdd-supply = <&vreg_6dof_1p2_r>;
 		id = "slam_right";
 		sensor-queue-index = <0>;
 
-		dual-i2c-available = <1>;
 		dual-i2c-main = <0>;
 		
 		port {
@@ -1251,21 +1251,21 @@
 &cci2_i2c1 {
 	clock-frequency = <400000>;
 	sensor@60 {
-		compatible = "ovti,og0ve10x";
+		compatible = "ovti,og0ve1b";
 		reg = <0x60>;
 		clocks = <&camcc CAM_CC_MCLK3_CLK>;
-		clock-names = "xclk";
+		assigned-clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		assigned-clock-rates = <24000000>;
 		reset-gpios = <&pm8550vs_c_gpios 5 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 28 GPIO_ACTIVE_HIGH>;
 		pinctrl-0 = <&cam3_default>;
 		pinctrl-names = "default";
-		AVDD-supply = <&vreg_l4n_2p8>;
-		DOVDD-supply = <&vreg_6dof_1p8_ul>;
-		DVDD-supply = <&vreg_6dof_1p2_ul>;
+		avdd-supply = <&vreg_l4n_2p8>;
+		dovdd-supply = <&vreg_6dof_1p8_ul>;
+		dvdd-supply = <&vreg_6dof_1p2_ul>;
 		sensor-queue-index = <1>;
 		id = "upper_left";
 	
-		dual-i2c-available = <1>;
 		dual-i2c-main = <1>;
 		
 		port {
@@ -1279,22 +1279,22 @@
 	};
 	
 	sensor@3e {
-		compatible = "ovti,og0ve10x";
+		compatible = "ovti,og0ve1b";
 		reg = <0x3E>;
 		clocks = <&camcc CAM_CC_MCLK5_CLK>;
-		clock-names = "xclk";
+		assigned-clocks = <&camcc CAM_CC_MCLK5_CLK>;
+		assigned-clock-rates = <24000000>;
 		reset-gpios = <&pm8550vs_c_gpios 6 GPIO_ACTIVE_LOW>;
 		strobe-gpios = <&tlmm 68 GPIO_ACTIVE_HIGH>;
 		pinctrl-0 = <&cam5_default>;
 		pinctrl-names = "default";
-		AVDD-supply = <&vreg_l4m_2p8>;
-		DOVDD-supply = <&vreg_6dof_1p8_ur>;
-		DVDD-supply = <&vreg_6dof_1p2_ur>;
+		avdd-supply = <&vreg_l4m_2p8>;
+		dovdd-supply = <&vreg_6dof_1p8_ur>;
+		dvdd-supply = <&vreg_6dof_1p2_ur>;
 
 		sensor-queue-index = <1>;
 		id = "upper_right";
 
-		dual-i2c-available = <1>;
 		dual-i2c-main = <0>;
 
 		port {
