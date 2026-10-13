@@ -590,6 +590,8 @@ enum register_ids {
 	NDESIGNCAP_REG,
 	NFULLCFG_REG,
 	SDESIGNVOLT_REG,
+	CHARGINGCURRENT_REG,
+	CHARGINGVOLTAGE_REG,
 };
 
 static int max1720x_get_battery_health(struct max1720x_priv *priv, int *health);
@@ -765,6 +767,8 @@ static const u16 max17320_regs[] = {
 	[NBATTSTATUS_REG] = 0x1A8,
 	[NFAULTLOG_REG] = 0x1AE,
 	[NNVCFG2_REG] = 0x1BA,
+	[CHARGINGCURRENT_REG] = 0x28,
+	[CHARGINGVOLTAGE_REG] = 0x2A,
 	[ATTTE_REG] = 0xDD,
 	[BATT_REG] = 0xDA,
 	[VFOCV_REG] = 0xFB,
@@ -1057,6 +1061,8 @@ static enum power_supply_property max1720x_battery_props[] = {
 	POWER_SUPPLY_PROP_TIME_TO_EMPTY_NOW,
 	POWER_SUPPLY_PROP_TIME_TO_FULL_AVG,
 	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
+	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT,
+	POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE,
 };
 
 static inline int max1720x_raw_voltage_to_uvolts(struct max1720x_priv *priv,
@@ -5449,6 +5455,25 @@ static int max1720x_get_property(struct power_supply *psy,
 		if (ret < 0)
 			return ret;
 		val->intval = max1720x_raw_current_to_uamps(priv, sign_extend32(reg, 15));
+		break;
+	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
+		/* Prescribed charge current from JEITA zones and step charging */
+		if (priv->driver_data != ID_MAX17320)
+			return -ENODATA;
+		ret = max1720x_regmap_read(priv, priv->regs[CHARGINGCURRENT_REG], &reg);
+		if (ret < 0)
+			return ret;
+		val->intval = max1720x_raw_current_to_uamps(priv, sign_extend32(reg, 15));
+		break;
+	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE:
+		/* Prescribed per-cell charge voltage, reported for the whole pack */
+		if (priv->driver_data != ID_MAX17320)
+			return -ENODATA;
+		ret = max1720x_regmap_read(priv, priv->regs[CHARGINGVOLTAGE_REG], &reg);
+		if (ret < 0)
+			return ret;
+		val->intval = max1720x_raw_voltage_to_uvolts(priv, reg);
+		val->intval *= priv->num_cells;
 		break;
 	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG:
 	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_NOW:
