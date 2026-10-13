@@ -549,6 +549,18 @@ static struct drm_info_list msm_debugfs_list[] = {
 		{ "mm", msm_mm_show },
 };
 
+static int perf_now_show(struct seq_file *m, void *v)
+{
+	struct drm_device *dev = m->private;
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_gpu *gpu = priv->gpu;
+
+	seq_printf(m, "%3d.%d\n", gpu->gpu_usage / 100, gpu->gpu_usage % 100);
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(perf_now);
+
 static int late_init_minor(struct drm_minor *minor)
 {
 	struct drm_device *dev;
@@ -569,6 +581,9 @@ static int late_init_minor(struct drm_minor *minor)
 		DRM_DEV_ERROR(dev->dev, "could not install rd debugfs\n");
 		return ret;
 	}
+
+	debugfs_create_file("perf_now", 0444, minor->debugfs_root,
+			    dev, &perf_now_fops);
 
 	return 0;
 }
