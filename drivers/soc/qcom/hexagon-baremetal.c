@@ -48,6 +48,10 @@
 
 #define DSP_APP_DEV_RESUMING  BIT(0)
 #define DSP_APP_DEV_SUSPENDED BIT(1)
+#define DSP_ADSP_DEV_SUSPENDED BIT(2)
+
+#define DSP_ADSP_DEV_SUSPENDED_RETRY 10
+#define DSP_ADSP_DEV_SUSPENDED_DELAY_MS 40
 
 struct dsp {
 	struct miscdevice miscdev;
@@ -1049,7 +1053,7 @@ static void dsp_remove(struct platform_device *pdev)
 	return;
 }
 
-static int dsp_suspend(struct device *dev)
+static int dsp_noirq_suspend(struct device *dev)
 {
 	struct dsp *dsp = dev_get_drvdata(dev);
 
@@ -1061,20 +1065,41 @@ static int dsp_suspend(struct device *dev)
 	return 0;
 }
 
-static int dsp_resume(struct device *dev)
+static int dsp_noirq_resume(struct device *dev)
 {
 	struct dsp *dsp = dev_get_drvdata(dev);
+	uint32_t adsp_dev_state;
+	int retry = DSP_ADSP_DEV_SUSPENDED_RETRY;
 
 	dev_info(dev, "%s: going to resume\n", __func__);
-	if (dsp->is_adsp)
+	if (dsp->is_adsp) {
 		writel(DSP_APP_DEV_RESUMING,
 		 	dsp->base + DSP_APP_DEV_STATE);
+		/*
+		 * now wait for the adsp to notify us that it had teardown all
+		 * on going operations, we still get out if we wait too long.
+		 */
+		while(retry) {
+			adsp_dev_state = readl(dsp->base + DSP_APP_DEV_STATE);
+			if (adsp_dev_state & DSP_ADSP_DEV_SUSPENDED) {
+				dev_info(dev, "%s: adsp suspended retry: %d\n",
+					 __func__,
+					 DSP_ADSP_DEV_SUSPENDED_RETRY - retry);
+				adsp_dev_state &= ~DSP_ADSP_DEV_SUSPENDED;
+				writel(adsp_dev_state,
+					dsp->base + DSP_APP_DEV_STATE);
+				break;
+			}
+			mdelay(DSP_ADSP_DEV_SUSPENDED_DELAY_MS);
+			retry--;
+		}
+	}
 
 	return 0;
 }
 
 static const struct dev_pm_ops dsp_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(dsp_suspend, dsp_resume)
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(dsp_noirq_suspend, dsp_noirq_resume)
 };
 
 static const struct of_device_id dsp_match_table[] = {
