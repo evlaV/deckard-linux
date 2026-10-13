@@ -1,0 +1,6 @@
+/dts-v1/;
+
+// Includes sm8650-mp.dts instead of copying it, so the two cannot drift.
+#include "sm8650-mp.dts"
+
+//fw_setenv DTB_QCOM sm8650-mp-dbg.dtb
