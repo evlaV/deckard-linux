@@ -2132,6 +2132,11 @@ sensor@60 {
 		vcc-supply  = <&vreg_l15b_1p8>;
 	};
 
+	broadcaster: broadcaster@2c {
+	        compatible = "i2c-sw-broadcaster";
+        	reg = <0x2c>;
+	};
+    
 	max34417_1: max34417@12 {
 		compatible = "maxim,max34417";
 		reg = <0x12>;
@@ -2141,6 +2146,7 @@ sensor@60 {
 		status = "okay";
 		#address-cells = <1>;
 		#size-cells = <0>;
+        	broadcaster-parent = <&broadcaster>;
 
 		// CH 1 : Kryo APC0 Cores
 		// CH 2 : Kryo APC2 Cores
@@ -2177,6 +2183,7 @@ sensor@60 {
 		status = "okay";
 		#address-cells = <1>;
 		#size-cells = <0>;
+		broadcaster-parent = <&broadcaster>;
 
 		// CH 1 : GFX Power
 		// CH 2 : Tensor Processor – NSP2
@@ -2214,6 +2221,7 @@ sensor@60 {
 		status = "okay";
 		#address-cells = <1>;
 		#size-cells = <0>;
+		broadcaster-parent = <&broadcaster>;
 
 		// CH 1 : VPH
 		// CH 2 : S1C ~1.25V Subregulation
@@ -2250,7 +2258,8 @@ sensor@60 {
 		status = "okay";
 		#address-cells = <1>;
 		#size-cells = <0>;
-
+		broadcaster-parent = <&broadcaster>;
+		
 		// CH 1 : VDD_MM (Multimedia)
 		// CH 2 : Unused
 		// CH 3 : VDD_MX (Caches)
@@ -2286,7 +2295,8 @@ sensor@60 {
 		status = "okay";
 		#address-cells = <1>;
 		#size-cells = <0>;
-
+		broadcaster-parent = <&broadcaster>;
+		
 		// CH 1 : FEM VPH
 		// CH 2 : Unused
 		// CH 3 : Unused
@@ -2322,7 +2332,8 @@ sensor@60 {
 		status = "okay";
 		#address-cells = <1>;
 		#size-cells = <0>;
-
+		broadcaster-parent = <&broadcaster>;
+		
 		// CH 1 : VDD_MXC (GMEM)
 		// CH 2 : VDD_EBI (DDR PHY)
 		// CH 3 : VDD2H (DDR Power)
