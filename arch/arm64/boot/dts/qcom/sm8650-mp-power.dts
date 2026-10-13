@@ -19,6 +19,8 @@
 	compatible = "qcom,sm8650-dv1", "qcom,sm8650";
 
 	aliases {
+		// nRF dongle /dev/spidev0.*
+		spi0 = &spi10;
 		serial0 = &uart15;
 		serial1 = &uart14;
 		serial2 = &uart3;
@@ -1691,50 +1693,20 @@ sensor@60 {
 	clock-frequency = <32764>;
 };
 
-#ifndef NRF_UART
-// nRF SPI HID
+// nRF roy dongle, SPI slave on QUP2 SE2 (spi10).
+// /dev/spidev0.1
 &spi10 {
 	status = "okay";
 
-	// L, on QUP2 SE2 L3 CS
-	// expansion, CS_2=gpio_15
-	hid@2 {
-		compatible = "hid-over-spi";
-		reg = <2>;
-		interrupts-extended = <&tlmm 69 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&tlmm 70 GPIO_ACTIVE_LOW>;
-		input-report-header-address = <0x1000>;
-		input-report-body-address = <0x1004>;
-		output-report-address = <0x2000>;
-		read-opcode = <0x0b>;
-		write-opcode = <0x02>;
-		hid-over-spi-flags = <0x00>;
-		post-power-on-delay-ms = <1>;
-		minimal-reset-delay-ms = <100>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&l_spihid_default_state>;
-	};
-
-	// R, on QUP2 SE2 L6 CS
-	// mainboard, CS_1=gpio_13
-	hid@1 {
-		compatible = "hid-over-spi";
+	// mainboard nRF, CS_1=gpio_13
+	nrf_dongle: dongle@1 {
+		compatible = "linux,spidev";
 		reg = <1>;
-		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&tlmm 137 GPIO_ACTIVE_LOW>;
-		input-report-header-address = <0x1000>;
-		input-report-body-address = <0x1004>;
-		output-report-address = <0x2000>;
-		read-opcode = <0x0b>;
-		write-opcode = <0x02>;
-		hid-over-spi-flags = <0x00>;
-		post-power-on-delay-ms = <1>;
-		minimal-reset-delay-ms = <100>;
+		spi-max-frequency = <8000000>; // nRF52833 SPIS maximum
 		pinctrl-names = "default";
-		pinctrl-0 = <&r_spihid_default_state>;
+		pinctrl-0 = <&nrf_dongle_default_state>;
 	};
 };
-#endif
 
 &uart14 {
 	status = "okay";
@@ -2022,7 +1994,7 @@ sensor@60 {
 		// GPIO048 - GPIO063
 		"",  "",  "nrf_swdio",  "nrf_swclk",  "",  "",  "",  "",  "fpga_cam0_strobe",  "fpga_cam1_strobe",  "",  "",  "",  "",  "",  "",
 		// GPIO064 - GPIO079
-		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
+		"",  "",  "nrf_drdy",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO080 - GPIO095
 		"",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",  "",
 		// GPIO096 - GPIO111
@@ -2601,38 +2573,12 @@ cam4@10 {
 	};
 
 	// nRF SPI interrupt and reset pins
-
-	// expansion
-	l_spihid_default_state: l-spihid-default {
-		irq0-pins {
-			pins = "gpio69";
-			function = "gpio";
-			bias-pull-up;
-		};
-
-		reset0-pins {
-			pins = "gpio70";
-			function = "gpio";
-			drive-strength = <2>;
-			output-low;
-			bias-pull-down;
-		};
-	};
-
-	// host/mainboard
-	r_spihid_default_state: r-spihid-default {
-		irq0-pins {
+	nrf_dongle_default_state: nrf-dongle-default-state {
+		drdy-pins {
 			pins = "gpio66";
 			function = "gpio";
-			bias-pull-up;
-		};
-
-		reset0-pins {
-			pins = "gpio137";
-			function = "gpio";
-			drive-strength = <2>;
-			output-low;
 			bias-pull-down;
+			input-enable;
 		};
 	};
 
