@@ -363,6 +363,13 @@ config VIDEO_OG01A1B
 	  To compile this driver as a module, choose M here: the
 	  module will be called og01a1b.
 
+config VIDEO_DECKARD_API
+	bool "OmniVision OG sensors deckard interface"
+	depends on VIDEO_OG01A1B || VIDEO_OG01A1B_A
+	help
+	  Interface of the out-of-tree og01a1b-a and og0ve10-a vendor
+	  drivers for the deckard camera stack.
+
 config VIDEO_OG0VE1B
 	tristate "OmniVision OG0VE1B sensor support"
 	select V4L2_CCI_I2C
@@ -385,6 +392,7 @@ config VIDEO_OS05B10
 
 config VIDEO_OG01A1B_A
 	tristate "OmniVision OG01A1B sensor support"
+	select VIDEO_DECKARD_API
 	help
 	  This is a Video4Linux2 sensor driver for the OmniVision
 	  OG01A1B camera with advanced features.
@@ -394,6 +402,8 @@ config VIDEO_OG01A1B_A
 
 config VIDEO_OG0VE10_A
 	tristate "OmniVision OG0VE1B sensor support"
+	depends on VIDEO_DECKARD_API
+	depends on VIDEO_OG01A1B_A
 	help
 	  This is a Video4Linux2 sensor driver for the OmniVision
 	  OG0VE1B camera with advanced features.
