@@ -1573,6 +1573,8 @@
 };
 
 &pm8550b_vbus {
+	regulator-min-microamp = <500000>;
+	regulator-max-microamp = <2000000>;
 	status = "okay";
 };
 
@@ -1586,7 +1588,7 @@
 		data-role = "dual";
 		try-power-role = "sink";
 		
-		source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)>;
+		source-pdos = <PDO_FIXED(5000, 2000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)>;
 		
 		//sink-pdos needs to have 5000mV entry first otherwise will not probe
 		sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)>,
